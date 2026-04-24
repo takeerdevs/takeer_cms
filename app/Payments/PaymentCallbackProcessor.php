@@ -1,0 +1,166 @@
+<?php
+
+namespace App\Payments;
+
+use App\Models\Order;
+use App\Models\ProductVariant;
+use App\Models\SubscriptionInvoice;
+use App\Models\Transaction;
+use App\Models\UserSubscription;
+use App\Services\EntitlementService;
+use App\Services\SmsService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Shared payment success/failure handler.
+ *
+ * This is the SINGLE place where business logic runs after any gateway
+ * confirms payment — wallet crediting, entitlement grants, subscriptions.
+ *
+ * AzamPay callback → AzamPayCallbackController → PaymentCallbackProcessor
+ * M-Pesa callback  → MpesaCallbackController   → PaymentCallbackProcessor
+ * Flutterwave      → FlutterwaveCallbackController → PaymentCallbackProcessor
+ *
+ * This ensures all gateways share identical post-payment behaviour.
+ */
+class PaymentCallbackProcessor
+{
+    public function __construct(
+        private readonly EntitlementService $entitlementService,
+        private readonly SmsService $smsService,
+    ) {}
+
+    /**
+     * Process a confirmed successful payment notification from any gateway.
+     *
+     * @param  Order   $order       The pending order that was paid.
+     * @param  string  $gatewayRef  The gateway's own transaction reference number.
+     * @param  string  $gateway     Gateway name e.g. "azampay", "mpesa_ke"
+     */
+    public function handleSuccess(Order $order, string $gatewayRef, string $gateway): void
+    {
+        if ($order->payment_status !== 'pending') {
+            Log::warning("PaymentCallbackProcessor: Order [{$order->id}] is not pending (status: {$order->payment_status}). Skipping.");
+            return;
+        }
+
+        Log::info("PaymentCallbackProcessor: Processing success for order [{$order->id}] via [{$gateway}] ref [{$gatewayRef}].");
+
+        DB::transaction(function () use ($order, $gatewayRef, $gateway) {
+            $isPhysical = $order->purchasable_type === 'product'
+                && $order->product?->isPhysical();
+
+            $order->update([
+                'payment_status' => $isPhysical
+                    ? 'awaiting_merchant_confirmation'
+                    : 'resolved_merchant_paid',
+                'gateway_ref'    => $gatewayRef,
+                'payment_gateway' => $gateway,
+            ]);
+
+            // Log TRA-ready transaction record
+            Transaction::create([
+                'user_id'      => $order->buyer_id,
+                'order_id'     => $order->id,
+                'type'         => 'order_revenue',
+                'gross_amount' => $order->total_paid,
+                'net_amount'   => $order->total_paid * 0.95,   // After 5% Takeer commission
+                'tax_amount'   => ($order->total_paid * 0.05) * 0.18, // 18% VAT on 5% fee
+                'reference'    => $gatewayRef,
+            ]);
+
+            $wallet = $order->merchant->user->wallet()->firstOrCreate(
+                ['user_id' => $order->merchant->user_id],
+                ['balance' => 0, 'frozen_balance' => 0]
+            );
+
+            if ($isPhysical) {
+                // Freeze funds in merchant wallet until buyer confirms delivery
+                $wallet->increment('frozen_balance', $order->total_paid);
+            } else {
+                // Instantly credit merchant for digital goods
+                $wallet->increment('balance', $order->total_paid * 0.95);
+                $this->entitlementService->grantForOrder($order->fresh(['product']));
+
+                // Handle subscription activation
+                if ($order->purchasable_type === 'subscription_plan') {
+                    $subscription = $this->createOrRenewSubscription($order);
+                    $this->entitlementService->grantForSubscription($subscription);
+                }
+            }
+        });
+
+        // Fire events (outside transaction to avoid holding DB locks)
+        if ($order->product) {
+            event(new \App\Events\OrderPaid($order));
+        }
+
+        if ($order->product?->isPhysical()) {
+            \App\Jobs\DispatchCourier::dispatch($order);
+        }
+    }
+
+    /**
+     * Process a confirmed failed/rejected payment from any gateway.
+     *
+     * @param  Order   $order
+     * @param  string  $reason  Human-readable failure reason for logging.
+     */
+    public function handleFailure(Order $order, string $reason = 'Payment failed'): void
+    {
+        if ($order->payment_status !== 'pending') {
+            Log::warning("PaymentCallbackProcessor: Order [{$order->id}] is not pending. Skipping failure handler.");
+            return;
+        }
+
+        Log::info("PaymentCallbackProcessor: Marking order [{$order->id}] as failed. Reason: {$reason}");
+
+        $order->update(['payment_status' => 'failed']);
+
+        // Restore inventory for physical products
+        if ($order->product?->isPhysical()) {
+            if ($order->variant_id) {
+                ProductVariant::query()->whereKey($order->variant_id)->increment('inventory_count');
+            }
+            $order->product->increment('inventory_count');
+        }
+    }
+
+    private function createOrRenewSubscription(Order $order): UserSubscription
+    {
+        $plan  = $order->resolved_purchasable;
+        $start = now();
+        $end   = match ($plan->billing_interval) {
+            'hourly'  => now()->addHours((int) $plan->interval_count),
+            'daily'   => now()->addDays((int) $plan->interval_count),
+            'weekly'  => now()->addWeeks((int) $plan->interval_count),
+            default   => now()->addMonths((int) $plan->interval_count),
+        };
+
+        $subscription = UserSubscription::create([
+            'user_id'              => $order->buyer_id,
+            'merchant_id'         => $order->merchant_id,
+            'subscription_plan_id' => $plan->id,
+            'status'              => 'active',
+            'auto_renew'          => true,
+            'started_at'          => $start,
+            'current_period_start' => $start,
+            'current_period_end'   => $end,
+            'next_billing_at'     => $end,
+        ]);
+
+        SubscriptionInvoice::create([
+            'user_subscription_id' => $subscription->id,
+            'order_id'            => $order->id,
+            'amount'              => $order->total_paid,
+            'status'              => 'paid',
+            'billed_for_start'    => $start,
+            'billed_for_end'      => $end,
+            'paid_at'             => now(),
+            'reference'           => 'SUB-' . $order->transaction_ref,
+        ]);
+
+        return $subscription;
+    }
+}

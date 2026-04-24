@@ -1,0 +1,8 @@
+#!/usr/bin/expect -f
+set timeout -1
+spawn php artisan install:broadcasting --ansi
+expect "Would you like to install Laravel Reverb?"
+send "\r"
+expect "Would you like to build your Node dependencies?"
+send "no\r"
+expect eof

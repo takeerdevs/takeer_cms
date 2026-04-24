@@ -1,0 +1,66 @@
+FROM php:8.3-fpm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git curl zip unzip libpq-dev libonig-dev libxml2-dev \
+    libzip-dev libpng-dev libjpeg-dev libfreetype6-dev \
+    libssl-dev supervisor nginx \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install \
+        pdo pdo_pgsql pgsql mbstring exif pcntl bcmath gd zip opcache \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install pgvector extension
+RUN apt-get update && apt-get install -y git postgresql-server-dev-all \
+    && cd /tmp && git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git \
+    && cd /tmp/pgvector && make && make install \
+    && apt-get remove -y postgresql-server-dev-all && apt-get autoremove -y \
+    && rm -rf /tmp/pgvector && apt-get clean
+
+# Install Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Configure PHP
+COPY docker/php/php.ini /usr/local/etc/php/conf.d/custom.ini
+COPY docker/php/php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
+
+# Configure Nginx
+COPY docker/nginx/default.conf /etc/nginx/sites-available/default
+
+# Configure Supervisor
+COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy application files
+COPY . .
+
+# Install Composer dependencies
+RUN composer install --no-dev --optimize-autoloader --no-interaction 2>/dev/null || \
+    composer install --optimize-autoloader --no-interaction
+
+# Install npm dependencies and build assets
+RUN npm install && npm run build
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html/storage \
+    && chmod -R 755 /var/www/html/bootstrap/cache
+
+# Expose ports
+EXPOSE 8000
+
+# Copy init script and start
+COPY docker/laravel-init.sh /usr/local/bin/laravel-init.sh
+RUN chmod +x /usr/local/bin/laravel-init.sh
+
+COPY docker/start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+CMD ["/usr/local/bin/start.sh"]

@@ -1,0 +1,49 @@
+{
+    "$schema": "https://www.schemastore.org/package.json",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.2.1",
+        "axios": "^1.11.0",
+        "concurrently": "^9.0.1",
+        "laravel-vite-plugin": "^2.0.0",
+        "tailwindcss": "^4.2.1",
+        "vite": "^7.0.7",
+        "ziggy-js": "^2.6.2"
+    },
+    "dependencies": {
+        "@editorjs/checklist": "^1.6.0",
+        "@editorjs/delimiter": "^1.4.2",
+        "@editorjs/editorjs": "^2.31.5",
+        "@editorjs/embed": "^2.7.7",
+        "@editorjs/header": "^2.8.8",
+        "@editorjs/image": "^2.10.3",
+        "@editorjs/list": "^2.0.9",
+        "@editorjs/quote": "^2.7.6",
+        "@headlessui/react": "^2.2.9",
+        "@heroicons/react": "^2.2.0",
+        "@inertiajs/react": "^2.3.17",
+        "@radix-ui/react-dialog": "^1.1.15",
+        "@radix-ui/react-slot": "^1.2.4",
+        "@react-google-maps/api": "^2.20.8",
+        "@vitejs/plugin-react": "^5.1.4",
+        "clsx": "^2.1.1",
+        "framer-motion": "^12.35.2",
+        "html-to-image": "^1.11.13",
+        "laravel-echo": "^2.3.0",
+        "lucide-react": "^0.577.0",
+        "openai": "^6.27.0",
+        "pusher-js": "^8.4.0",
+        "qrcode.react": "^4.2.0",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
+        "sonner": "^2.0.7",
+        "swr": "^2.4.1",
+        "tailwind-merge": "^3.5.0",
+        "vaul": "^1.1.2"
+    }
+}
