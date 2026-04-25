@@ -181,4 +181,9 @@ class Product extends Model
     {
         return $this->type === 'service';
     }
+
+    public function course(): HasOne
+    {
+        return $this->hasOne(Course::class);
+    }
 }

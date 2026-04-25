@@ -128,9 +128,12 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 </p>
                             </div>
                         </div>
-                        <Button className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md">
+                        <Link 
+                            href={`/merchant/${merchantSlug}/verification`}
+                            className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md px-4 py-2 inline-flex items-center"
+                        >
                             <FileCheck className="mr-2 h-4 w-4" /> Anza Uthibitisho (KYC)
-                        </Button>
+                        </Link>
                     </div>
                 ) : (
                     <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-900/20 rounded-2xl p-4 flex items-center justify-between gap-4">

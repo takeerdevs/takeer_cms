@@ -65,6 +65,7 @@ class CheckoutRequest extends FormRequest
             'shipping_hotspot_id' => 'nullable|integer|exists:shipping_hotspots,id',
             'delivery_type' => ['nullable', 'string', Rule::in(['local_boda', 'intercity_bus', 'self_pickup'])],
             'idempotency_key' => 'required|string|max:255',
+            'payment_page_id' => 'nullable|integer|exists:payment_pages,id',
         ];
     }
 

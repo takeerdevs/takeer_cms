@@ -45,6 +45,18 @@ class DownloadController extends Controller
         // 5. It's a direct upload stored privately.
         $path = $resolvedTarget;
 
+        $isCourse = (bool) $order->product->course;
+        if ($isCourse) {
+            return response()->json([
+                'type' => 'course',
+                'url' => route('course.player', ['product' => $order->product->slug]),
+                'is_course' => true,
+                'message' => 'Hii ni kozi. Fungua Course Player ili kuanza masomo.'
+            ], 200, [
+                'Cache-Control' => 'no-store, private',
+            ]);
+        }
+
         // Try generating a temporary signed URL (S3)
         try {
             $disk = Storage::disk('s3');
@@ -59,6 +71,7 @@ class DownloadController extends Controller
                     'type' => 'signed',
                     'url' => $temporaryUrl,
                     'size' => $size,
+                    'is_course' => false,
                     'message' => 'Link yako ya kupakua imeandaliwa (itadumu kwa dakika 10).'
                 ], 200, [
                     'Cache-Control' => 'no-store, private',

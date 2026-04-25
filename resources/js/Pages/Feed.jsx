@@ -11,7 +11,7 @@ export default function Feed({ initialPosts = [] }) {
         <AppLayout>
             <Head title="Nyumbani | Takeer" />
 
-            <div className="max-w-lg mx-auto divide-y divide-border">
+            <div className="max-w-2xl mx-auto divide-y divide-border">
                 {initialPosts.length === 0 ? (
                     <div className="py-20 text-center text-muted-foreground px-4">
                         <p className="font-semibold">Hakuna machapisho bado.</p>

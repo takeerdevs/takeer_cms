@@ -60,7 +60,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         try {
             const res = await axios.get('/api/me/addresses');
             setAddresses(res.data.addresses);
-            
+
             // Auto-select default address
             const defaultAddr = res.data.addresses.find(a => a.is_default);
             if (defaultAddr) {
@@ -73,15 +73,15 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         setSelectedAddressId(addr.id);
         setCustomerLat(parseFloat(addr.latitude));
         setCustomerLng(parseFloat(addr.longitude));
-        
+
         let displayAddress = addr.address_line;
         if (addr.type === 'forwarder' && addr.forwarder_customer_id) {
             displayAddress = `${addr.address_line} [ID: ${addr.forwarder_customer_id}]`;
         }
-        
+
         setPhysicalAddress(displayAddress);
         setExtraAddressDetails(addr.extra_details || '');
-        
+
         findBestShippingZone(parseFloat(addr.latitude), parseFloat(addr.longitude), '');
     };
 
@@ -469,6 +469,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 buyer_lng: isPhysicalProduct ? customerLng : undefined,
                 physical_address: isPhysicalProduct ? (extraAddressDetails ? `${physicalAddress} (${extraAddressDetails})` : physicalAddress) : undefined,
                 shipping_hotspot_id: (isPhysicalProduct && !isSelfPickupChoice && selectedHotspot) ? selectedHotspot.id : undefined,
+                payment_page_id: activeProduct.payment_page_id || undefined,
             };
 
             const isInquiry = isPhysicalProduct; // Physical is always an inquiry first
@@ -502,7 +503,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 await bootstrapSessionFromToken(data.token);
             }
 
-            const successMessage = isPhysicalProduct 
+            const successMessage = isPhysicalProduct
                 ? (data.message || 'Oda yako imeanzishwa! Sasa mnawasiliana na muuzaji.')
                 : (data.message || 'Malipo yameanzishwa! Kamilisha malipo kwenye simu yako.');
 
@@ -647,7 +648,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 </div>
 
                 <div className="flex flex-col max-h-[85vh]">
-    <div className="overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 scrollbar-hide">
+                    <div className="overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 scrollbar-hide">
                         {/* Variant Selection (Common for both if applicable) */}
                         {activeProduct?.has_variants && (
                             <div className="rounded-2xl border border-brand-100 dark:border-slate-700 bg-brand-50/40 dark:bg-slate-900/70 p-3 sm:p-4 space-y-3">
@@ -767,7 +768,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                     {!isSelfPickupChoice ? (
                                         <div className="space-y-3 pt-1 animate-in fade-in slide-in-from-top-1">
                                             <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground ml-1">Sehemu ya Kufikishiwa</label>
-                                            <UserAddressManager 
+                                            <UserAddressManager
                                                 mode="select"
                                                 isGuest={isGuest}
                                                 selectedId={selectedAddressId}
@@ -777,7 +778,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                     ) : (
                                         <div className="p-4 rounded-2xl bg-brand-100/40 border border-brand-100 shadow-sm mt-2">
                                             <p className="text-xs font-bold text-brand-800">
-                                                Unaweza kufuata bidhaa mwenyewe ilipo. Tutakutumia anwani na neno la siri mara baada ya kuanzisha oda.
+                                                Unaweza kufuata bidhaa mwenyewe ilipo. Tutakutumia anwani na neno la siri na kuchati na muuzaji kwa makubaliano zaidi mara baada ya kuanzisha oda.
                                             </p>
                                         </div>
                                     )}

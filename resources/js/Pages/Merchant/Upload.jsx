@@ -90,9 +90,15 @@ export default function Upload({ merchantUsername }) {
     const [productType, setProductType] = useState('physical'); // 'physical', 'digital', 'service'
     const [url, setUrl] = useState(''); // External link (Google Drive, Calendly, etc.)
 
-    // Digital dual-mode: 'upload' (direct file) or 'link' (external URL)
+    // Digital dual-mode: 'upload' (direct file), 'link' (external URL), or 'course' (curriculum)
     const [digitalDeliveryMode, setDigitalDeliveryMode] = useState('upload');
     const [digitalFile, setDigitalFile] = useState(null); // { name, url, size, type, isUploading }
+
+    // Course State
+    const [isCourse, setIsCourse] = useState(false);
+    const [curriculum, setCurriculum] = useState([
+        { id: Date.now(), title: 'Moduli ya 1', lessons: [{ id: Date.now() + 1, title: 'Somo la 1', type: 'video', content_url: '', isUploading: false }] }
+    ]);
 
     // Service dual-mode: 'internal' (WhatsApp/phone) or 'external' (Calendly/booking link)
     const [serviceBookingMode, setServiceBookingMode] = useState('internal');
@@ -140,6 +146,57 @@ export default function Upload({ merchantUsername }) {
         fetchPromotables();
         fetchShippingProfiles();
     }, []);
+
+    const addModule = () => {
+        setCurriculum([...curriculum, { id: Date.now(), title: `Moduli ya ${curriculum.length + 1}`, lessons: [] }]);
+    };
+
+    const addLesson = (moduleId) => {
+        setCurriculum(prev => prev.map(m => m.id === moduleId ? {
+            ...m, lessons: [...m.lessons, { id: Date.now(), title: `Somo la ${m.lessons.length + 1}`, type: 'video', content_url: '', is_preview: false }]
+        } : m));
+    };
+
+    const uploadLessonMedia = async (moduleId, lessonId, file) => {
+        if (!file) return;
+
+        setCurriculum(prev => prev.map(m => m.id === moduleId ? {
+            ...m, lessons: m.lessons.map(l => l.id === lessonId ? { ...l, isUploading: true, progress: 0 } : l)
+        } : m));
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', 'private');
+        formData.append('folder', 'course-lessons');
+
+        try {
+            const res = await axios.post('/merchant/upload/media', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (p) => {
+                    const progress = Math.round((p.loaded * 100) / p.total);
+                    setCurriculum(prev => prev.map(m => m.id === moduleId ? {
+                        ...m, lessons: m.lessons.map(l => l.id === lessonId ? { ...l, progress } : l)
+                    } : m));
+                }
+            });
+
+            setCurriculum(prev => prev.map(m => m.id === moduleId ? {
+                ...m, lessons: m.lessons.map(l => l.id === lessonId ? {
+                    ...l,
+                    content_url: res.data.url,
+                    isUploading: false,
+                    size: res.data.size,
+                    mime: res.data.mime
+                } : l)
+            } : m));
+            toast.success('Somo limepakiwa!');
+        } catch (err) {
+            setCurriculum(prev => prev.map(m => m.id === moduleId ? {
+                ...m, lessons: m.lessons.map(l => l.id === lessonId ? { ...l, isUploading: false } : l)
+            } : m));
+            toast.error('Imeshindwa kupakia somo.');
+        }
+    };
 
     const fetchCatalogRoot = async () => {
         try {
@@ -802,13 +859,30 @@ export default function Upload({ merchantUsername }) {
             return;
         }
         if (step === 'digital') {
-            if (digitalDeliveryMode === 'upload' && !digitalFile) {
-                toast.error('Tafadhali pakia faili la bidhaa yako.');
-                return;
-            }
-            if (digitalDeliveryMode === 'link' && !url) {
-                toast.error('Tafadhali weka link ya kupakua.');
-                return;
+            if (isCourse) {
+                if (curriculum.length === 0) {
+                    toast.error('Kozi lazima iwe na angalau moduli moja.');
+                    return;
+                }
+                const hasEmptyModules = curriculum.some(m => m.lessons.length === 0);
+                if (hasEmptyModules) {
+                    toast.error('Kila moduli lazima iwe na angalau somo moja.');
+                    return;
+                }
+                const hasUnfinishedUploads = curriculum.some(m => m.lessons.some(l => l.isUploading || !l.content_url));
+                if (hasUnfinishedUploads) {
+                    toast.error('Tafadhali subiri masomo yote yamalize kupanda au pakia yote.');
+                    return;
+                }
+            } else {
+                if (digitalDeliveryMode === 'upload' && !digitalFile) {
+                    toast.error('Tafadhali pakia faili la bidhaa yako.');
+                    return;
+                }
+                if (digitalDeliveryMode === 'link' && !url) {
+                    toast.error('Tafadhali weka link ya kupakua.');
+                    return;
+                }
             }
         }
         if (step === 'service') {
@@ -842,7 +916,7 @@ export default function Upload({ merchantUsername }) {
             return;
         }
 
-        if (step === 'digital' && digitalDeliveryMode === 'upload' && digitalFile?.isUploading) {
+        if (step === 'digital' && !isCourse && digitalDeliveryMode === 'upload' && digitalFile?.isUploading) {
             toast.error('Tafadhali subiri faili la digitali limalize kupanda.');
             return;
         }
@@ -859,8 +933,10 @@ export default function Upload({ merchantUsername }) {
                 image_urls: images.map(img => img.url).filter(Boolean),
                 hotspots: hotspots,
                 type: productType,
+                is_course: isCourse,
+                curriculum: isCourse ? curriculum : null,
                 // Digital product: either the uploaded file or external link
-                digital_file_url: (step === 'digital' && digitalDeliveryMode === 'upload') ? digitalFile?.url : null,
+                digital_file_url: (step === 'digital' && !isCourse && digitalDeliveryMode === 'upload') ? digitalFile?.url : null,
                 url: step === 'digital'
                     ? (digitalDeliveryMode === 'link' ? url : null)
                     : step === 'service'
@@ -1865,35 +1941,44 @@ export default function Upload({ merchantUsername }) {
                             {step === 'digital' && (
                                 <div className="space-y-3">
                                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jinsi ya Kupeleka Bidhaa kwa Mteja</label>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-3 gap-3">
                                         <button
-                                            onClick={() => setDigitalDeliveryMode('upload')}
-                                            className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'upload'
+                                            onClick={() => { setDigitalDeliveryMode('upload'); setIsCourse(false); }}
+                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'upload' && !isCourse
                                                 ? 'border-blue-500 bg-blue-50 text-blue-700'
                                                 : 'border-border text-muted-foreground hover:border-blue-200'
                                                 }`}
                                         >
-                                            <FileUp className="h-6 w-6" />
-                                            <span className="text-sm font-bold">Pakia Faili</span>
-                                            <span className="text-[10px] text-center opacity-70">PDF, MP4, ZIP, n.k.</span>
-                                            {digitalDeliveryMode === 'upload' && <CheckCircle className="h-4 w-4 text-blue-600" />}
+                                            <FileUp className="h-5 w-5" />
+                                            <span className="text-[11px] font-bold">Single File</span>
+                                            {digitalDeliveryMode === 'upload' && !isCourse && <CheckCircle className="h-3 w-3 text-blue-600" />}
                                         </button>
                                         <button
-                                            onClick={() => setDigitalDeliveryMode('link')}
-                                            className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'link'
+                                            onClick={() => { setDigitalDeliveryMode('link'); setIsCourse(false); }}
+                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'link'
                                                 ? 'border-blue-500 bg-blue-50 text-blue-700'
                                                 : 'border-border text-muted-foreground hover:border-blue-200'
                                                 }`}
                                         >
-                                            <ExternalLink className="h-6 w-6" />
-                                            <span className="text-sm font-bold">Link ya Nje</span>
-                                            <span className="text-[10px] text-center opacity-70">Google Drive, Dropbox</span>
-                                            {digitalDeliveryMode === 'link' && <CheckCircle className="h-4 w-4 text-blue-600" />}
+                                            <ExternalLink className="h-5 w-5" />
+                                            <span className="text-[11px] font-bold">External Link</span>
+                                            {digitalDeliveryMode === 'link' && <CheckCircle className="h-3 w-3 text-blue-600" />}
+                                        </button>
+                                        <button
+                                            onClick={() => { setDigitalDeliveryMode('upload'); setIsCourse(true); }}
+                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${isCourse
+                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                : 'border-border text-muted-foreground hover:border-blue-200'
+                                                }`}
+                                        >
+                                            <Crown className="h-5 w-5" />
+                                            <span className="text-[11px] font-bold">Course Creator</span>
+                                            {isCourse && <CheckCircle className="h-3 w-3 text-blue-600" />}
                                         </button>
                                     </div>
 
-                                    {/* Direct file upload */}
-                                    {digitalDeliveryMode === 'upload' && (
+                                    {/* Direct file upload (Single) */}
+                                    {digitalDeliveryMode === 'upload' && !isCourse && (
                                         <div className="animate-in fade-in">
                                             {!digitalFile ? (
                                                 <button
@@ -1925,23 +2010,132 @@ export default function Upload({ merchantUsername }) {
                                                     </button>
                                                 </div>
                                             )}
-                                            {digitalFile?.isUploading && (
-                                                <div className="flex flex-col gap-2 p-4 bg-blue-50/50 border border-blue-200/50 rounded-2xl">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-sm font-bold text-blue-700 animate-pulse">Inapakia faili...</span>
-                                                        <span className="text-sm font-bold text-blue-700">{digitalFile.progress}%</span>
-                                                    </div>
-                                                    <div className="h-2 w-full bg-blue-100 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
-                                                            style={{ width: `${digitalFile.progress}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
                                             <p className="text-[10px] text-muted-foreground mt-2">
-                                                Faili litahifadhiwa <b>salama</b> na Takeer. Mteja atapata link ya kupakua <b>mara baada ya kulipa</b>.
+                                                Faili litahifadhiwa <b>salama</b> na Takeer.
                                             </p>
+                                        </div>
+                                    )}
+
+                                    {/* Course Creator (Curriculum Builder) */}
+                                    {isCourse && (
+                                        <div className="animate-in fade-in space-y-6">
+                                            <div className="bg-blue-50/30 border border-blue-100 p-4 rounded-2xl">
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <h4 className="font-black text-sm flex items-center gap-2">
+                                                        <Boxes className="h-4 w-4" /> Curriculum Builder
+                                                    </h4>
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm" 
+                                                        onClick={addModule}
+                                                        className="h-8 text-[10px] font-bold border-blue-200 text-blue-700 bg-white"
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5 mr-1" /> Add Module
+                                                    </Button>
+                                                </div>
+
+                                                <div className="space-y-4">
+                                                    {curriculum.map((module, mIdx) => (
+                                                        <div key={module.id} className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
+                                                            <div className="flex items-center gap-2 mb-3">
+                                                                <span className="text-[10px] font-black bg-blue-100 text-blue-700 h-5 w-5 rounded-full flex items-center justify-center">
+                                                                    {mIdx + 1}
+                                                                </span>
+                                                                <Input 
+                                                                    className="h-8 text-sm font-bold border-0 bg-transparent p-0 focus-visible:ring-0"
+                                                                    value={module.title}
+                                                                    onChange={(e) => {
+                                                                        const newCur = [...curriculum];
+                                                                        newCur[mIdx].title = e.target.value;
+                                                                        setCurriculum(newCur);
+                                                                    }}
+                                                                />
+                                                                <button onClick={() => {
+                                                                    const newCur = curriculum.filter((_, i) => i !== mIdx);
+                                                                    setCurriculum(newCur);
+                                                                }} className="text-slate-300 hover:text-red-500">
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="space-y-2 ml-7">
+                                                                {module.lessons.map((lesson, lIdx) => (
+                                                                    <div key={lesson.id} className="bg-slate-50 border border-slate-100 p-3 rounded-lg flex flex-col gap-3">
+                                                                        <div className="flex items-center justify-between gap-3">
+                                                                            <Input 
+                                                                                className="h-7 text-xs font-medium border-0 bg-transparent p-0 focus-visible:ring-0"
+                                                                                value={lesson.title}
+                                                                                placeholder="Lesson Title..."
+                                                                                onChange={(e) => {
+                                                                                    const newCur = [...curriculum];
+                                                                                    newCur[mIdx].lessons[lIdx].title = e.target.value;
+                                                                                    setCurriculum(newCur);
+                                                                                }}
+                                                                            />
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button 
+                                                                                    onClick={() => {
+                                                                                        const newCur = [...curriculum];
+                                                                                        newCur[mIdx].lessons[lIdx].is_preview = !newCur[mIdx].lessons[lIdx].is_preview;
+                                                                                        setCurriculum(newCur);
+                                                                                    }}
+                                                                                    className={`h-6 px-2 rounded-full text-[9px] font-black tracking-tighter transition-colors ${lesson.is_preview ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-500'}`}
+                                                                                >
+                                                                                    PREVIEW
+                                                                                </button>
+                                                                                <button onClick={() => {
+                                                                                    const newCur = [...curriculum];
+                                                                                    newCur[mIdx].lessons.splice(lIdx, 1);
+                                                                                    setCurriculum(newCur);
+                                                                                }} className="text-slate-300 hover:text-red-500">
+                                                                                    <X className="h-3.5 w-3.5" />
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {!lesson.content_url && !lesson.isUploading ? (
+                                                                            <Button 
+                                                                                variant="ghost" 
+                                                                                size="sm" 
+                                                                                className="h-8 border border-dashed border-blue-200 text-blue-600 bg-blue-50/50 text-[10px] font-bold w-full"
+                                                                                onClick={() => {
+                                                                                    const input = document.createElement('input');
+                                                                                    input.type = 'file';
+                                                                                    input.onchange = (e) => uploadLessonMedia(module.id, lesson.id, e.target.files[0]);
+                                                                                    input.click();
+                                                                                }}
+                                                                            >
+                                                                                <FileUp className="h-3.5 w-3.5 mr-1" /> Upload Lesson Video/PDF
+                                                                            </Button>
+                                                                        ) : lesson.isUploading ? (
+                                                                            <div className="space-y-1">
+                                                                                <div className="flex justify-between text-[9px] font-black text-blue-600 uppercase tracking-widest">
+                                                                                    <span>Uploading...</span>
+                                                                                    <span>{lesson.progress}%</span>
+                                                                                </div>
+                                                                                <div className="h-1 w-full bg-blue-100 rounded-full overflow-hidden">
+                                                                                    <div className="h-full bg-blue-600" style={{ width: `${lesson.progress}%` }} />
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="flex items-center gap-2 text-[10px] font-bold text-green-600 bg-green-50 p-1.5 rounded-md border border-green-100">
+                                                                                <CheckCircle2 className="h-3 w-3" /> Ready
+                                                                                <span className="text-slate-400 font-mono text-[9px] truncate ml-auto">{lesson.content_url}</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                                <button 
+                                                                    onClick={() => addLesson(module.id)}
+                                                                    className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1 py-1"
+                                                                >
+                                                                    <Plus className="h-3 w-3" /> Add Lesson
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 

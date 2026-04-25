@@ -241,10 +241,29 @@ class AdminController extends Controller
     /**
      * Admin view: merchant profile + control summary.
      */
-    public function showMerchant(Request $request, \App\Models\Merchant $merchant): JsonResponse
-    {
-        $merchant->load(['user:id,name,email,phone_number,created_at', 'country:id,name,iso_alpha2', 'currency:id,name,code,symbol']);
+        $merchant->load(['user:id,name,email,phone_number,created_at', 'country:id,name,iso_alpha2', 'currency:id,name,code,symbol', 'kyc']);
         $merchant->loadCount(['products', 'posts', 'contentItems', 'bundles', 'subscriptionPlans', 'orders']);
+
+        // Resolve signed URLs for KYC documents if they exist
+        if ($merchant->kyc) {
+            $mediaService = app(\App\Services\MediaUploadService::class);
+            if ($merchant->kyc->id_front_url) {
+                $path = str_replace('private://', '', $merchant->kyc->id_front_url);
+                try {
+                    $merchant->kyc->id_front_signed_url = $mediaService->getSignedUrl($path);
+                } catch (\Exception $e) {
+                    $merchant->kyc->id_front_signed_url = null;
+                }
+            }
+            if ($merchant->kyc->id_back_url) {
+                $path = str_replace('private://', '', $merchant->kyc->id_back_url);
+                try {
+                    $merchant->kyc->id_back_signed_url = $mediaService->getSignedUrl($path);
+                } catch (\Exception $e) {
+                    $merchant->kyc->id_back_signed_url = null;
+                }
+            }
+        }
 
         $summary = [
             'gross_revenue' => (float) Order::where('merchant_id', $merchant->id)->sum('total_paid'),
@@ -266,6 +285,53 @@ class AdminController extends Controller
         return response()->json([
             'merchant' => $merchant,
             'summary' => $summary,
+        ]);
+    }
+
+    /**
+     * Admin approves merchant KYC.
+     */
+    public function approveKyc(Request $request, \App\Models\Merchant $merchant): JsonResponse
+    {
+        $merchant->update([
+            'kyc_status' => 'verified',
+            'is_verified' => true,
+        ]);
+
+        if ($merchant->kyc) {
+            $merchant->kyc->update(['status' => 'verified']);
+        }
+
+        return response()->json([
+            'message' => 'Merchant identity verified successfully.',
+            'merchant' => $merchant->fresh(),
+        ]);
+    }
+
+    /**
+     * Admin rejects merchant KYC.
+     */
+    public function rejectKyc(Request $request, \App\Models\Merchant $merchant): JsonResponse
+    {
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        $merchant->update([
+            'kyc_status' => 'rejected',
+            'is_verified' => false,
+        ]);
+
+        if ($merchant->kyc) {
+            $merchant->kyc->update([
+                'status' => 'rejected',
+                'rejection_reason' => $request->input('reason'),
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Merchant identity rejected.',
+            'merchant' => $merchant->fresh(),
         ]);
     }
 

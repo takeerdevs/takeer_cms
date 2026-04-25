@@ -39,6 +39,7 @@ class Order extends Model
         'gateway_ref',     // Gateway's own transaction ID for reconciliation
         'extra_items',     // Suggested items added during chat
         'expires_at',
+        'payment_page_id',
     ];
 
     protected function casts(): array

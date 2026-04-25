@@ -12,16 +12,29 @@ import {
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 
-export default function MerchantWallet({ merchantUsername, merchantName, wallet }) {
+export default function MerchantWallet({ merchantUsername, merchantName, wallet, merchant }) {
     const { auth, flash, errors: pageErrors } = usePage().props;
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState('earnings');
+
+    const storageUsedMb = merchant?.storage_used_mb || 0;
+    const storageLimitMb = merchant?.storage_limit_mb || 500;
+    const storagePercentage = merchant?.storage_percentage || 0;
+    const tier = merchant?.subscription_tier || 'free';
 
     const { data, setData, post, processing, errors, reset, clearErrors } = useForm({
         amount: '',
         method: 'mobile_money',
     });
+
+    const getFilteredHistory = () => {
+        if (activeTab === 'earnings') {
+            return history.filter(item => item.type === 'order_revenue' || item.type === 'platform_fee');
+        }
+        return history.filter(item => item.type === 'withdrawal');
+    };
 
     useEffect(() => {
         fetchHistory();
@@ -107,120 +120,192 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet 
                     </div>
                 )}
 
-                {/* Balances */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Card className="bg-gradient-to-br from-brand-600 to-brand-800 border-0 text-white shadow-xl shadow-brand-600/20 overflow-hidden relative">
+                {/* Balances & Storage */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card className="md:col-span-2 bg-gradient-to-br from-brand-600 to-brand-800 border-0 text-white shadow-xl shadow-brand-600/20 overflow-hidden relative">
                         <div className="absolute top-0 right-0 p-4 opacity-10">
                             <Wallet className="w-32 h-32" />
                         </div>
                         <CardContent className="p-6 relative z-10 flex flex-col h-full justify-between gap-6">
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <div className="p-1.5 bg-white/20 rounded-md backdrop-blur-sm">
-                                        <Wallet className="h-4 w-4" />
+                            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="p-1.5 bg-white/20 rounded-md backdrop-blur-sm">
+                                            <Wallet className="h-4 w-4" />
+                                        </div>
+                                        <p className="text-sm font-semibold opacity-90 uppercase tracking-wider">Salio Lipatikano</p>
                                     </div>
-                                    <p className="text-sm font-semibold opacity-90 uppercase tracking-wider">Salio Lako</p>
+                                    <h2 className="text-4xl md:text-5xl font-black tracking-tight">{formatMoney(wallet.balance)}</h2>
+                                    <p className="text-sm opacity-80 mt-2 flex items-center gap-1">
+                                        <ShieldCheck className="h-3 w-3" /> Pesa tayari kutolewa (Available)
+                                    </p>
                                 </div>
-                                <h2 className="text-4xl font-black tracking-tight">{formatMoney(wallet.balance)}</h2>
-                                <p className="text-sm opacity-80 mt-2">Pesa inayoanza kutolewa (Available)</p>
+                                <Button
+                                    className="bg-white text-brand-700 hover:bg-brand-50 h-12 px-8 rounded-xl font-bold shadow-md shrink-0"
+                                    onClick={() => setIsWithdrawModalOpen(true)}
+                                    disabled={wallet.balance < 5000}
+                                >
+                                    <ArrowUpRight className="mr-2 h-5 w-5" /> Toa Pesa
+                                </Button>
                             </div>
-
-                            <Button
-                                className="w-full bg-white text-brand-700 hover:bg-brand-50 h-12 rounded-xl font-bold shadow-md"
-                                onClick={() => setIsWithdrawModalOpen(true)}
-                                disabled={wallet.balance < 5000}
-                            >
-                                <ArrowUpRight className="mr-2 h-5 w-5" /> Toa Pesa (Withdraw)
-                            </Button>
                         </CardContent>
                     </Card>
 
-                    <Card className="border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700/30">
-                        <CardContent className="p-6 flex flex-col justify-between h-full">
+                    <Card className="border-border bg-muted/30">
+                        <CardContent className="p-6 flex flex-col justify-between h-full space-y-4">
                             <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <div className="p-1.5 bg-amber-200/50 dark:bg-amber-900/50 rounded-md text-amber-700 dark:text-amber-400">
-                                        <ShieldCheck className="h-4 w-4" />
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1.5 bg-brand-100 dark:bg-brand-900/30 rounded-md text-brand-600 dark:text-brand-400">
+                                            <HardDrive className="h-4 w-4" />
+                                        </div>
+                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Storage Pro</p>
                                     </div>
-                                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-400 uppercase tracking-wider">Escrow Balance</p>
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest ${tier === 'free' ? 'bg-brand-100 text-brand-700' : 'bg-amber-100 text-amber-700'}`}>
+                                        {tier} PLAN
+                                    </span>
                                 </div>
-                                <h2 className="text-3xl font-black text-amber-800 dark:text-amber-500">{formatMoney(wallet.frozen_balance)}</h2>
-                                <p className="text-sm text-amber-700/80 dark:text-amber-400/80 mt-2">
-                                    Pesa iliyoshikiliwa kusubiri wateja wapokee bidhaa.
-                                </p>
+                                
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs font-bold">
+                                        <span>Nafasi ya Mafaili</span>
+                                        <span className="text-muted-foreground">{storagePercentage}% used</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/50">
+                                        <div 
+                                            className="h-full bg-brand-500 rounded-full transition-all duration-1000" 
+                                            style={{ width: `${storagePercentage}%`, boxShadow: `0 0 8px rgba(var(--brand-500), 0.5)` }}
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground">{storageUsedMb} MB kati ya {storageLimitMb} MB</p>
+                                </div>
                             </div>
+                            <Button variant="outline" size="sm" className="w-full text-[10px] font-bold h-8 border-brand-200 text-brand-700 hover:bg-brand-50">
+                                UPGRADE STORAGE
+                            </Button>
                         </CardContent>
                     </Card>
                 </div>
 
-                {/* History */}
-                <Card className="border-border shadow-sm">
-                    <div className="p-5 border-b border-border flex items-center justify-between">
-                        <h3 className="font-bold flex items-center gap-2 text-lg">
-                            <History className="h-5 w-5 text-muted-foreground" /> Miamala ya Hivi Karibuni
-                        </h3>
+                {/* Ledger / History Tabs */}
+                <div className="space-y-4">
+                    <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-xl w-fit border border-border">
+                        <button
+                            onClick={() => setActiveTab('earnings')}
+                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                                activeTab === 'earnings' 
+                                ? 'bg-white shadow-sm text-brand-700' 
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            Mapato (Earnings)
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('payouts')}
+                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                                activeTab === 'payouts' 
+                                ? 'bg-white shadow-sm text-brand-700' 
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            Payouts
+                        </button>
                     </div>
-                    <CardContent className="p-0">
-                        {loading ? (
-                            <div className="p-8 text-center text-muted-foreground">Inapakia miamala...</div>
-                        ) : history.length === 0 ? (
-                            <div className="p-12 text-center flex flex-col items-center">
-                                <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                                    <History className="h-8 w-8 text-muted-foreground opacity-50" />
+
+                    <Card className="border-border shadow-sm overflow-hidden">
+                        <CardContent className="p-0">
+                            {loading ? (
+                                <div className="p-12 text-center text-muted-foreground flex flex-col items-center gap-3">
+                                    <div className="h-8 w-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
+                                    <p className="font-bold text-sm">Inapakia Ledger...</p>
                                 </div>
-                                <h3 className="font-bold text-lg">Hakuna Miamala</h3>
-                                <p className="text-muted-foreground text-sm mt-1 max-w-xs">
-                                    Miamala yako yote na historia ya kutoa pesa itaonekana hapa.
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="divide-y divide-border">
-                                {history.map((item, index) => (
-                                    <div key={index} className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between">
-                                        <div className="flex items-center gap-4">
-                                            <div className={`h-12 w-12 rounded-full flex items-center justify-center shrink-0 ${item.type === 'withdrawal'
-                                                ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30'
-                                                : 'bg-green-100 text-green-600 dark:bg-green-900/30'
-                                                }`}>
-                                                {item.type === 'withdrawal' ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownLeft className="h-5 w-5" />}
-                                            </div>
-                                            <div>
-                                                <p className="font-bold">
-                                                    {item.type === 'withdrawal' ? 'Kutoa Pesa (Withdraw)' : 'Mauzo ya Bidhaa'}
-                                                </p>
-                                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-0.5">
-                                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                                        <Clock className="h-3 w-3" /> {formatDate(item.created_at)}
-                                                    </span>
-                                                    {item.reference && (
-                                                        <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                                            Ref: {item.reference}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="text-right shrink-0">
-                                            <p className={`font-black text-lg ${item.type === 'withdrawal'
-                                                ? 'text-foreground'
-                                                : 'text-green-600 dark:text-green-500'
-                                                }`}>
-                                                {item.type === 'withdrawal' ? '-' : '+'}{formatMoney(item.amount)}
-                                            </p>
-                                            {item.status === 'pending' ? (
-                                                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full inline-block mt-1">Inasubiri (Pending)</p>
-                                            ) : item.status === 'completed' ? (
-                                                <p className="text-[10px] font-bold uppercase tracking-wider text-green-600 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full inline-block mt-1">Tayari (Done)</p>
-                                            ) : (
-                                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted px-2 py-0.5 rounded-full inline-block mt-1">{item.status}</p>
-                                            )}
-                                        </div>
+                            ) : getFilteredHistory().length === 0 ? (
+                                <div className="p-16 text-center flex flex-col items-center">
+                                    <div className="h-20 w-20 bg-muted/50 rounded-3xl flex items-center justify-center mb-6 border border-border/50">
+                                        <History className="h-10 w-10 text-muted-foreground opacity-30" />
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                                    <h3 className="font-black text-xl">Hakuna Historia</h3>
+                                    <p className="text-muted-foreground text-sm mt-2 max-w-xs leading-relaxed">
+                                        Miamala yako ya {activeTab === 'earnings' ? 'mapato ya mauzo' : 'kutoa pesa'} itaonekana hapa pindi itakapofanyika.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-muted/30 border-b border-border">
+                                                <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Tarehe</th>
+                                                {activeTab === 'earnings' ? (
+                                                    <>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Mteja / Bidhaa</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Gross</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-red-500">Fee</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-green-600">Net</th>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Njia ya Malipo</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Status</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-right">Kiasi</th>
+                                                    </>
+                                                )}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                            {getFilteredHistory().map((item, index) => (
+                                                <tr key={index} className="hover:bg-muted/10 transition-colors group">
+                                                    <td className="p-4">
+                                                        <p className="text-sm font-bold text-foreground whitespace-nowrap">{formatDate(item.created_at)}</p>
+                                                        <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Ref: {item.reference || 'N/A'}</p>
+                                                    </td>
+                                                    
+                                                    {activeTab === 'earnings' ? (
+                                                        <>
+                                                            <td className="p-4">
+                                                                <p className="text-sm font-bold leading-tight">{item.customer_name}</p>
+                                                                <p className="text-xs text-muted-foreground mt-0.5 italic">{item.product_name}</p>
+                                                            </td>
+                                                            <td className="p-4 text-sm font-semibold opacity-70">
+                                                                {formatMoney(item.gross_amount)}
+                                                            </td>
+                                                            <td className="p-4 text-sm font-bold text-red-500/80">
+                                                                -{formatMoney(item.fee_amount)}
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <p className="text-sm font-black text-green-600">{formatMoney(item.net_amount)}</p>
+                                                                <p className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-tighter">Deposited</p>
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <td className="p-4">
+                                                                <p className="text-sm font-bold capitalize">{item.method || 'Mobile Money'}</p>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                                                                    item.status === 'completed' || item.status === 'approved'
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : item.status === 'pending'
+                                                                    ? 'bg-amber-100 text-amber-700'
+                                                                    : 'bg-muted text-muted-foreground'
+                                                                }`}>
+                                                                    {item.status === 'completed' ? 'Tayari' : item.status === 'pending' ? 'Inasubiri' : item.status}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-4 text-right">
+                                                                <p className="text-lg font-black">{formatMoney(item.amount)}</p>
+                                                            </td>
+                                                        </>
+                                                    )}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
 
             {/* Withdraw Modal */}

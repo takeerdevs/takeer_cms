@@ -17,6 +17,8 @@ class Merchant extends Model
         return 'username';
     }
 
+    protected $appends = ['storage_used_mb', 'storage_percentage'];
+
     protected $fillable = [
 
         'user_id',
@@ -34,7 +36,32 @@ class Merchant extends Model
         'is_active',
         'kyc_status',
         'subaccount_id',
+        'storage_limit_mb',
+        'storage_used_bytes',
+        'subscription_tier',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+            'is_suspended' => 'boolean',
+            'is_verified' => 'boolean',
+            'storage_limit_mb' => 'integer',
+            'storage_used_bytes' => 'integer',
+        ];
+    }
+
+    public function getStorageUsedMbAttribute(): float
+    {
+        return round($this->storage_used_bytes / (1024 * 1024), 2);
+    }
+
+    public function getStoragePercentageAttribute(): float
+    {
+        if ($this->storage_limit_mb <= 0) return 100;
+        return min(100, round(($this->storage_used_mb / $this->storage_limit_mb) * 100, 2));
+    }
 
     /**
      * Get the user that owns the merchant profile.
@@ -88,6 +115,16 @@ class Merchant extends Model
     public function storefrontSetting()
     {
         return $this->hasOne(MerchantStorefrontSetting::class, 'merchant_profile_id');
+    }
+
+    public function kyc(): HasOne
+    {
+        return $this->hasOne(MerchantKyc::class);
+    }
+
+    public function paymentPages(): HasMany
+    {
+        return $this->hasMany(PaymentPage::class);
     }
 
     public function locations(): HasMany

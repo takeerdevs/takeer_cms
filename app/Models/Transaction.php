@@ -12,6 +12,7 @@ class Transaction extends Model
         'order_id',
         'type',
         'gross_amount',
+        'fee_amount',
         'net_amount',
         'tax_amount',
         'reference',
@@ -21,6 +22,7 @@ class Transaction extends Model
     {
         return [
             'gross_amount' => 'decimal:2',
+            'fee_amount' => 'decimal:2',
             'net_amount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
         ];

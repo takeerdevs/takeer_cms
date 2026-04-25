@@ -32,6 +32,7 @@ function formatBytes(bytes) {
 export default function DigitalDownloadModal({ isOpen, onClose, orderId, productTitle, productId }) {
     const [fileUrl, setFileUrl] = useState(null);
     const [fileSize, setFileSize] = useState(null);
+    const [isCourse, setIsCourse] = useState(false);
     const [loading, setLoading] = useState(false);
     const [downloaded, setDownloaded] = useState(false);
     const [sendingLink, setSendingLink] = useState(false);
@@ -40,6 +41,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
         if (!isOpen || !orderId) return;
         setFileUrl(null);
         setFileSize(null);
+        setIsCourse(false);
         setDownloaded(false);
         fetchDownloadUrl();
     }, [isOpen, orderId]);
@@ -50,6 +52,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
             const res = await axios.get(`/api/orders/${orderId}/download`);
             setFileUrl(res.data?.url || null);
             setFileSize(res.data?.size || null);
+            setIsCourse(res.data?.is_course || false);
         } catch (e) {
             toast.error(e.response?.data?.message || 'Imeshindwa kupata kiungo cha kupakua.');
         } finally {
@@ -59,6 +62,10 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
 
     const handleDownload = () => {
         if (!fileUrl) return;
+        if (isCourse) {
+            window.location.href = fileUrl;
+            return;
+        }
         window.open(fileUrl, '_blank', 'noopener,noreferrer');
         setDownloaded(true);
         toast.success('Upakuaji umeanza!');
@@ -80,7 +87,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
     if (!isOpen) return null;
 
     const meta = getFileMeta(fileUrl);
-    const FileIcon = meta.icon;
+    const FileIcon = isCourse ? PlayCircle : meta.icon;
 
     return (
         <div
@@ -92,7 +99,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header gradient */}
-                <div className={`bg-gradient-to-br ${meta.color} px-6 pt-8 pb-12 text-white relative overflow-hidden`}>
+                <div className={`bg-gradient-to-br ${isCourse ? 'from-indigo-600 to-indigo-900' : meta.color} px-6 pt-8 pb-12 text-white relative overflow-hidden`}>
                     <div className="absolute top-[-30%] right-[-10%] h-48 w-48 rounded-full bg-white/10 blur-3xl pointer-events-none" />
                     <button
                         onClick={(e) => {
@@ -111,7 +118,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/70">Malipo Yamekamilika</p>
                             <h2 className="text-2xl font-black tracking-tight mt-1 leading-tight text-white">{productTitle || 'Bidhaa Yako'}</h2>
-                            <p className="text-sm font-bold text-white/90 mt-1">{meta.label}{meta.ext ? ` (.${meta.ext})` : ''}</p>
+                            <p className="text-sm font-bold text-white/90 mt-1">{isCourse ? 'Premium High-Ticket Course' : meta.label}{meta.ext ? ` (.${meta.ext})` : ''}</p>
                         </div>
                     </div>
                 </div>
@@ -119,14 +126,16 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                 {/* Body */}
                 <div className="-mt-8 mx-5 rounded-[2rem] bg-white border border-slate-100 shadow-xl p-6 space-y-5 relative z-10">
                     {/* File Info Row */}
-                    {(fileSize || meta.ext) && (
-                        <div className={`flex items-center gap-4 p-4 rounded-2xl ${meta.bg}`}>
-                            <div className={`h-12 w-12 rounded-2xl ${meta.bg} border border-current/10 flex items-center justify-center ${meta.text} shrink-0`}>
+                    {(fileSize || meta.ext || isCourse) && (
+                        <div className={`flex items-center gap-4 p-4 rounded-2xl ${isCourse ? 'bg-indigo-50' : meta.bg}`}>
+                            <div className={`h-12 w-12 rounded-2xl ${isCourse ? 'bg-indigo-50 text-indigo-700' : meta.bg + ' ' + meta.text} border border-current/10 flex items-center justify-center shrink-0`}>
                                 <FileIcon className="h-6 w-6" />
                             </div>
                             <div>
-                                <p className={`text-xs font-black uppercase tracking-widest ${meta.text}`}>{meta.label}</p>
-                                {fileSize && (
+                                <p className={`text-xs font-black uppercase tracking-widest ${isCourse ? 'text-indigo-700' : meta.text}`}>{isCourse ? 'Structured Learning' : meta.label}</p>
+                                {isCourse ? (
+                                    <p className="text-sm font-bold text-slate-700 mt-0.5">Tayari kuanza masomo yako</p>
+                                ) : fileSize && (
                                     <p className="text-sm font-bold text-slate-700 mt-0.5">{formatBytes(fileSize)}</p>
                                 )}
                             </div>
@@ -141,9 +150,11 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                     ) : fileUrl ? (
                         <button
                             onClick={handleDownload}
-                            className={`w-full h-14 rounded-2xl bg-gradient-to-r ${meta.color} text-white font-black uppercase tracking-widest text-sm shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] hover:brightness-105`}
+                            className={`w-full h-14 rounded-2xl bg-gradient-to-r ${isCourse ? 'from-indigo-600 to-indigo-900' : meta.color} text-white font-black uppercase tracking-widest text-sm shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] hover:brightness-105`}
                         >
-                            {downloaded ? (
+                            {isCourse ? (
+                                <><PlayCircle className="h-5 w-5" /> Fungua Masomo</>
+                            ) : downloaded ? (
                                 <><CheckCircle2 className="h-5 w-5" /> Pakua Tena</>
                             ) : (
                                 <><Download className="h-5 w-5" /> Pakua Faili</>

@@ -28,6 +28,7 @@ class MerchantWalletController extends Controller
         );
 
         return Inertia::render('Merchant/Wallet', [
+            'merchant' => $merchant,
             'merchantUsername' => $merchant->username,
             'merchantName' => $merchant->display_name,
             'wallet' => [
@@ -61,13 +62,24 @@ class MerchantWalletController extends Controller
 
         // We fetch the recent transactions (earnings/fees)
         $transactions = $user->wallet ? $user->wallet->transactions()
+            ->with(['order.buyer', 'order.product'])
             ->latest()
-            ->take(10)
+            ->take(20)
             ->get()
             ->map(function($tx) {
+                $order = $tx->order;
+                $customerName = $order?->buyer?->name ?? 'Mteja';
+                $productName = $order?->product?->title ?? 'Bidhaa';
+                
                 return [
                     'id' => $tx->id,
-                    'amount' => (float) $tx->net_amount,
+                    'amount' => (float) $tx->net_amount, // For legacy compatibility
+                    'gross_amount' => (float) $tx->gross_amount,
+                    'fee_amount' => (float) $tx->fee_amount,
+                    'net_amount' => (float) $tx->net_amount,
+                    'tax_amount' => (float) $tx->tax_amount,
+                    'customer_name' => $customerName,
+                    'product_name' => $productName,
                     'status' => 'completed',
                     'created_at' => $tx->created_at->toIso8601String(),
                     'type' => $tx->type,
@@ -111,6 +123,7 @@ class MerchantWalletController extends Controller
             $ordersThreshold = (int) AdminSetting::get('kyc_trigger_order_count', 0);
             $withdrawalsThreshold = (float) AdminSetting::get('kyc_trigger_withdrawal_tzs', 0);
 
+            // If any threshold is set to 0, it means it's mandatory from the first transaction
             $merchantGmv = (float) Order::query()
                 ->where('merchant_id', $merchant->id)
                 ->whereNotIn('payment_status', ['pending', 'failed'])
@@ -124,13 +137,15 @@ class MerchantWalletController extends Controller
                 ->whereIn('status', ['pending', 'approved'])
                 ->sum('amount');
 
-            $mustCompleteKyc = ($gmvThreshold > 0 && $merchantGmv >= $gmvThreshold)
-                || ($ordersThreshold > 0 && $merchantOrderCount >= $ordersThreshold)
-                || ($withdrawalsThreshold > 0 && $merchantWithdrawals >= $withdrawalsThreshold);
+            // If thresholds are NOT 0, we check if they are crossed. 
+            // If they ARE 0, we treat it as "Mandatory KYC" immediately.
+            $mustCompleteKyc = ($gmvThreshold == 0 || $merchantGmv >= $gmvThreshold)
+                && ($ordersThreshold == 0 || $merchantOrderCount >= $ordersThreshold)
+                && ($withdrawalsThreshold == 0 || $merchantWithdrawals >= $withdrawalsThreshold);
 
             if ($mustCompleteKyc) {
                 return back()->withErrors([
-                    'amount' => 'KYC inahitajika kabla ya kutoa pesa. Tafadhali kamilisha uthibitisho wa akaunti yako.',
+                    'amount' => 'Uthibitisho wa Kitambulisho (KYC) unahitajika kabla ya kutoa pesa. Tafadhali wasilisha maelezo yako kwenye Verification Center.',
                 ]);
             }
         }

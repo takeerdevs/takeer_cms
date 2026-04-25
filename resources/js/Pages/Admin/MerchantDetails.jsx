@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import { Head, Link } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
+import { Button } from '@/Components/ui/Button';
 import { ArrowLeft, Box, Download, CalendarClock, BookOpen, Boxes, Crown } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,6 +40,34 @@ export default function MerchantDetails({ merchantId }) {
         load();
     }, [merchantId]);
 
+    const handleKycAction = async (action) => {
+        let reason = '';
+        if (action === 'reject') {
+            reason = window.prompt('Please enter the reason for rejection:');
+            if (!reason) return;
+        } else {
+            if (!window.confirm('Are you sure you want to verify this merchant?')) return;
+        }
+
+        try {
+            const res = await fetch(`/admin/api/merchants/${merchantId}/${action === 'approve' ? 'approve-kyc' : 'reject-kyc'}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.head.querySelector('meta[name="csrf-token"]')?.content || '',
+                },
+                body: JSON.stringify({ reason }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message);
+            toast.success(data.message);
+            setMerchant(data.merchant);
+        } catch (err) {
+            toast.error(err.message);
+        }
+    };
+
     return (
         <AdminLayout title={title}>
             <Head title={title} />
@@ -65,7 +94,7 @@ export default function MerchantDetails({ merchantId }) {
                         {loading ? (
                             <p className="text-slate-500">Loading merchant profile...</p>
                         ) : (
-                            <>
+                            <div className="space-y-6">
                                 <div className="grid md:grid-cols-3 gap-3">
                                     <Detail label="Owner name" value={merchant?.user?.name} />
                                     <Detail label="Owner phone" value={merchant?.user?.phone_number} />
@@ -77,10 +106,78 @@ export default function MerchantDetails({ merchantId }) {
                                     <Detail label="Verified" value={merchant?.is_verified ? 'Yes' : 'No'} />
                                     <Detail label="Suspended" value={merchant?.is_suspended ? 'Yes' : 'No'} />
                                 </div>
-                                <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-                                    No dedicated KYC document table is currently wired in the backend yet. This block is ready and can display IDs/files once you add the document model/storage links.
-                                </div>
-                            </>
+
+                                {merchant?.kyc && (
+                                    <div className="mt-6 border-t pt-6 space-y-6">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">Submitted KYC Data</h3>
+                                            <div className="flex gap-2">
+                                                <Button 
+                                                    size="sm" 
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                                                    onClick={() => handleKycAction('approve')}
+                                                    disabled={merchant.kyc_status === 'verified'}
+                                                >
+                                                    Verify Identity
+                                                </Button>
+                                                <Button 
+                                                    size="sm" 
+                                                    variant="outline"
+                                                    className="text-red-600 border-red-200 hover:bg-red-50 font-bold"
+                                                    onClick={() => handleKycAction('reject')}
+                                                    disabled={merchant.kyc_status === 'verified'}
+                                                >
+                                                    Reject
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid md:grid-cols-3 gap-4">
+                                            <div className="md:col-span-2 grid grid-cols-2 gap-3">
+                                                <Detail label="KYC Full Name" value={`${merchant.kyc.first_name} ${merchant.kyc.last_name}`} />
+                                                <Detail label="ID Type" value={merchant.kyc.id_type} />
+                                                <Detail label="ID Number" value={merchant.kyc.id_number} />
+                                                <Detail label="Date of Birth" value={merchant.kyc.date_of_birth ? new Date(merchant.kyc.date_of_birth).toLocaleDateString() : '-'} />
+                                                <Detail label="Gender" value={merchant.kyc.gender} />
+                                                <Detail label="Occupation" value={merchant.kyc.occupation} />
+                                                <div className="col-span-2">
+                                                    <Detail label="Residential Address" value={merchant.kyc.residential_address} />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ID Documents</p>
+                                                <div className="grid grid-cols-1 gap-2">
+                                                    {merchant.kyc.id_front_signed_url ? (
+                                                        <a href={merchant.kyc.id_front_signed_url} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                                                            <img src={merchant.kyc.id_front_signed_url} alt="ID Front" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View Front</div>
+                                                        </a>
+                                                    ) : (
+                                                        <div className="aspect-[3/2] flex items-center justify-center bg-slate-100 rounded-xl border border-slate-200 text-slate-400 text-xs">No Front Image</div>
+                                                    )}
+
+                                                    {merchant.kyc.id_back_signed_url ? (
+                                                        <a href={merchant.kyc.id_back_signed_url} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                                                            <img src={merchant.kyc.id_back_signed_url} alt="ID Back" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View Back</div>
+                                                        </a>
+                                                    ) : (
+                                                        <div className="aspect-[3/2] flex items-center justify-center bg-slate-100 rounded-xl border border-slate-200 text-slate-400 text-xs">No Back Image</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!merchant?.kyc && (
+                                    <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                                        <p className="text-sm text-slate-600 font-medium">No KYC documents submitted yet.</p>
+                                        <p className="text-xs text-slate-400 mt-1">Merchant has not started the verification process.</p>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </CardContent>
                 </Card>

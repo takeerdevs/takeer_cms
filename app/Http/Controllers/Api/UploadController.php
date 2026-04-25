@@ -153,7 +153,11 @@ class UploadController extends Controller
     /**
      * General purpose endpoint for uploading media (images, digital files) during the draft phase.
      */
-    public function uploadMedia(Request $request, MediaUploadService $mediaService): JsonResponse
+    public function uploadMedia(
+        Request $request, 
+        \App\Services\MediaUploadService $mediaService,
+        \App\Services\StorageQuotaService $quotaService
+    ): JsonResponse
     {
         $request->validate([
             'file' => 'required|file|max:512000', // max 500MB
@@ -164,9 +168,24 @@ class UploadController extends Controller
         $file = $request->file('file');
         $isPrivate = $request->input('type') === 'private';
         $folder = $request->input('folder');
+        $user = $request->user();
+        $merchant = $user->merchantProfiles()->where('is_default', true)->first()
+            ?? $user->merchantProfiles()->first();
+
+        if ($merchant && !$quotaService->canUpload($merchant, $file->getSize())) {
+            return response()->json([
+                'message' => 'Nafasi yako ya kuhifadhi faili imejaa (Storage Full). Tafadhali bofya "Upgrade Storage" ili kuongeza nafasi.',
+                'quota_exceeded' => true,
+            ], 403);
+        }
 
         try {
             $url = $mediaService->uploadFile($file, $folder, $isPrivate);
+            
+            if ($merchant) {
+                $quotaService->recordUpload($merchant, $file->getSize());
+            }
+
             $normalizedUrl = $isPrivate && !str_starts_with($url, 'private://')
                 ? "private://{$url}"
                 : $url;
@@ -176,6 +195,8 @@ class UploadController extends Controller
                 'name' => $file->getClientOriginalName(),
                 'size' => $file->getSize(),
                 'mime' => $file->getMimeType(),
+                'storage_used_mb' => $merchant ? $merchant->fresh()->storage_used_mb : 0,
+                'storage_percentage' => $merchant ? $merchant->fresh()->storage_percentage : 0,
             ]);
         } catch (Exception $e) {
             Log::error('Media upload failed: ' . $e->getMessage());
@@ -356,6 +377,10 @@ class UploadController extends Controller
             'access_group_type' => 'nullable|string|in:bundle,plan',
             'access_group_id' => 'nullable|integer',
             'shipping_profile_id' => 'nullable|integer|exists:shipping_profiles,id',
+            'is_course' => 'nullable|boolean',
+            'curriculum' => 'nullable|array',
+            'curriculum.*.title' => 'required_if:is_course,true|string',
+            'curriculum.*.lessons' => 'required_if:is_course,true|array',
             'location_inventories' => 'nullable|array', // { location_id: quantity }
             'variants.*.location_inventories' => 'nullable|array',
         ]);
@@ -616,6 +641,31 @@ class UploadController extends Controller
         } else {
             $product->variants()->delete();
             $product->locationInventories()->delete();
+        }
+
+        // 3.1 Handle Course Curriculum
+        if ($request->boolean('is_course')) {
+            $course = $product->course()->updateOrCreate([], [
+                'welcome_message' => $request->input('description'),
+            ]);
+
+            // Sync Modules and Lessons
+            $course->modules()->delete(); // Cascades to lessons
+            foreach ($request->input('curriculum', []) as $mIdx => $mInput) {
+                $module = $course->modules()->create([
+                    'title' => $mInput['title'],
+                    'sort_order' => $mIdx,
+                ]);
+                foreach ($mInput['lessons'] as $lIdx => $lInput) {
+                    $module->lessons()->create([
+                        'title' => $lInput['title'],
+                        'type' => $lInput['type'] ?? 'video',
+                        'content_url' => $lInput['content_url'],
+                        'is_preview' => (bool) ($lInput['is_preview'] ?? false),
+                        'sort_order' => $lIdx,
+                    ]);
+                }
+            }
         }
 
         $brand = $request->filled('brand_id') ? ProductBrand::find((int) $request->input('brand_id')) : null;
@@ -938,7 +988,9 @@ class UploadController extends Controller
             ->whereNotIn('payment_status', ['pending', 'failed'])
             ->count();
 
-        return ($gmvThreshold > 0 && $merchantGmv >= $gmvThreshold)
-            || ($ordersThreshold > 0 && $merchantOrderCount >= $ordersThreshold);
+        // If thresholds are NOT 0, we check if they are crossed. 
+        // If they ARE 0, we treat it as "Mandatory KYC" immediately.
+        return ($gmvThreshold == 0 || $merchantGmv >= $gmvThreshold)
+            && ($ordersThreshold == 0 || $merchantOrderCount >= $ordersThreshold);
     }
 }

@@ -257,6 +257,7 @@ class CheckoutController extends Controller
                     'transaction_ref'  => $transactionRef,
                     'account_phone'    => $accountPhone,
                     'payment_phone'    => $paymentPhone,
+                    'payment_page_id'  => $validated['payment_page_id'] ?? null,
                     // Gateway tracking (multi-country, multi-gateway)
                     'payment_gateway'  => $gateway->getName(),
                     'country_code'     => $countryCode,

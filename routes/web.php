@@ -32,6 +32,11 @@ use App\Services\EntitlementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
+// ─── PUBLIC PAYMENT PAGES (Commerce Pro) ───────────────────────────────────
+Route::get('/pay/{slug}', [\App\Http\Controllers\Api\PublicPaymentPageController::class, 'show'])->name('payment-page.show');
+Route::get('/course/{product:slug}', [\App\Http\Controllers\Api\PublicCourseController::class, 'show'])->name('course.player');
+Route::post('/course/lesson/{lesson}/complete', [\App\Http\Controllers\Api\PublicCourseController::class, 'toggleCompletion'])->name('course.lesson.complete');
+
 Route::get('/', function () {
     $posts = App\Models\Post::with([
         'merchant.storefrontSetting',
@@ -663,6 +668,16 @@ Route::middleware('auth')->group(function () {
             ]);
         });
         Route::get('/wallet/api/history', [\App\Http\Controllers\Api\MerchantWalletController::class, 'history']);
+        
+        // KYC endpoints
+        Route::get('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'show']);
+        Route::post('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'store']);
+        
+        Route::get('/verification', function (Merchant $merchant) {
+            return Inertia::render('Merchant/VerificationCenter', [
+                'merchantUsername' => $merchant->username,
+            ]);
+        });
     });
 
     // Legacy redirect: /merchant/dashboard → resolve user's default merchant
@@ -706,9 +721,18 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/merchant/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'index']);
         Route::post('/merchant/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'store']);
-        Route::get('/merchant/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'show']);
-        Route::put('/merchant/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'update']);
-        Route::delete('/merchant/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy']);
+        Route::get('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'show']);
+        Route::put('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'update']);
+        Route::delete('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy']);
+
+        // Standalone Payment Pages
+        Route::get('/merchant/{merchant:username}/payment-pages', [\App\Http\Controllers\Api\PaymentPageController::class, 'index'])->name('merchant.payment-pages.index');
+        Route::get('/merchant/{merchant:username}/payment-pages/create', [\App\Http\Controllers\Api\PaymentPageController::class, 'create'])->name('merchant.payment-pages.create');
+        Route::post('/merchant/{merchant:username}/payment-pages', [\App\Http\Controllers\Api\PaymentPageController::class, 'store'])->name('merchant.payment-pages.store');
+        Route::get('/merchant/{merchant:username}/payment-pages/{paymentPage:id}/edit', [\App\Http\Controllers\Api\PaymentPageController::class, 'edit'])->name('merchant.payment-pages.edit');
+        Route::put('/merchant/{merchant:username}/payment-pages/{paymentPage:id}', [\App\Http\Controllers\Api\PaymentPageController::class, 'update'])->name('merchant.payment-pages.update');
+        Route::delete('/merchant/{merchant:username}/payment-pages/{paymentPage:id}', [\App\Http\Controllers\Api\PaymentPageController::class, 'destroy'])->name('merchant.payment-pages.destroy');
+        Route::get('/merchant/{merchant:username}/payment-pages/api/search', [\App\Http\Controllers\Api\PaymentPageController::class, 'searchAttachables'])->name('merchant.payment-pages.search');
     });
 
     Route::get('/merchant/content', function (Request $request) {
@@ -770,6 +794,8 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::get('/merchants/{merchant:id}/orders', [AdminController::class, 'merchantOrders']);
         Route::get('/merchants/{merchant:id}/catalog/{type}', [AdminController::class, 'merchantCatalogByType']);
         Route::put('/merchants/{merchant:id}', [AdminController::class, 'updateMerchant']);
+        Route::post('/merchants/{merchant:id}/approve-kyc', [AdminController::class, 'approveKyc']);
+        Route::post('/merchants/{merchant:id}/reject-kyc', [AdminController::class, 'rejectKyc']);
         Route::post('/merchants/{merchant:id}/toggle-suspension', [AdminController::class, 'toggleSuspension']);
         Route::get('/feed', [AdminController::class, 'adminFeed']);
         Route::get('/posts/{postRef}', [AdminController::class, 'adminPostDetail']);
