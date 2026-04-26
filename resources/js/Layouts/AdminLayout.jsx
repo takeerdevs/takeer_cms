@@ -4,7 +4,7 @@ import { Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, ShieldAlert, Users, ArrowDownToLine,
-    Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper
+    Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper, ShieldCheck, Globe
 } from 'lucide-react';
 
 const adminNav = [
@@ -12,9 +12,11 @@ const adminNav = [
     { name: 'Disputes', href: '/admin/disputes', icon: ShieldAlert },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Merchants', href: '/admin/merchants', icon: Store },
+    { name: 'Verifications', href: '/admin/verifications', icon: ShieldCheck },
     { name: 'Content Reports', href: '/admin/content-reports', icon: Flag },
     { name: 'Feed Monitor', href: '/admin/feed', icon: Newspaper },
     { name: 'Categories', href: '/admin/categories', icon: Shapes },
+    { name: 'Countries', href: '/admin/countries', icon: Globe },
     { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowDownToLine },
     { name: 'AI Settings', href: '/admin/settings', icon: Settings2 },
 ];

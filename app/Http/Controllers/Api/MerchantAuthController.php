@@ -102,6 +102,7 @@ class MerchantAuthController extends Controller
                 'user_id' => $user->id,
                 'username' => $username,
                 'display_name' => $validated['display_name'] ?? $user->name,
+                'type' => 'personal',
                 'is_verified' => false,
                 'is_default' => true,
                 'country_id' => $validated['country_id'] ?? $countryId,
@@ -135,10 +136,53 @@ class MerchantAuthController extends Controller
         $region = $sessionCountry['iso_alpha2'] ?? 'TZ';
         $formattedPhone = \App\Services\PhoneService::formatToE164($phone, $region) ?: $phone;
 
+        // Check if country is active
+        $country = \App\Models\Country::where('iso_alpha2', $region)->first();
+        $isActive = $country ? $country->is_active : true;
+
         $exists = User::where('phone_number', $formattedPhone)
                       ->where('role', 'merchant')
                       ->exists();
 
-        return response()->json(['is_merchant' => $exists]);
+        return response()->json([
+            'is_merchant' => $exists,
+            'is_active' => $isActive,
+            'country_name' => $country?->name
+        ]);
+    }
+    /**
+     * Add a new business profile for an existing user.
+     */
+    public function addBusinessProfile(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $request->validate([
+            'display_name' => 'required|string|max:255',
+            'username' => 'required|string|max:255|unique:merchants,username',
+            'type' => 'required|string|in:sole_proprietor,business,ngo',
+        ]);
+
+        $user = $request->user();
+
+        // Get defaults from existing merchant profile if available
+        $baseMerchant = \App\Models\Merchant::where('user_id', $user->id)->first();
+
+        $merchant = \App\Models\Merchant::create([
+            'user_id' => $user->id,
+            'display_name' => $request->display_name,
+            'username' => \Illuminate\Support\Str::slug($request->username),
+            'type' => $request->type,
+            'is_default' => false,
+            'country_id' => $baseMerchant?->country_id,
+            'currency_id' => $baseMerchant?->currency_id,
+            'kyc_status' => 'unverified',
+        ]);
+
+        // Switch to the new profile
+        session(['active_merchant_id' => $merchant->id]);
+
+        return response()->json([
+            'message' => 'Biashara mpya imeongezwa!',
+            'merchant' => $merchant
+        ]);
     }
 }

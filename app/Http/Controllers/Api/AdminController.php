@@ -16,6 +16,7 @@ use App\Models\WithdrawalRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -191,6 +192,10 @@ class AdminController extends Controller
                 }
                 if ($status === 'verified') {
                     $q->where('is_verified', true);
+                    return;
+                }
+                if ($status === 'pending') {
+                    $q->where('kyc_status', 'pending');
                 }
             })
             ->latest()
@@ -238,9 +243,8 @@ class AdminController extends Controller
         ]);
     }
 
-    /**
-     * Admin view: merchant profile + control summary.
-     */
+    public function showMerchant(Request $request, \App\Models\Merchant $merchant): JsonResponse
+    {
         $merchant->load(['user:id,name,email,phone_number,created_at', 'country:id,name,iso_alpha2', 'currency:id,name,code,symbol', 'kyc']);
         $merchant->loadCount(['products', 'posts', 'contentItems', 'bundles', 'subscriptionPlans', 'orders']);
 
@@ -261,6 +265,22 @@ class AdminController extends Controller
                     $merchant->kyc->id_back_signed_url = $mediaService->getSignedUrl($path);
                 } catch (\Exception $e) {
                     $merchant->kyc->id_back_signed_url = null;
+                }
+            }
+            if ($merchant->kyc->business_license_url) {
+                $path = str_replace('private://', '', $merchant->kyc->business_license_url);
+                try {
+                    $merchant->kyc->business_license_signed_url = $mediaService->getSignedUrl($path);
+                } catch (\Exception $e) {
+                    $merchant->kyc->business_license_signed_url = null;
+                }
+            }
+            if ($merchant->kyc->registration_doc_url) {
+                $path = str_replace('private://', '', $merchant->kyc->registration_doc_url);
+                try {
+                    $merchant->kyc->registration_doc_signed_url = $mediaService->getSignedUrl($path);
+                } catch (\Exception $e) {
+                    $merchant->kyc->registration_doc_signed_url = null;
                 }
             }
         }
@@ -333,6 +353,33 @@ class AdminController extends Controller
             'message' => 'Merchant identity rejected.',
             'merchant' => $merchant->fresh(),
         ]);
+    }
+
+    /**
+     * Proxy for viewing private KYC files in admin.
+     */
+    public function viewKycFile(Request $request): \Illuminate\Http\Response|\Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        $path = $request->query('path');
+        if (!$path) abort(404);
+
+        \Illuminate\Support\Facades\Log::info("Admin viewing KYC: " . $path);
+
+        try {
+            if (config('filesystems.disks.s3.key') && Storage::disk('s3')->exists($path)) {
+                return response(Storage::disk('s3')->get($path))->header('Content-Type', Storage::disk('s3')->mimeType($path));
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("S3 KYC Error: " . $e->getMessage());
+        }
+
+        if (Storage::disk('local')->exists($path)) {
+            \Illuminate\Support\Facades\Log::info("Found locally: " . Storage::disk('local')->path($path));
+            return response()->file(Storage::disk('local')->path($path));
+        }
+
+        \Illuminate\Support\Facades\Log::warning("KYC Not found: " . $path);
+        abort(404);
     }
 
     public function merchantProducts(Request $request, \App\Models\Merchant $merchant): JsonResponse

@@ -8,6 +8,7 @@ class MerchantKyc extends Model
 {
     protected $fillable = [
         'merchant_id',
+        'business_type', // individual, sole_proprietor, business, ngo
         'first_name',
         'last_name',
         'id_type',
@@ -18,6 +19,11 @@ class MerchantKyc extends Model
         'gender',
         'residential_address',
         'occupation',
+        'tin_number',
+        'tin_document_url',
+        'brela_number',
+        'business_license_url',
+        'registration_doc_url',
         'status',
         'rejection_reason',
     ];

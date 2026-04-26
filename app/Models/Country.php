@@ -24,16 +24,23 @@ class Country extends Model
         'apply_tax_by_default',
         'state_name',
         'city_name',
+        'settings',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'apply_tax_by_default' => 'boolean',
         'default_tax_rate' => 'decimal:2',
+        'settings' => 'array',
     ];
 
     public function defaultCurrency()
     {
         return $this->belongsTo(Currency::class, 'default_currency_id');
+    }
+
+    public function currency()
+    {
+        return $this->defaultCurrency();
     }
 }

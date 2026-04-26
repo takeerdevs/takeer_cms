@@ -36,8 +36,8 @@ class MerchantRegisterRequest extends FormRequest
         return [
             'phone_number' => ['required', 'string', 'max:20'],
             'otp' => ['required', 'string', 'size:6'],
-            'store_name' => [$exists ? 'nullable' : 'required', 'string', 'max:255'],
-            'display_name' => [$exists ? 'nullable' : 'required', 'string', 'max:255'],
+            'store_name' => ['nullable', 'string', 'max:255'],
+            'display_name' => ['nullable', 'string', 'max:255'],
             'country_id' => ['nullable', 'exists:countries,id'],
             'currency_id' => ['nullable', 'exists:currencies,id'],
         ];

@@ -22,7 +22,17 @@ class MediaUploadService
      */
     public function getSignedUrl(string $path, int $minutes = 1440): string
     {
-        return Storage::disk('s3')->temporaryUrl($path, now()->addMinutes($minutes));
+        try {
+            if (config('filesystems.disks.s3.key')) {
+                return Storage::disk('s3')->temporaryUrl($path, now()->addMinutes($minutes));
+            }
+        } catch (\Exception $e) {
+            // S3 failed or not configured
+        }
+        
+        // For local development or non-S3 environments, we return a relative URL 
+        // to our admin kyc proxy route.
+        return url("/admin/api/kyc/view?path=" . urlencode($path));
     }
 
     /**

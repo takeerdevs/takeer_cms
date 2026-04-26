@@ -530,6 +530,9 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                     )}>
                                                         @{profile.username}
                                                     </span>
+                                                    <span className="text-[8px] uppercase tracking-tighter font-black opacity-60">
+                                                        {profile.type === 'personal' ? 'Binafsi' : 'Biashara'}
+                                                    </span>
                                                 </button>
                                             );
                                         })}

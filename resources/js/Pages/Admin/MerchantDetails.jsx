@@ -77,7 +77,12 @@ export default function MerchantDetails({ merchantId }) {
                     <Link href="/admin/merchants" className="inline-flex items-center text-sm text-slate-600 hover:text-slate-900">
                         <ArrowLeft className="h-4 w-4 mr-1" /> Back to merchants
                     </Link>
-                    <h1 className="text-2xl font-black text-slate-900 mt-2">{merchant?.display_name || 'Merchant'}</h1>
+                    <div className="flex items-center gap-3 mt-2">
+                        <h1 className="text-2xl font-black text-slate-900">{merchant?.display_name || 'Merchant'}</h1>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${merchant?.type === 'business' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
+                            {merchant?.type || 'personal'}
+                        </span>
+                    </div>
                     <p className="text-sm text-slate-600">@{merchant?.username || '...'}</p>
                 </div>
 
@@ -99,6 +104,7 @@ export default function MerchantDetails({ merchantId }) {
                                     <Detail label="Owner name" value={merchant?.user?.name} />
                                     <Detail label="Owner phone" value={merchant?.user?.phone_number} />
                                     <Detail label="Owner email" value={merchant?.user?.email} />
+                                    <Detail label="Account Type" value={merchant?.type || 'personal'} />
                                     <Detail label="Country" value={merchant?.country?.name ? `${merchant.country.name} (${merchant.country.iso_alpha2 || '-'})` : '-'} />
                                     <Detail label="Currency" value={merchant?.currency?.code || '-'} />
                                     <Detail label="KYC status" value={merchant?.kyc_status || 'unverified'} />
@@ -140,6 +146,8 @@ export default function MerchantDetails({ merchantId }) {
                                                 <Detail label="Date of Birth" value={merchant.kyc.date_of_birth ? new Date(merchant.kyc.date_of_birth).toLocaleDateString() : '-'} />
                                                 <Detail label="Gender" value={merchant.kyc.gender} />
                                                 <Detail label="Occupation" value={merchant.kyc.occupation} />
+                                                {merchant.kyc.tin_number && <Detail label="TIN Number" value={merchant.kyc.tin_number} />}
+                                                {merchant.kyc.brela_number && <Detail label="BRELA Number" value={merchant.kyc.brela_number} />}
                                                 <div className="col-span-2">
                                                     <Detail label="Residential Address" value={merchant.kyc.residential_address} />
                                                 </div>
@@ -164,6 +172,26 @@ export default function MerchantDetails({ merchantId }) {
                                                         </a>
                                                     ) : (
                                                         <div className="aspect-[3/2] flex items-center justify-center bg-slate-100 rounded-xl border border-slate-200 text-slate-400 text-xs">No Back Image</div>
+                                                    )}
+
+                                                    {merchant.kyc.business_license_signed_url && (
+                                                        <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Business License</p>
+                                                            <a href={merchant.kyc.business_license_signed_url} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                                                                <img src={merchant.kyc.business_license_signed_url} alt="License" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View License</div>
+                                                            </a>
+                                                        </div>
+                                                    )}
+
+                                                    {merchant.kyc.registration_doc_signed_url && (
+                                                        <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Registration Document</p>
+                                                            <a href={merchant.kyc.registration_doc_signed_url} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                                                                <img src={merchant.kyc.registration_doc_signed_url} alt="Reg Doc" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View Document</div>
+                                                            </a>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>

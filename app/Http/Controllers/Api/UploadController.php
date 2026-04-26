@@ -966,13 +966,19 @@ class UploadController extends Controller
             return false;
         }
 
-        $mode = (string) AdminSetting::get('kyc_enforcement_mode', 'off');
-        if ($mode !== 'listings_and_withdrawals') {
+        $status = strtolower((string) $merchant->kyc_status);
+        if (in_array($status, ['approved', 'verified'], true)) {
             return false;
         }
 
-        $status = strtolower((string) $merchant->kyc_status);
-        if (in_array($status, ['approved', 'verified'], true)) {
+        // 1. Mandatory KYC for all Business accounts
+        if ($merchant->type === 'business') {
+            return true;
+        }
+
+        // 2. Personal accounts follow threshold logic
+        $mode = (string) AdminSetting::get('kyc_enforcement_mode', 'off');
+        if ($mode !== 'listings_and_withdrawals') {
             return false;
         }
 
@@ -988,8 +994,6 @@ class UploadController extends Controller
             ->whereNotIn('payment_status', ['pending', 'failed'])
             ->count();
 
-        // If thresholds are NOT 0, we check if they are crossed. 
-        // If they ARE 0, we treat it as "Mandatory KYC" immediately.
         return ($gmvThreshold == 0 || $merchantGmv >= $gmvThreshold)
             && ($ordersThreshold == 0 || $merchantOrderCount >= $ordersThreshold);
     }

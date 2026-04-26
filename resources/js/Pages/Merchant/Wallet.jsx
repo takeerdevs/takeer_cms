@@ -8,7 +8,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose
 } from '@/Components/ui/Dialog';
 import {
-    Wallet, ArrowLeft, ArrowUpRight, ArrowDownLeft, Store, ShieldCheck, HelpCircle, History, Clock, FileCheck
+    HardDrive, Wallet, ArrowLeft, ArrowUpRight, ArrowDownLeft, Store, ShieldCheck, HelpCircle, History, Clock, FileCheck
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 
@@ -165,15 +165,15 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                         {tier} PLAN
                                     </span>
                                 </div>
-                                
+
                                 <div className="space-y-2">
                                     <div className="flex justify-between text-xs font-bold">
                                         <span>Nafasi ya Mafaili</span>
                                         <span className="text-muted-foreground">{storagePercentage}% used</span>
                                     </div>
                                     <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/50">
-                                        <div 
-                                            className="h-full bg-brand-500 rounded-full transition-all duration-1000" 
+                                        <div
+                                            className="h-full bg-brand-500 rounded-full transition-all duration-1000"
                                             style={{ width: `${storagePercentage}%`, boxShadow: `0 0 8px rgba(var(--brand-500), 0.5)` }}
                                         />
                                     </div>
@@ -192,21 +192,19 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                     <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-xl w-fit border border-border">
                         <button
                             onClick={() => setActiveTab('earnings')}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-                                activeTab === 'earnings' 
-                                ? 'bg-white shadow-sm text-brand-700' 
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
+                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'earnings'
+                                    ? 'bg-white shadow-sm text-brand-700'
+                                    : 'text-muted-foreground hover:text-foreground'
+                                }`}
                         >
                             Mapato (Earnings)
                         </button>
                         <button
                             onClick={() => setActiveTab('payouts')}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-                                activeTab === 'payouts' 
-                                ? 'bg-white shadow-sm text-brand-700' 
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
+                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'payouts'
+                                    ? 'bg-white shadow-sm text-brand-700'
+                                    : 'text-muted-foreground hover:text-foreground'
+                                }`}
                         >
                             Payouts
                         </button>
@@ -258,7 +256,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                                         <p className="text-sm font-bold text-foreground whitespace-nowrap">{formatDate(item.created_at)}</p>
                                                         <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Ref: {item.reference || 'N/A'}</p>
                                                     </td>
-                                                    
+
                                                     {activeTab === 'earnings' ? (
                                                         <>
                                                             <td className="p-4">
@@ -282,13 +280,12 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                                                 <p className="text-sm font-bold capitalize">{item.method || 'Mobile Money'}</p>
                                                             </td>
                                                             <td className="p-4">
-                                                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                                                                    item.status === 'completed' || item.status === 'approved'
-                                                                    ? 'bg-green-100 text-green-700'
-                                                                    : item.status === 'pending'
-                                                                    ? 'bg-amber-100 text-amber-700'
-                                                                    : 'bg-muted text-muted-foreground'
-                                                                }`}>
+                                                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${item.status === 'completed' || item.status === 'approved'
+                                                                        ? 'bg-green-100 text-green-700'
+                                                                        : item.status === 'pending'
+                                                                            ? 'bg-amber-100 text-amber-700'
+                                                                            : 'bg-muted text-muted-foreground'
+                                                                    }`}>
                                                                     {item.status === 'completed' ? 'Tayari' : item.status === 'pending' ? 'Inasubiri' : item.status}
                                                                 </span>
                                                             </td>

@@ -9,6 +9,7 @@ import PostComposer from '@/Components/PostComposer';
 import SearchOverlay from '@/Components/SearchOverlay';
 import CheckoutModal from '@/Components/CheckoutModal';
 import DigitalDownloadModal from '@/Components/DigitalDownloadModal';
+import ProfileSwitcher from '@/Components/ProfileSwitcher';
 
 export default function AppLayout({ children, hideTabBar = false }) {
     const { flash, auth } = usePage().props;

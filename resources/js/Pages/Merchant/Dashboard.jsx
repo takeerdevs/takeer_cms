@@ -9,6 +9,7 @@ import {
     AlertTriangle, FileCheck, CheckCircle2, Settings, BookOpenText, Boxes, Crown, Download, CalendarClock
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
+import ProfileSwitcher from '@/Components/ProfileSwitcher';
 
 export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const { auth } = usePage().props;
@@ -95,6 +96,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <ProfileSwitcher />
                         <Button
                             variant="outline"
                             size="icon"

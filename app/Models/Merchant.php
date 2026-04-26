@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\MerchantStorefrontSetting;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
@@ -26,6 +27,7 @@ class Merchant extends Model
         'display_name',
         'avatar_url',
         'bio',
+        'type', // 'personal', 'business'
         'is_default',
         'successful_sales',
         'unsuccessful_sales',
@@ -112,7 +114,7 @@ class Merchant extends Model
         return $this->hasMany(Entitlement::class, 'merchant_id');
     }
 
-    public function storefrontSetting()
+    public function storefrontSetting(): HasOne
     {
         return $this->hasOne(MerchantStorefrontSetting::class, 'merchant_profile_id');
     }

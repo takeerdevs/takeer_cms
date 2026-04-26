@@ -360,20 +360,22 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                 </div>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-sm font-bold text-muted-foreground flex items-center gap-2">
-                                    <MapPin className="h-4 w-4" /> Service Locations
-                                </label>
-                                <Textarea
-                                    rows={4}
-                                    value={data.service_locations}
-                                    onChange={(e) => setData('service_locations', e.target.value)}
-                                    placeholder={'Dar es Salaam - Mikocheni\nDar es Salaam - Kariakoo\nArusha City'}
-                                    className="rounded-xl mt-1"
-                                />
-                                <p className="text-xs text-muted-foreground">One location per line. Helps buyers search by nearby service area.</p>
-                                {errors.service_locations && <p className="text-xs text-red-500 mt-0.5">{errors.service_locations}</p>}
-                            </div>
+                            {merchant?.type !== 'personal' && (
+                                <div className="space-y-1">
+                                    <label className="text-sm font-bold text-muted-foreground flex items-center gap-2">
+                                        <MapPin className="h-4 w-4" /> Service Locations
+                                    </label>
+                                    <Textarea
+                                        rows={4}
+                                        value={data.service_locations}
+                                        onChange={(e) => setData('service_locations', e.target.value)}
+                                        placeholder={'Dar es Salaam - Mikocheni\nDar es Salaam - Kariakoo\nArusha City'}
+                                        className="rounded-xl mt-1"
+                                    />
+                                    <p className="text-xs text-muted-foreground">One location per line. Helps buyers search by nearby service area.</p>
+                                    {errors.service_locations && <p className="text-xs text-red-500 mt-0.5">{errors.service_locations}</p>}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -386,13 +388,15 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                     </Button>
                 </form>
 
-                <ShopLocationsManager
-                    locations={locations}
-                    onRefresh={fetchLocations}
-                    loading={loadingLocations}
-                    profiles={profiles}
-                    onRefreshZones={fetchProfiles}
-                />
+                {merchant?.type !== 'personal' && (
+                    <ShopLocationsManager
+                        locations={locations}
+                        onRefresh={fetchLocations}
+                        loading={loadingLocations}
+                        profiles={profiles}
+                        onRefreshZones={fetchProfiles}
+                    />
+                )}
 
             </div>
         </AppLayout>

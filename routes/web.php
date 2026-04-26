@@ -399,45 +399,107 @@ Route::middleware('auth')->group(function () {
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
     Route::get('/orders/{order}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadLocal'])->name('web.download.local');
 
+    Route::post('/merchant/switch/{username}', [\App\Http\Controllers\Api\MerchantSwitchController::class, 'switch'])->name('merchant.switch');
+    Route::post('/merchant/add-business', [\App\Http\Controllers\Api\MerchantAuthController::class, 'addBusinessProfile'])->name('merchant.add-business');
+
     Route::get('/profile', function (\Illuminate\Http\Request $request) {
         $user = $request->user();
-        $merchantIds = $user->merchantProfiles()->pluck('id');
+        
+        // Determine active merchant
+        $activeMerchantId = Session::get('active_merchant_id');
+        $merchantProfiles = $user->merchantProfiles()->with(['kyc', 'locations'])->get();
+        
+        $activeMerchant = $activeMerchantId 
+            ? $merchantProfiles->find($activeMerchantId) 
+            : ($merchantProfiles->where('is_default', true)->first() ?? $merchantProfiles->first());
 
-        // This Month Earnings (Sum of total_paid for successful orders this month)
+        $merchantIds = $activeMerchant ? [$activeMerchant->id] : $merchantProfiles->pluck('id');
+
+        // This Month Earnings
         $thisMonthEarnings = \App\Models\Order::whereIn('merchant_id', $merchantIds)
             ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']) 
             ->whereMonth('created_at', \Carbon\Carbon::now()->month)
             ->whereYear('created_at', \Carbon\Carbon::now()->year)
             ->sum('total_paid');
 
-        // Quantities by category (across all time or this month? User said "monthly stats to show total earnings" but for chart "only show the quantity of sales in each." Let's do all time, or maybe this month. We will do this month to match earnings context).
+        // Weekly Stats for Overview Cards
+        $startOfWeek = \Carbon\Carbon::now()->startOfWeek();
+        $paymentsThisWeek = \App\Models\Order::whereIn('merchant_id', $merchantIds)
+            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->where('created_at', '>=', $startOfWeek)
+            ->sum('total_paid');
+
+        $transactionsThisWeek = \App\Models\Order::whereIn('merchant_id', $merchantIds)
+            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->where('created_at', '>=', $startOfWeek)
+            ->count();
+
+        // Previous Week for Comparison
+        $startOfLastWeek = \Carbon\Carbon::now()->subWeek()->startOfWeek();
+        $endOfLastWeek = \Carbon\Carbon::now()->subWeek()->endOfWeek();
+        $paymentsLastWeek = \App\Models\Order::whereIn('merchant_id', $merchantIds)
+            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->whereBetween('created_at', [$startOfLastWeek, $endOfLastWeek])
+            ->sum('total_paid');
+        
+        $percentChange = $paymentsLastWeek > 0 
+            ? round((($paymentsThisWeek - $paymentsLastWeek) / $paymentsLastWeek) * 100, 1)
+            : ($paymentsThisWeek > 0 ? 100 : 0);
+
+        // Sales Breakdown
         $orders = \App\Models\Order::whereIn('merchant_id', $merchantIds)
             ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
             ->with('product:id,type')
             ->get(['id', 'purchasable_type', 'product_id', 'quantity']);
 
         $breakdown = ['digital' => 0, 'physical' => 0, 'services' => 0];
-
         foreach ($orders as $order) {
             $qty = $order->quantity ?? 1;
             if ($order->purchasable_type === 'product' && $order->product) {
-                if ($order->product->type === 'physical') {
-                    $breakdown['physical'] += $qty;
-                } elseif ($order->product->type === 'service') {
-                    $breakdown['services'] += $qty;
-                } else {
-                    $breakdown['digital'] += $qty;
-                }
+                if ($order->product->type === 'physical') $breakdown['physical'] += $qty;
+                elseif ($order->product->type === 'service') $breakdown['services'] += $qty;
+                else $breakdown['digital'] += $qty;
             } else {
                 $breakdown['digital'] += $qty;
             }
         }
 
         return Inertia::render('Profile', [
+            'activeMerchant' => $activeMerchant,
             'thisMonthEarnings' => (float) $thisMonthEarnings,
+            'weeklyStats' => [
+                'payments' => (float) $paymentsThisWeek,
+                'transactions' => $transactionsThisWeek,
+                'percentChange' => $percentChange,
+            ],
+            'summary' => $activeMerchant ? [
+                'total_products' => $activeMerchant->products()->count(),
+                'orders_today'   => $activeMerchant->orders()->whereDate('created_at', now()->today())->count(),
+                'orders_pending' => $activeMerchant->orders()->whereIn('payment_status', ['awaiting_payment', 'escrow_locked'])->count(),
+                'orders_completed' => $activeMerchant->orders()->whereIn('payment_status', ['resolved_merchant_paid'])->count(),
+            ] : null,
+            'recentOrders' => $activeMerchant ? $activeMerchant->orders()
+                ->with('product:id,title,type')
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(function($order) use ($user) {
+                    $display = $user->resolveOrderDisplay($order);
+                    return [
+                        'id' => $order->id,
+                        'amount' => (float) $order->total_paid,
+                        'status' => $order->payment_status,
+                        'created_at' => $order->created_at?->toISOString(),
+                        'display_title' => $display['title'],
+                        'display_kind' => $display['kind'],
+                        'display_icon' => $display['icon'],
+                    ];
+                }) : [],
             'salesBreakdown' => $breakdown,
             'countries' => \App\Models\Country::select('id', 'name', 'iso_alpha2 as code', 'default_currency_id')->get(),
             'currencies' => \App\Models\Currency::select('id', 'code', 'symbol', 'name')->get(),
+            'merchantKyc' => $activeMerchant ? $activeMerchant->kyc : null,
+            'merchantKycStatus' => $activeMerchant ? ($activeMerchant->kyc_status ?? 'unverified') : 'unverified',
         ]);
     });
 
@@ -566,10 +628,8 @@ Route::middleware('auth')->group(function () {
     Route::prefix('merchant/{merchant}')->middleware('own_merchant')->group(function () {
 
         Route::get('/dashboard', function (Merchant $merchant) {
-            return Inertia::render('Merchant/Dashboard', [
-                'merchantUsername' => $merchant->username,
-                'merchantName' => $merchant->display_name,
-            ]);
+            Session::put('active_merchant_id', $merchant->id);
+            return redirect('/profile');
         });
 
         Route::get('/settings', [MerchantProfileController::class, 'edit'])->name('merchant.settings.edit');
@@ -684,8 +744,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/merchant/dashboard', function (Request $request) {
         $merchant = $request->user()->merchantProfiles()->where('is_default', true)->first()
             ?? $request->user()->merchantProfiles()->first();
-        if (!$merchant) return redirect('/merchant/register');
-        return redirect("/merchant/{$merchant->username}/dashboard");
+            
+        if (!$merchant) return redirect('/profile');
+        
+        Session::put('active_merchant_id', $merchant->id);
+        return redirect('/profile');
     });
 
     Route::middleware('merchant_status')->group(function () {
@@ -789,6 +852,7 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
         Route::get('/merchants', [AdminController::class, 'indexMerchants']);
         Route::get('/merchants/{merchant:id}', [AdminController::class, 'showMerchant']);
+        Route::get('/kyc/view', [AdminController::class, 'viewKycFile']);
         Route::get('/merchants/{merchant:id}/products', [AdminController::class, 'merchantProducts']);
         Route::get('/merchants/{merchant:id}/posts', [AdminController::class, 'merchantPosts']);
         Route::get('/merchants/{merchant:id}/orders', [AdminController::class, 'merchantOrders']);
@@ -832,6 +896,10 @@ Route::middleware(['auth', 'admin'])->group(function () {
         return Inertia::render('Admin/Users');
     });
 
+    Route::get('/admin/verifications', function () {
+        return Inertia::render('Admin/Verifications');
+    });
+
     Route::get('/admin/merchants', function () {
         return Inertia::render('Admin/Merchants');
     });
@@ -857,6 +925,11 @@ Route::middleware(['auth', 'admin'])->group(function () {
     Route::get('/admin/withdrawals', function () {
         return Inertia::render('Admin/Withdrawals');
     });
+
+    Route::get('/admin/countries', [\App\Http\Controllers\Admin\CountryController::class, 'index'])->name('admin.countries');
+    Route::get('/admin/countries/{country}/settings', [\App\Http\Controllers\Admin\CountryController::class, 'settings'])->name('admin.countries.settings');
+    Route::patch('/admin/countries/{country}', [\App\Http\Controllers\Admin\CountryController::class, 'update'])->name('admin.countries.update');
+    Route::post('/admin/countries/{country}/toggle', [\App\Http\Controllers\Admin\CountryController::class, 'toggleStatus'])->name('admin.countries.toggle');
 
     Route::get('/admin/settings', function () {
         return Inertia::render('Admin/Settings');
