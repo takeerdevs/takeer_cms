@@ -188,6 +188,8 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
     const fileRef = useRef(null);
     const textRef = useRef(null);
+    const merchantApiBase = selectedProfile?.username ? `/merchant/${selectedProfile.username}` : '/merchant';
+    const merchantPayload = selectedProfile?.id ? { merchant_id: selectedProfile.id } : {};
 
     const parsePriceValue = (value) => {
         if (value === '' || value === null || value === undefined) return null;
@@ -202,6 +204,8 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const isPaidShortUnlock = hasSingleUnlockPrice && parsedShortPrice > 0;
     const shouldShowShortTitleInput = composerMode === 'short' && isRestricted;
     const shouldRequireShortTitle = shouldShowShortTitleInput;
+    const selectedProfileKycComplete = ['verified', 'approved'].includes(String(selectedProfile?.kyc_status || '').toLowerCase())
+        || Boolean(selectedProfile?.is_verified);
 
     // Default to is_default profile
     useEffect(() => {
@@ -210,6 +214,15 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
             setSelectedProfile(def);
         }
     }, [auth.user, selectedProfile]);
+
+    useEffect(() => {
+        if (!selectedProfile || selectedProfileKycComplete) return;
+
+        setIsRestricted(false);
+        setSelectedPromotables([]);
+        setShortPrice('');
+        setShortTitle('');
+    }, [selectedProfile, selectedProfileKycComplete]);
 
     // Prefill when opened from a product page
     useEffect(() => {
@@ -249,6 +262,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                 setLongAutosaveStatus('Saving draft...');
                 const priceVal = longForm.price === '' ? null : Number(longForm.price);
                 const payload = {
+                    ...merchantPayload,
                     title: normalizedTitle,
                     excerpt: longForm.excerpt || null,
                     body: normalizedBody,
@@ -258,9 +272,9 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                 };
 
                 if (longForm.id) {
-                    await axios.put(`/merchant/content-items/${longForm.id}/api`, payload);
+                    await axios.put(`${merchantApiBase}/content-items/${longForm.id}/api`, payload);
                 } else {
-                    const res = await axios.post('/merchant/content-items/api', payload);
+                    const res = await axios.post(`${merchantApiBase}/content-items/api`, payload);
                     const saved = res.data?.content_item;
                     if (saved?.id) {
                         setLongForm((current) => ({ ...current, id: saved.id }));
@@ -281,10 +295,11 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         if (!selectedProfile) return;
         setPromotablesLoading(true);
         try {
+            const query = selectedProfile.username ? '' : `?merchant_id=${selectedProfile.id}`;
             const [pRes, bRes, sRes] = await Promise.all([
-                axios.get(`/merchant/products/api?merchant_id=${selectedProfile.id}`),
-                axios.get(`/merchant/bundles/api?merchant_id=${selectedProfile.id}`),
-                axios.get(`/merchant/subscription-plans/api?merchant_id=${selectedProfile.id}`)
+                axios.get(`${merchantApiBase}/products/api${query}`),
+                axios.get(`${merchantApiBase}/bundles/api${query}`),
+                axios.get(`${merchantApiBase}/subscription-plans/api${query}`)
             ]);
             setPromotables({
                 products: pRes.data?.products || [],
@@ -378,7 +393,10 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                     form.append('file', file);
                     form.append('type', 'public');
                     form.append('folder', 'posts');
-                    const res = await axios.post('/merchant/upload/media', form, {
+                    if (selectedProfile?.id) {
+                        form.append('merchant_id', selectedProfile.id);
+                    }
+                    const res = await axios.post(`${merchantApiBase}/upload/media`, form, {
                         headers: { 'Content-Type': 'multipart/form-data' },
                     });
                     return { url: res.data.url, type: isVideo ? 'video' : 'image' };
@@ -405,6 +423,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
             const shouldLockPost = isRestricted || selectedPromotables.length > 0 || hasSingleUnlockPrice;
 
             const payload = {
+                ...merchantPayload,
                 // Common fields
                 caption: composerMode === 'short' ? text.trim() : (longForm.excerpt || null),
                 title: composerMode === 'long'
@@ -427,7 +446,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
             };
 
             // 3. Submit to Unified Post API
-            await axios.post('/merchant/posts', payload);
+            await axios.post(`${merchantApiBase}/posts`, payload);
 
             setSubmitting(false);
             handleClose();
@@ -643,6 +662,8 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             value={longForm.body}
                                             onChange={(nextBody) => setLongForm((current) => ({ ...current, body: nextBody }))}
                                             placeholder="Write your article, add headings, links, images, and embeds..."
+                                            uploadUrl={`${merchantApiBase}/upload/media`}
+                                            uploadFields={merchantPayload}
                                         />
                                     </div>
 
@@ -697,16 +718,28 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                 {/* Restriction & Access Control Section */}
                                 <div className="space-y-4">
                                     {/* Restriction Toggle */}
-                                    <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-3xl p-4 flex items-center justify-between shadow-sm">
+                                    <div className={cn(
+                                        "bg-card/60 backdrop-blur-md border border-border/50 rounded-3xl p-4 flex items-center justify-between shadow-sm",
+                                        !selectedProfileKycComplete && "opacity-75"
+                                    )}>
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2">
                                                 <Lock className={cn("h-4 w-4", isRestricted ? "text-brand-600" : "text-muted-foreground")} />
                                                 <span className="text-xs font-black uppercase tracking-widest text-foreground">Restrict Content</span>
                                             </div>
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">Toggle to lock this content behind a paywall</p>
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                {selectedProfileKycComplete
+                                                    ? 'Toggle to lock this content behind a paywall'
+                                                    : 'Complete KYC before locking content for payment'}
+                                            </p>
                                         </div>
                                         <button
                                             onClick={() => {
+                                                if (!selectedProfileKycComplete) {
+                                                    toast.error('Complete KYC before locking content for payment.');
+                                                    return;
+                                                }
+
                                                 const next = !isRestricted;
                                                 setIsRestricted(next);
                                                 if (!next) {
@@ -715,8 +748,10 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                     setShortTitle('');
                                                 }
                                             }}
+                                            disabled={!selectedProfileKycComplete}
                                             className={cn(
-                                                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                                "relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                                selectedProfileKycComplete ? "cursor-pointer" : "cursor-not-allowed",
                                                 isRestricted ? "bg-brand-600" : "bg-muted"
                                             )}
                                         >

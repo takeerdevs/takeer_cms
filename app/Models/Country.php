@@ -43,4 +43,32 @@ class Country extends Model
     {
         return $this->defaultCurrency();
     }
+
+    public function timezones(): array
+    {
+        $timezones = $this->settings['timezones'] ?? [];
+
+        if (is_array($timezones) && count($timezones) > 0) {
+            return array_values(array_filter(
+                $timezones,
+                fn ($timezone) => is_string($timezone) && in_array($timezone, timezone_identifiers_list(), true)
+            ));
+        }
+
+        return $this->isValidTimezone($this->timezone) ? [$this->timezone] : [];
+    }
+
+    public function defaultTimezone(): string
+    {
+        if ($this->isValidTimezone($this->timezone)) {
+            return $this->timezone;
+        }
+
+        return $this->timezones()[0] ?? 'UTC';
+    }
+
+    private function isValidTimezone(?string $timezone): bool
+    {
+        return is_string($timezone) && in_array($timezone, timezone_identifiers_list(), true);
+    }
 }

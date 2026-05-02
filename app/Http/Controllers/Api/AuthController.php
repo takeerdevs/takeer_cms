@@ -8,6 +8,8 @@ use App\Http\Requests\Auth\VerifyOtpRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\Country;
+use App\Services\PhoneService;
 use App\Services\SmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 class AuthController extends Controller
 {
     public function __construct(private SmsService $smsService)
@@ -54,10 +57,20 @@ class AuthController extends Controller
     {
         ['phone_number' => $phone, 'otp' => $otp] = $request->validated();
 
+        $throttleKey = 'otp-verify:' . sha1($request->ip() . '|' . $phone);
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            return response()->json([
+                'message' => 'Umejaribu mara nyingi sana. Tafadhali subiri kidogo kisha ujaribu tena.',
+                'retry_after_seconds' => RateLimiter::availableIn($throttleKey),
+            ], 429);
+        }
+
         $cacheKey = "otp:{$phone}";
         $hashedOtp = Cache::get($cacheKey);
 
         if (!$hashedOtp || !Hash::check($otp, $hashedOtp)) {
+            RateLimiter::hit($throttleKey, 600);
+
             return response()->json([
                 'message' => 'OTP si sahihi au imeisha muda wake.',
             ], 422);
@@ -65,15 +78,18 @@ class AuthController extends Controller
 
         // Consume OTP (one-time use)
         Cache::forget($cacheKey);
+        RateLimiter::clear($throttleKey);
 
-        // Find or create user
-        $user = User::firstOrCreate(
-            ['phone_number' => $phone],
-            [
+        $country = $request->filled('country_id') ? Country::find($request->input('country_id')) : null;
+        $user = User::whereIn('phone_number', PhoneService::variantsForLookup($phone, $country))->first();
+
+        if (! $user) {
+            $user = User::create([
+                'phone_number' => $phone,
                 'name' => 'User ' . substr($phone, -4),
                 'role' => 'buyer',
-            ]
-        );
+            ]);
+        }
 
         // Create wallet if this is their first login
         if (!$user->wallet) {

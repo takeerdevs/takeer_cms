@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Play, Volume2, VolumeX, Heart, MessageCircle, MapPin, Link as LinkIcon, Edit3, ShoppingBag } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import { Card, CardContent } from '@/Components/ui/Card';
+import { resolvePlayableVideoUrl } from '@/Components/VideoPlayer';
 
 const isVideo = (item) => {
     const url = typeof item === 'string' ? item : item?.url ?? '';
@@ -11,10 +12,13 @@ const isVideo = (item) => {
 
 const getUrl = (item) => typeof item === 'string' ? item : item?.url ?? item?.preview ?? '';
 
-function VideoPlayer({ src }) {
+function LightboxVideoPlayer({ item }) {
     const ref = useRef(null);
     const [playing, setPlaying] = useState(false);
     const [muted, setMuted] = useState(false);
+    const src = typeof item === 'string'
+        ? item
+        : resolvePlayableVideoUrl({ hlsUrl: item?.hls_url, processedUrl: item?.processed_url, url: item?.url ?? item?.preview });
 
     const toggle = () => {
         if (!ref.current) return;
@@ -112,7 +116,7 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                                 className="w-full bg-zinc-900 flex flex-col"
                             >
                                 {isVideo(item) ? (
-                                    <VideoPlayer src={getUrl(item)} />
+                                    <LightboxVideoPlayer item={item} />
                                 ) : (
                                     <div className="relative w-full max-w-[100vw] mx-auto overflow-hidden flex items-center justify-center bg-black min-h-[50vh]">
                                         <img

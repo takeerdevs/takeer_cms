@@ -19,8 +19,25 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
         store_name: '', // This will be the Personal Profile Username
         display_name: '', // This will be the Personal Profile Full Name
         country_id: '',
-        currency_id: ''
+        currency_id: '',
+        timezone: ''
     });
+
+    const selectedCountry = countries.find(country => String(country.id) === String(form.country_id));
+    const selectedCountryTimezones = selectedCountry?.settings?.timezones || (selectedCountry?.timezone ? [selectedCountry.timezone] : []);
+    const showTimezoneSelect = selectedCountryTimezones.length > 1;
+
+    const updateCountry = (countryId) => {
+        const country = countries.find(item => String(item.id) === String(countryId));
+        const timezones = country?.settings?.timezones || (country?.timezone ? [country.timezone] : []);
+
+        setForm(prev => ({
+            ...prev,
+            country_id: countryId,
+            currency_id: country?.default_currency_id ? String(country.default_currency_id) : prev.currency_id,
+            timezone: timezones.includes(prev.timezone) ? prev.timezone : (country?.timezone || timezones[0] || '')
+        }));
+    };
 
     // Auto-detect Country on load
     useEffect(() => {
@@ -31,11 +48,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
 
                 const matchedCountry = countries.find(c => c.code === countryCode);
                 if (matchedCountry) {
-                    setForm(prev => ({
-                        ...prev,
-                        country_id: String(matchedCountry.id),
-                        currency_id: matchedCountry.default_currency_id ? String(matchedCountry.default_currency_id) : prev.currency_id
-                    }));
+                    updateCountry(String(matchedCountry.id));
                 }
             } catch (err) {
                 console.log("Country detection failed", err);
@@ -54,12 +67,14 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
 
         try {
             const checkRes = await axios.post('/auth/merchant/check', {
-                phone_number: form.phone_number
+                phone_number: form.phone_number,
+                country_id: form.country_id
             });
-            setIsExisting(checkRes.data.is_merchant);
+            setIsExisting(checkRes.data.is_existing_account ?? checkRes.data.is_merchant);
 
             await axios.post('/auth/otp/send', {
-                phone_number: form.phone_number
+                phone_number: form.phone_number,
+                country_id: form.country_id
             });
             setStep(2);
         } catch (err) {
@@ -127,6 +142,24 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                         {step === 1 ? (
                             <form onSubmit={handleSendOtp} className="space-y-6">
                                 <div className="space-y-3">
+                                    <label htmlFor="country" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nchi</label>
+                                    <select
+                                        id="country"
+                                        value={form.country_id}
+                                        onChange={e => updateCountry(e.target.value)}
+                                        required
+                                        className="flex h-14 w-full rounded-2xl border-2 bg-background/50 px-4 py-2 text-base font-bold focus:outline-none focus:border-brand-500 shadow-sm"
+                                    >
+                                        <option value="" disabled>Chagua nchi yako</option>
+                                        {countries.map(country => (
+                                            <option key={country.id} value={String(country.id)}>
+                                                {country.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-3">
                                     <label htmlFor="phone" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nambari ya Simu</label>
                                     <div className="relative">
                                         <Input
@@ -154,7 +187,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                     <label htmlFor="otp" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nambari ya Siri (OTP)</label>
                                     <Input
                                         id="otp"
-                                        type="text"
+                                        type="tel"
                                         maxLength={6}
                                         placeholder="••••••"
                                         value={form.otp}
@@ -171,7 +204,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                             <Input
                                                 id="store_name"
                                                 type="text"
-                                                placeholder="mf. kiddy_babe"
+                                                placeholder="mf. james_peter"
                                                 value={form.store_name}
                                                 onChange={e => setForm({ ...form, store_name: e.target.value })}
                                                 required={!isExisting}
@@ -184,7 +217,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                             <Input
                                                 id="display_name"
                                                 type="text"
-                                                placeholder="mf. Kiddo John"
+                                                placeholder="mf. James Peter"
                                                 value={form.display_name}
                                                 onChange={e => setForm({ ...form, display_name: e.target.value })}
                                                 required={!isExisting}
@@ -197,7 +230,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                                 <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nchi</label>
                                                 <select
                                                     value={form.country_id}
-                                                    onChange={e => setForm({ ...form, country_id: e.target.value })}
+                                                    onChange={e => updateCountry(e.target.value)}
                                                     className="flex h-14 w-full rounded-2xl border-2 bg-background/50 px-3 py-2 text-sm font-bold focus:outline-none focus:border-brand-500 shadow-sm"
                                                 >
                                                     <option value="" disabled>Chagua Nchi</option>
@@ -225,6 +258,23 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                                 </select>
                                             </div>
                                         </div>
+
+                                        {showTimezoneSelect && (
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Timezone</label>
+                                                <select
+                                                    value={form.timezone}
+                                                    onChange={e => setForm({ ...form, timezone: e.target.value })}
+                                                    className="flex h-14 w-full rounded-2xl border-2 bg-background/50 px-3 py-2 text-sm font-bold focus:outline-none focus:border-brand-500 shadow-sm"
+                                                >
+                                                    {selectedCountryTimezones.map(timezone => (
+                                                        <option key={timezone} value={timezone}>
+                                                            {timezone}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { MessageCircle, Send, CornerDownRight, ChevronLeft, Loader2, Share2, MoreHorizontal, ShoppingBag, ShieldCheck, BadgeCheck, Unlock, X, User, Lock } from 'lucide-react';
+import { MessageCircle, Send, CornerDownRight, ChevronLeft, Loader2, Share2, MoreHorizontal, ShoppingBag, ShieldCheck, BadgeCheck, Crown, Unlock, X, User, Lock, Boxes } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import LikeButton from '@/Components/LikeButton';
@@ -10,6 +10,7 @@ import ShoppablePin from '@/Components/ShoppablePin';
 import PostManagementMenu from '@/Components/PostManagementMenu';
 import EditorJsRenderer from '@/Components/EditorJsRenderer';
 import LinkifiedText from '@/Components/LinkifiedText';
+import VideoPlayer from '@/Components/VideoPlayer';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
 import { toast } from 'sonner';
 
@@ -184,14 +185,18 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     // Listen for unlock events dispatched by CheckoutModal
     useEffect(() => {
         const handleUnlocking = (e) => {
-            const matchesType = ['post', 'content_item'].includes(e.detail?.itemType);
-            const matchesId = String(e.detail?.itemId) === String(initialPost.id);
+            const unlockType = initialPost.unlock_item_type || 'post';
+            const unlockId = initialPost.unlock_item_id || initialPost.id;
+            const matchesType = e.detail?.itemType === unlockType;
+            const matchesId = String(e.detail?.itemId) === String(unlockId);
             if (matchesType && matchesId) setIsUnlocking(true);
         };
 
         const handleUnlocked = async (e) => {
-            const matchesType = ['post', 'content_item'].includes(e.detail?.itemType);
-            const matchesId = String(e.detail?.itemId) === String(initialPost.id);
+            const unlockType = initialPost.unlock_item_type || 'post';
+            const unlockId = initialPost.unlock_item_id || initialPost.id;
+            const matchesType = e.detail?.itemType === unlockType;
+            const matchesId = String(e.detail?.itemId) === String(unlockId);
             if (!matchesType || !matchesId) return;
 
             try {
@@ -389,6 +394,10 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const firstPromotable = promotables[0] || null;
     const promotableType = firstPromotable?.type || null;
     const promotableItem = firstPromotable?.item || null;
+    const isSubscriptionPromotable = promotableType === 'subscription_plan' && Boolean(promotableItem?.slug || firstPromotable?.id);
+    const subscriptionRouteKey = promotableItem?.slug || firstPromotable?.id;
+    const subscriptionItemsCount = Number(promotableItem?.items_count || 0);
+    const subscriptionCadence = `${promotableItem?.interval_count || 1} ${promotableItem?.billing_interval || 'month'}`;
     const hasSingleUnlockOption = isRestricted && post.restricted_price !== null;
     const hasPromotableOption = isRestricted && promotables.length > 0;
     
@@ -396,9 +405,28 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const promotableBundleRouteKey = promotableItem?.slug || firstPromotable?.id;
     const isBundlePromotable = promotableType === 'bundle' && Boolean(promotableBundleRouteKey);
     const bundleItems = Array.isArray(promotableItem?.bundle_items) ? promotableItem.bundle_items : [];
+    const courseModules = Array.isArray(promotableItem?.course_modules) ? promotableItem.course_modules : [];
+    const isCourseBundle = Boolean(promotableItem?.is_course);
     const shouldShowBundleItemsGrid = isBundlePromotable && bundleItems.length > 0;
     const hasBundlePrice = Number(promotableItem?.price || 0) > 0;
-    const bundleItemsCount = Number(promotableItem?.items_count ?? promotableItem?.items?.length ?? 0);
+    const bundleItemsCount = courseModules.length > 0
+        ? courseModules.reduce((sum, module) => sum + (module.lessons?.length || 0), 0)
+        : Number(promotableItem?.items_count ?? promotableItem?.items?.length ?? 0);
+    const courseModuleGroups = useMemo(() => {
+        if (!isCourseBundle) return [];
+        if (courseModules.length > 0) return courseModules;
+        const groups = [];
+        bundleItems.forEach((item) => {
+            const title = item.section_title || 'Moduli';
+            let group = groups.find((entry) => entry.title === title);
+            if (!group) {
+                group = { title, lessons: [] };
+                groups.push(group);
+            }
+            group.lessons.push(item);
+        });
+        return groups;
+    }, [bundleItems, courseModules, isCourseBundle]);
     const isImageLikeUrl = (value) => /^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|avif)(\?.*)?$/i.test(String(value || '').trim());
     const resolveBundleItemHref = (item) => {
         if (item?.item_type === 'product') {
@@ -424,6 +452,9 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         .filter((value) => Number.isFinite(value));
     const minVariantPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : 0;
     const maxVariantPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : 0;
+    const variantPriceLabel = minVariantPrice === maxVariantPrice
+        ? `TZS ${minVariantPrice.toLocaleString()}`
+        : `TZS ${minVariantPrice.toLocaleString()} - ${maxVariantPrice.toLocaleString()}`;
     const variantAttributeSummary = useMemo(() => {
         if (!hasVariantPricing) return [];
 
@@ -460,8 +491,50 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
             ? Number(attachedProduct.discounted_price)
             : Number(attachedProduct.price || 0)
         : 0;
+    const attachedProductIsService = attachedProduct?.type === 'service';
+    const attachedProductServiceMode = attachedProduct?.service_mode || (
+        attachedProduct?.service_is_showcase || attachedProduct?.service_pricing_model === 'showcase_only'
+            ? 'showcase_only'
+            : attachedProduct?.service_pricing_model === 'contract_quote'
+                ? 'request_quote'
+                : 'pay_now'
+    );
+    const attachedProductPriceDisplay = attachedProduct?.service_price_display || (
+        attachedProduct?.service_pricing_model === 'hourly_rate'
+            ? 'hourly'
+            : attachedProduct?.service_pricing_model === 'contract_quote'
+                ? 'quote_only'
+                : 'fixed'
+    );
+    const serviceUnitLabels = {
+        hourly: ' / hour',
+        daily: ' / day',
+        nightly: ' / night',
+        weekly: ' / week',
+        monthly: ' / month',
+        yearly: ' / year',
+        per_person: ' / person',
+        per_visit: ' / visit',
+        per_session: ' / session',
+        per_project: ' / project',
+    };
+    const attachedProductPriceLabel = (() => {
+        if (!attachedProductIsService) return `TZS ${productDisplayPrice.toLocaleString()}`;
+        if (attachedProductPriceDisplay === 'hidden' || attachedProductServiceMode === 'showcase_only') return 'Contact provider';
+        if (attachedProductPriceDisplay === 'quote_only' || attachedProductServiceMode === 'request_quote') return 'Quote after request';
+        if (attachedProductPriceDisplay === 'starts_from') return `From TZS ${productDisplayPrice.toLocaleString()}`;
+        if (attachedProductPriceDisplay === 'package') return `TZS ${productDisplayPrice.toLocaleString()} package`;
+        return `TZS ${productDisplayPrice.toLocaleString()}${serviceUnitLabels[attachedProductPriceDisplay] || ''}`;
+    })();
+    const attachedProductCtaLabel = readOnly
+        ? 'View'
+        : attachedProduct?.has_access
+            ? 'Fungua'
+            : attachedProductIsService
+                ? (attachedProductServiceMode === 'book_appointment' ? 'Book' : 'View Service')
+                : 'Nunua';
     const productHasDiscount = attachedProduct
-        ? Number(attachedProduct.discounted_price) > 0 && Number(attachedProduct.discounted_price) < Number(attachedProduct.price)
+        ? !attachedProductIsService && Number(attachedProduct.discounted_price) > 0 && Number(attachedProduct.discounted_price) < Number(attachedProduct.price)
         : false;
     const sortedReactions = [...reactionSummary].sort((a, b) => (b.count || 0) - (a.count || 0));
     const defaultPreviewReactions = ['👍', '❤️', '🔥'];
@@ -488,7 +561,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         {hasVariantPricing ? (
                             <div className="space-y-0.5">
                                 <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">
-                                    TZS {minVariantPrice.toLocaleString()} - {maxVariantPrice.toLocaleString()}
+                                    {variantPriceLabel}
                                 </p>
                                 <p className="text-[11px] text-slate-600 leading-tight truncate">
                                     {variantAttributeSummary.join(', ')}
@@ -496,7 +569,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
-                                <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">TZS {productDisplayPrice.toLocaleString()}</p>
+                                <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">{attachedProductPriceLabel}</p>
                                 {productHasDiscount && (
                                     <p className="text-muted-foreground text-sm line-through opacity-70">
                                         TZS {Number(attachedProduct.price || 0).toLocaleString()}
@@ -537,7 +610,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         }}
                         className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 dark:from-brand-500 dark:to-brand-400 text-white text-base font-extrabold hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-500/25"
                     >
-                        <ShoppingBag className="h-4 w-4" /> {readOnly ? 'View' : (attachedProduct.has_access ? 'Fungua' : 'Nunua')}
+                        <ShoppingBag className="h-4 w-4" /> {attachedProductCtaLabel}
                     </button>
                 </div>
             </div>
@@ -689,10 +762,10 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                             onClick={() => {
                                                 if (readOnly) return;
                                                 window.__openCheckout?.({
-                                                    id: post.id,
+                                                    id: post.unlock_item_id || post.id,
                                                     title: post.title || 'Locked content',
                                                     price: singleUnlockPrice,
-                                                    checkoutType: 'post',
+                                                    checkoutType: post.unlock_item_type || 'post',
                                                     merchant: post.merchant || null,
                                                 });
                                             }}
@@ -763,10 +836,90 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
 
                 {renderProductAttachmentCard('mb-2')}
 
+                {isSubscriptionPromotable && (
+                    <div className="mx-5 mb-6 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60">
+                        <div className="p-5">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="h-14 w-14 rounded-2xl bg-emerald-100 flex items-center justify-center shrink-0">
+                                        <Crown className="h-7 w-7 text-emerald-700" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Subscription</p>
+                                        <p className="text-2xl font-black leading-tight truncate">{promotableItem?.name || promotableItem?.title || 'Membership'}</p>
+                                    </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">TZS</p>
+                                    <p className="text-2xl font-black text-brand-600">{Number(promotableItem?.price || 0).toLocaleString()}</p>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-2 gap-3">
+                                <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Access</p>
+                                    <p className="mt-1 text-base font-black">{subscriptionItemsCount > 0 ? `${subscriptionItemsCount} items` : 'Member content'}</p>
+                                </div>
+                                <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Renewal</p>
+                                    <p className="mt-1 text-base font-black capitalize">{subscriptionCadence}</p>
+                                </div>
+                            </div>
+
+                            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                                {promotableItem?.description || 'Jiunge kupata maudhui ya wanachama na updates mpya kadri zinavyoongezwa.'}
+                            </p>
+                        </div>
+                        <div className="px-5 pb-5">
+                            <button
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    router.visit(`/plan/${subscriptionRouteKey}`);
+                                }}
+                                className="w-full h-12 rounded-xl bg-emerald-600 text-white text-base font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20"
+                            >
+                                <Crown className="h-5 w-5" /> View Membership
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Bundle Attachment Card & Grid */}
                 {isBundlePromotable && (
                     <div className="mx-5 mb-6 rounded-2xl border border-sky-200/70 bg-gradient-to-br from-white to-sky-50/40 dark:border-sky-900/50 dark:from-slate-900 dark:to-sky-950/40 overflow-hidden">
-                        {shouldShowBundleItemsGrid && (
+                        {isCourseBundle && courseModuleGroups.length > 0 ? (
+                            <div className="p-4 space-y-3">
+                                <div className="rounded-xl border border-sky-100 bg-white/85 px-4 py-3 dark:border-sky-900/50 dark:bg-slate-900/80">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Course Curriculum</p>
+                                    <div className="mt-3 grid grid-cols-2 gap-3 text-center">
+                                        <div className="rounded-lg bg-sky-50 px-3 py-3 dark:bg-sky-950/40">
+                                            <p className="text-2xl font-black text-sky-900 dark:text-sky-100">{courseModuleGroups.length}</p>
+                                            <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">Modules</p>
+                                        </div>
+                                        <div className="rounded-lg bg-sky-50 px-3 py-3 dark:bg-sky-950/40">
+                                            <p className="text-2xl font-black text-sky-900 dark:text-sky-100">{bundleItemsCount}</p>
+                                            <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">Lessons</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                {courseModuleGroups.slice(0, 5).map((module, idx) => (
+                                    <div key={`${module.title}-${idx}`} className="rounded-xl border border-border/70 bg-background px-4 py-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="font-black truncate">{module.title}</p>
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{module.lessons.length} lessons</span>
+                                        </div>
+                                        <div className="mt-2 grid gap-1">
+                                            {module.lessons.slice(0, 3).map((lesson, lessonIdx) => (
+                                                <p key={`${lesson.item_type}-${lesson.item_id}-${lessonIdx}`} className="text-sm text-muted-foreground truncate">
+                                                    {lesson.is_preview ? 'Preview · ' : ''}{lesson.lesson_title || lesson.title}
+                                                </p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : shouldShowBundleItemsGrid && (
                             <div className="grid grid-cols-2 gap-1 p-1.5">
                                 {bundleItems.slice(0, 8).map((item, idx) => {
                                     const href = resolveBundleItemHref(item);
@@ -823,8 +976,9 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     </p>
                                 )}
                                 <p className="text-xs text-slate-600 leading-tight truncate mt-1">
-                                    {bundleItemsCount > 0 ? `${bundleItemsCount} item(s)` : 'Bundle access'}
-                                    {promotableItem?.is_course ? ' • Course' : ''}
+                                    {isCourseBundle
+                                        ? `${courseModuleGroups.length || 1} module(s) • ${bundleItemsCount} lesson(s)`
+                                        : (bundleItemsCount > 0 ? `${bundleItemsCount} item(s)` : 'Bundle access')}
                                 </p>
                             </div>
                         </Link>
@@ -837,7 +991,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 }}
                                 className="w-full h-12 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 dark:from-sky-500 dark:to-cyan-400 text-white text-base font-extrabold hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-sky-500/25"
                             >
-                                <Boxes className="h-5 w-5" /> {readOnly ? 'View Bundle' : 'Open Bundle'}
+                                <Boxes className="h-5 w-5" /> {isCourseBundle ? (readOnly ? 'View Course' : 'Open Course') : (readOnly ? 'View Bundle' : 'Open Bundle')}
                             </button>
                         </div>
                     </div>
@@ -847,18 +1001,36 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 {!isLocked && mediaItems.length > 0 && (
                     <>
                         <div className="flex flex-col gap-8 scroll-mt-20">
-                            {mediaItems.map((img, idx) => (
+                            {mediaItems.map((img, idx) => {
+                                const mediaUrl = typeof img === 'string' ? img : (img.hls_url || img.processed_url || img.url);
+                                const mediaType = typeof img === 'string' ? (/\.(mp4|mov|webm|ogg)(\?|$)/i.test(img) ? 'video' : 'image') : (img.media_type || img.type || 'image');
+                                const isVideo = mediaType === 'video';
+
+                                return (
                                 <div key={idx} className="flex flex-col gap-2">
-                                    {/* The Image */}
+                                    {/* The Media */}
                                     <div className="relative w-full bg-muted overflow-hidden">
-                                        <img
-                                            src={typeof img === 'string' ? img : img.url}
-                                            className="w-full h-auto block"
-                                            alt={`Post image ${idx + 1}`}
-                                        />
+                                        {isVideo ? (
+                                            <VideoPlayer
+                                                src={typeof img === 'string' ? mediaUrl : img.url}
+                                                processedUrl={typeof img === 'string' ? null : img.processed_url}
+                                                hlsUrl={typeof img === 'string' ? null : img.hls_url}
+                                                poster={typeof img === 'string' ? undefined : img.thumbnail_url || undefined}
+                                                className="w-full h-auto block bg-black"
+                                                controls
+                                                playsInline
+                                                preload="metadata"
+                                            />
+                                        ) : (
+                                            <img
+                                                src={mediaUrl}
+                                                className="w-full h-auto block"
+                                                alt={`Post media ${idx + 1}`}
+                                            />
+                                        )}
 
                                         {/* Hotspots Overlay */}
-                                        <div className="absolute inset-0 pointer-events-none z-10">
+                                        {!isVideo && <div className="absolute inset-0 pointer-events-none z-10">
                                             <div className="relative w-full h-full pointer-events-auto">
                                                 {(postHotspots?.[idx] || []).map((tag, tIdx) => (
                                                     <ShoppablePin
@@ -882,10 +1054,11 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                                     />
                                                 ))}
                                             </div>
-                                        </div>
+                                        </div>}
                                     </div>
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </>
                 )}

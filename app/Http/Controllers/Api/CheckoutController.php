@@ -11,11 +11,13 @@ use App\Models\Order;
 use App\Models\Post;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\ServiceRequest;
 use App\Models\ShippingZone;
 use App\Models\SubscriptionPlan;
 use App\Payments\GatewayRegistry;
 use App\Services\EntitlementService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -79,6 +81,23 @@ class CheckoutController extends Controller
         $product     = $purchasable instanceof Product ? $purchasable : null;
         $selectedVariant = null;
         $selectedBundleItems = [];
+        $serviceRequest = null;
+
+        if ($product?->isService() && !empty($validated['service_request_id'])) {
+            $serviceRequest = ServiceRequest::query()
+                ->where('product_id', $product->id)
+                ->findOrFail((int) $validated['service_request_id']);
+
+            if (!$serviceRequest->payment_token
+                || !hash_equals((string) $serviceRequest->payment_token, (string) ($validated['service_request_token'] ?? ''))
+                || !in_array($serviceRequest->status, ['quoted', 'confirmed'], true)
+                || (float) $serviceRequest->quoted_amount <= 0
+                || in_array($serviceRequest->payment_status, ['paid', 'held', 'released', 'disputed', 'payment_initiated'], true)
+                || ($serviceRequest->payment_link_expires_at && $serviceRequest->payment_link_expires_at->isPast())
+            ) {
+                return response()->json(['message' => 'Service payment link is invalid or expired.'], 422);
+            }
+        }
 
         if ($product && $product->has_variants) {
             $variantId = (int) ($validated['variant_id'] ?? 0);
@@ -98,14 +117,29 @@ class CheckoutController extends Controller
         }
 
         // ── Calculate total payable ───────────────────────────────────────────
-        $totalPaid = $this->resolveBasePrice($purchasable, $selectedVariant);
-        if ($purchasable instanceof Bundle && $purchasable->is_individual_sale) {
+        $servicePricingInputs = $validated['service_pricing_inputs'] ?? [];
+        if ($product?->type === 'service' && !$serviceRequest) {
+            $pricingError = $this->validateServicePricingInputs($product, $servicePricingInputs);
+            if ($pricingError) {
+                return response()->json(['message' => $pricingError], 422);
+            }
+        }
+        $totalPaid = $this->resolveBasePrice($purchasable, $selectedVariant, $servicePricingInputs);
+        if ($serviceRequest) {
+            $totalPaid = (float) $serviceRequest->quoted_amount;
+        }
+        if ($purchasable instanceof Bundle) {
             try {
-                $selectedBundleItems = $this->resolveBundleSelection($purchasable, $validated['selected_bundle_items'] ?? []);
+                $requestedBundleItems = $validated['selected_bundle_items'] ?? [];
+                $selectedBundleItems = $this->resolveBundleSelection(
+                    $purchasable,
+                    !empty($requestedBundleItems) ? $requestedBundleItems : $this->fixedBundleSelectionRows($purchasable),
+                    !empty($requestedBundleItems) ? 'menu_selection' : 'full_bundle',
+                );
             } catch (RuntimeException $e) {
                 return response()->json(['message' => $e->getMessage()], 400);
             }
-            if (!empty($selectedBundleItems)) {
+            if (!empty($requestedBundleItems)) {
                 $totalPaid = (float) collect($selectedBundleItems)->sum('line_total');
             }
         }
@@ -170,7 +204,7 @@ class CheckoutController extends Controller
         try {
             $order = DB::transaction(function () use (
                 $buyer, $product, $selectedVariant, $purchasable, $totalPaid, $validated,
-                $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $zone, $deliveryType, $isInquiry
+                $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $zone, $deliveryType, $isInquiry, $serviceRequest, $servicePricingInputs
             ) {
                 if ($product?->isPhysical()) {
                     if ($selectedVariant) {
@@ -183,11 +217,15 @@ class CheckoutController extends Controller
                             ->whereKey($product->id)
                             ->where('inventory_count', '>', 0)
                             ->decrement('inventory_count');
+
+                        $this->decrementLocationInventory($product->id, $selectedVariant->id, 1, $product->merchant_id);
                     } else {
                         $updated = Product::query()
                             ->whereKey($product->id)
                             ->where('inventory_count', '>', 0)
                             ->decrement('inventory_count');
+
+                        $this->decrementLocationInventory($product->id, null, 1, $product->merchant_id);
                     }
 
                     if ($updated === 0) {
@@ -226,6 +264,8 @@ class CheckoutController extends Controller
                         if ($updated === 0) {
                             throw new RuntimeException("{$selectedProduct->title} imeisha au haitoshi kwa quantity uliyochagua.");
                         }
+
+                        $this->decrementLocationInventory($selectedProduct->id, $selectedVariantId > 0 ? $selectedVariantId : null, $quantity, $selectedProduct->merchant_id);
                     }
                 }
 
@@ -248,7 +288,7 @@ class CheckoutController extends Controller
                     'quantity'         => 1,
                     'unit_price'       => $purchasable instanceof Bundle && !empty($selectedBundleItems)
                         ? $totalPaid
-                        : $this->resolveBasePrice($purchasable, $selectedVariant),
+                        : ($serviceRequest ? (float) $serviceRequest->quoted_amount : $this->resolveBasePrice($purchasable, $selectedVariant, $servicePricingInputs)),
                     'total_paid'       => $totalPaid,
                     'payment_status'   => 'pending',
                     'is_inquiry'       => $isInquiry,
@@ -263,6 +303,15 @@ class CheckoutController extends Controller
                     'country_code'     => $countryCode,
                     'expires_at'       => now()->addMinutes(30),
                 ]);
+
+                if ($serviceRequest) {
+                    $serviceRequest->update([
+                        'buyer_id' => $buyer->id,
+                        'payment_status' => 'payment_initiated',
+                        'payment_order_id' => $newOrder->id,
+                        'status' => $serviceRequest->status === 'quoted' ? 'confirmed' : $serviceRequest->status,
+                    ]);
+                }
 
                 if ($product?->isPhysical() && isset($zone)) {
                     $isPickup = $zone->delivery_type === 'self_pickup';
@@ -283,8 +332,17 @@ class CheckoutController extends Controller
                 $this->initializeOrderChat($newOrder);
 
                 if (!$isInquiry) {
-                    $newOrder->update(['payment_status' => 'resolved_merchant_paid']);
-                    app(\App\Services\EntitlementService::class)->grantForOrder($newOrder->fresh(['product']));
+                    $newOrder->update(['payment_status' => ($serviceRequest || $newOrder->requiresPhysicalFulfillment()) ? 'escrow_locked' : 'resolved_merchant_paid']);
+                    if (! $newOrder->requiresPhysicalFulfillment()) {
+                        app(\App\Services\EntitlementService::class)->grantForOrder($newOrder->fresh(['product']));
+                    }
+                    if ($serviceRequest) {
+                        $serviceRequest->update([
+                            'payment_status' => 'held',
+                            'delivery_status' => 'scheduled',
+                            'status' => 'confirmed',
+                        ]);
+                    }
 
                     if ($validated['purchasable_type'] === 'subscription_plan') {
                         $plan = $newOrder->resolved_purchasable;
@@ -318,7 +376,9 @@ class CheckoutController extends Controller
         $responsePayload = [
             'message' => $order->is_inquiry 
                 ? 'Agizo lako limepokelewa! Sasa mnaweza kuwasiliana.'
-                : 'Malipo yamefanikiwa! Sasa unaweza kuona maudhui yako.',
+                : ($serviceRequest
+                    ? 'Malipo yamehifadhiwa SafePay. Thibitisha huduma ikitolewa.'
+                    : 'Malipo yamefanikiwa! Sasa unaweza kuona maudhui yako.'),
             'order'   => OrderResource::make($order->loadMissing('product')),
         ];
 
@@ -343,7 +403,7 @@ class CheckoutController extends Controller
             abort(403);
         }
 
-        if ($order->purchasable_type !== 'product' || !$order->product?->isPhysical()) {
+        if (! $order->requiresPhysicalFulfillment()) {
             return response()->json(['message' => 'Agizo hili halihitaji hatua ya kukamilisha delivery.'], 400);
         }
 
@@ -353,14 +413,20 @@ class CheckoutController extends Controller
 
         DB::transaction(function () use ($order) {
             $order->update(['payment_status' => 'resolved_merchant_paid']);
-            $wallet = $order->product->merchant->user->wallet()->firstOrCreate(
-                ['user_id' => $order->product->merchant->user_id],
+            $netAmount = \App\Models\Transaction::query()
+                ->where('order_id', $order->id)
+                ->where('type', 'order_revenue')
+                ->latest()
+                ->value('net_amount')
+                ?? app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['net_amount'];
+            $wallet = $order->merchant->user->wallet()->firstOrCreate(
+                ['user_id' => $order->merchant->user_id],
                 ['balance' => 0, 'frozen_balance' => 0]
             );
-            $wallet->increment('balance', $order->total_paid * 0.95);
+            $wallet->increment('balance', $netAmount);
             $wallet->decrement('frozen_balance', $order->total_paid);
 
-            if ($order->product->isPhysical()) {
+            if ($order->delivery) {
                 $order->delivery()->update(['delivery_status' => 'delivered']);
             }
         });
@@ -386,13 +452,42 @@ class CheckoutController extends Controller
         };
     }
 
-    private function resolveBasePrice(Product|Bundle|ContentItem|SubscriptionPlan|Post $purchasable, ?ProductVariant $variant = null): float
+    private function resolveBasePrice(Product|Bundle|ContentItem|SubscriptionPlan|Post $purchasable, ?ProductVariant $variant = null, array $servicePricingInputs = []): float
     {
         if ($purchasable instanceof Product) {
             if ($variant) {
                 return (float) ($variant->price ?? $purchasable->discounted_price ?? $purchasable->price);
             }
-            return (float) ($purchasable->discounted_price ?? $purchasable->price);
+            $basePrice = (float) ($purchasable->discounted_price ?? $purchasable->price);
+            if ($purchasable->type !== 'service') {
+                return $basePrice;
+            }
+
+            $selectedOption = $this->selectedServiceOption($purchasable, $servicePricingInputs);
+            if ($selectedOption) {
+                $optionPrice = $selectedOption['price'] ?? null;
+                if ($optionPrice !== null && $optionPrice !== '') {
+                    $basePrice = (float) $optionPrice;
+                }
+            }
+            $baseUnit = $selectedOption['price_display'] ?? $purchasable->service_price_display;
+
+            $total = $basePrice * $this->servicePricingMultiplier($baseUnit, $servicePricingInputs);
+            foreach (($purchasable->service_charges ?? []) as $charge) {
+                $charge = (array) $charge;
+                if (!($charge['included_in_checkout'] ?? false)) {
+                    continue;
+                }
+
+                $amount = (float) ($charge['amount'] ?? 0);
+                if ($amount <= 0) {
+                    continue;
+                }
+
+                $total += $amount * $this->servicePricingMultiplier($charge['unit'] ?? 'fixed', $servicePricingInputs);
+            }
+
+            return (float) max(0, $total);
         }
         if ($purchasable instanceof Post) {
             return (float) ($purchasable->restricted_price ?? 0);
@@ -400,7 +495,112 @@ class CheckoutController extends Controller
         return (float) ($purchasable->price ?? 0);
     }
 
-    private function resolveBundleSelection(Bundle $bundle, array $selectedItems): array
+    private function servicePricingMultiplier(?string $unit, array $inputs): float
+    {
+        return match ($unit) {
+            'hourly' => max(1, (float) ($inputs['hours'] ?? 1)),
+            'daily' => max(1, $this->dateSpanUnits($inputs, 'days')),
+            'nightly' => max(1, $this->dateSpanUnits($inputs, 'nights')),
+            'weekly' => max(1, (int) ceil($this->dateSpanUnits($inputs, 'days') / 7)),
+            'monthly' => max(1, (int) ceil($this->dateSpanUnits($inputs, 'days') / 30)),
+            'yearly' => max(1, (int) ceil($this->dateSpanUnits($inputs, 'days') / 365)),
+            'per_person' => max(1, (int) ($inputs['people'] ?? 1)),
+            'per_visit', 'per_session', 'per_project' => max(1, (int) ($inputs['quantity'] ?? 1)),
+            default => 1,
+        };
+    }
+
+    private function dateSpanUnits(array $inputs, string $mode): int
+    {
+        if (empty($inputs['start_date']) || empty($inputs['end_date'])) {
+            return 1;
+        }
+
+        try {
+            $start = \Carbon\Carbon::parse($inputs['start_date'])->startOfDay();
+            $end = \Carbon\Carbon::parse($inputs['end_date'])->startOfDay();
+            $days = max(1, $start->diffInDays($end, false));
+
+            return $mode === 'nights' ? $days : $days + 1;
+        } catch (\Throwable) {
+            return 1;
+        }
+    }
+
+    private function validateServicePricingInputs(Product $product, array $inputs): ?string
+    {
+        if (! empty($inputs['service_option_id']) && ! $this->selectedServiceOption($product, $inputs)) {
+            return 'Chaguo la huduma halipatikani. Tafadhali chagua tena.';
+        }
+
+        $units = collect([$product->service_price_display])
+            ->when($this->selectedServiceOption($product, $inputs), function ($units, $option) {
+                return $units->push($option['price_display'] ?? null);
+            })
+            ->merge(collect($product->service_charges ?? [])
+                ->filter(fn ($charge) => (bool) (((array) $charge)['included_in_checkout'] ?? false))
+                ->map(fn ($charge) => ((array) $charge)['unit'] ?? 'fixed'))
+            ->filter()
+            ->values();
+
+        if ($units->contains('per_person') && (int) ($inputs['people'] ?? 0) < 1) {
+            return 'Tafadhali weka idadi ya watu/wageni.';
+        }
+
+        if ($units->contains('hourly') && (float) ($inputs['hours'] ?? 0) <= 0) {
+            return 'Tafadhali weka idadi ya saa.';
+        }
+
+        if ($units->intersect(['per_visit', 'per_session', 'per_project'])->isNotEmpty() && (int) ($inputs['quantity'] ?? 0) < 1) {
+            return 'Tafadhali weka quantity ya huduma.';
+        }
+
+        if ($units->intersect(['daily', 'nightly', 'weekly', 'monthly', 'yearly'])->isNotEmpty()) {
+            if (empty($inputs['start_date']) || empty($inputs['end_date'])) {
+                return 'Tafadhali chagua tarehe ya kuanza na kumaliza.';
+            }
+
+            try {
+                if (!\Carbon\Carbon::parse($inputs['end_date'])->startOfDay()->gt(\Carbon\Carbon::parse($inputs['start_date'])->startOfDay())) {
+                    return 'Tarehe ya kumaliza lazima iwe baada ya tarehe ya kuanza.';
+                }
+            } catch (\Throwable) {
+                return 'Tafadhali chagua tarehe sahihi.';
+            }
+        }
+
+        return null;
+    }
+
+    private function selectedServiceOption(Product $product, array $inputs): ?array
+    {
+        $optionId = (string) ($inputs['service_option_id'] ?? '');
+        if ($optionId === '') {
+            return null;
+        }
+
+        $option = collect($product->service_options ?? [])
+            ->first(fn ($item) => (string) (((array) $item)['id'] ?? '') === $optionId);
+
+        return $option ? (array) $option : null;
+    }
+
+    private function fixedBundleSelectionRows(Bundle $bundle): array
+    {
+        return $bundle->items()
+            ->whereIn('item_type', ['product', 'content_item'])
+            ->get(['item_type', 'item_id', 'selected_variant_id'])
+            ->map(fn ($item) => [
+                'item_type' => $item->item_type,
+                'item_id' => (int) $item->item_id,
+                'selected_variant_id' => $item->selected_variant_id !== null ? (int) $item->selected_variant_id : null,
+                'quantity' => 1,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function resolveBundleSelection(Bundle $bundle, array $selectedItems, string $selectionMode = 'menu_selection'): array
     {
         if (empty($selectedItems)) {
             return [];
@@ -450,19 +650,19 @@ class CheckoutController extends Controller
         $products = Product::query()
             ->whereIn('id', $productIds)
             ->with(['images:id,product_id,image_url,order'])
-            ->get(['id', 'title', 'price', 'discounted_price', 'type'])
+            ->get(['id', 'title', 'price', 'discounted_price', 'type', 'has_variants', 'inventory_count'])
             ->keyBy('id');
         $variants = ProductVariant::query()
             ->whereIn('id', $variantIds)
             ->where('is_active', true)
-            ->get(['id', 'product_id', 'name', 'sku', 'price', 'attributes', 'swatch_image_url'])
+            ->get(['id', 'product_id', 'name', 'sku', 'price', 'inventory_count', 'attributes', 'swatch_image_url'])
             ->keyBy('id');
         $contentItems = ContentItem::query()
             ->whereIn('id', $contentIds)
             ->get(['id', 'title', 'price'])
             ->keyBy('id');
 
-        return collect($normalized)->map(function ($row) use ($products, $variants, $contentItems) {
+        return collect($normalized)->map(function ($row) use ($products, $variants, $contentItems, $selectionMode) {
             if ($row['item_type'] === 'product') {
                 $product = $products->get($row['item_id']);
                 if (!$product) {
@@ -475,10 +675,23 @@ class CheckoutController extends Controller
                         throw new RuntimeException('Selected variant is unavailable for one of your chosen bundle items.');
                     }
                 }
+                if ($product->has_variants && ! $variant) {
+                    throw new RuntimeException("{$product->title} requires a specific variant before it can be sold in a bundle.");
+                }
+                if ($product->type === 'physical') {
+                    $quantity = (int) $row['quantity'];
+                    if ($variant && (int) $variant->inventory_count < $quantity) {
+                        throw new RuntimeException("{$product->title} variant imeisha au haitoshi kwa bundle hii.");
+                    }
+                    if ((int) $product->inventory_count < $quantity) {
+                        throw new RuntimeException("{$product->title} imeisha au haitoshi kwa bundle hii.");
+                    }
+                }
 
                 $unitPrice = (float) ($variant?->price ?? $product->discounted_price ?? $product->price ?? 0);
                 return [
                     'bundle_item_id' => (int) ($row['bundle_item_id'] ?? 0),
+                    'selection_mode' => $selectionMode,
                     'item_type' => 'product',
                     'item_id' => (int) $product->id,
                     'title' => $product->title,
@@ -506,6 +719,7 @@ class CheckoutController extends Controller
             $unitPrice = (float) ($content->price ?? 0);
             return [
                 'bundle_item_id' => (int) ($row['bundle_item_id'] ?? 0),
+                'selection_mode' => $selectionMode,
                 'item_type' => 'content_item',
                 'item_id' => (int) $content->id,
                 'title' => $content->title,
@@ -524,30 +738,67 @@ class CheckoutController extends Controller
      * POST /api/v1/checkout/inquire
      * 
      * Creates a draft order (inquiry) for physical products when no shipping zones match.
+     * Also handles self-pickup orders via delivery_type=self_pickup.
      */
     public function inquire(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'purchasable_type' => 'required|in:product',
+            'purchasable_type' => 'required|in:product,bundle',
             'purchasable_id' => 'required|integer',
             'variant_id' => 'nullable|integer',
+            'selected_bundle_items' => 'nullable|array',
+            'selected_bundle_items.*.item_type' => 'required_with:selected_bundle_items|string|in:product,content_item',
+            'selected_bundle_items.*.item_id' => 'required_with:selected_bundle_items|integer|min:1',
+            'selected_bundle_items.*.selected_variant_id' => 'nullable|integer|exists:product_variants,id',
+            'selected_bundle_items.*.quantity' => 'nullable|integer|min:1|max:99',
             'account_phone' => 'required|string',
             'buyer_name' => 'nullable|string|max:255',
-            'physical_address' => 'required|string|min:3',
+            'delivery_type' => 'nullable|in:shipping,self_pickup',
+            'delivery_zone_id' => 'nullable|integer|exists:shipping_zones,id',
+            'physical_address' => 'nullable|string|min:3',
             'buyer_lat' => 'nullable|numeric',
             'buyer_lng' => 'nullable|numeric',
             'shipping_hotspot_id' => 'nullable|integer|exists:shipping_hotspots,id',
             'idempotency_key' => 'required|string|unique:orders,idempotency_key',
         ]);
 
-        $product = Product::findOrFail($validated['purchasable_id']);
-        if (!$product->isPhysical()) {
-            return response()->json(['message' => 'Inquiries are only for physical products.'], 400);
+        $deliveryType = $validated['delivery_type'] ?? 'shipping';
+        $isSelfPickup = $deliveryType === 'self_pickup';
+
+        // Physical address is only required for shipping inquiries
+        if (!$isSelfPickup && empty($validated['physical_address'])) {
+            return response()->json(['message' => 'Anwani ya uwasilishaji inahitajika.'], 422);
         }
 
+        $product = null;
+        $bundle = null;
+        $selectedBundleItems = [];
         $selectedVariant = null;
-        if (!empty($validated['variant_id'])) {
-            $selectedVariant = ProductVariant::where('product_id', $product->id)->findOrFail($validated['variant_id']);
+        if ($validated['purchasable_type'] === 'product') {
+            $product = Product::findOrFail($validated['purchasable_id']);
+            if (!$product->isPhysical()) {
+                return response()->json(['message' => 'Inquiries are only for physical products or bundles with physical items.'], 400);
+            }
+
+            if (!empty($validated['variant_id'])) {
+                $selectedVariant = ProductVariant::where('product_id', $product->id)->findOrFail($validated['variant_id']);
+            }
+        } else {
+            $bundle = Bundle::findOrFail($validated['purchasable_id']);
+            try {
+                $requestedBundleItems = $validated['selected_bundle_items'] ?? [];
+                $selectedBundleItems = $this->resolveBundleSelection(
+                    $bundle,
+                    !empty($requestedBundleItems) ? $requestedBundleItems : $this->fixedBundleSelectionRows($bundle),
+                    !empty($requestedBundleItems) ? 'menu_selection' : 'full_bundle',
+                );
+            } catch (RuntimeException $e) {
+                return response()->json(['message' => $e->getMessage()], 400);
+            }
+
+            if (!collect($selectedBundleItems)->contains(fn ($item) => ($item['item_type'] ?? null) === 'product' && ($item['product_type'] ?? null) === 'physical')) {
+                return response()->json(['message' => 'Bundle hii haina bidhaa za kusafirishwa.'], 400);
+            }
         }
 
         // Resolve buyer
@@ -559,14 +810,18 @@ class CheckoutController extends Controller
             );
         }
 
-        $unitPrice = $this->resolveBasePrice($product, $selectedVariant);
+        $isMenuBundle = $bundle && !empty($validated['selected_bundle_items'] ?? []);
+        $unitPrice = $bundle
+            ? ($isMenuBundle ? (float) collect($selectedBundleItems)->sum('line_total') : (float) ($bundle->price ?? 0))
+            : $this->resolveBasePrice($product, $selectedVariant);
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
 
-        $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $unitPrice, $validated, $transactionRef) {
+        $order = DB::transaction(function () use ($buyer, $product, $bundle, $selectedVariant, $selectedBundleItems, $unitPrice, $validated, $transactionRef, $isSelfPickup, $deliveryType) {
+            $merchantId = $product?->merchant_id ?? $bundle?->merchant_id;
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
-                'merchant_id' => $product->merchant_id,
-                'product_id' => $product->id,
+                'merchant_id' => $merchantId,
+                'product_id' => $product?->id,
                 'variant_id' => $selectedVariant?->id,
                 'variant_snapshot' => $selectedVariant ? [
                     'id' => $selectedVariant->id,
@@ -575,15 +830,17 @@ class CheckoutController extends Controller
                     'attributes' => $selectedVariant->attributes ?? [],
                     'swatch_image_url' => $selectedVariant->swatch_image_url,
                 ] : null,
-                'purchasable_type' => 'product',
-                'purchasable_id' => $product->id,
+                'bundle_item_selection' => !empty($selectedBundleItems) ? array_values($selectedBundleItems) : null,
+                'purchasable_type' => $product ? 'product' : 'bundle',
+                'purchasable_id' => $product?->id ?? $bundle?->id,
                 'order_kind' => 'one_time',
                 'quantity' => 1,
                 'unit_price' => $unitPrice,
-                'total_paid' => $unitPrice, // Initial total without shipping
+                'total_paid' => $unitPrice, // No shipping fee for pickup
+                'shipping_fee' => $isSelfPickup ? 0 : null,
                 'payment_status' => 'pending',
                 'is_inquiry' => true,
-                'inquiry_status' => 'pending',
+                'inquiry_status' => $isSelfPickup ? 'quoted' : 'pending', // Pickup is auto-quoted (no shipping cost needed)
                 'idempotency_key' => $validated['idempotency_key'],
                 'transaction_ref' => $transactionRef,
                 'account_phone' => $validated['account_phone'],
@@ -593,23 +850,26 @@ class CheckoutController extends Controller
 
             \App\Models\Delivery::create([
                 'order_id' => $newOrder->id,
-                'shipping_zone_id' => null,
-                'delivery_type' => 'shipping', // Explicitly set as shipping for inquiries
-                'physical_address' => $validated['physical_address'] ?? null,
+                'shipping_zone_id' => $isSelfPickup ? null : ($validated['delivery_zone_id'] ?? null),
+                'delivery_type' => $deliveryType,
+                'physical_address' => $isSelfPickup ? null : ($validated['physical_address'] ?? null),
                 'shipping_hotspot_id' => $validated['shipping_hotspot_id'] ?? null,
                 'latitude' => $validated['buyer_lat'] ?? null,
                 'longitude' => $validated['buyer_lng'] ?? null,
-                'delivery_status' => 'inquiry',
+                'delivery_status' => $isSelfPickup ? 'awaiting_boda' : 'inquiry',
+                'pickup_pin' => $isSelfPickup ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
             ]);
 
-                $this->initializeOrderChat($newOrder);
+            $this->initializeOrderChat($newOrder);
 
-                return $newOrder;
-            });
+            return $newOrder;
+        });
 
         return response()->json([
-            'message' => 'Inquiry created successfully.',
-            'order' => OrderResource::make($order)->resolve(),
+            'message' => $isSelfPickup
+                ? 'Umechagua kuchukua dukani! Tumia Pickup PIN kulipwa unapokwenda kuchukua.'
+                : 'Inquiry created successfully.',
+            'order' => OrderResource::make($order->loadMissing(['delivery']))->resolve(),
         ], 201);
     }
 
@@ -636,7 +896,43 @@ class CheckoutController extends Controller
         // Verify inventory again before payment
         try {
             DB::transaction(function () use ($product, $selectedVariant, $order, $paymentPhone) {
-                if ($selectedVariant) {
+                if ($order->purchasable_type === 'bundle') {
+                    foreach (($order->bundle_item_selection ?? []) as $lineItem) {
+                        if (($lineItem['item_type'] ?? null) !== 'product' || ($lineItem['product_type'] ?? null) !== 'physical') {
+                            continue;
+                        }
+
+                        $quantity = max(1, (int) ($lineItem['quantity'] ?? 1));
+                        $selectedProduct = Product::query()->find((int) ($lineItem['item_id'] ?? 0));
+                        if (!$selectedProduct?->isPhysical()) {
+                            continue;
+                        }
+
+                        $selectedVariantId = (int) ($lineItem['selected_variant_id'] ?? 0);
+                        if ($selectedVariantId > 0) {
+                            $variantUpdated = ProductVariant::query()
+                                ->whereKey($selectedVariantId)
+                                ->where('product_id', $selectedProduct->id)
+                                ->where('inventory_count', '>=', $quantity)
+                                ->decrement('inventory_count', $quantity);
+
+                            if ($variantUpdated === 0) {
+                                throw new RuntimeException("{$selectedProduct->title} variant imeisha au haitoshi kwa quantity uliyochagua.");
+                            }
+                        }
+
+                        $updated = Product::query()
+                            ->whereKey($selectedProduct->id)
+                            ->where('inventory_count', '>=', $quantity)
+                            ->decrement('inventory_count', $quantity);
+
+                        if ($updated === 0) {
+                            throw new RuntimeException("{$selectedProduct->title} imeisha au haitoshi kwa bundle hii.");
+                        }
+
+                        $this->decrementLocationInventory($selectedProduct->id, $selectedVariantId > 0 ? $selectedVariantId : null, $quantity, $selectedProduct->merchant_id);
+                    }
+                } elseif ($selectedVariant) {
                     $updated = ProductVariant::query()
                         ->whereKey($selectedVariant->id)
                         ->where('inventory_count', '>', 0)
@@ -646,17 +942,21 @@ class CheckoutController extends Controller
                         ->whereKey($product->id)
                         ->where('inventory_count', '>', 0)
                         ->decrement('inventory_count');
+
+                    $this->decrementLocationInventory($product->id, $selectedVariant->id, 1, $product->merchant_id);
                 } else {
                     $updated = Product::query()
                         ->whereKey($product->id)
                         ->where('inventory_count', '>', 0)
                         ->decrement('inventory_count');
+
+                    $this->decrementLocationInventory($product->id, null, 1, $product->merchant_id);
                 }
 
-                if ($updated === 0) {
+                if (isset($updated) && $updated === 0) {
                     throw new RuntimeException('Bidhaa hii imeisha.');
                 }
-                
+
                 $order->update(['payment_phone' => $paymentPhone]);
             });
         } catch (RuntimeException $e) {
@@ -685,23 +985,36 @@ class CheckoutController extends Controller
             ]);
 
             // SIMULATION: Auto-approve payment for testing
-            $isPhysical = $order->product?->isPhysical();
-            $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : 'resolved_merchant_paid';
+            $isPhysical = $order->requiresPhysicalFulfillment();
+            $serviceRequest = \App\Models\ServiceRequest::query()
+                ->where('payment_order_id', $order->id)
+                ->first();
+            $targetStatus = ($isPhysical || $serviceRequest) ? 'escrow_locked' : 'resolved_merchant_paid';
             
             $order->update(['payment_status' => $targetStatus]);
             
             if (!$isPhysical) {
                 app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
             }
+            if ($serviceRequest) {
+                $serviceRequest->update([
+                    'payment_status' => 'held',
+                    'delivery_status' => 'scheduled',
+                    'status' => 'confirmed',
+                ]);
+            }
             
             // Log TRA-ready transaction simulation
+            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
             \App\Models\Transaction::create([
                 'user_id' => $order->buyer_id,
                 'order_id' => $order->id,
                 'type' => 'order_revenue',
+                ...$fee['snapshot'],
                 'gross_amount' => $order->total_paid,
-                'net_amount' => $order->total_paid * 0.95,
-                'tax_amount' => ($order->total_paid * 0.05) * 0.18,
+                'fee_amount' => $fee['fee_amount'],
+                'net_amount' => $fee['net_amount'],
+                'tax_amount' => $fee['tax_amount'],
                 'reference' => 'SIM-' . strtoupper(Str::random(10)),
             ]);
 
@@ -732,9 +1045,16 @@ class CheckoutController extends Controller
         $merchantUser = $order->merchant->user;
         $buyerUser = $order->buyer;
 
-        $body = "Habari, order mpya imewekwa kwa ajili ya: " . ($order->product->title ?? 'Bidhaa yako') . ".\n";
-        
-        if ($order->is_inquiry) {
+        $body = "Habari, order mpya imewekwa kwa ajili ya: " . ($order->product->title ?? $order->resolved_purchasable?->title ?? 'Bidhaa yako') . ".\n";
+
+        // Check delivery type for personalized messages
+        $delivery = $order->delivery ?? $order->load('delivery')->delivery;
+        $deliveryType = $delivery?->delivery_type ?? null;
+
+        if ($deliveryType === 'self_pickup') {
+            $pickupPin = $delivery?->pickup_pin ?? '????';
+            $body .= "Mteja amechagua KUCHUKUA DUKANI. Pickup PIN ya mteja ni: {$pickupPin}. Mteja atalipa basi atakapokuja na PIN hii kukuchukulia bidhaa.";
+        } elseif ($order->is_inquiry) {
             $body .= "Hii ni inquiry ya usafirishaji. Tafadhali thibitisha gharama ya usafiri kwa mteja.";
         } else {
             $body .= "Malipo yamefanikiwa na yamehifadhiwa (Escrow). Tafadhali anza mchakato wa kusafirisha.";
@@ -747,5 +1067,35 @@ class CheckoutController extends Controller
             'type'        => 'system',
             'body'        => $body,
         ]);
+    }
+
+    private function decrementLocationInventory(int $productId, ?int $variantId, int $quantity, int $merchantId): void
+    {
+        // Try to find a location that has enough stock for this specific product/variant
+        $inventory = \App\Models\ProductLocationInventory::where('product_id', $productId)
+            ->where('product_variant_id', $variantId)
+            ->where('quantity', '>=', $quantity)
+            ->orderByDesc('quantity') // Use location with most stock first
+            ->first();
+
+        if ($inventory) {
+            $inventory->decrement('quantity', $quantity);
+        } else {
+            // Fallback: try primary location
+            $primaryLoc = \App\Models\MerchantLocation::where('merchant_id', $merchantId)
+                ->where('is_primary', true)
+                ->first() ?? \App\Models\MerchantLocation::where('merchant_id', $merchantId)->first();
+
+            if ($primaryLoc) {
+                \App\Models\ProductLocationInventory::updateOrCreate(
+                    [
+                        'merchant_location_id' => $primaryLoc->id,
+                        'product_id' => $productId,
+                        'product_variant_id' => $variantId,
+                    ],
+                    ['quantity' => DB::raw("GREATEST(0, quantity - {$quantity})")]
+                );
+            }
+        }
     }
 }

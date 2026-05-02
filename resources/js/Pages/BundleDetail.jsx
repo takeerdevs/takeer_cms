@@ -3,6 +3,8 @@ import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, Boxes, Package, Store, Zap, Clock3, BookOpenText, CheckCircle2, CalendarClock, Plus, Minus } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
+import axios from 'axios';
+import { toast } from 'sonner';
 
 export default function BundleDetail({ bundle }) {
     const merchant = bundle?.merchant || {};
@@ -11,6 +13,11 @@ export default function BundleDetail({ bundle }) {
         (bundle?.items || []).filter((item) => ['product', 'content_item'].includes(item.item_type))
     ), [bundle?.items]);
     const [selectedItemQty, setSelectedItemQty] = useState({});
+    const courseFormatLabel = {
+        self_paced: 'Learn anytime',
+        cohort: 'Class group',
+        live: 'Live classes',
+    }[bundle?.course_format || 'self_paced'] || 'Course';
 
     useEffect(() => {
         setSelectedItemQty({});
@@ -36,24 +43,58 @@ export default function BundleDetail({ bundle }) {
             .filter(Boolean)
     ), [selectableItems, selectedItemQty]);
     const selectedTotal = useMemo(() => selectedLines.reduce((sum, row) => sum + Number(row.line_total || 0), 0), [selectedLines]);
+    const physicalBundleItems = useMemo(() => (
+        (bundle?.items || []).filter((item) => item.item_type === 'product' && item.product_type === 'physical')
+    ), [bundle?.items]);
+    const hasPhysicalItems = physicalBundleItems.length > 0;
+    const firstPhysicalShippingProfileId = physicalBundleItems.find((item) => item.shipping_profile_id)?.shipping_profile_id || null;
 
-    const courseItemsBySection = (bundle?.items || []).reduce((acc, item, index) => {
-        const key = item.section_title || 'General';
-        if (!acc[key]) acc[key] = [];
-        acc[key].push({ ...item, index: index + 1 });
-        return acc;
-    }, {});
+    const courseModules = useMemo(() => {
+        if (Array.isArray(bundle?.course_modules) && bundle.course_modules.length > 0) {
+            return bundle.course_modules;
+        }
+
+        const grouped = [];
+        (bundle?.items || []).forEach((item, index) => {
+            const title = item.section_title || 'General';
+            let module = grouped.find((entry) => entry.title === title);
+            if (!module) {
+                module = { title, lessons: [] };
+                grouped.push(module);
+            }
+            module.lessons.push({
+                id: `${item.item_type}-${item.item_id}-${index}`,
+                title: item.lesson_title || `Lesson ${index + 1}`,
+                summary: item.lesson_summary,
+                duration_minutes: item.lesson_duration_minutes,
+                unlock_after_days: item.unlock_after_days,
+                is_preview: item.is_preview,
+                assets: Array.isArray(item.supporting_materials)
+                    ? item.supporting_materials.map((material) => ({ ...material, role: 'supporting', asset_type: 'file' }))
+                    : [],
+            });
+        });
+
+        return grouped;
+    }, [bundle?.course_modules, bundle?.items]);
     const checkoutItem = isMenuMode
         ? {
             ...bundle,
             checkoutType: 'bundle',
             checkout_price: selectedTotal,
             selected_bundle_items: selectedLines,
+            has_physical_items: selectedLines.some((line) => {
+                const item = selectableItems.find((candidate) => candidate.item_type === line.item_type && Number(candidate.item_id) === Number(line.item_id));
+                return item?.product_type === 'physical';
+            }),
+            shipping_profile_id: firstPhysicalShippingProfileId,
             merchant,
         }
         : {
             ...bundle,
             checkoutType: 'bundle',
+            has_physical_items: hasPhysicalItems,
+            shipping_profile_id: firstPhysicalShippingProfileId,
             merchant,
         };
     const isImageLikeUrl = (value) => {
@@ -86,6 +127,16 @@ export default function BundleDetail({ bundle }) {
             return { ...current, [key]: nextQty };
         });
     };
+    const openSupportingMaterial = async (item, materialIndex) => {
+        try {
+            const res = await axios.post(`/api/bundle-items/${item.id}/materials/${materialIndex}/access-link`);
+            if (res.data?.url) {
+                window.open(res.data.url, '_blank', 'noopener,noreferrer');
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kufungua material.');
+        }
+    };
 
     return (
         <AppLayout hideTabBar>
@@ -111,9 +162,10 @@ export default function BundleDetail({ bundle }) {
                         <h1 className="mt-4 text-3xl md:text-4xl font-black tracking-tight">{bundle.title}</h1>
                         <p className="mt-4 text-base leading-8 text-muted-foreground">{bundle.description || 'A grouped offer containing multiple premium items.'}</p>
                         {bundle.is_course && (
-                            <p className="mt-3 text-xs font-black uppercase tracking-widest text-indigo-700">
-                                Format: {(bundle.course_format || 'self_paced').replace('_', ' ')}
-                            </p>
+                            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-indigo-700">
+                                <BookOpenText className="h-3.5 w-3.5" />
+                                {courseFormatLabel}
+                            </div>
                         )}
 
                         {bundle.is_course && Array.isArray(bundle.course_outcomes) && bundle.course_outcomes.length > 0 && (
@@ -142,7 +194,7 @@ export default function BundleDetail({ bundle }) {
                         )}
 
                         <div className="mt-8 space-y-3">
-                            {(bundle.items || []).length === 0 ? (
+                            {(bundle.is_course ? courseModules.length === 0 : (bundle.items || []).length === 0) ? (
                                 <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-muted-foreground">
                                     Bundle items will appear here.
                                 </div>
@@ -202,27 +254,56 @@ export default function BundleDetail({ bundle }) {
                                     </div>
                                 ))
                             ) : (
-                                Object.entries(courseItemsBySection).map(([sectionTitle, items]) => (
-                                    <div key={sectionTitle} className="rounded-2xl border p-4">
-                                        <p className="text-xs font-black uppercase tracking-widest text-indigo-700">{sectionTitle}</p>
+                                courseModules.map((module, moduleIndex) => (
+                                    <div key={module.id || module.title || moduleIndex} className="rounded-2xl border p-4">
+                                        <p className="text-xs font-black uppercase tracking-widest text-indigo-700">{module.title || `Module ${moduleIndex + 1}`}</p>
                                         <div className="mt-3 space-y-2">
-                                            {items.map((item) => (
-                                                <div key={`${item.item_type}-${item.item_id}-${item.index}`} className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-3">
+                                            {(module.lessons || []).map((lesson, lessonIndex) => {
+                                                const supportingAssets = (lesson.assets || []).filter((asset) => asset.role !== 'primary');
+                                                return (
+                                                <div key={lesson.id || `${moduleIndex}-${lessonIndex}`} className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-3">
                                                     <div className="flex items-center justify-between gap-3">
-                                                        <p className="font-black text-sm text-indigo-900">{item.lesson_title || `Lesson ${item.index}`}</p>
-                                                        {item.is_preview && (
+                                                        <p className="font-black text-sm text-indigo-900">{lesson.title || `Lesson ${lessonIndex + 1}`}</p>
+                                                        {lesson.is_preview && (
                                                             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Preview</span>
                                                         )}
                                                     </div>
-                                                    {item.lesson_summary && (
-                                                        <p className="text-xs text-indigo-800 mt-1.5">{item.lesson_summary}</p>
+                                                    {lesson.summary && (
+                                                        <p className="text-xs text-indigo-800 mt-1.5">{lesson.summary}</p>
                                                     )}
-                                                    <div className="mt-2 flex items-center gap-3 text-[11px] text-indigo-700">
-                                                        <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{item.lesson_duration_minutes ? `${item.lesson_duration_minutes} min` : 'Duration N/A'}</span>
-                                                        <span className="inline-flex items-center gap-1"><BookOpenText className="h-3.5 w-3.5" />Unlock +{Number(item.unlock_after_days || 0)} day(s)</span>
+                                                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-indigo-700">
+                                                        {lesson.duration_minutes ? (
+                                                            <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{lesson.duration_minutes} min</span>
+                                                        ) : null}
+                                                        {Number(lesson.unlock_after_days || 0) > 0 ? (
+                                                            <span className="inline-flex items-center gap-1"><BookOpenText className="h-3.5 w-3.5" />Unlock after {Number(lesson.unlock_after_days)} day(s)</span>
+                                                        ) : null}
                                                     </div>
+                                                    {lesson.live_session?.starts_at && (
+                                                        <div className="mt-2 text-[11px] text-amber-800">
+                                                            Live: {new Date(lesson.live_session.starts_at).toLocaleString()}
+                                                        </div>
+                                                    )}
+                                                    {supportingAssets.length > 0 && (
+                                                        <div className="mt-3 rounded-xl border border-indigo-100 bg-white/80 px-3 py-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Supporting Materials</p>
+                                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                                {supportingAssets.map((material, materialIndex) => (
+                                                                    <button
+                                                                        key={`${material.url || material.name}-${materialIndex}`}
+                                                                        type="button"
+                                                                        onClick={() => material.url && window.open(material.url, '_blank', 'noopener,noreferrer')}
+                                                                        className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-100"
+                                                                    >
+                                                                        {material.name || 'Material'}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 ))
@@ -243,7 +324,7 @@ export default function BundleDetail({ bundle }) {
                             </div>
 
                             <div className="mt-6 rounded-2xl bg-accent/40 px-4 py-4">
-                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{isMenuMode ? 'Selected Total' : 'Bundle Price'}</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{isMenuMode ? 'Selected Total' : (bundle.is_course ? 'Course Price' : 'Bundle Price')}</p>
                                 <p className="mt-2 text-3xl font-black text-brand-600">
                                     TZS {Number(isMenuMode ? selectedTotal : (bundle.price || 0)).toLocaleString()}
                                 </p>
@@ -262,7 +343,7 @@ export default function BundleDetail({ bundle }) {
                                 disabled={isMenuMode && selectedLines.length === 0}
                             >
                                 <Zap className="mr-2 h-4 w-4" />
-                                {isMenuMode ? 'Checkout Selected Items' : 'Buy Bundle'}
+                                {isMenuMode ? 'Checkout Selected Items' : (bundle.is_course ? 'Buy Course' : 'Buy Bundle')}
                             </Button>
                         </div>
                     </div>

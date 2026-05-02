@@ -4,6 +4,7 @@ import ShoppablePin from './ShoppablePin';
 import { motion, AnimatePresence } from 'framer-motion';
 import LikeButton from './LikeButton';
 import ShareModal from './ShareModal';
+import { resolvePlayableVideoUrl } from './VideoPlayer';
 import { toast } from 'sonner';
 
 // ── Text size based on character count ──────────────────────────────────────
@@ -80,7 +81,16 @@ function TextPostLayer({ post }) {
 
 // ── Image carousel ────────────────────────────────────────────────────────────
 function ImageLayer({ post, currentIdx, setIdx }) {
-    const images = post.images?.length ? post.images : [post.media_url];
+    const images = post.images?.length
+        ? post.images
+        : post.media_url ? [{ url: post.media_url, type: post.media_type || 'image' }] : [];
+    const current = images[currentIdx];
+    const currentUrl = typeof current === 'string'
+        ? current
+        : resolvePlayableVideoUrl({ hlsUrl: current?.hls_url, processedUrl: current?.processed_url, url: current?.url });
+    const currentType = typeof current === 'string'
+        ? (/\.(mp4|mov|webm|ogg)(\?|$)/i.test(current) ? 'video' : 'image')
+        : (current?.media_type || current?.type || 'image');
     const startX = useRef(null);
 
     const onTouchStart = (e) => { startX.current = e.touches[0].clientX; };
@@ -96,16 +106,33 @@ function ImageLayer({ post, currentIdx, setIdx }) {
     return (
         <div className="absolute inset-0" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
             <AnimatePresence initial={false} mode="wait">
-                <motion.img
-                    key={currentIdx}
-                    src={images[currentIdx]}
-                    alt="Post"
-                    className="w-full h-full object-cover"
-                    initial={{ opacity: 0.6, x: 40 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -40 }}
-                    transition={{ duration: 0.22 }}
-                />
+                {currentType === 'video' ? (
+                    <motion.video
+                        key={currentIdx}
+                        src={currentUrl}
+                        poster={typeof current === 'string' ? undefined : current?.thumbnail_url || undefined}
+                        className="w-full h-full object-cover bg-black"
+                        muted
+                        playsInline
+                        controls
+                        preload="metadata"
+                        initial={{ opacity: 0.6, x: 40 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -40 }}
+                        transition={{ duration: 0.22 }}
+                    />
+                ) : (
+                    <motion.img
+                        key={currentIdx}
+                        src={currentUrl}
+                        alt="Post"
+                        className="w-full h-full object-cover"
+                        initial={{ opacity: 0.6, x: 40 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -40 }}
+                        transition={{ duration: 0.22 }}
+                    />
+                )}
             </AnimatePresence>
             {/* Dot indicator */}
             {images.length > 1 && (

@@ -46,8 +46,14 @@ class DeliveryController extends Controller
                 ['user_id' => $order->product->merchant->user_id],
                 ['balance' => 0, 'frozen_balance' => 0]
             );
+            $netAmount = \App\Models\Transaction::query()
+                ->where('order_id', $order->id)
+                ->where('type', 'order_revenue')
+                ->latest()
+                ->value('net_amount')
+                ?? app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['net_amount'];
             $merchantWallet->decrement('frozen_balance', $order->total_paid);
-            $merchantWallet->increment('balance', $order->total_paid * 0.95);
+            $merchantWallet->increment('balance', $netAmount);
         });
 
         return response()->json([

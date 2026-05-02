@@ -3,7 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, usePage } from '@inertiajs/react';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { AlertTriangle, MapPin, Send, Image as ImageIcon, Camera, ShieldCheck, Loader2, Workflow, ShoppingBag, Tag, Truck, AlertCircle, Star, X, CheckCircle2, Info, CreditCard, History, ArrowLeft, Video, Search, Plus, Navigation, Zap, Clock, Store, ChevronRight } from 'lucide-react';
+import { AlertTriangle, MapPin, Send, Image as ImageIcon, Camera, ShieldCheck, Loader2, Workflow, ShoppingBag, Tag, Truck, AlertCircle, CircleAlert, Star, X, CheckCircle2, Info, CreditCard, History, ArrowLeft, Video, Search, Plus, Navigation, Zap, Clock, Store, ChevronRight, Save, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     Drawer,
@@ -37,6 +37,61 @@ const MediaDisplay = ({ url, className }) => {
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
         </div>
     );
+};
+
+const calculateHaversine = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+};
+
+const findBestShippingZone = (lat, lng, region, zones) => {
+    if (!zones?.length) return null;
+
+    // 1. Try Local based on distance
+    const localZones = zones.filter(z => (z.delivery_type === 'local_boda' || z.delivery_type === 'local') && z.location);
+    let bestLocalZone = null;
+    let minActualDist = Infinity;
+
+    localZones.forEach(zone => {
+        const dist = calculateHaversine(lat, lng, Number(zone.location.latitude), Number(zone.location.longitude));
+        if (dist <= Number(zone.max_distance_km)) {
+            if (dist < minActualDist) {
+                minActualDist = dist;
+                bestLocalZone = zone;
+            }
+        }
+    });
+
+    if (bestLocalZone) return { zone: bestLocalZone, hotspot: null };
+
+    // 2. Try Intercity Bus based on region
+    if (region) {
+        const busZone = zones.find(z =>
+            z.delivery_type === 'intercity_bus' &&
+            z.destination_region?.toLowerCase().includes(region.toLowerCase())
+        );
+        if (busZone) {
+            let closestHs = null;
+            if (busZone.hotspots?.length > 0) {
+                let minHsDist = Infinity;
+                busZone.hotspots.forEach(hs => {
+                    const d = calculateHaversine(lat, lng, Number(hs.latitude), Number(hs.longitude));
+                    if (d < minHsDist) {
+                        minHsDist = d;
+                        closestHs = hs;
+                    }
+                });
+            }
+            return { zone: busZone, hotspot: closestHs };
+        }
+    }
+    return null;
 };
 
 export default function Chat({
@@ -75,6 +130,34 @@ export default function Chat({
     const [selectedZoneId, setSelectedZoneId] = useState(order?.delivery?.shipping_zone_id || '');
     const [selectedHotspot, setSelectedHotspot] = useState(null);
 
+    const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+    const closestLocation = React.useMemo(() => {
+        const locations = order?.merchant?.locations || [];
+        const customerLat = order?.delivery?.latitude;
+        const customerLng = order?.delivery?.longitude;
+
+        if (!locations.length || !customerLat || !customerLng) return null;
+
+        let closest = null;
+        let minDistance = Infinity;
+
+        locations.forEach(loc => {
+            const dist = calculateHaversine(
+                parseFloat(customerLat),
+                parseFloat(customerLng),
+                parseFloat(loc.latitude),
+                parseFloat(loc.longitude)
+            );
+            if (dist < minDistance) {
+                minDistance = dist;
+                closest = { ...loc, distance: dist };
+            }
+        });
+
+        return closest;
+    }, [order?.merchant?.locations, order?.delivery?.latitude, order?.delivery?.longitude]);
+
     useEffect(() => {
         if (activeAction === 'order_delivery' && order?.delivery) {
             setIsSelfPickupChoice(order.delivery.delivery_type === 'self_pickup');
@@ -85,60 +168,7 @@ export default function Chat({
         }
     }, [activeAction, order?.delivery?.id, order?.delivery?.delivery_type, order?.delivery?.physical_address]);
 
-    const calculateHaversine = (lat1, lon1, lat2, lon2) => {
-        const R = 6371; // km
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-    };
 
-    const findBestShippingZone = (lat, lng, region, zones) => {
-        if (!zones?.length) return null;
-
-        // 1. Try Local based on distance
-        const localZones = zones.filter(z => z.delivery_type === 'local_boda' && z.location);
-        let bestLocalZone = null;
-        let minActualDist = Infinity;
-
-        localZones.forEach(zone => {
-            const dist = calculateHaversine(lat, lng, Number(zone.location.latitude), Number(zone.location.longitude));
-            if (dist <= Number(zone.max_distance_km)) {
-                if (dist < minActualDist) {
-                    minActualDist = dist;
-                    bestLocalZone = zone;
-                }
-            }
-        });
-
-        if (bestLocalZone) return { zone: bestLocalZone, hotspot: null };
-
-        // 2. Try Intercity Bus based on region
-        if (region) {
-            const busZone = zones.find(z =>
-                z.delivery_type === 'intercity_bus' &&
-                z.destination_region?.toLowerCase().includes(region.toLowerCase())
-            );
-            if (busZone) {
-                let closestHs = null;
-                if (busZone.hotspots?.length > 0) {
-                    let minHsDist = Infinity;
-                    busZone.hotspots.forEach(hs => {
-                        const d = calculateHaversine(lat, lng, Number(hs.latitude), Number(hs.longitude));
-                        if (d < minHsDist) {
-                            minHsDist = d;
-                            closestHs = hs;
-                        }
-                    });
-                }
-                return { zone: busZone, hotspot: closestHs };
-            }
-        }
-        return null;
-    };
 
     const handleAddressSaved = (data) => {
         setCustomerLat(data.lat);
@@ -171,36 +201,33 @@ export default function Chat({
     const [paymentPhone, setPaymentPhone] = useState(initialOrder?.account_phone || auth.user?.phone_number || '');
     const [isPaying, setIsPaying] = useState(false);
 
-    const getDistance = (lat1, lon1, lat2, lon2) => {
-        if (!lat1 || !lon1 || !lat2 || !lon2) return null;
-        const R = 6371;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return (R * c).toFixed(1);
-    };
+    // Merchant Shipping & Dispatch State
+    const [quoteSubmitting, setQuoteSubmitting] = useState(false);
+    const [shippingFeeInput, setShippingFeeInput] = useState('');
+    const [dispatchMode, setDispatchMode] = useState('local');
+    const [dispatchVideo, setDispatchVideo] = useState(null);
+    const [transportReceipt, setTransportReceipt] = useState(null);
+    const [bodaPhone, setBodaPhone] = useState('');
+    const [busCompany, setBusCompany] = useState('');
+    const [waybillTrackingNumber, setWaybillTrackingNumber] = useState('');
+    const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
+    const [pinVerifying, setPinVerifying] = useState(false);
+    const [releasePinInput, setReleasePinInput] = useState('');
+    const [pickupPinInput, setPickupPinInput] = useState('');
 
-    const findClosestLocation = () => {
-        if (!order?.delivery?.latitude || !order?.merchant?.locations?.length) return null;
-        const custLat = parseFloat(order.delivery.latitude);
-        const custLon = parseFloat(order.delivery.longitude);
+    // Buyer Escrow States
+    const [isConfirmingReceipt, setIsConfirmingReceipt] = useState(false);
+    const [isDisputeDrawerOpen, setIsDisputeDrawerOpen] = useState(false);
+    const [disputeReason, setDisputeReason] = useState('');
+    const [disputeVideo, setDisputeVideo] = useState(null);
+    const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
 
-        let closest = null;
-        let minDistance = Infinity;
+    // Review States
+    const [reviewStars, setReviewStars] = useState(5);
+    const [reviewComment, setReviewComment] = useState('');
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
-        order.merchant.locations.forEach(loc => {
-            const dist = parseFloat(getDistance(custLat, custLon, parseFloat(loc.latitude), parseFloat(loc.longitude)));
-            if (dist < minDistance) {
-                minDistance = dist;
-                closest = { ...loc, distance: dist };
-            }
-        });
-        return closest;
-    };
+
 
     // Auto-scroll to latest message
     useEffect(() => {
@@ -224,6 +251,315 @@ export default function Chat({
 
         return () => window.Echo.leave(`chat.order.${orderId}`);
     }, [orderId, auth.user.id]);
+
+    useEffect(() => {
+        if (order?.delivery?.delivery_type) {
+            if (order.delivery.delivery_type === 'local_boda') {
+                setDispatchMode('local');
+            } else if (order.delivery.delivery_type === 'intercity_bus') {
+                setDispatchMode('intercity');
+            }
+        }
+    }, [order?.delivery?.delivery_type]);
+
+    const submitQuote = async (e) => {
+        e.preventDefault();
+        if (quoteSubmitting || !shippingFeeInput) return;
+
+        setQuoteSubmitting(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            const res = await fetch(`/api/merchant/orders/${orderId}/quote`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                },
+                body: JSON.stringify({ shipping_fee: shippingFeeInput })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma gharama.');
+
+            toast.success('Gharama ya usafiri imetumwa kwa mteja.');
+            setShippingFeeInput('');
+            if (data.order) setOrder(data.order);
+            
+            // Notify optimistic UI with a system-like message
+            const actionMsg = {
+                id: Date.now(),
+                sender_id: auth.user.id,
+                type: 'text',
+                body: `Gharama ya usafiri imewekwa: TZS ${Number(shippingFeeInput).toLocaleString()}`,
+                payload: { acting_as: actingAs },
+                sender: { role: auth.user.role, name: auth.user.name },
+                created_at: new Date().toISOString()
+            };
+            setMessages(prev => [...prev, actionMsg]);
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setQuoteSubmitting(false);
+        }
+    };
+
+    const submitDispatch = async (e) => {
+        e.preventDefault();
+        const canDispatchNow = !!order && order?.product?.type === 'physical' && ['awaiting_merchant_confirmation', 'escrow_locked'].includes(order.payment_status);
+        if (!canDispatchNow || dispatchSubmitting) return;
+
+        if (!dispatchVideo) {
+            toast.error('Tafadhali chagua video ya packing kwanza.');
+            return;
+        }
+        if (dispatchMode === 'intercity' && !transportReceipt) {
+            toast.error('Tafadhali pakia risiti/waybill ya usafirishaji.');
+            return;
+        }
+
+        setIsUploading(true);
+        setDispatchSubmitting(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            
+            // 1. Upload video
+            const videoData = new FormData();
+            videoData.append('file', dispatchVideo);
+            videoData.append('type', 'public');
+            videoData.append('folder', `chat/${orderId}/dispatch`);
+            
+            let videoRes = await fetch('/api/media/upload', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token || '' },
+                body: videoData
+            });
+            if (!videoRes.ok) throw new Error('Imeshindwa kupakia video.');
+            let videoDataJson = await videoRes.json();
+            let videoUrl = videoDataJson.url;
+
+            // 2. Upload receipt if intercity
+            let receiptUrl = null;
+            if (dispatchMode === 'intercity' && transportReceipt) {
+                const receiptData = new FormData();
+                receiptData.append('file', transportReceipt);
+                receiptData.append('type', 'public');
+                receiptData.append('folder', `chat/${orderId}/dispatch`);
+                
+                let receiptRes = await fetch('/api/media/upload', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token || '' },
+                    body: receiptData
+                });
+                if (!receiptRes.ok) throw new Error('Imeshindwa kupakia risiti.');
+                let receiptDataJson = await receiptRes.json();
+                receiptUrl = receiptDataJson.url;
+            }
+
+            // 3. Submit to Dispatch API
+            const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
+            const payload = {
+                merchant_dispatch_video_url: videoUrl,
+            };
+            if (dispatchMode === 'intercity') {
+                payload.waybill_photo_url = receiptUrl;
+                if (busCompany.trim()) payload.bus_company = busCompany.trim();
+                if (waybillTrackingNumber.trim()) payload.waybill_tracking_number = waybillTrackingNumber.trim();
+            } else if (bodaPhone.trim()) {
+                payload.boda_phone = bodaPhone.trim();
+            }
+
+            const res = await fetch(`/api/merchant/${merchantUsername}/dispatch/${orderId}/${dispatchMode}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kuhifadhi dispatch evidence.');
+
+            toast.success('Dispatch evidence imehifadhiwa.');
+            setDispatchVideo(null);
+            setTransportReceipt(null);
+            if (data.order) setOrder(data.order);
+            
+            // Send formatted action to chat
+            submitAction('shipping_proof', {
+                title: 'Dispatch Evidence',
+                dispatch_mode: dispatchMode,
+                bus_company: dispatchMode === 'intercity' ? busCompany.trim() : null,
+                waybill_tracking_number: dispatchMode === 'intercity' ? waybillTrackingNumber.trim() : null,
+                boda_phone: dispatchMode === 'local' ? bodaPhone.trim() : null,
+                mediaUrl: videoUrl,
+                receiptUrl: receiptUrl
+            });
+
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setDispatchSubmitting(false);
+            setIsUploading(false);
+        }
+    };
+
+    const verifyPickupPin = async (e) => {
+        e.preventDefault();
+        if (!pickupPinInput || pinVerifying) return;
+        setPinVerifying(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
+            const res = await fetch(`/api/merchant/${merchantUsername}/orders/${orderId}/verify-pickup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                },
+                body: JSON.stringify({ pickup_pin: pickupPinInput })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kuhakiki PIN.');
+
+            toast.success('Pickup imethibitishwa! Malipo yameidhinishwa.');
+            setPickupPinInput('');
+            if (data.order) setOrder(data.order);
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setPinVerifying(false);
+        }
+    };
+
+    const verifyDeliveryPin = async (e) => {
+        e.preventDefault();
+        if (!releasePinInput || pinVerifying) return;
+        setPinVerifying(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
+            const res = await fetch(`/api/merchant/${merchantUsername}/orders/${orderId}/verify-delivery`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                },
+                body: JSON.stringify({ buyer_release_pin: releasePinInput })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kuhakiki PIN.');
+
+            toast.success('Mzigo umefika! Malipo yameidhinishwa.');
+            setReleasePinInput('');
+            if (data.order) setOrder(data.order);
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setPinVerifying(false);
+        }
+    };
+
+    const confirmReceipt = async () => {
+        setIsConfirmingReceipt(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            const res = await fetch(`/api/buyer/orders/${orderId}/confirm-receipt`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                }
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kudhibitisha.');
+
+            toast.success(data.message);
+            setOrder(prev => ({ ...prev, payment_status: 'resolved_merchant_paid' }));
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setIsConfirmingReceipt(false);
+        }
+    };
+
+    const submitDispute = async () => {
+        setIsSubmittingDispute(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            const formData = new FormData();
+            formData.append('unboxing_video', disputeVideo);
+            formData.append('reason', disputeReason);
+
+            const res = await fetch(`/api/buyer/orders/${orderId}/dispute`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                },
+                body: formData
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma ripoti.');
+
+            toast.success(data.message);
+            setIsDisputeDrawerOpen(false);
+            setOrder(prev => ({ ...prev, payment_status: 'disputed' }));
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setIsSubmittingDispute(false);
+        }
+    };
+
+    const submitReview = async () => {
+        if (!reviewComment.trim()) {
+            toast.error('Tafadhali weka maoni yako.');
+            return;
+        }
+        setIsSubmittingReview(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            const res = await fetch(`/api/chat/order/${orderId}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                },
+                body: JSON.stringify({
+                    body: `Alitoa Review: ${reviewStars} Stars`,
+                    type: 'action',
+                    acting_as: actingAs,
+                    payload: {
+                        action_type: 'review',
+                        stars: reviewStars,
+                        comment: reviewComment,
+                        acting_as: actingAs
+                    }
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma review.');
+
+            toast.success('Asante kwa review yako!');
+            setReviewComment('');
+            setMessages(prev => [...prev, data.message]);
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setIsSubmittingReview(false);
+        }
+    };
 
     const sendMessage = async (e, mediaUrl = null) => {
         if (e) e.preventDefault();
@@ -310,7 +646,18 @@ export default function Chat({
             }
             
             const data = await res.json();
-            sendMessage(null, data.url);
+            
+            if (activeAction === 'shipping_proof') {
+                submitAction('shipping_proof', { mediaUrl: data.url, title: 'Ushahidi wa Dispatch' });
+                setActiveAction(null);
+                setDrawerOpen(false);
+            } else if (activeAction === 'unboxing_video') {
+                submitAction('unboxing_video', { mediaUrl: data.url, title: 'Video ya Unboxing' });
+                setActiveAction(null);
+                setDrawerOpen(false);
+            } else {
+                sendMessage(null, data.url);
+            }
 
         } catch (error) {
             toast.error(error.message);
@@ -480,9 +827,11 @@ export default function Chat({
                                     </span>
                                     <span className={cn(
                                         "text-[10px] font-black py-0.5 px-2 rounded-full uppercase tracking-tighter border",
-                                        orderStatus === 'completed' || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-amber-50 text-amber-600 border-amber-100"
+                                        order?.payment_status === 'completed' || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
+                                        order?.payment_status === 'failed' ? "bg-red-50 text-red-600 border-red-100" :
+                                        "bg-amber-50 text-amber-600 border-amber-100"
                                     )}>
-                                        {orderStatus}
+                                        {order?.payment_status === 'failed' ? 'IMESITISHWA' : orderStatus}
                                     </span>
                                 </div>
                             </div>
@@ -569,24 +918,24 @@ export default function Chat({
                                                                 <div className="flex items-center justify-between mb-4">
                                                                     <span className="text-xl font-black text-brand-600">TZS {Number(p.price).toLocaleString()}</span>
                                                                 </div>
-                                                                {!isMe && (
-                                                                    <Button
-                                                                        onClick={() => submitAction('add_to_order', {
-                                                                            product: {
-                                                                                id: p.id,
-                                                                                variant_id: p.variant_id,
-                                                                                title: p.title, // already includes variant name if suggested from modal
-                                                                                price: p.price,
-                                                                                image: p.image,
-                                                                                quantity: 1
-                                                                            },
-                                                                            title: `ONGEZA ${p.title.toUpperCase()}`
-                                                                        })}
-                                                                        className="w-full h-12 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase text-xs tracking-widest flex items-center gap-2"
-                                                                    >
-                                                                        <Plus className="h-4 w-4" /> WEKA KWENYE ODA
-                                                                    </Button>
-                                                                )}
+                                                                    {order?.payment_status !== 'failed' && !isMe && (
+                                                                        <Button
+                                                                            onClick={() => submitAction('add_to_order', {
+                                                                                product: {
+                                                                                    id: p.id,
+                                                                                    variant_id: p.variant_id,
+                                                                                    title: p.title, // already includes variant name if suggested from modal
+                                                                                    price: p.price,
+                                                                                    image: p.image,
+                                                                                    quantity: 1
+                                                                                },
+                                                                                title: `ONGEZA ${p.title.toUpperCase()}`
+                                                                            })}
+                                                                            className="w-full h-12 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase text-xs tracking-widest flex items-center gap-2"
+                                                                        >
+                                                                            <Plus className="h-4 w-4" /> WEKA KWENYE ODA
+                                                                        </Button>
+                                                                    )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -710,21 +1059,68 @@ export default function Chat({
                                                                         </div>
                                                                     )}
 
-                                                                    {actionType === 'shipping_proof' && (
-                                                                        <div className="space-y-4">
-                                                                            {msg.media_url ? (
-                                                                                <MediaDisplay url={msg.media_url} className="aspect-video w-full" />
-                                                                            ) : (
-                                                                                <div className="grid grid-cols-2 gap-3">
-                                                                                    <div className="aspect-[4/3] rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-dashed border-slate-300 shadow-inner">
-                                                                                        <ImageIcon className="h-6 w-6 text-slate-400" />
+                                                                    {actionType === 'unboxing_video' && (
+                                                                        <div className="space-y-3 w-full">
+                                                                            <div className="bg-indigo-50/50 dark:bg-indigo-950/20 rounded-2xl p-4 border border-indigo-100/50">
+                                                                                <div className="flex items-center gap-3 mb-3">
+                                                                                    <div className="h-8 w-8 rounded-xl bg-indigo-500 text-white flex items-center justify-center">
+                                                                                        <Video className="h-4 w-4" />
                                                                                     </div>
-                                                                                    <div className="aspect-[4/3] rounded-2xl bg-slate-900 flex items-center justify-center shadow-lg relative">
-                                                                                        <Video className="h-6 w-6 text-white/50" />
-                                                                                        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-blue-600 text-[8px] font-black text-white rounded">HD</div>
+                                                                                    <div>
+                                                                                        <p className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">Video ya Unboxing</p>
+                                                                                        <p className="text-xs font-bold text-indigo-900 dark:text-indigo-100">Ushahidi wa kupokea mzigo</p>
                                                                                     </div>
                                                                                 </div>
-                                                                            )}
+                                                                                <MediaDisplay url={msg.payload?.mediaUrl || msg.media_url} className="aspect-video rounded-xl shadow-sm" />
+                                                                            </div>
+                                                                            <div className="flex items-center gap-2 px-1">
+                                                                                <ShieldCheck className="h-3 w-3 text-indigo-500" />
+                                                                                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-tighter">Uthibitisho wa mteja umewasilishwa</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {actionType === 'shipping_proof' && (
+                                                                        <div className="space-y-4 w-full">
+                                                                            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-100 dark:border-slate-800 space-y-3">
+                                                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                                                    {msg.payload?.dispatch_mode === 'intercity' ? (
+                                                                                        <>
+                                                                                            <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Bus Company</span>
+                                                                                                <span className="font-bold text-slate-700 dark:text-slate-300">{msg.payload?.bus_company || 'N/A'}</span>
+                                                                                            </div>
+                                                                                            <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Tracking No.</span>
+                                                                                                <span className="font-bold text-slate-700 dark:text-slate-300">{msg.payload?.waybill_tracking_number || 'N/A'}</span>
+                                                                                            </div>
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <div className="col-span-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                                                                                            <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Boda Phone</span>
+                                                                                            <span className="font-bold text-slate-700 dark:text-slate-300">{msg.payload?.boda_phone || 'N/A'}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                
+                                                                                {(msg.payload?.mediaUrl || msg.payload?.receiptUrl || msg.media_url) && (
+                                                                                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                                                                        {msg.payload?.mediaUrl || msg.media_url ? (
+                                                                                            <div className="space-y-1">
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">Packing Video</span>
+                                                                                                <MediaDisplay url={msg.payload?.mediaUrl || msg.media_url} className="aspect-[4/3] rounded-xl" />
+                                                                                            </div>
+                                                                                        ) : null}
+                                                                                        {msg.payload?.receiptUrl ? (
+                                                                                            <div className="space-y-1">
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">Waybill / Risiti</span>
+                                                                                                <MediaDisplay url={msg.payload.receiptUrl} className="aspect-[4/3] rounded-xl" />
+                                                                                            </div>
+                                                                                        ) : null}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                            
                                                                             <p className="text-[10px] font-bold text-slate-400 px-1 uppercase tracking-tight flex items-center gap-2 italic">
                                                                                 <Info className="h-3 w-3" /> Ushahidi wa upakiaji na waybill umehifadhiwa.
                                                                             </p>
@@ -818,9 +1214,234 @@ export default function Chat({
                     </div>
                 )}
 
+                {/* Buyer Action Panels */}
+                {actingAs === 'buyer' && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) && (
+                    <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                        {['escrow_locked', 'shipped'].includes(order?.payment_status) && (
+                            <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                                    <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Thibitisha Mzigo</h4>
+                                </div>
+                                <p className="text-xs text-indigo-800/80 mb-3 font-medium">Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.</p>
+                                <div className="flex gap-2">
+                                    <Button onClick={confirmReceipt} disabled={isConfirmingReceipt} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
+                                        {isConfirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'NDIO, NIMEPOKEA'}
+                                    </Button>
+                                    <Button variant="outline" onClick={() => setIsDisputeDrawerOpen(true)} className="flex-1 h-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
+                                        SIJAPATA / TATIZO
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {order?.payment_status === 'escrow_locked' && order?.delivery?.delivery_type === 'local_boda' && (
+                            <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <ShieldCheck className="h-5 w-5 text-brand-600" />
+                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Delivery PIN yako</h4>
+                                </div>
+                                <p className="text-xs text-brand-800/80 mb-3 font-medium">Mpe dereva PIN hii <strong>baada ya kupokea na kukagua</strong> mzigo wako:</p>
+                                <div className="bg-white rounded-xl h-12 flex items-center justify-center border border-brand-200">
+                                    <span className="font-black text-xl tracking-[0.5em] text-brand-900">{order?.delivery?.buyer_release_pin}</span>
+                                </div>
+                                <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
+                                    RIPOTI TATIZO
+                                </Button>
+                            </div>
+                        )}
+
+                        {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
+                            <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <ShieldCheck className="h-5 w-5 text-brand-600" />
+                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Pickup PIN yako</h4>
+                                </div>
+                                <p className="text-xs text-brand-800/80 mb-3 font-medium">Mpe muuzaji PIN hii unapoenda kuchukua mzigo wako (au mpe dereva wako ampe muuzaji):</p>
+                                <div className="bg-white rounded-xl h-12 flex items-center justify-center border border-brand-200">
+                                    <span className="font-black text-xl tracking-[0.5em] text-brand-900">{order?.delivery?.pickup_pin}</span>
+                                </div>
+                                <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
+                                    RIPOTI TATIZO
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Buyer Review Panel */}
+                {actingAs === 'buyer' && order?.payment_status === 'resolved_merchant_paid' && !messages.some(m => m.payload?.action_type === 'review') && (
+                    <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                        <div className="p-4 rounded-[2rem] bg-amber-50/80 border border-amber-200 shadow-sm">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Star className="h-5 w-5 text-amber-600 fill-amber-600" />
+                                <h4 className="font-black text-amber-900 uppercase tracking-tight text-sm">Toa Review Yako</h4>
+                            </div>
+                            <p className="text-xs text-amber-800/80 mb-4 font-medium">Asante kwa kununua! Toa maoni yako kuhusu bidhaa na huduma ya muuzaji.</p>
+                            
+                            <div className="flex justify-center gap-3 mb-4">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                    <button 
+                                        key={star} 
+                                        onClick={() => setReviewStars(star)}
+                                        className="transition-transform active:scale-90"
+                                    >
+                                        <Star className={cn("h-8 w-8", star <= reviewStars ? "fill-amber-500 text-amber-500" : "text-amber-200")} />
+                                    </button>
+                                ))}
+                            </div>
+
+                            <textarea 
+                                value={reviewComment}
+                                onChange={e => setReviewComment(e.target.value)}
+                                placeholder="Andika maoni yako hapa..."
+                                className="w-full rounded-xl border border-amber-200 bg-white p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 mb-3"
+                                rows={2}
+                            />
+
+                            <Button 
+                                onClick={submitReview} 
+                                disabled={isSubmittingReview || !reviewComment.trim()}
+                                className="w-full h-12 rounded-xl bg-amber-600 hover:bg-amber-700 font-black text-white uppercase tracking-widest text-[10px]"
+                            >
+                                {isSubmittingReview ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'TUMA REVIEW'}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Merchant Action Panels */}
+                {actingAs === 'merchant' && (
+                    <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                        {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.shipping_fee === null && order?.payment_status === 'pending' && order?.delivery?.delivery_type !== 'self_pickup' && (
+                            <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Truck className="h-5 w-5 text-brand-600" />
+                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Shipping Quote Inquiry</h4>
+                                </div>
+                                <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">Customer Address:</p>
+                                    <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
+                                    
+                                    {closestLocation && (
+                                        <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center text-brand-600 shadow-sm">
+                                                    <Store className="h-4 w-4" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">Kutoka: {closestLocation.name}</p>
+                                                    <p className="text-[10px] font-black text-brand-900 tracking-tight">Umbali: {closestLocation.distance.toFixed(1)} km</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {order?.delivery?.latitude && (
+                                        <a 
+                                            href={`https://www.google.com/maps/dir/${closestLocation?.latitude || ''},${closestLocation?.longitude || ''}/${order.delivery.latitude},${order.delivery.longitude}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-brand-600 hover:text-brand-700 underline"
+                                        >
+                                            <MapPin className="h-3 w-3" /> FUNGUA KWENYE RAMANI
+                                        </a>
+                                    )}
+                                </div>
+                                <form onSubmit={submitQuote} className="flex gap-2">
+                                    <Input type="number" placeholder="Weka Gharama (TZS)" value={shippingFeeInput} onChange={e => setShippingFeeInput(e.target.value)} className="flex-1 font-bold h-12 rounded-xl" required />
+                                    <Button type="submit" disabled={quoteSubmitting || !shippingFeeInput} className="h-12 rounded-xl px-6 bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
+                                        {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} TUMA
+                                    </Button>
+                                </form>
+                            </div>
+                        )}
+
+                        {order?.product?.type === 'physical' && order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type !== 'self_pickup' && (
+                            <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Truck className="h-5 w-5 text-brand-600" />
+                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Dispatch Evidence</h4>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 mb-3">
+                                    <button type="button" onClick={() => setDispatchMode('intercity')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'intercity' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>Intercity Bus</button>
+                                    <button type="button" onClick={() => setDispatchMode('local')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'local' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>Local</button>
+                                </div>
+                                <form onSubmit={submitDispatch} className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button type="button" onClick={() => { const el = document.getElementById('dispatch-video-input'); if(el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
+                                            <Camera className={cn("h-5 w-5 mb-1", dispatchVideo ? "text-emerald-500" : "text-brand-500")} />
+                                            <span className="text-[10px] font-black uppercase text-slate-500">Packing Video</span>
+                                            <input id="dispatch-video-input" type="file" accept="video/*" className="hidden" onChange={e => setDispatchVideo(e.target.files?.[0])} />
+                                        </button>
+                                        {dispatchMode === 'intercity' ? (
+                                            <button type="button" onClick={() => { const el = document.getElementById('dispatch-receipt-input'); if(el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
+                                                <ImageIcon className={cn("h-5 w-5 mb-1", transportReceipt ? "text-emerald-500" : "text-brand-500")} />
+                                                <span className="text-[10px] font-black uppercase text-slate-500">Waybill</span>
+                                                <input id="dispatch-receipt-input" type="file" accept="image/*" className="hidden" onChange={e => setTransportReceipt(e.target.files?.[0])} />
+                                            </button>
+                                        ) : (
+                                            <Input type="text" placeholder="Boda Phone..." value={bodaPhone} onChange={e => setBodaPhone(e.target.value)} className="h-20 rounded-xl bg-white border-slate-200 text-center font-bold" />
+                                        )}
+                                    </div>
+                                    {dispatchMode === 'intercity' && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Input type="text" placeholder="Bus Company..." value={busCompany} onChange={e => setBusCompany(e.target.value)} className="h-10 rounded-xl bg-white" />
+                                            <Input type="text" placeholder="Tracking #..." value={waybillTrackingNumber} onChange={e => setWaybillTrackingNumber(e.target.value)} className="h-10 rounded-xl bg-white" />
+                                        </div>
+                                    )}
+                                    <Button type="submit" disabled={dispatchSubmitting || !dispatchVideo || (dispatchMode === 'intercity' && !transportReceipt)} className="w-full h-12 rounded-xl bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
+                                        {dispatchSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} THIBITISHA DISPATCH
+                                    </Button>
+                                </form>
+                            </div>
+                        )}
+
+                        {order?.payment_status === 'escrow_locked' && order?.delivery?.delivery_type === 'local_boda' && (
+                            <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                                    <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Verify Delivery</h4>
+                                </div>
+                                <p className="text-xs text-indigo-800/80 mb-3 font-medium">Ingiza <strong>Release PIN</strong> kutoka kwa dereva aliyemkabidhi mteja mzigo ili kuidhinisha malipo:</p>
+                                <form onSubmit={verifyDeliveryPin} className="flex gap-2">
+                                    <Input type="text" maxLength={4} placeholder="PIN..." value={releasePinInput} onChange={e => setReleasePinInput(e.target.value)} className="w-24 text-center font-black tracking-widest h-12 rounded-xl border-indigo-200" />
+                                    <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
+                                        {pinVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'ITHIBITISHE'}
+                                    </Button>
+                                </form>
+                            </div>
+                        )}
+
+                        {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
+                            <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                                    <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Verify Pickup</h4>
+                                </div>
+                                <p className="text-xs text-indigo-800/80 mb-3 font-medium">Ingiza <strong>Pickup PIN</strong> aliyopewa mteja ili ukabidhi mzigo:</p>
+                                <form onSubmit={verifyPickupPin} className="flex gap-2">
+                                    <Input type="text" maxLength={4} placeholder="PIN..." value={pickupPinInput} onChange={e => setPickupPinInput(e.target.value)} className="w-24 text-center font-black tracking-widest h-12 rounded-xl border-indigo-200" />
+                                    <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
+                                        {pinVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'KABIDHI MZIGO'}
+                                    </Button>
+                                </form>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Input Area */}
                 <div className="shrink-0 bg-white dark:bg-slate-950 border-t border-brand-100 dark:border-brand-900/40 p-4">
-                    <form onSubmit={sendMessage} className="flex items-center gap-2">
+                    {(order?.payment_status === 'resolved_merchant_paid' || order?.payment_status === 'failed') ? (
+                        <div className="flex items-center justify-center p-4 bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-500">
+                            <Lock className="h-4 w-4 text-slate-400 mr-2" />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                {order?.payment_status === 'failed' ? 'Oda imesitishwa. Chat imefungwa.' : 'Oda imekamilika. Chat imefungwa.'}
+                            </p>
+                        </div>
+                    ) : (
+                        <form onSubmit={sendMessage} className="flex items-center gap-2">
                         <Drawer open={isActionDrawerOpen} onOpenChange={setIsActionDrawerOpen}>
                             <DrawerTrigger asChild>
                                 <Button type="button" variant="ghost" size="icon" onClick={() => setIsActionDrawerOpen(true)} className="shrink-0 h-12 w-12 rounded-full bg-brand-50 text-brand-600 hover:bg-brand-100">
@@ -844,18 +1465,19 @@ export default function Chat({
                                             </DrawerHeader>
                                             <div className="p-4 grid grid-cols-2 gap-3 pb-12 overflow-y-auto">
                                                 {(actingAs === 'merchant' ? [
-                                                    { id: 'shipping_cost', label: 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'pickup' },
+                                                    { id: 'shipping_cost', label: 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' },
                                                     { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda' },
                                                     { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' },
                                                     { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' },
                                                     { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa' },
-                                                    { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari' },
+                                                    { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari', disabled: order?.delivery?.delivery_type === 'self_pickup' },
                                                 ] : [
                                                     { id: 'shop_locations', label: 'Shop Locations', icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ona duka lilipo' },
                                                     { id: 'order_delivery', label: 'Usafirishaji', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Badili delivery vs pickup' },
                                                     { id: 'order_items', label: 'Vitu vya Oda', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona na badili vitu' },
                                                     { id: 'upsell', label: 'Bidhaa Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Vitu vingine vya duka hili' },
                                                     { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
+                                                    { id: 'unboxing_video', label: 'Unboxing Video', icon: Video, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa kupokea' },
                                                     { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
                                                 ]).map((action) => {
                                                     const Icon = action.icon;
@@ -1404,6 +2026,20 @@ export default function Chat({
                                                         <p className="text-[9px] font-bold text-center text-slate-400 uppercase">Hii video itasaidia kama mteja akifungua mgogoro (Dispute)</p>
                                                     </div>
                                                 )}
+
+                                                {activeAction === 'unboxing_video' && (
+                                                    <div className="space-y-4">
+                                                        <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Video ya Unboxing</p>
+                                                        <button 
+                                                            onClick={() => mediaRef.current?.click()}
+                                                            className="group flex flex-col items-center justify-center gap-3 w-full h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
+                                                        >
+                                                            <div className="p-3 rounded-2xl bg-indigo-50 text-indigo-600 group-hover:scale-110 transition-transform"><Video className="h-6 w-6" /></div>
+                                                            <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Pakia Video ya Unboxing</span>
+                                                        </button>
+                                                        <p className="text-[9px] font-bold text-center text-slate-400 uppercase leading-relaxed px-6">Hii video ni muhimu kama utahitaji kurejeshewa pesa endapo bidhaa imekuja na tatizo au imevunjika.</p>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             <div className="pt-6 pb-6 mt-auto">
@@ -1452,6 +2088,7 @@ export default function Chat({
                             {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                         </Button>
                     </form>
+                    )}
                 </div>
 
                 <ShopLocationsModal 
@@ -1639,7 +2276,6 @@ export default function Chat({
                                     toast.success(`Malipo ya TZS ${Number(order?.total_paid).toLocaleString()} yamekamilika!`);
                                 } finally {
                                     setIsPaying(false);
-                                    setIsPaymentDrawerOpen(false);
                                 }
                             }}
                             disabled={isPaying || (paymentMethod === 'mobile' && !paymentPhone)}
@@ -1653,6 +2289,39 @@ export default function Chat({
                                     Kamilisha Malipo
                                 </>
                             )}
+                        </Button>
+                    </div>
+                </DrawerContent>
+            </Drawer>
+
+            {/* Dispute Drawer */}
+            <Drawer open={isDisputeDrawerOpen} onOpenChange={setIsDisputeDrawerOpen}>
+                <DrawerContent className="rounded-t-[2rem] bg-white dark:bg-slate-950">
+                    <DrawerHeader>
+                        <DrawerTitle className="text-xl font-black text-red-600 uppercase tracking-tight">Ripoti Tatizo (Dispute)</DrawerTitle>
+                        <DrawerDescription className="text-xs font-bold text-slate-500">Pesa imeshikiliwa kwenye Escrow. Tueleze tatizo na weka ushahidi wa video (Unboxing Video).</DrawerDescription>
+                    </DrawerHeader>
+                    <div className="p-4 space-y-4 pb-10">
+                        <textarea 
+                            value={disputeReason} 
+                            onChange={e => setDisputeReason(e.target.value)} 
+                            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-red-500/20 transition-all" 
+                            placeholder="Eleza tatizo kwa kina..."
+                            rows={4}
+                        />
+                        <button type="button" onClick={() => { const el = document.getElementById('dispute-video-input'); if(el) el.click(); }} className={cn("w-full flex flex-col items-center justify-center p-6 rounded-xl border border-dashed transition-colors", disputeVideo ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20" : "border-slate-300 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800")}>
+                            <Video className={cn("h-8 w-8 mb-3", disputeVideo ? "text-emerald-500" : "text-slate-400")} />
+                            <span className={cn("text-[10px] font-black uppercase tracking-widest", disputeVideo ? "text-emerald-600" : "text-slate-500")}>
+                                {disputeVideo ? 'Video Imechaguliwa' : 'Weka Unboxing Video (MP4/MOV)'}
+                            </span>
+                            <input id="dispute-video-input" type="file" accept="video/*" className="hidden" onChange={e => setDisputeVideo(e.target.files?.[0])} />
+                        </button>
+                        <Button 
+                            onClick={submitDispute} 
+                            disabled={isSubmittingDispute || !disputeReason || !disputeVideo}
+                            className="w-full h-14 rounded-xl bg-red-600 hover:bg-red-700 font-black text-white uppercase tracking-[0.2em] text-xs shadow-lg shadow-red-600/20"
+                        >
+                            {isSubmittingDispute ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : 'TUMA RIPOTI'}
                         </Button>
                     </div>
                 </DrawerContent>

@@ -11,6 +11,7 @@ class Order extends Model
 {
     protected $fillable = [
         'public_id',
+        'pickup_code',
         'buyer_id',
         'merchant_id',
         'product_id',
@@ -40,6 +41,17 @@ class Order extends Model
         'extra_items',     // Suggested items added during chat
         'expires_at',
         'payment_page_id',
+        'source',
+        'payment_mode',
+        'pos_staff_id',
+        'customer_name',
+        'customer_phone',
+        'grand_total',
+        'approval_status',
+        'approved_by_staff_id',
+        'approval_requested_at',
+        'counter_total',
+        'manager_notes',
     ];
 
     protected function casts(): array
@@ -53,9 +65,12 @@ class Order extends Model
             'shipping_fee' => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'total_paid' => 'decimal:2',
+            'grand_total' => 'decimal:2',
+            'counter_total' => 'decimal:2',
             'is_inquiry' => 'boolean',
             'extra_items' => 'array',
             'expires_at' => 'datetime',
+            'approval_requested_at' => 'datetime',
         ];
     }
 
@@ -72,7 +87,21 @@ class Order extends Model
             if (! $order->public_id) {
                 $order->public_id = static::generatePublicId();
             }
+            if (! $order->pickup_code) {
+                $order->pickup_code = static::generatePickupCode();
+            }
         });
+    }
+
+    public static function generatePickupCode(int $length = 6): string
+    {
+        do {
+            $code = strtoupper(\Illuminate\Support\Str::random($length));
+            // Remove ambiguous chars
+            $code = str_replace(['0', 'O', '1', 'I'], ['8', 'A', '2', 'B'], $code);
+        } while (static::query()->where('pickup_code', $code)->exists());
+
+        return $code;
     }
 
     public static function generatePublicId(int $length = 16): string
@@ -109,9 +138,24 @@ class Order extends Model
         return $this->hasOne(Dispute::class);
     }
 
+    public function review(): HasOne
+    {
+        return $this->hasOne(ProductReview::class);
+    }
+
     public function resolutions(): HasMany
     {
         return $this->hasMany(DisputeResolution::class);
+    }
+
+    public function posStaff(): BelongsTo
+    {
+        return $this->belongsTo(MerchantStaff::class, 'pos_staff_id');
+    }
+
+    public function posItems(): HasMany
+    {
+        return $this->hasMany(PosSaleItem::class);
     }
 
     public function messages(): HasMany
@@ -166,6 +210,27 @@ class Order extends Model
         ]);
     }
 
+    public function hasPhysicalBundleItems(): bool
+    {
+        if ($this->purchasable_type !== 'bundle' || empty($this->bundle_item_selection)) {
+            return false;
+        }
+
+        foreach ($this->bundle_item_selection as $lineItem) {
+            if (($lineItem['item_type'] ?? null) === 'product' && ($lineItem['product_type'] ?? null) === 'physical') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function requiresPhysicalFulfillment(): bool
+    {
+        return ($this->purchasable_type === 'product' && $this->product?->isPhysical())
+            || $this->hasPhysicalBundleItems();
+    }
+
     /**
      * Releases inventory back to the product/variant pool.
      */
@@ -185,6 +250,7 @@ class Order extends Model
         if ($this->purchasable_type === 'bundle' && !empty($this->bundle_item_selection)) {
             foreach ($this->bundle_item_selection as $lineItem) {
                 if (($lineItem['item_type'] ?? null) !== 'product') continue;
+                if (($lineItem['product_type'] ?? null) !== 'physical') continue;
                 
                 $qty = (int) ($lineItem['quantity'] ?? 1);
                 $productId = (int) ($lineItem['item_id'] ?? 0);

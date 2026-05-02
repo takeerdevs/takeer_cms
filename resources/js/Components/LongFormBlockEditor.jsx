@@ -34,16 +34,29 @@ function toEditorData(value) {
     };
 }
 
-export default function LongFormBlockEditor({ value, onChange, placeholder = 'Start writing your long-form content...' }) {
+export default function LongFormBlockEditor({
+    value,
+    onChange,
+    placeholder = 'Start writing your long-form content...',
+    uploadUrl = '/merchant/upload/media',
+    uploadFields = {},
+}) {
     const holderIdRef = useRef(`editorjs-${Math.random().toString(36).slice(2)}`);
     const editorRef = useRef(null);
     const onChangeRef = useRef(onChange);
+    const uploadUrlRef = useRef(uploadUrl);
+    const uploadFieldsRef = useRef(uploadFields);
     const initialValueRef = useRef(value);
     const [uploadingImage, setUploadingImage] = useState(false);
 
     useEffect(() => {
         onChangeRef.current = onChange;
     }, [onChange]);
+
+    useEffect(() => {
+        uploadUrlRef.current = uploadUrl;
+        uploadFieldsRef.current = uploadFields;
+    }, [uploadUrl, uploadFields]);
 
     useEffect(() => {
         let mounted = true;
@@ -95,8 +108,13 @@ export default function LongFormBlockEditor({ value, onChange, placeholder = 'St
                                         formData.append('file', file);
                                         formData.append('type', 'public');
                                         formData.append('folder', 'content');
+                                        Object.entries(uploadFieldsRef.current || {}).forEach(([key, uploadValue]) => {
+                                            if (uploadValue !== null && uploadValue !== undefined && uploadValue !== '') {
+                                                formData.append(key, uploadValue);
+                                            }
+                                        });
 
-                                        const res = await axios.post('/merchant/upload/media', formData, {
+                                        const res = await axios.post(uploadUrlRef.current, formData, {
                                             headers: { 'Content-Type': 'multipart/form-data' },
                                         });
 

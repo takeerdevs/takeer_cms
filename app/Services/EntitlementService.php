@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Bundle;
+use App\Models\BundleCohortEnrollment;
 use App\Models\BundleItem;
 use App\Models\Entitlement;
 use App\Models\Order;
@@ -23,7 +24,10 @@ class EntitlementService
             return;
         }
 
-        $isMenuSelectionBundle = $type === 'bundle' && $bundleSelection->isNotEmpty();
+        $isFullBundlePurchase = $type === 'bundle'
+            && $bundleSelection->isNotEmpty()
+            && $bundleSelection->every(fn ($item) => ($item['selection_mode'] ?? null) === 'full_bundle');
+        $isMenuSelectionBundle = $type === 'bundle' && $bundleSelection->isNotEmpty() && ! $isFullBundlePurchase;
         if (!$isMenuSelectionBundle) {
             $this->grantSingle(
                 userId: $order->buyer_id,
@@ -36,6 +40,12 @@ class EntitlementService
         }
 
         if ($type === 'bundle') {
+            $this->enrollBundleCourseIfNeeded(
+                userId: $order->buyer_id,
+                bundleId: (int) $id,
+                orderId: $order->id
+            );
+
             if ($bundleSelection->isNotEmpty()) {
                 foreach ($bundleSelection as $item) {
                     $this->grantSingle(
@@ -55,9 +65,15 @@ class EntitlementService
 
     public function grantForSubscription(UserSubscription $subscription): void
     {
-        $items = SubscriptionPlanItem::where('subscription_plan_id', $subscription->subscription_plan_id)->get();
+        $items = SubscriptionPlanItem::where('subscription_plan_id', $subscription->subscription_plan_id)
+            ->whereIn('item_type', ['content_item', 'bundle'])
+            ->get();
 
         foreach ($items as $item) {
+            if ($item->item_type === 'bundle' && $this->bundleContainsPhysicalProducts((int) $item->item_id)) {
+                continue;
+            }
+
             $this->grantSingle(
                 userId: $subscription->user_id,
                 merchantId: $subscription->merchant_id,
@@ -144,6 +160,12 @@ class EntitlementService
             ->get();
 
         foreach ($activeBundleOwners as $owner) {
+            $this->enrollBundleCourseIfNeeded(
+                userId: (int) $owner->user_id,
+                bundleId: $bundleId,
+                orderId: $owner->source_type === 'order' ? (int) $owner->source_id : null
+            );
+
             foreach ($bundleItems as $item) {
                 $this->grantSingle(
                     userId: (int) $owner->user_id,
@@ -207,7 +229,17 @@ class EntitlementService
 
         $resolvedMerchantId = $merchantId ?: $bundle->merchant_id;
         $items = BundleItem::where('bundle_id', $bundleId)->get();
+        $productTypes = \App\Models\Product::query()
+            ->whereIn('id', $items->where('item_type', 'product')->pluck('item_id')->filter()->unique()->values())
+            ->pluck('type', 'id');
+
         foreach ($items as $item) {
+            if ($sourceType === 'subscription'
+                && $item->item_type === 'product'
+                && $productTypes->get((int) $item->item_id) === 'physical') {
+                continue;
+            }
+
             $this->grantSingle(
                 userId: $userId,
                 merchantId: $resolvedMerchantId,
@@ -218,6 +250,63 @@ class EntitlementService
                 startsAt: $startsAt,
                 expiresAt: $expiresAt
             );
+        }
+    }
+
+    private function bundleContainsPhysicalProducts(int $bundleId): bool
+    {
+        return \Illuminate\Support\Facades\DB::table('bundle_items')
+            ->join('products', 'products.id', '=', 'bundle_items.item_id')
+            ->where('bundle_items.bundle_id', $bundleId)
+            ->where('bundle_items.item_type', 'product')
+            ->where('products.type', 'physical')
+            ->exists();
+    }
+
+    private function enrollBundleCourseIfNeeded(int $userId, int $bundleId, ?int $orderId): void
+    {
+        if (!$userId || !$bundleId) {
+            return;
+        }
+
+        $bundle = Bundle::query()
+            ->with(['cohorts' => fn ($query) => $query->whereIn('status', ['upcoming', 'active'])->orderBy('starts_at')])
+            ->find($bundleId);
+
+        if (!$bundle || !$bundle->is_course || $bundle->course_format !== 'cohort') {
+            return;
+        }
+
+        $cohort = $bundle->cohorts->first();
+        if (!$cohort) {
+            return;
+        }
+
+        if ($cohort->capacity) {
+            $activeCount = BundleCohortEnrollment::query()
+                ->where('bundle_cohort_id', $cohort->id)
+                ->where('status', 'active')
+                ->count();
+
+            if ($activeCount >= (int) $cohort->capacity) {
+                return;
+            }
+        }
+
+        $enrollment = BundleCohortEnrollment::updateOrCreate(
+            [
+                'bundle_cohort_id' => $cohort->id,
+                'user_id' => $userId,
+            ],
+            [
+                'order_id' => $orderId,
+                'status' => 'active',
+                'enrolled_at' => now(),
+            ]
+        );
+
+        if ($enrollment->wasRecentlyCreated) {
+            app(BundleCourseNotificationService::class)->notifyCohortEnrollment($enrollment);
         }
     }
 }

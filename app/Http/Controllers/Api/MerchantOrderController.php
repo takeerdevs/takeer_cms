@@ -32,10 +32,9 @@ class MerchantOrderController extends Controller
             $status = (string) $request->input('status');
             $query->where('payment_status', $status);
 
-            // Escrow workflow is only meaningful for physical product orders.
+            // Escrow workflow is meaningful for physical products and physical bundles.
             if (in_array($status, ['awaiting_merchant_confirmation', 'escrow_locked', 'disputed'], true)) {
-                $query->where('purchasable_type', 'product')
-                    ->whereHas('product', fn($q) => $q->where('type', 'physical'));
+                $this->scopePhysicalFulfillmentOrders($query);
             }
         }
 
@@ -80,6 +79,9 @@ class MerchantOrderController extends Controller
                 'display_kind' => $display['kind'],
                 'display_icon' => $display['icon'],
                 'is_escrow_order' => $display['is_escrow_order'],
+                'is_inquiry' => (bool) $order->is_inquiry,
+                'inquiry_status' => $order->inquiry_status,
+                'shipping_fee' => $order->shipping_fee !== null ? (float) $order->shipping_fee : null,
             ];
         });
 
@@ -107,28 +109,22 @@ class MerchantOrderController extends Controller
 
         return response()->json([
             'total' => (clone $base)->count(),
-            'pending' => (clone $base)
-                ->where('payment_status', 'awaiting_merchant_confirmation')
-                ->where('purchasable_type', 'product')
-                ->whereHas('product', fn($q) => $q->where('type', 'physical'))
-                ->count(),
-            'escrow' => (clone $base)
-                ->where('payment_status', 'escrow_locked')
-                ->where('purchasable_type', 'product')
-                ->whereHas('product', fn($q) => $q->where('type', 'physical'))
-                ->count(),
+            'pending' => $this->scopePhysicalFulfillmentOrders(
+                (clone $base)->where('payment_status', 'awaiting_merchant_confirmation')
+            )->count(),
+            'escrow' => $this->scopePhysicalFulfillmentOrders(
+                (clone $base)->where('payment_status', 'escrow_locked')
+            )->count(),
             'completed' => (clone $base)->whereIn('payment_status', ['resolved_merchant_paid'])->count(),
-            'disputed' => (clone $base)
-                ->where('payment_status', 'disputed')
-                ->where('purchasable_type', 'product')
-                ->whereHas('product', fn($q) => $q->where('type', 'physical'))
-                ->count(),
+            'disputed' => $this->scopePhysicalFulfillmentOrders(
+                (clone $base)->where('payment_status', 'disputed')
+            )->count(),
             'today' => (clone $base)->whereDate('created_at', today())->count(),
         ]);
     }
 
     /**
-     * Return section-level commerce metrics (used by Commerce Studio pages).
+     * Return section-level commerce metrics for merchant managers.
      */
     public function commerceSummary(Request $request, Merchant $merchant): JsonResponse
     {
@@ -223,7 +219,7 @@ class MerchantOrderController extends Controller
         abort_unless($merchant->user_id === $request->user()->id, 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
 
-        $order->load(['buyer', 'product', 'variant', 'delivery.shippingZone', 'dispute']);
+        $order->load(['buyer', 'product', 'variant', 'delivery.shippingZone', 'dispute', 'review']);
         $display = $this->resolveDisplay($order);
 
         return response()->json([
@@ -240,6 +236,10 @@ class MerchantOrderController extends Controller
             'payment_phone' => $order->payment_phone,
             'account_phone' => $order->account_phone,
             'merchant_dispatch_video_url' => $order->merchant_dispatch_video_url,
+            'is_inquiry' => (bool) $order->is_inquiry,
+            'inquiry_status' => $order->inquiry_status,
+            'shipping_fee' => $order->shipping_fee !== null ? (float) $order->shipping_fee : null,
+            'bundle_item_selection' => $order->bundle_item_selection ?? [],
             'buyer' => $order->buyer ? [
                 'id' => $order->buyer->id,
                 'name' => $order->buyer->name,
@@ -261,7 +261,7 @@ class MerchantOrderController extends Controller
             'delivery' => $order->delivery ? [
                 'id' => $order->delivery->id,
                 'delivery_status' => $order->delivery->delivery_status,
-                'delivery_type' => $order->delivery->shippingZone?->delivery_type,
+                'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
                 'confirmed_at' => $order->delivery->confirmed_at?->toISOString(),
                 'delivered_at' => $order->delivery->delivered_at?->toISOString(),
                 'boda_phone' => $order->delivery->boda_phone,
@@ -273,6 +273,13 @@ class MerchantOrderController extends Controller
                 'pickup_pin' => $order->delivery->pickup_pin ? '****' : null, // keep it hidden for now, or maybe merchant needs it? No, merchant enters it.
                 'pickup_location' => $order->delivery->pickup_location,
                 'dropoff_location' => $order->delivery->dropoff_location,
+                'buyer_unboxing_video_url' => $order->delivery->buyer_unboxing_video_url,
+            ] : null,
+            'review' => $order->review ? [
+                'id' => $order->review->id,
+                'rating' => $order->review->rating,
+                'comment' => $order->review->comment,
+                'created_at' => $order->review->created_at?->toISOString(),
             ] : null,
             'dispute' => $order->dispute ? [
                 'id' => $order->dispute->id,
@@ -306,7 +313,7 @@ class MerchantOrderController extends Controller
                     'service_booking' => 'calendar_clock',
                     default => 'download',
                 },
-                'is_escrow_order' => $productType === 'physical',
+                'is_escrow_order' => $order->requiresPhysicalFulfillment(),
             ];
         }
 
@@ -332,11 +339,13 @@ class MerchantOrderController extends Controller
 
         if ($order->purchasable_type === 'bundle') {
             $bundle = Bundle::find($order->purchasable_id);
+            $isPhysicalBundle = $order->requiresPhysicalFulfillment();
+
             return [
-                'title' => $bundle?->title ?: 'Post content',
-                'kind' => 'post_content',
+                'title' => $bundle?->title ?: 'Bundle order',
+                'kind' => $isPhysicalBundle ? 'physical_bundle' : ($bundle?->is_course ? 'course_bundle' : 'bundle'),
                 'icon' => 'boxes',
-                'is_escrow_order' => false,
+                'is_escrow_order' => $isPhysicalBundle,
             ];
         }
 
@@ -356,6 +365,16 @@ class MerchantOrderController extends Controller
             'icon' => 'book_open',
             'is_escrow_order' => false,
         ];
+    }
+
+    private function scopePhysicalFulfillmentOrders($query)
+    {
+        return $query->where(function ($query) {
+            $query->where(function ($productQuery) {
+                $productQuery->where('purchasable_type', 'product')
+                    ->whereHas('product', fn($product) => $product->where('type', 'physical'));
+            })->orWhere('purchasable_type', 'bundle');
+        });
     }
 
     /**
@@ -394,6 +413,7 @@ class MerchantOrderController extends Controller
 
     /**
      * Verify pickup using Customer's PIN.
+     * On success: escrow released to merchant wallet, order marked complete.
      */
     public function verifyPickup(Request $request, Merchant $merchant, Order $order): JsonResponse
     {
@@ -406,10 +426,15 @@ class MerchantOrderController extends Controller
             return response()->json(['message' => 'PIN sio sahihi. Tafadhali hakiki upya.'], 400);
         }
 
-        $order->update(['payment_status' => 'resolved_merchant_paid']);
-        $order->delivery->update(['delivery_status' => 'delivered']); // add delivered_at if schema supports it, we'll keep it simple for now
+        \Illuminate\Support\Facades\DB::transaction(function () use ($order, $merchant) {
+            $order->update(['payment_status' => 'resolved_merchant_paid']);
+            $order->delivery->update(['delivery_status' => 'delivered']);
 
-        return response()->json(['message' => 'Mzigo umekabidhiwa kikamilifu! Malipo yameidhinishwa.', 'order' => $order]);
+            $this->releaseEscrowToMerchant($order, $merchant);
+            app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
+        });
+
+        return response()->json(['message' => 'Mzigo umekabidhiwa kikamilifu! Malipo yameidhinishwa.', 'order' => $order->fresh(['delivery'])]);
     }
     
     /**
@@ -426,10 +451,37 @@ class MerchantOrderController extends Controller
             return response()->json(['message' => 'PIN sio sahihi. Mteja hajaidhinisha mzigo.'], 400);
         }
 
-        $order->update(['payment_status' => 'resolved_merchant_paid']);
-        $order->delivery->update(['delivery_status' => 'delivered']);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($order, $merchant) {
+            $order->update(['payment_status' => 'resolved_merchant_paid']);
+            $order->delivery->update(['delivery_status' => 'delivered']);
+
+            $this->releaseEscrowToMerchant($order, $merchant);
+            app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
+        });
 
         return response()->json(['message' => 'Mzigo umefika! Malipo yameidhinishwa.', 'order' => $order]);
+    }
+
+    private function releaseEscrowToMerchant(Order $order, Merchant $merchant): void
+    {
+        $merchantUser = $merchant->user ?? $order->product?->merchant?->user ?? null;
+        if (!$merchantUser) {
+            return;
+        }
+
+        $netAmount = \App\Models\Transaction::query()
+            ->where('order_id', $order->id)
+            ->where('type', 'order_revenue')
+            ->latest()
+            ->value('net_amount')
+            ?? app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['net_amount'];
+
+        $wallet = $merchantUser->wallet()->firstOrCreate(
+            ['user_id' => $merchantUser->id],
+            ['balance' => 0, 'frozen_balance' => 0]
+        );
+        $wallet->increment('balance', $netAmount);
+        $wallet->decrement('frozen_balance', $order->total_paid);
     }
 
     /**
@@ -511,7 +563,7 @@ class MerchantOrderController extends Controller
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($order) {
             $order->releaseInventory();
-            $order->update(['payment_status' => 'cancelled_manual']);
+            $order->update(['payment_status' => 'failed']);
         });
 
         return response()->json([

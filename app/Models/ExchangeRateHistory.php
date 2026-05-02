@@ -12,10 +12,12 @@ class ExchangeRateHistory extends Model
     protected $table = 'exchange_rate_histories';
 
     protected $fillable = [
+        'base_currency_code',
         'currency_code',
         'rate',
         'effective_date',
         'is_manual',
+        'source',
     ];
 
     protected $casts = [

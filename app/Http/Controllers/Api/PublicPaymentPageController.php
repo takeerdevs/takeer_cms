@@ -19,15 +19,8 @@ class PublicPaymentPageController extends Controller
             ->with(['merchant', 'items.item'])
             ->firstOrFail();
 
-        // Log a view (debounced by IP/Session for 1 hour)
-        $cacheKey = "payment_page_view_{$page->id}_{$request->ip()}";
-        if (!\Illuminate\Support\Facades\Cache::has($cacheKey)) {
-            $page->views()->create([
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-            ]);
-            \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->addHour());
-        }
+        // Track traffic (Unified system)
+        $page->recordImpression($request);
 
         return Inertia::render('Public/PaymentPage', [
             'page' => $page,

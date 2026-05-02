@@ -1,13 +1,16 @@
 import React from 'react';
-import { Play } from 'lucide-react';
+import { FileVideo, Play } from 'lucide-react';
 
 // Determine if a URL is a video
 const isVideo = (url = '') => /\.(mp4|mov|webm|ogg)(\?|$)/i.test(url) || url.includes('video');
 
 function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null }) {
     if (!item) return null;
-    const video = typeof item === 'string' ? isVideo(item) : item?.type?.startsWith('video');
+    const video = typeof item === 'string'
+        ? isVideo(item)
+        : item?.type?.startsWith?.('video') || item?.media_type === 'video';
     const src = typeof item === 'string' ? item : item?.url ?? item?.preview;
+    const poster = typeof item === 'string' ? null : item?.thumbnail_url ?? item?.poster ?? null;
 
     return (
         <div
@@ -16,23 +19,32 @@ function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspe
         >
             {video ? (
                 <>
-                    <video
-                        src={src}
-                        className="w-full h-full object-cover"
-                        muted
-                        playsInline
-                        preload="metadata"
-                        onLoadedMetadata={(e) => {
-                            if (!onAspect) return;
-                            const { videoWidth, videoHeight } = e.currentTarget;
-                            if (videoWidth && videoHeight) onAspect(index, videoWidth, videoHeight);
-                        }}
-                    />
+                    {poster ? (
+                        <img
+                            src={poster}
+                            alt=""
+                            className="w-full h-full object-cover group-active:brightness-90 transition-all"
+                            onLoad={(e) => {
+                                if (!onAspect) return;
+                                const { naturalWidth, naturalHeight } = e.currentTarget;
+                                if (naturalWidth && naturalHeight) onAspect(index, naturalWidth, naturalHeight);
+                            }}
+                        />
+                    ) : (
+                        <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                            <FileVideo className="h-9 w-9 text-white/55" />
+                        </div>
+                    )}
                     <div className="absolute inset-0 flex items-center justify-center">
                         <div className="h-10 w-10 rounded-full bg-black/55 flex items-center justify-center">
                             <Play className="h-5 w-5 text-white fill-white ml-0.5" />
                         </div>
                     </div>
+                    {!poster && (
+                        <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-white/90">
+                            Video
+                        </span>
+                    )}
                 </>
             ) : (
                 <img

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ContentItem;
+use App\Models\Merchant;
 use App\Models\Post;
 use App\Services\ContentPolicyService;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +21,7 @@ class MerchantContentController extends Controller
         $globalReactions = (bool) ($settings?->allow_post_reactions ?? true);
 
         $posts = Post::where('merchant_id', $merchant->id)
+            ->when($request->filled('source'), fn ($query) => $query->where('source', $request->string('source')->toString()))
             ->with([
                 'linkedContentItem:id,format,visibility,price',
                 'media:id,post_id,media_url,media_type,product_image_id',
@@ -43,6 +45,7 @@ class MerchantContentController extends Controller
                 return [
                     'id' => $post->id,
                     'public_id' => $post->public_id,
+                    'source' => $post->source,
                     'title' => $post->title,
                     'caption' => Str::limit((string) $post->caption, 140),
                     'post_type' => $postType,
@@ -228,10 +231,22 @@ class MerchantContentController extends Controller
 
     private function merchantFromRequest(Request $request)
     {
-        $merchant = $request->user()
-            ->merchantProfiles()
-            ->where('is_default', true)
-            ->first() ?? $request->user()->merchantProfiles()->first();
+        $routeMerchant = $request->route('merchant');
+        if ($routeMerchant instanceof Merchant) {
+            return $routeMerchant;
+        }
+
+        $user = $request->user();
+        $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
+        if ($merchantId) {
+            $merchant = $user->merchantProfiles()->where('merchants.id', (int) $merchantId)->first();
+            if ($merchant) {
+                return $merchant;
+            }
+        }
+
+        $merchant = $user->merchantProfiles()->where('is_default', true)->first()
+            ?? $user->merchantProfiles()->first();
 
         abort_unless($merchant, 403, 'Merchant profile not found.');
 
@@ -264,6 +279,7 @@ class MerchantContentController extends Controller
             ['content_item_id' => $contentItem->id],
             [
                 'merchant_id' => $contentItem->merchant_id,
+                'source' => 'content_publish',
                 'caption' => implode("\n\n", $lines),
                 'bg_style' => $resolvedBgStyle,
             ]

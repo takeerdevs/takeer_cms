@@ -12,7 +12,7 @@ class WalletService
 {
     /**
      * Unlock escrow funds and credit the merchant's wallet.
-     * Takes 5% platform fee, records VAT, and moves balance.
+     * Applies Takeer platform fee, records VAT, and moves balance.
      */
     public function releaseEscrowToMerchant(Order $order): void
     {
@@ -26,23 +26,19 @@ class WalletService
             $wallet = $merchant->user->wallet()->firstOrCreate(['user_id' => $merchant->user_id]);
 
             $grossAmount = $order->total_paid;
-
-            // 5% Takeer Platform Commission
-            $commissionRate = 0.05;
-            $commissionAmount = $grossAmount * $commissionRate;
-
-            // 18% VAT on the Commission
-            $vatRate = 0.18;
-            $taxAmount = $commissionAmount * $vatRate;
-
-            $netAmount = $grossAmount - $commissionAmount;
+            $fee = app(FeePolicyService::class)->calculateForOrder($order, (float) $grossAmount);
+            $commissionAmount = $fee['fee_amount'];
+            $taxAmount = $fee['tax_amount'];
+            $netAmount = $fee['net_amount'];
 
             // 1. Record Merchant Revenue Transaction
             Transaction::create([
                 'user_id' => $merchant->user_id,
                 'order_id' => $order->id,
                 'type' => 'order_revenue',
+                ...$fee['snapshot'],
                 'gross_amount' => $grossAmount,
+                'fee_amount' => $commissionAmount,
                 'tax_amount' => $taxAmount,
                 'net_amount' => $netAmount,
                 'reference' => 'ESCROW-RELEASE-' . $order->id . '-' . Str::random(6),
@@ -100,14 +96,21 @@ class WalletService
             // TODO: Here we would call M-Pesa B2C API
             // $b2cResponse = app(MpesaService::class)->b2c($request->user->phone_number, $request->amount);
             // If B2C fails, throw Exception and DB::transaction rolls back.
+            $merchant = $request->user->merchantProfiles()->with(['country', 'currency'])->where('is_default', true)->first()
+                ?: $request->user->merchantProfiles()->with(['country', 'currency'])->first();
+            $fee = $merchant
+                ? app(FeePolicyService::class)->calculateWithdrawal($merchant, (float) $request->amount)
+                : app(FeePolicyService::class)->calculate('withdrawal', (float) $request->amount);
 
             Transaction::create([
                 'user_id' => $request->user_id,
                 'order_id' => null,
                 'type' => 'withdrawal',
+                ...$fee['snapshot'],
                 'gross_amount' => $request->amount,
-                'tax_amount' => 0,
-                'net_amount' => $request->amount,
+                'fee_amount' => $fee['fee_amount'],
+                'tax_amount' => $fee['tax_amount'],
+                'net_amount' => $fee['net_amount'],
                 'reference' => 'WITHDRAWAL-' . $request->id . '-' . Str::random(6),
             ]);
 

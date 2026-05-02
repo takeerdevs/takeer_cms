@@ -7,8 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+use App\Traits\InteractsWithImpressions;
+
 class Product extends Model
 {
+    use InteractsWithImpressions;
     /**
      * Get the route key for the model.
      */
@@ -36,7 +39,24 @@ class Product extends Model
         'service_min_hours',
         'service_deposit_amount',
         'service_is_showcase',
+        'service_mode',
+        'service_scheduling_type',
+        'service_category',
+        'service_subcategory',
+        'service_price_display',
+        'service_charges',
+        'service_options',
+        'service_duration_minutes',
+        'service_location_type',
+        'service_provider_location',
+        'service_area',
+        'service_client_requirements',
+        'service_intake_form',
+        'service_booking_provider',
+        'service_contact_channel',
+        'service_contact_value',
         'shipping_profile_id',
+        'views_count',
     ];
 
     protected function casts(): array
@@ -52,6 +72,12 @@ class Product extends Model
             'service_min_hours' => 'integer',
             'service_deposit_amount' => 'decimal:2',
             'service_is_showcase' => 'boolean',
+            'service_charges' => 'array',
+            'service_options' => 'array',
+            'service_duration_minutes' => 'integer',
+            'service_provider_location' => 'array',
+            'service_area' => 'array',
+            'service_intake_form' => 'array',
         ];
     }
 
@@ -59,7 +85,13 @@ class Product extends Model
 
     public function getImageUrlAttribute(): ?string
     {
-        return $this->images->first()?->image_url ?? $this->url ?? $this->download_link;
+        $media = $this->images->first();
+        $fallbackImage = $this->images->first(fn ($item) => ($item->media_type ?: 'image') === 'image');
+
+        return $media?->thumbnail_url
+            ?? $fallbackImage?->image_url
+            ?? (((string) ($this->url ?? '') !== '' && !preg_match('/\.(mp4|mov|webm|ogg)(\?|$)/i', (string) $this->url)) ? $this->url : null)
+            ?? $this->download_link;
     }
 
     public function getUrlAttribute(): ?string
@@ -121,6 +153,21 @@ class Product extends Model
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
+
+    public function serviceRequests(): HasMany
+    {
+        return $this->hasMany(ServiceRequest::class);
+    }
+
+    public function serviceAvailabilityRules(): HasMany
+    {
+        return $this->hasMany(ServiceAvailabilityRule::class);
+    }
+
+    public function serviceSessions(): HasMany
+    {
+        return $this->hasMany(ServiceSession::class);
     }
 
     public function variants(): HasMany

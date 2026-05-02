@@ -20,11 +20,15 @@ use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
 use App\Http\Controllers\Api\MiniStoreController;
 use App\Http\Controllers\Api\PaymentWebhookController;
 use App\Http\Controllers\Api\Payments\AzamPayCallbackController;
+use App\Http\Controllers\Api\PlatformNotificationController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\SecureAccessController;
+use App\Http\Controllers\Api\ServiceCategoryController;
+use App\Http\Controllers\Api\ServiceRequestController;
 use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\UnifiedSearchController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WaitlistController;
 use Illuminate\Http\Request;
@@ -60,10 +64,23 @@ Route::get('/pwa/post/{post}', [PostController::class, 'getPostData']);
 Route::get('/content-items/{contentItem}', [CommerceCatalogController::class, 'showContentItem']);
 Route::get('/bundles/{bundle}', [CommerceCatalogController::class, 'showBundle']);
 Route::get('/subscription-plans/{subscriptionPlan}', [CommerceCatalogController::class, 'showSubscriptionPlan']);
+Route::post('/retail-credit-payments/{publicId}/pay', [\App\Http\Controllers\Api\RetailCreditPaymentController::class, 'pay'])
+    ->middleware('throttle:10,1');
+Route::post('/retail-credit-payments/{publicId}/report', [\App\Http\Controllers\Api\RetailCreditPaymentController::class, 'report'])
+    ->middleware('throttle:5,10');
+Route::post('/service-requests', [ServiceRequestController::class, 'store'])
+    ->middleware('throttle:8,1');
+Route::post('/service-requests/intake-file', [ServiceRequestController::class, 'uploadIntakeFile'])
+    ->middleware('throttle:12,1');
+Route::get('/products/{product}/service-slots', [ServiceRequestController::class, 'productSlots'])
+    ->middleware('throttle:30,1');
+Route::get('/service-categories', [ServiceCategoryController::class, 'index'])
+    ->middleware('throttle:60,1');
 
 // ─── AI SEARCH ──────────────────────────────────────────────────────────────
 Route::post('/search/text', [AiSearchController::class, 'textSearch'])->middleware('throttle:10,1');
 Route::post('/search/visual', [AiSearchController::class, 'visualSearch'])->middleware('throttle:5,1');
+Route::get('/search/unified/posts', [UnifiedSearchController::class, 'posts'])->middleware('throttle:45,1');
 
 // ─── PROTECTED ROUTES ───────────────────────────────────────────────────────
 // Guest Checkout accessible without auth
@@ -75,6 +92,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', fn(Request $request) => $request->user());
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/profile/one-click/setup', [ProfileController::class, 'setupOneClick']);
+    Route::post('/platform-notifications/dispatch', [PlatformNotificationController::class, 'dispatch'])
+        ->middleware('throttle:30,1');
 
     // Buyer Checkout & Orders
     Route::post('/orders/{order}/complete', [CheckoutController::class, 'complete']);
@@ -85,6 +104,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/{order}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadLocal'])->name('api.download.local');
     Route::post('/content-items/{contentItem:id}/access-link', [SecureAccessController::class, 'contentAccessLink']);
     Route::get('/content-items/{contentItem:id}/secure-body', [SecureAccessController::class, 'contentBody'])->name('api.content-items.secure-body');
+    Route::post('/bundle-items/{bundleItem:id}/materials/{materialIndex}/access-link', [SecureAccessController::class, 'bundleItemMaterialAccessLink']);
+    Route::post('/bundle-lesson-assets/{asset:id}/access-link', [SecureAccessController::class, 'bundleLessonAssetAccessLink']);
     Route::get('/me/entitlements', [EntitlementController::class, 'myLibrary']);
     Route::post('/me/entitlements/check', [EntitlementController::class, 'canAccess']);
     Route::post('/content/report', [EntitlementController::class, 'reportContent']);
@@ -186,6 +207,9 @@ Route::middleware('auth:sanctum')->group(function () {
         // Disputes
         Route::get('/disputes', [AdminController::class, 'indexDisputes']);
         Route::post('/disputes/{dispute}/resolve', [AdminController::class, 'resolveDispute']);
+        Route::post('/disputes/{dispute}/trust-safety', [AdminController::class, 'handleTrustSafetyDispute']);
+        Route::get('/trust-safety-reviews', [AdminController::class, 'indexTrustSafetyReviews']);
+        Route::post('/trust-safety-reviews/{review}', [AdminController::class, 'resolveTrustSafetyReview']);
 
         // Withdrawals
         Route::post('/withdrawals/{withdrawal}/approve', [AdminController::class, 'approveWithdrawal']);
@@ -201,7 +225,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/users/{user}/toggle-ban', [AdminSettingsController::class, 'toggleBan']);
         Route::get('/merchants', [AdminController::class, 'indexMerchants']);
         Route::get('/merchants/{merchant:id}', [AdminController::class, 'showMerchant']);
+        Route::put('/merchants/{merchant:id}/settings', [AdminController::class, 'updateMerchantSettings']);
         Route::get('/merchants/{merchant:id}/products', [AdminController::class, 'merchantProducts']);
+        Route::get('/services', [AdminController::class, 'services']);
         Route::get('/merchants/{merchant:id}/posts', [AdminController::class, 'merchantPosts']);
         Route::get('/merchants/{merchant:id}/orders', [AdminController::class, 'merchantOrders']);
         Route::get('/merchants/{merchant:id}/catalog/{type}', [AdminController::class, 'merchantCatalogByType']);
@@ -218,6 +244,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/catalog/categories', [AdminCatalogController::class, 'storeCategory']);
         Route::put('/catalog/categories/{category}', [AdminCatalogController::class, 'updateCategory']);
         Route::delete('/catalog/categories/{category}', [AdminCatalogController::class, 'destroyCategory']);
+        Route::get('/service-categories', [ServiceCategoryController::class, 'index']);
+        Route::post('/service-categories', [ServiceCategoryController::class, 'store']);
+        Route::put('/service-categories/{serviceCategory}', [ServiceCategoryController::class, 'update']);
+        Route::delete('/service-categories/{serviceCategory}', [ServiceCategoryController::class, 'destroy']);
 
         Route::post('/catalog/categories/{category}/attributes', [AdminCatalogController::class, 'storeAttribute']);
         Route::put('/catalog/attributes/{attribute}', [AdminCatalogController::class, 'updateAttribute']);
@@ -228,8 +258,70 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/catalog/brands/{brand}', [AdminCatalogController::class, 'destroyBrand']);
         Route::post('/catalog/brands/{brand}/models', [AdminCatalogController::class, 'storeBrandModel']);
         Route::put('/catalog/brand-models/{brandModel}', [AdminCatalogController::class, 'updateBrandModel']);
+        Route::get('/catalog/brand-models/{brandModel}', [AdminCatalogController::class, 'updateBrandModel']);
         Route::delete('/catalog/brand-models/{brandModel}', [AdminCatalogController::class, 'destroyBrandModel']);
     });
+
+    // ─── RETAIL OPS MODULE ──────────────────────────────────────────────────
+    Route::post('/merchant/modules/retail-ops/activate', [\App\Http\Controllers\Api\RetailModuleController::class, 'activate']);
+    Route::post('/merchant/modules/retail-ops/deactivate', [\App\Http\Controllers\Api\RetailModuleController::class, 'deactivate']);
+
+    Route::middleware(['retail_ops'])->prefix('retail')->group(function () {
+        // Staff Management
+        Route::get('/staff', [\App\Http\Controllers\Api\MerchantStaffController::class, 'index'])->middleware('retail_role:MANAGER');
+        Route::post('/staff', [\App\Http\Controllers\Api\MerchantStaffController::class, 'store'])->middleware('retail_role:MANAGER');
+        Route::patch('/staff/{staff}', [\App\Http\Controllers\Api\MerchantStaffController::class, 'update'])->middleware('retail_role:MANAGER');
+        Route::patch('/staff/{staff}/reset-pin', [\App\Http\Controllers\Api\MerchantStaffController::class, 'resetPin'])->middleware('retail_role:MANAGER');
+        Route::post('/staff/{staff}/clear-devices', [\App\Http\Controllers\Api\MerchantStaffController::class, 'clearDevices'])->middleware('retail_role:MANAGER');
+        Route::delete('/staff/{staff}', [\App\Http\Controllers\Api\MerchantStaffController::class, 'destroy'])->middleware('retail_role:MANAGER');
+
+        // Dashboard & Audit
+        Route::get('/dashboard', [\App\Http\Controllers\Api\RetailDashboardController::class, 'index'])->middleware('retail_role:MANAGER');
+        Route::get('/audit-logs', [\App\Http\Controllers\Api\RetailDashboardController::class, 'auditLogs'])->middleware('retail_role:MANAGER');
+        Route::get('/trust-safety', [\App\Http\Controllers\Api\RetailDashboardController::class, 'trustSafety'])->middleware('retail_role:MANAGER');
+        Route::post('/trust-safety/review-request', [\App\Http\Controllers\Api\RetailDashboardController::class, 'requestTrustSafetyReview'])->middleware('retail_role:MANAGER');
+        Route::get('/outstanding-balances', [\App\Http\Controllers\Api\RetailDashboardController::class, 'outstandingBalances'])->middleware('retail_role:MANAGER,CASHIER');
+        Route::post('/outstanding-balances/{order}/payment-link', [\App\Http\Controllers\Api\RetailDashboardController::class, 'outstandingPaymentLink'])->middleware('retail_role:MANAGER,CASHIER');
+        Route::post('/outstanding-balances/{order}/settle', [\App\Http\Controllers\Api\RetailDashboardController::class, 'settleOutstanding'])->middleware('retail_role:MANAGER,CASHIER');
+
+        // Stock Transfers (Handshake)
+        Route::get('/transfers', [\App\Http\Controllers\Api\StockTransferController::class, 'index'])->middleware('retail_role:MANAGER,STOREKEEPER,CASHIER');
+        Route::get('/products/{product:id}/timeline', [\App\Http\Controllers\Api\StockTransferController::class, 'productTimeline'])->middleware('retail_role:MANAGER,STOREKEEPER');
+        Route::post('/transfers', [\App\Http\Controllers\Api\StockTransferController::class, 'store'])->middleware('retail_role:MANAGER');
+        Route::patch('/transfers/{transfer}/dispatch', [\App\Http\Controllers\Api\StockTransferController::class, 'dispatch'])->middleware('retail_role:MANAGER,STOREKEEPER,CASHIER');
+        Route::patch('/transfers/{transfer}/receive', [\App\Http\Controllers\Api\StockTransferController::class, 'receive'])->middleware('retail_role:MANAGER,STOREKEEPER,CASHIER');
+        Route::patch('/transfers/{transfer}/cancel', [\App\Http\Controllers\Api\StockTransferController::class, 'cancel'])->middleware('retail_role:MANAGER');
+
+        // POS Operations
+        Route::get('/pos/products', [\App\Http\Controllers\Api\PosController::class, 'searchProducts'])->middleware('retail_role:MANAGER,CASHIER');
+        Route::post('/pos/sale', [\App\Http\Controllers\Api\PosController::class, 'storeSale'])->middleware('retail_role:MANAGER,CASHIER');
+        Route::post('/pos/sale/{order}/void', [\App\Http\Controllers\Api\PosController::class, 'voidSale'])->middleware('retail_role:MANAGER,CASHIER');
+        Route::post('/pos/sale/{order}/approve', [\App\Http\Controllers\Api\PosController::class, 'approveOrder'])->middleware('retail_role:MANAGER');
+        Route::post('/pos/sale/{order}/reject', [\App\Http\Controllers\Api\PosController::class, 'rejectOrder'])->middleware('retail_role:MANAGER');
+        Route::post('/pos/lookup', [\App\Http\Controllers\Api\PosController::class, 'findOrderByCode'])->middleware('retail_role:MANAGER,CASHIER,STOREKEEPER');
+        Route::get('/pos/pending', [\App\Http\Controllers\Api\PosController::class, 'pendingOrders'])->middleware('retail_role:MANAGER,CASHIER,STOREKEEPER');
+
+        // Inventory Management
+        Route::get('/inventory', [\App\Http\Controllers\Api\RetailInventoryController::class, 'index'])->middleware('retail_role:MANAGER,STOREKEEPER');
+        Route::post('/inventory/restock', [\App\Http\Controllers\Api\RetailInventoryController::class, 'restock'])->middleware('retail_role:MANAGER,STOREKEEPER');
+        Route::post('/inventory/count', [\App\Http\Controllers\Api\RetailInventoryController::class, 'submitCount'])->middleware('retail_role:MANAGER,STOREKEEPER');
+        Route::post('/inventory/import', [\App\Http\Controllers\Api\RetailInventoryController::class, 'bulkImport'])->middleware('retail_role:MANAGER');
+
+        // Onboarding
+        Route::post('/onboarding/import', [\App\Http\Controllers\Api\RetailOnboardingController::class, 'import'])->middleware('retail_role:MANAGER');
+
+        // Customer Management
+        Route::get('/customers', [\App\Http\Controllers\Api\MerchantCustomerController::class, 'index']);
+        Route::get('/customers/{customer}', [\App\Http\Controllers\Api\MerchantCustomerController::class, 'show']);
+
+        // Retail Settings
+        Route::get('/settings', [\App\Http\Controllers\Api\PosController::class, 'getSettings']);
+        Route::patch('/settings', [\App\Http\Controllers\Api\PosController::class, 'updateSettings']);
+    });
+
+    // POS Terminal Auth (Does not need retail_ops middleware here as it checks staff status internally)
+    Route::post('/retail/staff/pin-login', [\App\Http\Controllers\Api\StaffAuthController::class, 'pinLogin'])->middleware('throttle:5,10');
+    Route::post('/retail/staff/pin-override', [\App\Http\Controllers\Api\StaffAuthController::class, 'pinOverride']);
 });
 
 // ─── PUBLIC STOREFRONT (Catch-all for merchant slugs) ────────────────────────

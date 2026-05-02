@@ -3333,8 +3333,14 @@ class CountrySeeder extends Seeder
         ];
 
         foreach ($countryData as $data) {
-            // Use firstOrCreate with iso_alpha2 as the unique identifier
-            Country::firstOrCreate(
+            $data = $this->withIanaTimezones($data);
+            $country = Country::where('iso_alpha2', $data['iso_alpha2'])->first();
+
+            if ($country) {
+                $data['settings'] = array_replace($country->settings ?? [], $data['settings'] ?? []);
+            }
+
+            Country::updateOrCreate(
                 ['iso_alpha2' => $data['iso_alpha2']],
                 $data
             );
@@ -3377,5 +3383,46 @@ class CountrySeeder extends Seeder
 
         // Thai (th) - Thailand
         Country::whereIn('iso_alpha2', ['TH'])->update(['default_language' => 'th']);
+    }
+
+    private function withIanaTimezones(array $data): array
+    {
+        $iso = strtoupper((string) ($data['iso_alpha2'] ?? ''));
+        $timezones = timezone_identifiers_list(\DateTimeZone::PER_COUNTRY, $iso) ?: [];
+        $preferred = $this->preferredDefaultTimezone($iso);
+
+        if ($preferred && in_array($preferred, $timezones, true)) {
+            $data['timezone'] = $preferred;
+        } elseif (in_array($data['timezone'] ?? '', timezone_identifiers_list(), true)) {
+            $data['timezone'] = $data['timezone'];
+        } else {
+            $data['timezone'] = $timezones[0] ?? 'UTC';
+        }
+
+        $settings = is_array($data['settings'] ?? null) ? $data['settings'] : [];
+        $settings['timezones'] = array_values(array_unique($timezones ?: [$data['timezone']]));
+        $data['settings'] = $settings;
+
+        return $data;
+    }
+
+    private function preferredDefaultTimezone(string $iso): ?string
+    {
+        return [
+            'AU' => 'Australia/Sydney',
+            'BR' => 'America/Sao_Paulo',
+            'CA' => 'America/Toronto',
+            'CD' => 'Africa/Kinshasa',
+            'CN' => 'Asia/Shanghai',
+            'ID' => 'Asia/Jakarta',
+            'KE' => 'Africa/Nairobi',
+            'MX' => 'America/Mexico_City',
+            'NG' => 'Africa/Lagos',
+            'RU' => 'Europe/Moscow',
+            'TZ' => 'Africa/Dar_es_Salaam',
+            'UG' => 'Africa/Kampala',
+            'US' => 'America/New_York',
+            'ZA' => 'Africa/Johannesburg',
+        ][$iso] ?? null;
     }
 }

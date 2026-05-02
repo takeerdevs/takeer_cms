@@ -11,13 +11,30 @@ import {
     Tags, AlertTriangle, PenLine, MapPin, Link as LinkIcon,
     Edit3, X, ShoppingBag, Globe, Calendar, ArrowLeft,
     FileUp, Phone, MessageCircle, ExternalLink, File, CheckCircle, Loader2,
-    Plus, Search, Trash2, Info, Store, Boxes, Crown, ShieldCheck
+    Plus, Search, Trash2, Info, Store, Boxes, Crown, ShieldCheck, PlayCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import PolicyNotice from '@/Components/PolicyNotice';
+import AddressPickerModal from '@/Components/AddressPickerModal';
 
 const CATEGORIES = ['Nguo', 'Viatu', 'Simu na Vifaa', 'Chakula', 'Nyumba na Bustani', 'Michezo', 'Watoto', 'Afya & Uzuri', 'Nyingine'];
+
+const GENERIC_SERVICE_OPTION_TEMPLATE = {
+    label: 'Service option',
+    description: 'Create packages or service levels customers can choose before booking.',
+    examples: ['Basic Package', 'Standard Package', 'Premium Package'],
+    placeholder: 'Standard Package',
+    description_placeholder: 'What is included in this option',
+    fields: {
+        capacity_type: false,
+        capacity: false,
+        max_guests: false,
+        duration_minutes: true,
+        checkin_time: false,
+        checkout_time: false,
+    },
+};
 
 const formatFileSizeMb = (value) => {
     const size = Number(value);
@@ -39,6 +56,12 @@ const fileNameFromUrl = (rawValue) => {
         return name || 'Attached file';
     }
 };
+
+const mediaTypeForFile = (file) => file?.type?.startsWith('video/') ? 'video' : 'image';
+const isVideoMedia = (item) => item?.media_type === 'video'
+    || item?.type === 'video'
+    || item?.mime?.startsWith?.('video/')
+    || /\.(mp4|mov|webm|ogg)(\?|$)/i.test(String(item?.url || item?.localUrl || ''));
 
 export default function Upload({ merchantUsername }) {
     const fileInputRef = useRef(null);
@@ -101,7 +124,7 @@ export default function Upload({ merchantUsername }) {
     ]);
 
     // Service dual-mode: 'internal' (WhatsApp/phone) or 'external' (Calendly/booking link)
-    const [serviceBookingMode, setServiceBookingMode] = useState('internal');
+    const [serviceBookingMode, setServiceBookingMode] = useState('takeer');
     const [serviceContactType, setServiceContactType] = useState('whatsapp'); // 'whatsapp' | 'phone' | 'inperson'
     const [serviceContactValue, setServiceContactValue] = useState(''); // phone number for whatsapp/phone
     const [servicePricingModel, setServicePricingModel] = useState('fixed_price');
@@ -110,6 +133,24 @@ export default function Upload({ merchantUsername }) {
     const [serviceMinHours, setServiceMinHours] = useState('1');
     const [serviceDepositAmount, setServiceDepositAmount] = useState('');
     const [serviceIsShowcase, setServiceIsShowcase] = useState(false);
+    const [serviceMode, setServiceMode] = useState('pay_now');
+    const [serviceSchedulingType, setServiceSchedulingType] = useState('none');
+    const [serviceCategory, setServiceCategory] = useState('');
+    const [serviceSubcategory, setServiceSubcategory] = useState('');
+    const [servicePriceDisplay, setServicePriceDisplay] = useState('fixed');
+    const [serviceCharges, setServiceCharges] = useState([]);
+    const [serviceOptions, setServiceOptions] = useState([]);
+    const [serviceDurationValue, setServiceDurationValue] = useState('');
+    const [serviceDurationUnit, setServiceDurationUnit] = useState('minutes');
+    const [serviceLocationType, setServiceLocationType] = useState('provider_location');
+    const [serviceProviderLocation, setServiceProviderLocation] = useState(null);
+    const [serviceProviderLocationPickerOpen, setServiceProviderLocationPickerOpen] = useState(false);
+    const [serviceAreas, setServiceAreas] = useState([]);
+    const [serviceAreaDraft, setServiceAreaDraft] = useState('');
+    const [serviceClientRequirements, setServiceClientRequirements] = useState('');
+    const [serviceIntakeForm, setServiceIntakeForm] = useState([]);
+    const [serviceBookingProvider, setServiceBookingProvider] = useState('manual');
+    const [serviceCategoryOptionsFromApi, setServiceCategoryOptionsFromApi] = useState([]);
 
     const [price, setPrice] = useState('');
     const [comparePrice, setComparePrice] = useState('');
@@ -129,6 +170,93 @@ export default function Upload({ merchantUsername }) {
     const [digitalAccessTab, setDigitalAccessTab] = useState('plan');
     const [assignedAccessGroup, setAssignedAccessGroup] = useState(null); // { id, type, title }
 
+    const serviceModeOptions = [
+        { key: 'showcase_only', label: 'Showcase', hint: 'Onyesha tu, hakuna checkout', icon: Store },
+        { key: 'request_quote', label: 'Request Quote', hint: 'Mteja atume ombi kwanza', icon: PenLine },
+        { key: 'book_appointment', label: 'Book / Request', hint: 'Mteja atume booking au ombi la huduma', icon: Calendar },
+        { key: 'pay_now', label: 'Pay / Reserve', hint: 'Mteja alipe au aweke deposit', icon: ShoppingBag },
+    ];
+    const servicePriceOptions = [
+        { key: 'hidden', label: 'Hide price' },
+        { key: 'fixed', label: 'Fixed price' },
+        { key: 'starts_from', label: 'Starts from' },
+        { key: 'hourly', label: 'Per hour' },
+        { key: 'daily', label: 'Per day' },
+        { key: 'nightly', label: 'Per night' },
+        { key: 'weekly', label: 'Per week' },
+        { key: 'monthly', label: 'Per month' },
+        { key: 'yearly', label: 'Per year' },
+        { key: 'per_person', label: 'Per person' },
+        { key: 'per_visit', label: 'Per visit' },
+        { key: 'per_session', label: 'Per session' },
+        { key: 'per_project', label: 'Per project' },
+        { key: 'package', label: 'Package' },
+        { key: 'quote_only', label: 'Quote only' },
+    ];
+    const serviceChargeUnitOptions = [
+        { key: 'fixed', label: 'Fixed' },
+        { key: 'hourly', label: 'Per hour' },
+        { key: 'daily', label: 'Per day' },
+        { key: 'nightly', label: 'Per night' },
+        { key: 'weekly', label: 'Per week' },
+        { key: 'monthly', label: 'Per month' },
+        { key: 'yearly', label: 'Per year' },
+        { key: 'per_person', label: 'Per person' },
+        { key: 'per_visit', label: 'Per visit' },
+        { key: 'per_session', label: 'Per session' },
+        { key: 'per_project', label: 'Per project' },
+        { key: 'optional', label: 'Optional' },
+        { key: 'refundable_deposit', label: 'Refundable deposit' },
+    ];
+    const serviceLocationOptions = [
+        { key: 'provider_location', label: 'Specific location' },
+        { key: 'customer_location', label: 'At client location' },
+        { key: 'remote', label: 'Remote/online' },
+        { key: 'hybrid', label: 'Hybrid' },
+    ];
+    const fallbackServiceCategoryOptions = [
+        { label: 'Health & Wellness', subcategories: ['Doctor appointment', 'Therapy', 'Fitness', 'Nutrition', 'Home care', 'Other'] },
+        { label: 'Beauty & Personal Care', subcategories: ['Barber', 'Salon', 'Spa', 'Makeup', 'Massage', 'Other'] },
+        { label: 'Home & Repairs', subcategories: ['Plumbing', 'Electrical', 'Cleaning', 'Appliance repair', 'Construction', 'Other'] },
+        { label: 'Education & Training', subcategories: ['Course', 'Tutoring', 'Workshop', 'Professional training', 'Driving school', 'Other'] },
+        { label: 'Professional Services', subcategories: ['Consulting', 'IT support', 'Legal', 'Accounting', 'Business services', 'Other'] },
+        { label: 'Events & Hospitality', subcategories: ['Catering', 'Venue', 'Photography', 'Decor', 'MC/DJ', 'Other'] },
+        { label: 'Automotive & Garage', subcategories: ['Garage service', 'Mechanic', 'Car wash', 'Vehicle inspection', 'Towing', 'Other'] },
+        { label: 'Accommodation & Stays', subcategories: ['Hotel', 'Guest house', 'Lodge', 'Short stay', 'Serviced apartment', 'Other'] },
+        { label: 'Transport & Hire', subcategories: ['Boat hire', 'Car hire', 'Equipment hire', 'Courier', 'Tour guide', 'Other'] },
+        { label: 'Moving & Logistics', subcategories: ['House moving', 'Office moving', 'Packing', 'Truck hire', 'Storage', 'Other'] },
+        { label: 'Property & Survey', subcategories: ['Land survey', 'Valuation', 'Inspection', 'Real estate service', 'Other'] },
+        { label: 'Cleaning & Domestic', subcategories: ['Home cleaning', 'Office cleaning', 'Laundry', 'Pest control', 'Domestic help', 'Other'] },
+        { label: 'Funeral & Emergency', subcategories: ['Morgue service', 'Funeral service', 'Ambulance', 'Emergency repair', 'Other'] },
+        { label: 'Creative & Media', subcategories: ['Design', 'Video', 'Music studio', 'Printing', 'Marketing', 'Other'] },
+        { label: 'Travel & Recreation', subcategories: ['Tour package', 'Boat trip', 'Safari', 'Sports booking', 'Recreation venue', 'Other'] },
+        { label: 'Other', subcategories: ['Other'] },
+    ];
+    const serviceCategoryOptions = serviceCategoryOptionsFromApi.length > 0
+        ? serviceCategoryOptionsFromApi
+        : fallbackServiceCategoryOptions;
+    const serviceDurationPresets = [
+        { label: '15 min', value: 15, unit: 'minutes' },
+        { label: '30 min', value: 30, unit: 'minutes' },
+        { label: '1 hour', value: 1, unit: 'hours' },
+        { label: '2 hours', value: 2, unit: 'hours' },
+        { label: 'Half day', value: 4, unit: 'hours' },
+        { label: 'Full day', value: 1, unit: 'days' },
+    ];
+    const intakeFieldTypes = [
+        { key: 'text', label: 'Short text' },
+        { key: 'textarea', label: 'Long text' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'email', label: 'Email' },
+        { key: 'number', label: 'Number' },
+        { key: 'date', label: 'Date' },
+        { key: 'select', label: 'Dropdown' },
+        { key: 'checkbox', label: 'Checkbox' },
+        { key: 'image', label: 'Image' },
+        { key: 'file', label: 'File' },
+        { key: 'location', label: 'Map location' },
+    ];
+
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const editId = params.get('edit');
@@ -142,6 +270,7 @@ export default function Upload({ merchantUsername }) {
             if (typeParam === 'physical') setShowManualForm(true);
         }
         fetchCatalogRoot();
+        fetchServiceCategories();
         fetchMerchantProducts();
         fetchPromotables();
         fetchShippingProfiles();
@@ -170,7 +299,7 @@ export default function Upload({ merchantUsername }) {
         formData.append('folder', 'course-lessons');
 
         try {
-            const res = await axios.post('/merchant/upload/media', formData, {
+            const res = await axios.post(`/merchant/${merchantUsername}/upload/media`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
                 onUploadProgress: (p) => {
                     const progress = Math.round((p.loaded * 100) / p.total);
@@ -200,10 +329,38 @@ export default function Upload({ merchantUsername }) {
 
     const fetchCatalogRoot = async () => {
         try {
-            const res = await axios.get('/merchant/catalog/schema');
+            const res = await axios.get(`/merchant/${merchantUsername}/catalog/schema`);
             setCatalogCategories(res.data?.categories || []);
         } catch (error) {
             console.error('Failed to fetch catalog root schema', error);
+        }
+    };
+
+    const fetchServiceCategories = async () => {
+        try {
+            const res = await axios.get('/api/service-categories');
+            const options = (res.data?.data || []).map((category) => ({
+                label: category.name,
+                risk_level: category.risk_level || 'standard',
+                required_documents: category.required_documents || ['identity'],
+                requires_manual_review: Boolean(category.requires_manual_review),
+                payout_hold_days: category.payout_hold_days ?? 3,
+                max_first_quote_amount: category.max_first_quote_amount ?? null,
+                subcategories: (category.children || []).map((child) => child.name),
+                subcategoryConfigs: (category.children || []).map((child) => ({
+                    label: child.name,
+                    option_template: child.option_template || null,
+                    risk_level: child.risk_level || category.risk_level || 'standard',
+                    required_documents: child.required_documents || category.required_documents || ['identity'],
+                    requires_manual_review: Boolean(child.requires_manual_review ?? category.requires_manual_review),
+                    payout_hold_days: child.payout_hold_days ?? category.payout_hold_days ?? 3,
+                    max_first_quote_amount: child.max_first_quote_amount ?? category.max_first_quote_amount ?? null,
+                })),
+                option_template: category.option_template || null,
+            })).filter((category) => category.label);
+            setServiceCategoryOptionsFromApi(options);
+        } catch (error) {
+            console.error('Failed to fetch service categories', error);
         }
     };
 
@@ -213,7 +370,7 @@ export default function Upload({ merchantUsername }) {
             return;
         }
         try {
-            const res = await axios.get('/merchant/catalog/schema', { params: { category_id: categoryId } });
+            const res = await axios.get(`/merchant/${merchantUsername}/catalog/schema`, { params: { category_id: categoryId } });
             setSelectedCatalogSchema(res.data?.selected || null);
         } catch (error) {
             console.error('Failed to fetch category schema', error);
@@ -223,7 +380,7 @@ export default function Upload({ merchantUsername }) {
     const fetchMerchantProducts = async () => {
         setIsLoadingProducts(true);
         try {
-            const res = await axios.get('/merchant/products/api');
+            const res = await axios.get(`/merchant/${merchantUsername}/products/api`);
             setMerchantProducts(res.data.data || []);
         } catch (err) {
             console.error('Failed to fetch merchant products for tagging', err);
@@ -236,8 +393,8 @@ export default function Upload({ merchantUsername }) {
         setPromotablesLoading(true);
         try {
             const [bRes, sRes] = await Promise.all([
-                axios.get('/merchant/bundles/api'),
-                axios.get('/merchant/subscription-plans/api'),
+                axios.get(`/merchant/${merchantUsername}/bundles/api`),
+                axios.get(`/merchant/${merchantUsername}/subscription-plans/api`),
             ]);
             setPromotables({
                 bundles: bRes.data?.data || bRes.data?.bundles || [],
@@ -265,6 +422,10 @@ export default function Upload({ merchantUsername }) {
         }
     };
     const openHotspotEditor = (index) => {
+        if (isVideoMedia(images[index])) {
+            toast.info('Hotspots zinapatikana kwenye picha kwa sasa. Video itaonekana kwenye feed na post details.');
+            return;
+        }
         setCurrentImageIndex(index);
         setShowHotspotModal(true);
     };
@@ -272,7 +433,7 @@ export default function Upload({ merchantUsername }) {
     const loadProductForEdit = async (id) => {
         setIsLoadingEdit(true);
         try {
-            const res = await axios.get(`/merchant/products/${id}/api`);
+            const res = await axios.get(`/merchant/${merchantUsername}/products/${id}/api`);
             const p = res.data.data || res.data;
 
             setProductType(p.type);
@@ -295,7 +456,7 @@ export default function Upload({ merchantUsername }) {
                     const attrId = value.category_attribute_id;
                     if (!attrId) return acc;
                     acc[attrId] = {
-                        value_text: value.value_text ?? '',
+                        value_text: value.value_text || (Array.isArray(value.value_json) && value.value_json.length > 0 ? String(value.value_json[0]) : ''),
                         value_number: value.value_number ?? '',
                         value_boolean: value.value_boolean ?? false,
                         value_json: value.value_json ?? [],
@@ -343,6 +504,17 @@ export default function Upload({ merchantUsername }) {
                 const mappedImages = (p.images || []).map(img => ({
                     url: img.image_url,
                     localUrl: img.image_url,
+                    media_type: img.media_type || img.type || 'image',
+                    type: img.media_type || img.type || 'image',
+                    thumbnail_url: img.thumbnail_url || null,
+                    processed_url: img.processed_url || null,
+                    hls_url: img.hls_url || null,
+                    mime: img.mime || null,
+                    size: img.size || null,
+                    duration_seconds: img.duration_seconds || null,
+                    width: img.width || null,
+                    height: img.height || null,
+                    processing_status: img.processing_status || 'ready',
                     isUploading: false,
                     progress: 100
                 }));
@@ -387,19 +559,48 @@ export default function Upload({ merchantUsername }) {
                     setDigitalAccessTab(type);
                 }
             } else if (p.type === 'service') {
+                const legacyExternalScheduling = p.service_mode === 'external_booking'
+                    || (p.service_booking_provider === 'external' && p.url && p.url.startsWith('http'));
+                const nextServiceMode = p.service_mode === 'external_booking'
+                    ? 'pay_now'
+                    : p.service_mode || (
+                        p.service_is_showcase || p.service_pricing_model === 'showcase_only'
+                            ? 'showcase_only'
+                            : p.service_pricing_model === 'contract_quote'
+                                ? 'request_quote'
+                                : 'pay_now'
+                    );
                 setServicePricingModel(p.service_pricing_model || 'fixed_price');
                 setServiceBookingType(p.service_booking_type || 'instant');
                 setServiceHourlyRate(p.service_hourly_rate ?? '');
                 setServiceMinHours(p.service_min_hours ?? '1');
                 setServiceDepositAmount(p.service_deposit_amount ?? '');
                 setServiceIsShowcase(!!p.service_is_showcase);
-                if (p.url && p.url.includes(':') && !p.url.startsWith('http')) {
+                setServiceMode(nextServiceMode);
+                setServiceSchedulingType(p.service_scheduling_type || (legacyExternalScheduling ? 'external' : nextServiceMode === 'book_appointment' ? 'recurring' : 'none'));
+                setServiceCategory(p.service_category || '');
+                setServiceSubcategory(p.service_subcategory || '');
+                setServicePriceDisplay(p.service_price_display || (p.service_pricing_model === 'hourly_rate' ? 'hourly' : p.service_pricing_model === 'contract_quote' ? 'quote_only' : 'fixed'));
+                setServiceCharges(Array.isArray(p.service_charges) ? p.service_charges : []);
+                setServiceOptions(Array.isArray(p.service_options) ? p.service_options : []);
+                setServiceDurationFromMinutes(p.service_duration_minutes);
+                setServiceLocationType(p.service_location_type || 'provider_location');
+                setServiceProviderLocation(p.service_provider_location || null);
+                setServiceAreas(Array.isArray(p.service_area) ? p.service_area.filter(Boolean) : []);
+                setServiceClientRequirements(p.service_client_requirements || '');
+                setServiceIntakeForm(Array.isArray(p.service_intake_form) ? p.service_intake_form : []);
+                setServiceBookingProvider(p.service_booking_provider || (legacyExternalScheduling ? 'external' : 'manual'));
+                if (p.service_booking_provider === 'manual' && !p.service_contact_value && !p.url) {
+                    setServiceBookingMode('takeer');
+                } else if (p.url && p.url.includes(':') && !p.url.startsWith('http')) {
                     setServiceBookingMode('internal');
                     const [t, v] = p.url.split(':');
                     setServiceContactType(t);
                     setServiceContactValue(v);
                 } else {
-                    setServiceBookingMode('external');
+                    setServiceBookingMode(p.service_contact_value ? 'internal' : 'external');
+                    if (p.service_contact_channel) setServiceContactType(p.service_contact_channel);
+                    if (p.service_contact_value) setServiceContactValue(p.service_contact_value);
                     setUrl(p.url || '');
                 }
             }
@@ -422,11 +623,201 @@ export default function Upload({ merchantUsername }) {
         : selectedSchemaAttributes;
     const selectedSchemaBrands = selectedCatalogSchema?.brands || [];
     const selectedSchemaModels = selectedSchemaBrands.find((brand) => String(brand.id) === String(selectedBrandId))?.models || [];
-    const serviceNeedsCatalogPrice = !serviceIsShowcase && (
-        servicePricingModel === 'fixed_price'
-        || servicePricingModel === 'hourly_rate'
-        || servicePricingModel === 'deposit_required'
+    const serviceNeedsCatalogPrice = step !== 'service' || (
+        ['pay_now', 'book_appointment'].includes(serviceMode)
+        && !['hidden', 'quote_only'].includes(servicePriceDisplay)
     );
+    const serviceAreaList = serviceAreas.map((item) => String(item).trim()).filter(Boolean);
+    const selectedServiceCategory = serviceCategoryOptions.find((option) => option.label === serviceCategory);
+    const selectedServiceSubcategoryConfig = selectedServiceCategory?.subcategoryConfigs?.find((option) => option.label === serviceSubcategory);
+    const selectedServiceTrustPolicy = selectedServiceSubcategoryConfig || selectedServiceCategory || null;
+    const serviceTrustDocumentLabels = {
+        identity: 'KYC',
+        tin: 'TIN',
+        business_license: 'Leseni ya biashara',
+        registration: 'Usajili wa biashara',
+        professional_license: 'Leseni/cheti cha taaluma',
+    };
+    const selectedServiceRequiredDocuments = (selectedServiceTrustPolicy?.required_documents || [])
+        .map((document) => serviceTrustDocumentLabels[document] || document)
+        .filter(Boolean);
+    const serviceOptionNeedsSubcategory = Boolean(selectedServiceCategory?.subcategories?.length);
+    const serviceOptionCategoryReady = Boolean(serviceCategory) && (!serviceOptionNeedsSubcategory || Boolean(serviceSubcategory));
+    const serviceOptionTemplate = serviceOptionCategoryReady
+        ? selectedServiceSubcategoryConfig?.option_template || selectedServiceCategory?.option_template || GENERIC_SERVICE_OPTION_TEMPLATE
+        : null;
+    const serviceOptionFieldConfig = serviceOptionTemplate?.fields || {};
+    const serviceOptionFieldEnabled = (key) => Boolean(serviceOptionTemplate) && serviceOptionFieldConfig[key] !== false;
+    const serviceOptionDefaultCapacityType = serviceOptionFieldEnabled('capacity_type') ? 'limited' : 'unlimited';
+    const addServiceCharge = () => {
+        setServiceCharges((prev) => ([
+            ...prev,
+            {
+                id: `charge_${Date.now()}`,
+                name: '',
+                amount: '',
+                unit: 'fixed',
+                required: true,
+                included_in_checkout: false,
+                description: '',
+            },
+        ]));
+    };
+    const updateServiceCharge = (index, updates) => {
+        setServiceCharges((prev) => prev.map((charge, chargeIndex) => (
+            chargeIndex === index ? { ...charge, ...updates } : charge
+        )));
+    };
+    const removeServiceCharge = (index) => {
+        setServiceCharges((prev) => prev.filter((_, chargeIndex) => chargeIndex !== index));
+    };
+    const addServiceOption = () => {
+        if (!serviceOptionCategoryReady) {
+            toast.error(serviceOptionNeedsSubcategory ? 'Choose a service subcategory first.' : 'Choose a service category first.');
+            return;
+        }
+
+        setServiceOptions((prev) => ([
+            ...prev,
+            {
+                id: `option_${Date.now()}`,
+                name: '',
+                description: '',
+                price: '',
+                price_display: serviceOptionTemplate?.default_price_display || (servicePriceDisplay === 'hidden' || servicePriceDisplay === 'quote_only' ? 'fixed' : servicePriceDisplay),
+                capacity_type: serviceOptionTemplate?.default_capacity_type || serviceOptionDefaultCapacityType,
+                capacity: 1,
+                max_guests: '',
+                duration_minutes: serviceDurationMinutes || '',
+                checkin_time: '',
+                checkout_time: '',
+                buffer_minutes: '',
+            },
+        ]));
+    };
+    const updateServiceOption = (index, updates) => {
+        setServiceOptions((prev) => prev.map((option, optionIndex) => (
+            optionIndex === index ? { ...option, ...updates } : option
+        )));
+    };
+    const removeServiceOption = (index) => {
+        setServiceOptions((prev) => prev.filter((_, optionIndex) => optionIndex !== index));
+    };
+    const serviceOptionsForPayload = serviceOptions
+        .map((option) => ({
+            id: String(option.id || `option_${Date.now()}`).trim(),
+            name: String(option.name || '').trim(),
+            description: String(option.description || '').trim(),
+            price: option.price === '' || option.price === null || option.price === undefined ? null : Number(option.price),
+            price_display: option.price_display || servicePriceDisplay || 'fixed',
+            capacity_type: option.capacity_type === 'unlimited' ? 'unlimited' : 'limited',
+            capacity: option.capacity_type === 'unlimited' ? null : Number(option.capacity || 1),
+            max_guests: option.max_guests === '' || option.max_guests === null || option.max_guests === undefined ? null : Number(option.max_guests),
+            duration_minutes: option.duration_minutes === '' || option.duration_minutes === null || option.duration_minutes === undefined ? null : Number(option.duration_minutes),
+            checkin_time: option.checkin_time || null,
+            checkout_time: option.checkout_time || null,
+            buffer_minutes: option.buffer_minutes === '' || option.buffer_minutes === null || option.buffer_minutes === undefined ? null : Number(option.buffer_minutes),
+        }))
+        .filter((option) => option.name);
+    const serviceChargesForPayload = serviceCharges
+        .map((charge) => ({
+            name: String(charge.name || '').trim(),
+            amount: charge.amount === '' || charge.amount === null || charge.amount === undefined ? null : Number(charge.amount),
+            unit: charge.unit || 'fixed',
+            required: Boolean(charge.required),
+            included_in_checkout: Boolean(charge.included_in_checkout),
+            description: String(charge.description || '').trim(),
+        }))
+        .filter((charge) => charge.name);
+    const addServiceArea = () => {
+        const area = serviceAreaDraft.trim();
+        if (!area) return;
+        if (serviceAreaList.some((item) => item.toLowerCase() === area.toLowerCase())) {
+            toast.error('Area already added.');
+            return;
+        }
+        setServiceAreas((prev) => [...prev, area]);
+        setServiceAreaDraft('');
+    };
+    const removeServiceArea = (area) => {
+        setServiceAreas((prev) => prev.filter((item) => item !== area));
+    };
+    const automaticCustomerLocationField = (() => {
+        if (!['customer_location', 'hybrid'].includes(serviceLocationType)) return null;
+        return {
+            id: 'customer_service_location',
+            type: 'location',
+            label: serviceLocationType === 'hybrid' ? 'Customer location if provider should come to you' : 'Service address',
+            required: serviceLocationType === 'customer_location',
+            placeholder: 'Pick location on map',
+            options: [],
+        };
+    })();
+    const serviceIntakeFormForPayload = (() => {
+        const manualFields = serviceIntakeForm
+            .map((field) => ({
+                id: String(field.id || '').trim(),
+                type: field.type || 'text',
+                label: String(field.label || '').trim(),
+                required: Boolean(field.required),
+                placeholder: String(field.placeholder || '').trim(),
+                options: Array.isArray(field.options) ? field.options : String(field.options || '').split('\n'),
+            }))
+            .filter((field) => field.id && field.label);
+
+        if (!automaticCustomerLocationField || manualFields.some((field) => field.id === automaticCustomerLocationField.id)) {
+            return manualFields;
+        }
+
+        return [automaticCustomerLocationField, ...manualFields];
+    })();
+    const serviceDurationMinutes = (() => {
+        const value = Number(serviceDurationValue);
+        if (!Number.isFinite(value) || value <= 0) return '';
+        if (serviceDurationUnit === 'hours') return Math.round(value * 60);
+        if (serviceDurationUnit === 'days') return Math.round(value * 1440);
+        return Math.round(value);
+    })();
+    const setServiceDurationFromMinutes = (minutes) => {
+        const numeric = Number(minutes);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            setServiceDurationValue('');
+            setServiceDurationUnit('minutes');
+            return;
+        }
+
+        if (numeric % 1440 === 0) {
+            setServiceDurationValue(String(numeric / 1440));
+            setServiceDurationUnit('days');
+        } else if (numeric % 60 === 0) {
+            setServiceDurationValue(String(numeric / 60));
+            setServiceDurationUnit('hours');
+        } else {
+            setServiceDurationValue(String(numeric));
+            setServiceDurationUnit('minutes');
+        }
+    };
+    const addServiceIntakeField = () => {
+        setServiceIntakeForm((prev) => ([
+            ...prev,
+            {
+                id: `field_${Date.now()}`,
+                type: 'text',
+                label: '',
+                required: false,
+                placeholder: '',
+                options: [],
+            },
+        ]));
+    };
+    const updateServiceIntakeField = (index, updates) => {
+        setServiceIntakeForm((prev) => prev.map((field, fieldIndex) => (
+            fieldIndex === index ? { ...field, ...updates } : field
+        )));
+    };
+    const removeServiceIntakeField = (index) => {
+        setServiceIntakeForm((prev) => prev.filter((_, fieldIndex) => fieldIndex !== index));
+    };
     const defaultUnitForAttribute = (attr, current) => {
         const options = Array.isArray(attr?.unit_options) ? attr.unit_options.filter(Boolean) : [];
         if (options.length === 0) return current?.value_unit || '';
@@ -528,6 +919,12 @@ export default function Upload({ merchantUsername }) {
         const newImages = files.map((file, idx) => ({
             file,
             localUrl: URL.createObjectURL(file),
+            media_type: mediaTypeForFile(file),
+            type: mediaTypeForFile(file),
+            mime: file.type || null,
+            size: file.size || null,
+            thumbnail_url: null,
+            processing_status: mediaTypeForFile(file) === 'video' ? 'pending' : 'ready',
             isUploading: true,
             progress: 0,
             url: null
@@ -547,7 +944,7 @@ export default function Upload({ merchantUsername }) {
         formData.append('folder', 'products');
 
         try {
-            const res = await axios.post('/merchant/upload/media', formData, {
+            const res = await axios.post(`/merchant/${merchantUsername}/upload/media`, formData, {
                 onUploadProgress: (progressEvent) => {
                     const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
                     setImages(prev => {
@@ -563,6 +960,11 @@ export default function Upload({ merchantUsername }) {
                 const updated = [...prev];
                 if (updated[index]) {
                     updated[index].url = s3Url;
+                    updated[index].media_type = updated[index].media_type || (res.data.mime?.startsWith?.('video/') ? 'video' : 'image');
+                    updated[index].type = updated[index].media_type;
+                    updated[index].mime = res.data.mime || updated[index].mime || null;
+                    updated[index].size = res.data.size || updated[index].size || null;
+                    updated[index].processing_status = updated[index].media_type === 'video' ? 'pending' : 'ready';
                     updated[index].isUploading = false;
                     updated[index].progress = 100;
                 }
@@ -576,7 +978,7 @@ export default function Upload({ merchantUsername }) {
             }
             */
         } catch (err) {
-            toast.error('Imeshindwa kupakia picha.');
+            toast.error('Imeshindwa kupakia media.');
             setImages(prev => prev.filter((_, i) => i !== index));
         }
     };
@@ -593,7 +995,7 @@ export default function Upload({ merchantUsername }) {
         formData.append('folder', 'variant-swatches');
 
         try {
-            const res = await axios.post('/merchant/upload/media', formData, {
+            const res = await axios.post(`/merchant/${merchantUsername}/upload/media`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             const swatchUrl = res.data?.url || '';
@@ -714,7 +1116,7 @@ export default function Upload({ merchantUsername }) {
         toast.loading('AI inaangalia picha yako...', { id: 'ai-analyze' });
 
         try {
-            const res = await axios.post('/merchant/upload/draft', {
+            const res = await axios.post(`/merchant/${merchantUsername}/upload/draft`, {
                 image_url: imageUrl
             });
 
@@ -764,7 +1166,7 @@ export default function Upload({ merchantUsername }) {
         formData.append('folder', 'digital-products');
 
         try {
-            const res = await axios.post('/merchant/upload/media', formData, {
+            const res = await axios.post(`/merchant/${merchantUsername}/upload/media`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
                 onUploadProgress: (progressEvent) => {
                     const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -779,24 +1181,15 @@ export default function Upload({ merchantUsername }) {
     };
 
     const publishProduct = async () => {
-        const serviceNeedsCatalogPrice = step === 'service' && !serviceIsShowcase && (
-            servicePricingModel === 'fixed_price'
-            || servicePricingModel === 'hourly_rate'
-            || servicePricingModel === 'deposit_required'
+        const serviceNeedsCatalogPrice = step === 'service' && (
+            ['pay_now', 'book_appointment'].includes(serviceMode)
+            && !['hidden', 'quote_only'].includes(servicePriceDisplay)
         );
         if (
             !price
             && !(step === 'digital' && assignedAccessGroup)
             && !(step === 'physical' && hasVariants)
-            && !(
-                step === 'service' && (
-                    servicePricingModel === 'contract_quote'
-                    || servicePricingModel === 'showcase_only'
-                    || serviceIsShowcase
-                    || servicePricingModel === 'deposit_required'
-                    || servicePricingModel === 'hourly_rate'
-                )
-            )
+            && !(step === 'service' && !serviceNeedsCatalogPrice)
         ) {
             toast.error('Tafadhali weka bei ya bidhaa au assign access group.');
             return;
@@ -813,7 +1206,7 @@ export default function Upload({ merchantUsername }) {
             }
         }
         if (step === 'physical' && images.length === 0) {
-            toast.error('Tafadhali ongeza angalau picha moja ya bidhaa.');
+            toast.error('Tafadhali ongeza angalau picha au video moja ya bidhaa.');
             return;
         }
         if (step === 'physical' && !selectedCategoryId) {
@@ -886,19 +1279,27 @@ export default function Upload({ merchantUsername }) {
             }
         }
         if (step === 'service') {
-            if (servicePricingModel === 'hourly_rate' && !serviceHourlyRate) {
+            if (!serviceCategory) {
+                toast.error('Tafadhali chagua category ya huduma kwa usalama wa wateja.');
+                return;
+            }
+            if (selectedServiceCategory?.subcategories?.length && !serviceSubcategory) {
+                toast.error('Tafadhali chagua subcategory ya huduma kwa usalama wa wateja.');
+                return;
+            }
+            if (serviceNeedsCatalogPrice && !price) {
+                toast.error('Tafadhali weka bei ya huduma.');
+                return;
+            }
+            if (servicePriceDisplay === 'hourly' && !serviceHourlyRate && !price) {
                 toast.error('Tafadhali weka bei kwa saa.');
                 return;
             }
-            if (servicePricingModel === 'deposit_required' && !serviceDepositAmount) {
-                toast.error('Tafadhali weka kiasi cha deposit.');
-                return;
-            }
-            if (serviceBookingMode === 'internal' && !serviceContactValue) {
+            if (serviceBookingMode === 'internal' && !serviceContactValue && serviceMode !== 'book_appointment') {
                 toast.error('Tafadhali weka namba ya simu au WhatsApp.');
                 return;
             }
-            if (serviceBookingMode === 'external' && !url) {
+            if ((serviceSchedulingType === 'external' || serviceBookingMode === 'external') && !url) {
                 toast.error('Tafadhali weka link ya booking.');
                 return;
             }
@@ -912,7 +1313,7 @@ export default function Upload({ merchantUsername }) {
 
         // Ensure everything has finished uploading
         if (images.some(img => img.isUploading)) {
-            toast.error('Tafadhali subiri picha zimalize kupanda.');
+            toast.error('Tafadhali subiri media zimalize kupanda.');
             return;
         }
 
@@ -929,8 +1330,22 @@ export default function Upload({ merchantUsername }) {
             const publishVariants = step === 'physical' && hasVariants
                 ? variants.filter(isVariantConfigured)
                 : [];
-            const res = await axios.post('/merchant/upload/publish', {
+            const res = await axios.post(`/merchant/${merchantUsername}/upload/publish`, {
                 image_urls: images.map(img => img.url).filter(Boolean),
+                media_items: images.map(img => ({
+                    url: img.url,
+                    type: img.media_type || img.type || 'image',
+                    media_type: img.media_type || img.type || 'image',
+                    thumbnail_url: img.thumbnail_url || null,
+                    processed_url: img.processed_url || null,
+                    hls_url: img.hls_url || null,
+                    mime: img.mime || null,
+                    size: img.size || null,
+                    duration_seconds: img.duration_seconds || null,
+                    width: img.width || null,
+                    height: img.height || null,
+                    processing_status: img.processing_status || 'ready',
+                })).filter(item => item.url),
                 hotspots: hotspots,
                 type: productType,
                 is_course: isCourse,
@@ -940,32 +1355,63 @@ export default function Upload({ merchantUsername }) {
                 url: step === 'digital'
                     ? (digitalDeliveryMode === 'link' ? url : null)
                     : step === 'service'
-                        ? (serviceBookingMode === 'external' ? url : `${serviceContactType}:${serviceContactValue}`)
+                        ? (serviceSchedulingType === 'external' || serviceBookingMode === 'external'
+                            ? url
+                            : serviceBookingMode === 'internal'
+                                ? `${serviceContactType}:${serviceContactValue}`
+                                : null)
                         : null,
                 price: step === 'service'
                     ? (
-                        servicePricingModel === 'hourly_rate'
-                            ? (serviceHourlyRate === '' ? 0 : parseFloat(serviceHourlyRate))
-                            : servicePricingModel === 'deposit_required'
-                                ? (serviceDepositAmount === '' ? 0 : parseFloat(serviceDepositAmount))
-                                : (serviceIsShowcase || servicePricingModel === 'contract_quote' || servicePricingModel === 'showcase_only')
-                                    ? 0
-                                    : (price === '' ? 0 : parseFloat(price))
+                        servicePriceDisplay === 'hourly'
+                            ? parseFloat(serviceHourlyRate || price || 0)
+                            : (['showcase_only', 'request_quote'].includes(serviceMode) || ['hidden', 'quote_only'].includes(servicePriceDisplay))
+                                ? 0
+                                : (price === '' ? 0 : parseFloat(price))
                     )
                     : (price === '' ? 0 : parseFloat(price)),
                 compare_price: comparePrice ? parseFloat(comparePrice) : null,
-                service_pricing_model: step === 'service' ? servicePricingModel : 'fixed_price',
+                service_pricing_model: step === 'service'
+                    ? (
+                        serviceMode === 'showcase_only' ? 'showcase_only'
+                            : serviceMode === 'request_quote' || servicePriceDisplay === 'quote_only' ? 'contract_quote'
+                                : servicePriceDisplay === 'hourly' ? 'hourly_rate'
+                                    : serviceDepositAmount ? 'deposit_required'
+                                        : 'fixed_price'
+                    )
+                    : 'fixed_price',
                 service_booking_type: step === 'service' ? serviceBookingType : 'instant',
-                service_hourly_rate: step === 'service' && servicePricingModel === 'hourly_rate'
-                    ? Number(serviceHourlyRate || 0)
+                service_hourly_rate: step === 'service' && servicePriceDisplay === 'hourly'
+                    ? Number(serviceHourlyRate || price || 0)
                     : null,
-                service_min_hours: step === 'service' && servicePricingModel === 'hourly_rate'
+                service_min_hours: step === 'service' && servicePriceDisplay === 'hourly'
                     ? Number(serviceMinHours || 1)
                     : null,
-                service_deposit_amount: step === 'service' && servicePricingModel === 'deposit_required'
+                service_deposit_amount: step === 'service' && serviceDepositAmount
                     ? Number(serviceDepositAmount || 0)
                     : null,
-                service_is_showcase: step === 'service' ? serviceIsShowcase : false,
+                service_is_showcase: step === 'service' ? serviceMode === 'showcase_only' : false,
+                service_mode: step === 'service' ? serviceMode : 'pay_now',
+                service_scheduling_type: step === 'service' ? serviceSchedulingType : 'none',
+                service_category: step === 'service' ? serviceCategory || null : null,
+                service_subcategory: step === 'service' ? serviceSubcategory || null : null,
+                service_price_display: step === 'service' ? servicePriceDisplay : 'fixed',
+                service_charges: step === 'service' ? serviceChargesForPayload : [],
+                service_options: step === 'service' ? serviceOptionsForPayload : [],
+                service_duration_minutes: step === 'service' && serviceDurationMinutes ? Number(serviceDurationMinutes) : null,
+                service_location_type: step === 'service' ? serviceLocationType : null,
+                service_provider_location: step === 'service' && ['provider_location', 'hybrid'].includes(serviceLocationType)
+                    ? serviceProviderLocation
+                    : null,
+                service_area: step === 'service' ? serviceAreaList : [],
+                service_client_requirements: step === 'service' ? serviceClientRequirements : null,
+                service_intake_form: step === 'service' ? serviceIntakeFormForPayload : [],
+                service_booking_provider: step === 'service'
+                    ? (serviceSchedulingType === 'external' ? 'external' : serviceBookingProvider)
+                    : 'manual',
+                service_booking_mode: step === 'service' ? serviceBookingMode : 'takeer',
+                service_contact_channel: step === 'service' ? serviceContactType : null,
+                service_contact_value: step === 'service' ? serviceContactValue : null,
                 quantity: step === 'physical' && !hasVariants ? parseInt(quantity) : 99999,
                 has_variants: step === 'physical' ? hasVariants : false,
                 variants: publishVariants.map((variant, index) => ({
@@ -981,7 +1427,6 @@ export default function Upload({ merchantUsername }) {
                     location_inventories: variant.location_inventories || {},
                 })),
                 location_inventories: locationInventories,
-                shipping_profile_id: selectedShippingProfileId,
                 title: manualTitle,
                 category: manualCategory,
                 category_id: selectedCategoryId ? Number(selectedCategoryId) : null,
@@ -992,7 +1437,7 @@ export default function Upload({ merchantUsername }) {
                     const current = dynamicAttributeValues[attr.id] || {};
                     return {
                         category_attribute_id: attr.id,
-                        value_text: attr.input_type === 'text' ? (current.value_text || '') : null,
+                        value_text: (attr.input_type === 'text' || attr.input_type === 'select') ? (current.value_text || '') : null,
                         value_number: attr.input_type === 'number' && current.value_number !== '' ? Number(current.value_number) : null,
                         value_boolean: attr.input_type === 'boolean' ? !!current.value_boolean : null,
                         value_json: attr.input_type === 'select'
@@ -1038,7 +1483,7 @@ export default function Upload({ merchantUsername }) {
         }
         toast.loading('Inaunda bidhaa...', { id: 'manual-draft' });
         try {
-            const res = await axios.post('/merchant/upload/manual', {
+            const res = await axios.post(`/merchant/${merchantUsername}/upload/manual`, {
                 title: manualTitle,
                 category: manualCategory,
                 category_id: selectedCategoryId ? Number(selectedCategoryId) : null,
@@ -1076,6 +1521,21 @@ export default function Upload({ merchantUsername }) {
         setServiceMinHours('1');
         setServiceDepositAmount('');
         setServiceIsShowcase(false);
+        setServiceMode('pay_now');
+        setServiceSchedulingType('none');
+        setServiceCategory('');
+        setServiceSubcategory('');
+        setServicePriceDisplay('fixed');
+        setServiceCharges([]);
+        setServiceDurationValue('');
+        setServiceDurationUnit('minutes');
+        setServiceLocationType('provider_location');
+        setServiceProviderLocation(null);
+        setServiceAreas([]);
+        setServiceAreaDraft('');
+        setServiceClientRequirements('');
+        setServiceIntakeForm([]);
+        setServiceBookingProvider('manual');
         setPrice('');
         setComparePrice('');
         setQuantity('');
@@ -1114,7 +1574,7 @@ export default function Upload({ merchantUsername }) {
     const syncHotspotsToBackend = async (imageIndex, updatedHotspots) => {
         if (!productId) return;
         try {
-            await axios.post(`/merchant/products/${productId}/hotspots`, {
+            await axios.post(`/merchant/${merchantUsername}/products/${productId}/hotspots`, {
                 image_index: imageIndex,
                 hotspots: updatedHotspots
             });
@@ -1285,7 +1745,7 @@ export default function Upload({ merchantUsername }) {
                 {/* ── SHARED MEDIA SECTION: Sequential Gallery ── */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <label className="text-xs font-black text-muted-foreground uppercase tracking-[0.2em]">Picha za Bidhaa</label>
+                        <label className="text-xs font-black text-muted-foreground uppercase tracking-[0.2em]">Media za Bidhaa</label>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -1295,7 +1755,18 @@ export default function Upload({ merchantUsername }) {
                                 className="group relative aspect-[4/5] bg-accent rounded-[1.5rem] overflow-hidden border-2 border-transparent hover:border-brand-500 transition-all cursor-pointer shadow-sm"
                                 onClick={() => openHotspotEditor(idx)}
                             >
-                                <img src={img.localUrl} alt={`Picha ${idx + 1}`} className="w-full h-full object-cover" />
+                                {isVideoMedia(img) ? (
+                                    <>
+                                        <video src={img.localUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                            <div className="h-11 w-11 rounded-full bg-black/55 flex items-center justify-center">
+                                                <PlayCircle className="h-6 w-6 text-white" />
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <img src={img.localUrl} alt={`Media ${idx + 1}`} className="w-full h-full object-cover" />
+                                )}
 
                                 {img.isUploading && (
                                     <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white z-10 transition-all duration-300">
@@ -1318,7 +1789,7 @@ export default function Upload({ merchantUsername }) {
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
                                     <div className="flex items-center gap-1.5 text-white">
                                         <MapPin className="h-3.5 w-3.5" />
-                                        <span className="text-[10px] font-bold uppercase tracking-wider">Gusa kuweka Hotspot</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider">{isVideoMedia(img) ? 'Video ya feed/post' : 'Gusa kuweka Hotspot'}</span>
                                     </div>
                                 </div>
 
@@ -1346,12 +1817,12 @@ export default function Upload({ merchantUsername }) {
                                 <Plus className="h-6 w-6" />
                             </div>
                             <div className="text-center px-2">
-                                <span className="text-[11px] font-black text-brand-900 block uppercase tracking-wider">Ongeza Picha</span>
+                                <span className="text-[11px] font-black text-brand-900 block uppercase tracking-wider">Ongeza Media</span>
                                 <span className="text-[9px] text-brand-600 font-bold opacity-60">Slot {images.length + 1}</span>
                             </div>
                             <input
                                 type="file"
-                                accept="image/*"
+                                accept="image/*,video/*"
                                 multiple
                                 className="hidden"
                                 ref={fileInputRef}
@@ -1359,7 +1830,7 @@ export default function Upload({ merchantUsername }) {
                             />
                         </div>
                     </div>
-                    <p className="text-[10px] text-muted-foreground italic font-medium px-1">Tip: Click an image to add interactive hotspots like "Buy Now" tags or external links.</p>
+                    <p className="text-[10px] text-muted-foreground italic font-medium px-1">Tip: Click an image to add interactive hotspots. Videos will appear as playable media on post details.</p>
                 </div>
 
                 {step === 'physical' && (
@@ -1729,9 +2200,9 @@ export default function Upload({ merchantUsername }) {
                                                                                         value={variant.location_inventories?.[loc.id] || ''}
                                                                                         onChange={(e) => {
                                                                                             const val = e.target.value;
-                                                                                            setVariants((prev) => prev.map((row, idx) => 
-                                                                                                idx === index ? { 
-                                                                                                    ...row, 
+                                                                                            setVariants((prev) => prev.map((row, idx) =>
+                                                                                                idx === index ? {
+                                                                                                    ...row,
                                                                                                     location_inventories: {
                                                                                                         ...(row.location_inventories || {}),
                                                                                                         [loc.id]: val
@@ -1825,12 +2296,12 @@ export default function Upload({ merchantUsername }) {
                                                                             <span className="text-[10px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded font-bold border border-brand-100 uppercase">Primary</span>
                                                                         )}
                                                                     </div>
-                                                                    <Input 
-                                                                        type="number" 
-                                                                        placeholder="0" 
-                                                                        className="h-10 text-lg font-black bg-white" 
-                                                                        value={locationInventories[loc.id] || ''} 
-                                                                        onChange={e => setLocationInventories(prev => ({ ...prev, [loc.id]: e.target.value }))} 
+                                                                    <Input
+                                                                        type="number"
+                                                                        placeholder="0"
+                                                                        className="h-10 text-lg font-black bg-white"
+                                                                        value={locationInventories[loc.id] || ''}
+                                                                        onChange={e => setLocationInventories(prev => ({ ...prev, [loc.id]: e.target.value }))}
                                                                     />
                                                                 </div>
                                                             ))}
@@ -1901,19 +2372,19 @@ export default function Upload({ merchantUsername }) {
                 )}
 
                 {(step === 'digital' || step === 'service') && (
-                    <Card className="animate-in fade-in slide-in-from-bottom-8 overflow-hidden rounded-[2rem] border-none shadow-xl">
+                    <Card className="animate-in fade-in slide-in-from-bottom-8 overflow-hidden rounded-3xl border shadow-lg">
                         {/* Header */}
-                        <div className={`p-6 flex items-center gap-4 ${step === 'digital' ? 'bg-blue-600' : 'bg-purple-600'} text-white`}>
-                            <div className="h-12 w-12 bg-white/20 rounded-2xl flex items-center justify-center">
-                                {step === 'digital' ? <Globe className="h-6 w-6" /> : <Calendar className="h-6 w-6" />}
+                        <div className={`p-4 sm:p-5 flex items-center gap-3 ${step === 'digital' ? 'bg-blue-600' : 'bg-purple-600'} text-white`}>
+                            <div className="h-11 w-11 bg-white/20 rounded-2xl flex items-center justify-center">
+                                {step === 'digital' ? <Globe className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
                             </div>
                             <div>
-                                <h2 className="text-xl font-black">Taarifa za {step === 'digital' ? 'Digital' : 'Huduma'}</h2>
-                                <p className="text-sm opacity-80">Jaza maelezo kisha weka sokoni.</p>
+                                <h2 className="text-lg sm:text-xl font-black">Taarifa za {step === 'digital' ? 'Digital' : 'Huduma'}</h2>
+                                <p className="text-xs sm:text-sm opacity-80">Jaza maelezo kisha weka sokoni.</p>
                             </div>
                         </div>
 
-                        <CardContent className="p-6 space-y-6">
+                        <CardContent className="p-4 sm:p-5 space-y-5">
                             {/* Title */}
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jina la {step === 'digital' ? 'Bidhaa' : 'Huduma'}</label>
@@ -1921,7 +2392,7 @@ export default function Upload({ merchantUsername }) {
                                     placeholder={step === 'digital' ? 'Mf. E-book ya Kupika' : 'Mf. Ushauri wa Biashara'}
                                     value={manualTitle} // Using manualTitle for consistency, could be a separate state if needed
                                     onChange={e => setManualTitle(e.target.value)}
-                                    className="h-14 font-semibold text-lg"
+                                    className="h-12 font-semibold text-base"
                                 />
                             </div>
 
@@ -1932,7 +2403,7 @@ export default function Upload({ merchantUsername }) {
                                     placeholder={step === 'digital' ? "Elezea kuhusu hii bidhaa, nini mteja atapata au kuna thamani gani mteja atafaidi..." : "Elezea huduma unayotoa, faida na maandalizi yoyote yenye thamani kwa mteja..."}
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
-                                    className="min-h-[100px] rounded-2xl bg-white border-border"
+                                    className="min-h-[88px] rounded-2xl bg-white border-border"
                                     required
                                 />
                             </div>
@@ -2024,9 +2495,9 @@ export default function Upload({ merchantUsername }) {
                                                     <h4 className="font-black text-sm flex items-center gap-2">
                                                         <Boxes className="h-4 w-4" /> Curriculum Builder
                                                     </h4>
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="sm" 
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
                                                         onClick={addModule}
                                                         className="h-8 text-[10px] font-bold border-blue-200 text-blue-700 bg-white"
                                                     >
@@ -2041,7 +2512,7 @@ export default function Upload({ merchantUsername }) {
                                                                 <span className="text-[10px] font-black bg-blue-100 text-blue-700 h-5 w-5 rounded-full flex items-center justify-center">
                                                                     {mIdx + 1}
                                                                 </span>
-                                                                <Input 
+                                                                <Input
                                                                     className="h-8 text-sm font-bold border-0 bg-transparent p-0 focus-visible:ring-0"
                                                                     value={module.title}
                                                                     onChange={(e) => {
@@ -2062,7 +2533,7 @@ export default function Upload({ merchantUsername }) {
                                                                 {module.lessons.map((lesson, lIdx) => (
                                                                     <div key={lesson.id} className="bg-slate-50 border border-slate-100 p-3 rounded-lg flex flex-col gap-3">
                                                                         <div className="flex items-center justify-between gap-3">
-                                                                            <Input 
+                                                                            <Input
                                                                                 className="h-7 text-xs font-medium border-0 bg-transparent p-0 focus-visible:ring-0"
                                                                                 value={lesson.title}
                                                                                 placeholder="Lesson Title..."
@@ -2073,7 +2544,7 @@ export default function Upload({ merchantUsername }) {
                                                                                 }}
                                                                             />
                                                                             <div className="flex items-center gap-1">
-                                                                                <button 
+                                                                                <button
                                                                                     onClick={() => {
                                                                                         const newCur = [...curriculum];
                                                                                         newCur[mIdx].lessons[lIdx].is_preview = !newCur[mIdx].lessons[lIdx].is_preview;
@@ -2094,9 +2565,9 @@ export default function Upload({ merchantUsername }) {
                                                                         </div>
 
                                                                         {!lesson.content_url && !lesson.isUploading ? (
-                                                                            <Button 
-                                                                                variant="ghost" 
-                                                                                size="sm" 
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
                                                                                 className="h-8 border border-dashed border-blue-200 text-blue-600 bg-blue-50/50 text-[10px] font-bold w-full"
                                                                                 onClick={() => {
                                                                                     const input = document.createElement('input');
@@ -2125,7 +2596,7 @@ export default function Upload({ merchantUsername }) {
                                                                         )}
                                                                     </div>
                                                                 ))}
-                                                                <button 
+                                                                <button
                                                                     onClick={() => addLesson(module.id)}
                                                                     className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1 py-1"
                                                                 >
@@ -2233,170 +2704,907 @@ export default function Upload({ merchantUsername }) {
                                 </div>
                             )}
 
-                            {/* ─── SERVICE: booking mode toggle ─── */}
+                            {/* ─── SERVICE: unified listing mode ─── */}
                             {step === 'service' && (
-                                <div className="space-y-3">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Aina ya Bei ya Service</label>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                        {[
-                                            { key: 'fixed_price', label: 'Bei Kamili' },
-                                            { key: 'hourly_rate', label: 'Kwa Saa' },
-                                            { key: 'contract_quote', label: 'Nukuu/Contract' },
-                                            { key: 'deposit_required', label: 'Deposit Kwanza' },
-                                            { key: 'showcase_only', label: 'Onyesha Tu' },
-                                        ].map((option) => (
-                                            <button
-                                                key={option.key}
-                                                type="button"
-                                                onClick={() => setServicePricingModel(option.key)}
-                                                className={`py-2.5 px-2 rounded-xl text-xs font-bold border transition-all ${servicePricingModel === option.key
-                                                    ? 'bg-purple-600 text-white border-purple-600'
-                                                    : 'bg-background text-muted-foreground border-border hover:border-purple-300'
-                                                    }`}
-                                            >
-                                                {option.label}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <label className="rounded-xl border border-input bg-muted/30 px-3 py-2.5 flex items-center justify-between gap-3">
-                                            <span className="text-sm font-bold">Showcase tu (hakuna checkout)</span>
-                                            <input
-                                                type="checkbox"
-                                                className="h-4 w-4"
-                                                checked={serviceIsShowcase}
-                                                onChange={(e) => setServiceIsShowcase(e.target.checked)}
-                                            />
-                                        </label>
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Booking Flow</label>
-                                            <select
-                                                className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                value={serviceBookingType}
-                                                onChange={(e) => setServiceBookingType(e.target.value)}
-                                            >
-                                                <option value="instant">Instant</option>
-                                                <option value="request">Request First</option>
-                                                <option value="manual_confirm">Manual Confirm</option>
-                                            </select>
+                                <div className="space-y-4">
+                                    <div className="rounded-2xl border bg-white p-3 sm:p-4 space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+                                            <div>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service category</label>
+                                                <p className="text-xs text-muted-foreground mt-1">Optional, but helps organize services and improve discovery later.</p>
+                                            </div>
+                                            {(serviceCategory || serviceSubcategory) && (
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-purple-700 bg-purple-100 rounded-full px-3 py-1 w-max">
+                                                    {serviceSubcategory || serviceCategory}
+                                                </span>
+                                            )}
                                         </div>
-                                    </div>
-
-                                    {servicePricingModel === 'hourly_rate' && (
-                                        <div className="grid grid-cols-2 gap-3 animate-in fade-in">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             <div className="space-y-1.5">
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Rate / Saa (TZS)</label>
-                                                <Input
-                                                    type="number"
-                                                    placeholder="Mf. 50000"
-                                                    value={serviceHourlyRate}
-                                                    onChange={(e) => setServiceHourlyRate(e.target.value)}
-                                                    className="h-11 font-bold"
-                                                />
+                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</span>
+                                                <select
+                                                    className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                    value={serviceCategory}
+                                                    onChange={(e) => {
+                                                        const nextCategory = e.target.value;
+                                                        const nextOption = serviceCategoryOptions.find((option) => option.label === nextCategory);
+                                                        setServiceCategory(nextCategory);
+                                                        setServiceSubcategory((current) => (
+                                                            nextOption?.subcategories?.includes(current) ? current : ''
+                                                        ));
+                                                    }}
+                                                >
+                                                    <option value="">No category</option>
+                                                    {serviceCategoryOptions.map((option) => (
+                                                        <option key={option.label} value={option.label}>{option.label}</option>
+                                                    ))}
+                                                </select>
                                             </div>
                                             <div className="space-y-1.5">
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Minimum Saa</label>
-                                                <Input
-                                                    type="number"
-                                                    min="1"
-                                                    placeholder="1"
-                                                    value={serviceMinHours}
-                                                    onChange={(e) => setServiceMinHours(e.target.value)}
-                                                    className="h-11 font-bold"
-                                                />
+                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Subcategory</span>
+                                                <select
+                                                    className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold disabled:opacity-60"
+                                                    value={serviceSubcategory}
+                                                    onChange={(e) => setServiceSubcategory(e.target.value)}
+                                                    disabled={!serviceCategory}
+                                                >
+                                                    <option value="">No subcategory</option>
+                                                    {(selectedServiceCategory?.subcategories || []).map((subcategory) => (
+                                                        <option key={subcategory} value={subcategory}>{subcategory}</option>
+                                                    ))}
+                                                </select>
                                             </div>
                                         </div>
-                                    )}
-
-                                    {servicePricingModel === 'deposit_required' && (
-                                        <div className="space-y-1.5 animate-in fade-in">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Deposit (TZS)</label>
-                                            <Input
-                                                type="number"
-                                                placeholder="Mf. 30000"
-                                                value={serviceDepositAmount}
-                                                onChange={(e) => setServiceDepositAmount(e.target.value)}
-                                                className="h-11 font-bold"
-                                            />
-                                        </div>
-                                    )}
-
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Namna ya Kushughulika na Wateja</label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            onClick={() => setServiceBookingMode('internal')}
-                                            className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${serviceBookingMode === 'internal'
-                                                ? 'border-purple-500 bg-purple-50 text-purple-700'
-                                                : 'border-border text-muted-foreground hover:border-purple-200'
-                                                }`}
-                                        >
-                                            <Phone className="h-6 w-6" />
-                                            <span className="text-sm font-bold">Kwa Simu/WhatsApp</span>
-                                            <span className="text-[10px] text-center opacity-70">Wasiliana nawe moja kwa moja baada ya malipo</span>
-                                            {serviceBookingMode === 'internal' && <CheckCircle className="h-4 w-4 text-purple-600" />}
-                                        </button>
-                                        <button
-                                            onClick={() => setServiceBookingMode('external')}
-                                            className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${serviceBookingMode === 'external'
-                                                ? 'border-purple-500 bg-purple-50 text-purple-700'
-                                                : 'border-border text-muted-foreground hover:border-purple-200'
-                                                }`}
-                                        >
-                                            <ExternalLink className="h-6 w-6" />
-                                            <span className="text-sm font-bold">Link ya Booking</span>
-                                            <span className="text-[10px] text-center opacity-70">Calendly, Google Forms, Whatsapp Link etc.</span>
-                                            {serviceBookingMode === 'external' && <CheckCircle className="h-4 w-4 text-purple-600" />}
-                                        </button>
+                                        {selectedServiceTrustPolicy && (
+                                            <div className={`rounded-xl border px-3 py-2 text-xs ${selectedServiceTrustPolicy.risk_level === 'standard'
+                                                ? 'border-blue-100 bg-blue-50 text-blue-800'
+                                                : 'border-amber-200 bg-amber-50 text-amber-900'
+                                                }`}>
+                                                <p className="font-black uppercase tracking-wider">
+                                                    {selectedServiceTrustPolicy.risk_level === 'standard' ? 'Uhakiki wa kawaida' : 'Huduma yenye uhakiki maalum'}
+                                                </p>
+                                                <p className="mt-1 leading-relaxed">
+                                                    {selectedServiceTrustPolicy.risk_level === 'standard'
+                                                        ? 'Huduma zote zinahitaji KYC iliyothibitishwa kabla ya kuchapishwa.'
+                                                        : `Category hii inahitaji ${selectedServiceRequiredDocuments.join(', ') || 'nyaraka za uhakiki'}${selectedServiceTrustPolicy.requires_manual_review ? ' na review ya Takeer' : ''} kabla ya kuchapishwa.`}
+                                                </p>
+                                                {selectedServiceTrustPolicy.payout_hold_days > 3 && (
+                                                    <p className="mt-1 font-semibold">
+                                                        SafePay itashikilia malipo kwa siku {selectedServiceTrustPolicy.payout_hold_days} kabla ya payout.
+                                                    </p>
+                                                )}
+                                                {selectedServiceTrustPolicy.max_first_quote_amount && (
+                                                    <p className="mt-1 font-semibold">
+                                                        Kikomo cha quote ya kwanza: TZS {Number(selectedServiceTrustPolicy.max_first_quote_amount).toLocaleString()}.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* Internal — pick contact type */}
-                                    {serviceBookingMode === 'internal' && (
-                                        <div className="animate-in fade-in space-y-3">
-                                            <div className="flex gap-2">
-                                                {[
-                                                    { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
-                                                    { key: 'phone', label: 'Simu', icon: Phone },
-                                                ].map(({ key, label, icon: Icon }) => (
+                                    <div className="rounded-2xl border bg-slate-50/60 p-3 sm:p-4 space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+                                            <div>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Aina ya Huduma</label>
+                                                <p className="text-xs text-muted-foreground mt-1">Chagua namna kuu ya kuuza au kupokea maombi ya service hii.</p>
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-purple-700 bg-purple-100 rounded-full px-3 py-1 w-max">
+                                                {serviceModeOptions.find((option) => option.key === serviceMode)?.label || 'Service'}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {serviceModeOptions.map(({ key, label, hint, icon: Icon }) => (
+                                                <button
+                                                    key={key}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setServiceMode(key);
+                                                        setServiceIsShowcase(key === 'showcase_only');
+                                                        if (key === 'showcase_only') setServicePriceDisplay('hidden');
+                                                        if (key === 'request_quote') setServicePriceDisplay('quote_only');
+                                                    }}
+                                                    className={`min-h-[88px] rounded-xl border px-3 py-3 text-left transition-all ${serviceMode === key
+                                                        ? 'border-purple-600 bg-white text-purple-800 shadow-sm ring-1 ring-purple-200'
+                                                        : 'border-border bg-white text-muted-foreground hover:border-purple-300'
+                                                        }`}
+                                                >
+                                                    <div className="flex items-start gap-2">
+                                                        <Icon className="h-5 w-5 shrink-0" />
+                                                        <div className="min-w-0">
+                                                            <span className="block text-sm font-black leading-tight">{label}</span>
+                                                            <span className="block text-[11px] leading-snug mt-1">{hint}</span>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                        <div>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Scheduling style</label>
+                                            <p className="text-xs text-muted-foreground mt-1">Choose how this specific service accepts dates and bookings.</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {[
+                                                { key: 'none', label: 'No scheduling', hint: 'Use requests, quote, or manual follow-up.' },
+                                                { key: 'recurring', label: 'Recurring appointments', hint: 'Weekly availability, slots, buffer, and capacity.' },
+                                                { key: 'fixed_sessions', label: 'Fixed sessions/events', hint: 'Training, workshop, webinar, cohort, or event dates.' },
+                                                { key: 'external', label: 'External booking', hint: 'Use Calendly, Google Form, or another booking page.' },
+                                            ].map((option) => (
+                                                <button
+                                                    key={option.key}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setServiceSchedulingType(option.key);
+                                                        if (['recurring', 'fixed_sessions'].includes(option.key)) {
+                                                            setServiceBookingMode('takeer');
+                                                            if (serviceBookingProvider === 'external') setServiceBookingProvider('manual');
+                                                        }
+                                                        if (option.key === 'external') {
+                                                            setServiceBookingMode('external');
+                                                            setServiceBookingProvider('external');
+                                                        }
+                                                        if (option.key === 'none' && serviceBookingMode === 'external') {
+                                                            setServiceBookingMode('takeer');
+                                                            setServiceBookingProvider('manual');
+                                                        }
+                                                    }}
+                                                    className={`min-h-[76px] rounded-xl border px-3 py-3 text-left transition-all ${serviceSchedulingType === option.key
+                                                        ? 'border-purple-600 bg-purple-50 text-purple-800 shadow-sm ring-1 ring-purple-200'
+                                                        : 'border-border bg-background text-muted-foreground hover:border-purple-300'
+                                                        }`}
+                                                >
+                                                    <span className="block text-sm font-black leading-tight">{option.label}</span>
+                                                    <span className="block text-[11px] leading-snug mt-1">{option.hint}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid w-full grid-cols-1 gap-4">
+                                        <div className="col-span-full w-full rounded-2xl border p-3 sm:p-4 space-y-3">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ionekane vipi?</label>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                {servicePriceOptions.map((option) => (
                                                     <button
-                                                        key={key}
-                                                        onClick={() => setServiceContactType(key)}
-                                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border transition-all ${serviceContactType === key
+                                                        key={option.key}
+                                                        type="button"
+                                                        onClick={() => setServicePriceDisplay(option.key)}
+                                                        className={`min-h-11 px-3 rounded-xl text-xs font-bold border transition-all ${servicePriceDisplay === option.key
                                                             ? 'bg-purple-600 text-white border-purple-600'
                                                             : 'bg-background text-muted-foreground border-border hover:border-purple-300'
                                                             }`}
                                                     >
-                                                        <Icon className="h-4 w-4" />{label}
+                                                        {option.label}
                                                     </button>
                                                 ))}
                                             </div>
-                                            <Input
-                                                type="tel"
-                                                placeholder="+255 7XX XXX XXX"
-                                                value={serviceContactValue}
-                                                onChange={e => setServiceContactValue(e.target.value)}
-                                                className="h-12 text-lg font-mono"
-                                            />
-                                            <p className="text-[10px] text-muted-foreground">
-                                                Baada ya mteja kulipa, Takeer itamwonyesha namba yako ya {serviceContactType === 'whatsapp' ? 'WhatsApp' : 'simu'} ili apange miadi nawe.
-                                            </p>
+                                            {servicePriceDisplay === 'hourly' && (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Rate / Saa (TZS)</label>
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="Mf. 50000"
+                                                            value={serviceHourlyRate}
+                                                            onChange={(e) => setServiceHourlyRate(e.target.value)}
+                                                            className="h-11 font-bold"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Minimum Saa</label>
+                                                        <Input
+                                                            type="number"
+                                                            min="1"
+                                                            placeholder="1"
+                                                            value={serviceMinHours}
+                                                            onChange={(e) => setServiceMinHours(e.target.value)}
+                                                            className="h-11 font-bold"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="rounded-xl border bg-slate-50/60 p-3 space-y-3">
+                                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">Additional charges</p>
+                                                        <p className="text-[11px] text-muted-foreground mt-0.5">Optional fees like cleaning, security, lab, extra guest, or refundable deposit.</p>
+                                                    </div>
+                                                    <Button type="button" variant="outline" className="h-10 rounded-xl sm:w-32" onClick={addServiceCharge}>
+                                                        <Plus className="h-4 w-4 mr-1" /> Add
+                                                    </Button>
+                                                </div>
+                                                {serviceCharges.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        {serviceCharges.map((charge, index) => (
+                                                            <div key={charge.id || index} className="rounded-xl border bg-white p-3 sm:p-4 space-y-3">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div>
+                                                                        <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Charge {index + 1}</p>
+                                                                        <p className="text-[11px] text-muted-foreground">Fee, deposit, tax, or required add-on.</p>
+                                                                    </div>
+                                                                    <Button type="button" variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0 shrink-0" onClick={() => removeServiceCharge(index)}>
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                                <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+                                                                    <label className="space-y-1 lg:col-span-5">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Name</span>
+                                                                        <Input
+                                                                            placeholder="Cleaning fee"
+                                                                            value={charge.name || ''}
+                                                                            onChange={(e) => updateServiceCharge(index, { name: e.target.value })}
+                                                                            className="h-11"
+                                                                        />
+                                                                    </label>
+                                                                    <label className="space-y-1 lg:col-span-2">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Amount</span>
+                                                                        <Input
+                                                                            type="number"
+                                                                            min="0"
+                                                                            placeholder="0"
+                                                                            value={charge.amount ?? ''}
+                                                                            onChange={(e) => updateServiceCharge(index, { amount: e.target.value })}
+                                                                            className="h-11"
+                                                                        />
+                                                                    </label>
+                                                                    <label className="space-y-1 lg:col-span-3">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">How it applies</span>
+                                                                        <select
+                                                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                            value={charge.unit || 'fixed'}
+                                                                            onChange={(e) => updateServiceCharge(index, { unit: e.target.value })}
+                                                                        >
+                                                                            {serviceChargeUnitOptions.map((option) => (
+                                                                                <option key={option.key} value={option.key}>{option.label}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </label>
+                                                                    <div className="flex flex-row gap-2">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => updateServiceCharge(index, { required: !Boolean(charge.required) })}
+                                                                            className={`h-11 rounded-xl border px-3 text-xs font-black flex items-center justify-center gap-2 transition-colors ${charge.required
+                                                                                ? 'border-purple-200 bg-purple-50 text-purple-700'
+                                                                                : 'border-input bg-background text-muted-foreground'
+                                                                                }`}
+                                                                        >
+                                                                            <CheckCircle2 className={`h-4 w-4 ${charge.required ? 'fill-purple-600 text-white' : ''}`} />
+                                                                            Required
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => updateServiceCharge(index, { included_in_checkout: !Boolean(charge.included_in_checkout) })}
+                                                                            className={`h-11 rounded-xl border px-3 text-xs font-black flex items-center justify-center gap-2 transition-colors ${charge.included_in_checkout
+                                                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                                                : 'border-input bg-background text-muted-foreground'
+                                                                                }`}
+                                                                        >
+                                                                            <CheckCircle2 className={`h-4 w-4 ${charge.included_in_checkout ? 'fill-emerald-600 text-white' : ''}`} />
+                                                                            Checkout
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                {charge.included_in_checkout && (
+                                                                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs font-semibold text-emerald-800">
+                                                                        Checkout will ask for people, dates, hours, or quantity when this charge needs them.
+                                                                    </div>
+                                                                )}
+                                                                <label className="space-y-1 block">
+                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Note</span>
+                                                                    <Input
+                                                                        placeholder="Refundable after checkout inspection"
+                                                                        value={charge.description || ''}
+                                                                        onChange={(e) => updateServiceCharge(index, { description: e.target.value })}
+                                                                        className="h-11 text-sm"
+                                                                    />
+                                                                </label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    )}
 
-                                    {/* External booking link */}
-                                    {serviceBookingMode === 'external' && (
-                                        <div className="animate-in fade-in space-y-1.5">
-                                            <Input
-                                                placeholder="https://calendly.com/jina-lako"
-                                                value={url}
-                                                onChange={e => setUrl(e.target.value)}
-                                                className="h-12 font-mono text-sm"
-                                            />
-                                            <p className="text-[10px] text-muted-foreground">
-                                                Baada ya kulipa, mteja atapelekwa directly kwenye ukurasa wako wa booking au link.
+                                        <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                <div>
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service options / units</label>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        {serviceOptionTemplate?.description || 'Room types, packages, vehicles, halls, classes, consultation types, or equipment units.'}
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="h-10 rounded-xl sm:w-36 disabled:opacity-50"
+                                                    onClick={addServiceOption}
+                                                    disabled={!serviceOptionCategoryReady}
+                                                >
+                                                    <Plus className="h-4 w-4 mr-1" /> Add option
+                                                </Button>
+                                            </div>
+                                            {!serviceOptionCategoryReady ? (
+                                                <div className="rounded-xl border border-dashed bg-amber-50/70 px-4 py-3 text-xs text-amber-800 flex gap-2">
+                                                    <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                                                    <div>
+                                                        <p className="font-bold">Choose a category first.</p>
+                                                        <p className="mt-0.5">
+                                                            Service options use the selected subcategory template
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : serviceOptions.length === 0 ? (
+                                                <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
+                                                    Optional. Use this when one service has multiple bookable choices, e.g. {(serviceOptionTemplate?.examples || ['Standard Room', 'Deluxe Room', 'Private Session', 'Group Class', 'Boat A', 'Hall B']).join(', ')}.
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {serviceOptions.map((option, index) => (
+                                                        <div key={option.id || index} className="rounded-xl border bg-white p-3 sm:p-4 space-y-4">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Option {index + 1}</p>
+                                                                    <p className="text-[11px] text-muted-foreground">{serviceOptionTemplate?.label || 'Service option'}</p>
+                                                                </div>
+                                                                <Button type="button" variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0 shrink-0" onClick={() => removeServiceOption(index)}>
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+                                                                <label className="space-y-1 lg:col-span-5">
+                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{serviceOptionTemplate?.label || 'Option name'}</span>
+                                                                    <Input
+                                                                        placeholder={serviceOptionTemplate?.placeholder || serviceOptionTemplate?.examples?.[0] || 'Standard Package'}
+                                                                        value={option.name || ''}
+                                                                        onChange={(e) => updateServiceOption(index, { name: e.target.value })}
+                                                                        className="h-11"
+                                                                    />
+                                                                </label>
+                                                                <label className="space-y-1 lg:col-span-2">
+                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Price</span>
+                                                                    <Input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        placeholder="0"
+                                                                        value={option.price ?? ''}
+                                                                        onChange={(e) => updateServiceOption(index, { price: e.target.value })}
+                                                                        className="h-11"
+                                                                    />
+                                                                </label>
+                                                                <label className="space-y-1 lg:col-span-3">
+                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Price unit</span>
+                                                                    <select
+                                                                        className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                        value={option.price_display || 'fixed'}
+                                                                        onChange={(e) => updateServiceOption(index, { price_display: e.target.value })}
+                                                                    >
+                                                                        {servicePriceOptions.filter((item) => !['hidden', 'quote_only'].includes(item.key)).map((item) => (
+                                                                            <option key={item.key} value={item.key}>{item.label}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </label>
+                                                                {serviceOptionFieldEnabled('capacity_type') && (
+                                                                    <label className="space-y-1 lg:col-span-2">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Limit</span>
+                                                                        <select
+                                                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                            value={option.capacity_type || 'limited'}
+                                                                            onChange={(e) => updateServiceOption(index, { capacity_type: e.target.value })}
+                                                                        >
+                                                                            <option value="limited">Limited</option>
+                                                                            <option value="unlimited">Unlimited</option>
+                                                                        </select>
+                                                                    </label>
+                                                                )}
+                                                            </div>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                                {serviceOptionFieldEnabled('capacity') && (
+                                                                    <label className="space-y-1">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Units / rooms</span>
+                                                                        <Input
+                                                                            type="number"
+                                                                            min="1"
+                                                                            placeholder="1"
+                                                                            value={option.capacity ?? ''}
+                                                                            disabled={(option.capacity_type || 'limited') === 'unlimited'}
+                                                                            onChange={(e) => updateServiceOption(index, { capacity: e.target.value })}
+                                                                            className="h-11 text-sm"
+                                                                        />
+                                                                    </label>
+                                                                )}
+                                                                {serviceOptionFieldEnabled('max_guests') && (
+                                                                    <label className="space-y-1">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Max guests</span>
+                                                                        <Input
+                                                                            type="number"
+                                                                            min="1"
+                                                                            placeholder="2"
+                                                                            value={option.max_guests ?? ''}
+                                                                            onChange={(e) => updateServiceOption(index, { max_guests: e.target.value })}
+                                                                            className="h-11 text-sm"
+                                                                        />
+                                                                    </label>
+                                                                )}
+                                                                {serviceOptionFieldEnabled('duration_minutes') && (
+                                                                    <label className="space-y-1">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Duration</span>
+                                                                        <Input
+                                                                            type="number"
+                                                                            min="1"
+                                                                            placeholder="Minutes"
+                                                                            value={option.duration_minutes ?? ''}
+                                                                            onChange={(e) => updateServiceOption(index, { duration_minutes: e.target.value })}
+                                                                            className="h-11 text-sm"
+                                                                        />
+                                                                    </label>
+                                                                )}
+                                                                {serviceOptionFieldEnabled('checkin_time') && (
+                                                                    <label className="space-y-1">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Check-in</span>
+                                                                        <Input
+                                                                            type="time"
+                                                                            value={option.checkin_time || ''}
+                                                                            onChange={(e) => updateServiceOption(index, { checkin_time: e.target.value })}
+                                                                            className="h-11 text-sm"
+                                                                        />
+                                                                    </label>
+                                                                )}
+                                                                {serviceOptionFieldEnabled('checkout_time') && (
+                                                                    <label className="space-y-1">
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Checkout</span>
+                                                                        <Input
+                                                                            type="time"
+                                                                            value={option.checkout_time || ''}
+                                                                            onChange={(e) => updateServiceOption(index, { checkout_time: e.target.value })}
+                                                                            className="h-11 text-sm"
+                                                                        />
+                                                                    </label>
+                                                                )}
+                                                            </div>
+                                                            <label className="space-y-1 block">
+                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Description</span>
+                                                                <Input
+                                                                    placeholder={serviceOptionTemplate?.description_placeholder || 'What is included in this option'}
+                                                                    value={option.description || ''}
+                                                                    onChange={(e) => updateServiceOption(index, { description: e.target.value })}
+                                                                    className="h-11 text-sm"
+                                                                />
+                                                            </label>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Booking rules</label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                <div className="space-y-2 sm:col-span-3">
+                                                    <div>
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Service duration</span>
+                                                        <p className="text-[10px] text-muted-foreground">How long does one booking/session usually take? Used to create booking slots.</p>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <Input
+                                                            type="number"
+                                                            min="1"
+                                                            placeholder="Mf. 1"
+                                                            value={serviceDurationValue}
+                                                            onChange={(e) => setServiceDurationValue(e.target.value)}
+                                                            className="h-11 font-bold"
+                                                        />
+                                                        <select
+                                                            className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                            value={serviceDurationUnit}
+                                                            onChange={(e) => setServiceDurationUnit(e.target.value)}
+                                                        >
+                                                            <option value="minutes">Minutes</option>
+                                                            <option value="hours">Hours</option>
+                                                            <option value="days">Days</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-1.5">
+                                                        {serviceDurationPresets.map((preset) => {
+                                                            const selected = String(serviceDurationValue) === String(preset.value) && serviceDurationUnit === preset.unit;
+                                                            return (
+                                                                <button
+                                                                    key={`${preset.label}-${preset.value}-${preset.unit}`}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setServiceDurationValue(String(preset.value));
+                                                                        setServiceDurationUnit(preset.unit);
+                                                                    }}
+                                                                    className={`min-h-9 rounded-lg border px-2 text-[10px] font-black transition-colors ${selected
+                                                                        ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                                                        : 'border-border bg-background text-muted-foreground hover:border-purple-300'
+                                                                        }`}
+                                                                >
+                                                                    {preset.label}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    {serviceDurationMinutes && (
+                                                        <p className="text-[10px] font-semibold text-purple-700">
+                                                            Saved as {Number(serviceDurationMinutes).toLocaleString()} minutes.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flow</span>
+                                                    <select
+                                                        className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                        value={serviceBookingType}
+                                                        onChange={(e) => setServiceBookingType(e.target.value)}
+                                                    >
+                                                        <option value="request">Request First</option>
+                                                        <option value="manual_confirm">Manual Confirm</option>
+                                                        <option value="instant">Instant</option>
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Deposit</span>
+                                                    <Input
+                                                        type="number"
+                                                        placeholder="Mf. 30000"
+                                                        value={serviceDepositAmount}
+                                                        onChange={(e) => setServiceDepositAmount(e.target.value)}
+                                                        className="h-11 font-bold"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Huduma inatolewa wapi?</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {serviceLocationOptions.map((option) => (
+                                                    <button
+                                                        key={option.key}
+                                                        type="button"
+                                                        onClick={() => setServiceLocationType(option.key)}
+                                                        className={`min-h-11 px-2 rounded-xl text-xs font-bold border transition-all ${serviceLocationType === option.key
+                                                            ? 'bg-purple-600 text-white border-purple-600'
+                                                            : 'bg-background text-muted-foreground border-border hover:border-purple-300'
+                                                            }`}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {['provider_location', 'hybrid'].includes(serviceLocationType) && (
+                                                <div className="rounded-xl border bg-muted/20 p-3 space-y-2">
+                                                    <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">
+                                                        Provider venue
+                                                    </p>
+                                                    {serviceProviderLocation?.address ? (
+                                                        <div className="space-y-1">
+                                                            <p className="text-xs text-muted-foreground">{serviceProviderLocation.address}</p>
+                                                            {serviceProviderLocation.extraDetails && (
+                                                                <p className="text-xs text-muted-foreground">{serviceProviderLocation.extraDetails}</p>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Add where customers should come for this service.
+                                                        </p>
+                                                    )}
+                                                    <Input
+                                                        placeholder="Venue name, e.g. Main Clinic, Studio A"
+                                                        value={serviceProviderLocation?.name || ''}
+                                                        onChange={(e) => setServiceProviderLocation((prev) => ({
+                                                            ...(prev || {}),
+                                                            name: e.target.value,
+                                                        }))}
+                                                        className="h-10 text-sm"
+                                                    />
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            className="h-10 rounded-xl flex-1"
+                                                            onClick={() => setServiceProviderLocationPickerOpen(true)}
+                                                        >
+                                                            <MapPin className="h-4 w-4 mr-1" /> Pick venue
+                                                        </Button>
+                                                        {serviceProviderLocation?.address && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                className="h-10 rounded-xl"
+                                                                onClick={() => setServiceProviderLocation(null)}
+                                                            >
+                                                                <X className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="col-span-full w-full rounded-2xl border p-3 sm:p-4 space-y-3">
+                                            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+                                                <div>
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service areas</label>
+                                                    <p className="text-xs text-muted-foreground mt-1">These areas gate buyer requests and help show where the service is available.</p>
+                                                </div>
+                                                {serviceAreaList.length > 0 && (
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 rounded-full px-3 py-1 w-max">
+                                                        {serviceAreaList.length} area{serviceAreaList.length > 1 ? 's' : ''}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row gap-2">
+                                                <Input
+                                                    placeholder="Dar es Salaam, Mwanza, Online..."
+                                                    value={serviceAreaDraft}
+                                                    onChange={(e) => setServiceAreaDraft(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            addServiceArea();
+                                                        }
+                                                    }}
+                                                    className="h-11 text-sm"
+                                                />
+                                                <Button type="button" variant="outline" className="h-11 rounded-xl sm:w-32" onClick={addServiceArea}>
+                                                    <Plus className="h-4 w-4 mr-1" /> Add
+                                                </Button>
+                                            </div>
+                                            {serviceAreaList.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {serviceAreaList.map((area) => (
+                                                        <span key={area} className="inline-flex items-center gap-1 rounded-full bg-purple-50 text-purple-700 border border-purple-100 px-2.5 py-1 text-[11px] font-bold">
+                                                            {area}
+                                                            <button type="button" onClick={() => removeServiceArea(area)} className="rounded-full hover:bg-purple-100">
+                                                                <X className="h-3 w-3" />
+                                                            </button>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                            <div>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Taarifa unazohitaji kutoka kwa mteja</label>
+                                                <p className="text-xs text-muted-foreground mt-1">Build a simple form that customers fill before sending a request.</p>
+                                            </div>
+                                            <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={addServiceIntakeField}>
+                                                <Plus className="h-4 w-4 mr-1" /> Add field
+                                            </Button>
+                                        </div>
+                                        <Textarea
+                                            placeholder="Fallback instructions, e.g. picha za tatizo, address, preferred date..."
+                                            value={serviceClientRequirements}
+                                            onChange={(e) => setServiceClientRequirements(e.target.value)}
+                                            className="min-h-[86px] text-sm"
+                                        />
+                                        {automaticCustomerLocationField && (
+                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3">
+                                                <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                                                    <div className="md:col-span-3 h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-900 flex items-center justify-between">
+                                                        <span>Map location</span>
+                                                        <MapPin className="h-4 w-4 text-emerald-700" />
+                                                    </div>
+                                                    <Input
+                                                        className="md:col-span-5 h-11 border-emerald-200 bg-white font-semibold text-emerald-900"
+                                                        value={automaticCustomerLocationField.label}
+                                                        disabled
+                                                        readOnly
+                                                    />
+                                                    <Input
+                                                        className="md:col-span-3 h-11 border-emerald-200 bg-white text-emerald-900"
+                                                        value={automaticCustomerLocationField.placeholder}
+                                                        disabled
+                                                        readOnly
+                                                    />
+                                                    <div className="md:col-span-1 h-11 rounded-xl border border-emerald-200 bg-white text-emerald-700 flex items-center justify-center">
+                                                        <ShieldCheck className="h-4 w-4" />
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-emerald-800">
+                                                    <label className="flex items-center gap-2">
+                                                        <input type="checkbox" checked={Boolean(automaticCustomerLocationField.required)} readOnly disabled />
+                                                        Required
+                                                    </label>
+                                                    <span className="rounded-full bg-white/80 border border-emerald-200 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+                                                        Locked system field
+                                                    </span>
+                                                    <span className="text-emerald-700">
+                                                        Added from service location type
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {serviceIntakeForm.length > 0 && (
+                                            <div className="space-y-2">
+                                                {serviceIntakeForm.map((field, index) => (
+                                                    <div key={field.id || index} className="rounded-xl border bg-muted/20 p-3 space-y-3">
+                                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                                                            <select
+                                                                className="md:col-span-3 h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                value={field.type}
+                                                                onChange={(e) => updateServiceIntakeField(index, { type: e.target.value })}
+                                                            >
+                                                                {intakeFieldTypes.map((type) => (
+                                                                    <option key={type.key} value={type.key}>{type.label}</option>
+                                                                ))}
+                                                            </select>
+                                                            <Input
+                                                                className="md:col-span-5 h-11"
+                                                                placeholder="Question label"
+                                                                value={field.label || ''}
+                                                                onChange={(e) => updateServiceIntakeField(index, {
+                                                                    label: e.target.value,
+                                                                    id: field.id?.startsWith('field_')
+                                                                        ? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 60) || field.id
+                                                                        : field.id,
+                                                                })}
+                                                            />
+                                                            <Input
+                                                                className="md:col-span-3 h-11"
+                                                                placeholder="Placeholder"
+                                                                value={field.placeholder || ''}
+                                                                onChange={(e) => updateServiceIntakeField(index, { placeholder: e.target.value })}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeServiceIntakeField(index)}
+                                                                className="md:col-span-1 h-11 rounded-xl border bg-background text-muted-foreground hover:text-red-600"
+                                                            >
+                                                                <Trash2 className="h-4 w-4 mx-auto" />
+                                                            </button>
+                                                        </div>
+                                                        {field.type === 'select' && (
+                                                            <Textarea
+                                                                className="min-h-20 text-sm"
+                                                                placeholder="One option per line"
+                                                                value={(field.options || []).join('\n')}
+                                                                onChange={(e) => updateServiceIntakeField(index, { options: e.target.value.split('\n') })}
+                                                            />
+                                                        )}
+                                                        <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(field.required)}
+                                                                onChange={(e) => updateServiceIntakeField(index, { required: e.target.checked })}
+                                                            />
+                                                            Required
+                                                        </label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                        <div>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Namna ya kushughulika na wateja</label>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Chagua sehemu ambayo booking/request zitasimamiwa baada ya mteja kuonyesha interest.
                                             </p>
                                         </div>
-                                    )}
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setServiceBookingMode('takeer');
+                                                    setServiceBookingProvider('manual');
+                                                }}
+                                                className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'takeer'
+                                                    ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                                    : 'border-border text-muted-foreground hover:border-purple-200'
+                                                    }`}
+                                            >
+                                                <Calendar className="h-5 w-5 shrink-0" />
+                                                <span>
+                                                    <span className="block text-sm font-black">Takeer Booking</span>
+                                                    <span className="block text-[11px]">Slots, requests, calendar, na customers ndani ya Takeer</span>
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setServiceBookingMode('internal');
+                                                    setServiceBookingProvider('manual');
+                                                }}
+                                                className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'internal'
+                                                    ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                                    : 'border-border text-muted-foreground hover:border-purple-200'
+                                                    }`}
+                                            >
+                                                <Phone className="h-5 w-5 shrink-0" />
+                                                <span>
+                                                    <span className="block text-sm font-black">Simu/WhatsApp</span>
+                                                    <span className="block text-[11px]">Mteja awasiliane au apange nawe moja kwa moja</span>
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setServiceBookingMode('external');
+                                                    setServiceBookingProvider('external');
+                                                }}
+                                                className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'external'
+                                                    ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                                    : 'border-border text-muted-foreground hover:border-purple-200'
+                                                    }`}
+                                            >
+                                                <ExternalLink className="h-5 w-5 shrink-0" />
+                                                <span>
+                                                    <span className="block text-sm font-black">Link ya Booking</span>
+                                                    <span className="block text-[11px]">Calendly, Google Forms, WhatsApp link, website</span>
+                                                </span>
+                                            </button>
+                                        </div>
+
+                                        {serviceBookingMode === 'takeer' && (
+                                            <div className="animate-in fade-in rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900">
+                                                <p className="font-black">Takeer itasimamia booking/request dashboard.</p>
+                                                <p className="text-xs mt-1 text-emerald-800">
+                                                    Wateja watajaza form, kuchagua slot inapowezekana, na request itaonekana kwenye merchant calendar. Google Calendar itaweza kusync baadaye ukishaunganisha.
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {serviceBookingMode === 'internal' && (
+                                            <div className="animate-in fade-in space-y-3">
+                                                <div className="flex gap-2">
+                                                    {[
+                                                        { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+                                                        { key: 'phone', label: 'Simu', icon: Phone },
+                                                    ].map(({ key, label, icon: Icon }) => (
+                                                        <button
+                                                            key={key}
+                                                            onClick={() => setServiceContactType(key)}
+                                                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border transition-all ${serviceContactType === key
+                                                                ? 'bg-purple-600 text-white border-purple-600'
+                                                                : 'bg-background text-muted-foreground border-border hover:border-purple-300'
+                                                                }`}
+                                                        >
+                                                            <Icon className="h-4 w-4" />{label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <Input
+                                                    type="tel"
+                                                    placeholder="+255 7XX XXX XXX"
+                                                    value={serviceContactValue}
+                                                    onChange={e => setServiceContactValue(e.target.value)}
+                                                    className="h-12 text-lg font-mono"
+                                                />
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    Takeer itatumia hii kama njia kuu ya mteja kuanza mazungumzo au kupanga miadi.
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {serviceBookingMode === 'external' && (
+                                            <div className="animate-in fade-in space-y-1.5">
+                                                <Input
+                                                    placeholder="https://calendly.com/jina-lako"
+                                                    value={url}
+                                                    onChange={e => setUrl(e.target.value)}
+                                                    className="h-12 font-mono text-sm"
+                                                />
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    Inaweza kuwa Calendly, Google Forms, WhatsApp link, website yako, au booking system nyingine.
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {serviceBookingProvider === 'google_calendar' && (
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+                                                Google Calendar integration iko kwenye foundation, lakini OAuth bado haijaunganishwa. Kwa sasa tumia Manual au External link.
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -2405,7 +3613,9 @@ export default function Upload({ merchantUsername }) {
                                 {(step !== 'service' || serviceNeedsCatalogPrice) ? (
                                     <>
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ya Sasa (TZS)</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                                {step === 'service' ? 'Bei kuu ya huduma (TZS)' : 'Bei ya Sasa (TZS)'}
+                                            </label>
                                             <Input
                                                 type="number"
                                                 placeholder="Mf. 10000"
@@ -2413,9 +3623,16 @@ export default function Upload({ merchantUsername }) {
                                                 onChange={e => setPrice(e.target.value)}
                                                 className={`h-14 text-xl font-black ${step === 'digital' ? 'bg-blue-50 border-blue-200' : 'bg-purple-50 border-purple-200'}`}
                                             />
+                                            {step === 'service' && (
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    Hii ndiyo bei kuu inayoonekana; extra charges na deposit zitaongezwa sehemu ya huduma.
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ya Awali (TZS)</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                                {step === 'service' ? 'Bei ya awali / reference (TZS)' : 'Bei ya Awali (TZS)'}
+                                            </label>
                                             <Input
                                                 type="number"
                                                 placeholder="Mf. 15000"
@@ -2423,11 +3640,16 @@ export default function Upload({ merchantUsername }) {
                                                 onChange={e => setComparePrice(e.target.value)}
                                                 className="h-14 text-xl font-black border-dashed"
                                             />
+                                            {step === 'service' && (
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    Optional. Tumia kama unataka kuonyesha punguzo au bei ya kawaida.
+                                                </p>
+                                            )}
                                         </div>
                                     </>
                                 ) : (
                                     <div className="sm:col-span-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800 font-medium">
-                                        Service hii ni ya <span className="font-black uppercase">{servicePricingModel === 'contract_quote' ? 'Nukuu/Contract' : 'Showcase Tu'}</span>. Hakuna bei ya checkout inayohitajika.
+                                        Service hii ni ya <span className="font-black uppercase">{serviceMode === 'request_quote' ? 'Request/Quote' : serviceMode === 'showcase_only' ? 'Showcase' : 'Contact/Booking'}</span>. Hakuna bei ya checkout inayohitajika.
                                     </div>
                                 )}
                             </div>
@@ -2731,6 +3953,19 @@ export default function Upload({ merchantUsername }) {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+
+                <AddressPickerModal
+                    isOpen={serviceProviderLocationPickerOpen}
+                    onOpenChange={setServiceProviderLocationPickerOpen}
+                    initialLat={serviceProviderLocation?.lat}
+                    initialLng={serviceProviderLocation?.lng}
+                    initialAddress={serviceProviderLocation?.address}
+                    initialExtraDetails={serviceProviderLocation?.extraDetails}
+                    onSave={(location) => setServiceProviderLocation({
+                        ...location,
+                        name: serviceProviderLocation?.name || '',
+                    })}
+                />
 
                 <PolicyNotice />
             </div>

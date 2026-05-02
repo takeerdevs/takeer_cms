@@ -5,10 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CommentResource;
 use App\Http\Resources\PostResource;
+use App\Models\Bundle;
+use App\Models\Merchant;
 use App\Models\Post;
 use App\Models\PostProductTag;
+use App\Models\Product;
 use App\Models\PostReaction;
 use App\Models\PostLike;
+use App\Models\SubscriptionPlan;
 use App\Services\EntitlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,6 +41,7 @@ class PostController extends Controller
             'productTags.product.images',
             'productTags.product.variants',
             'reactions',
+            'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
         ])->where('public_id', $postPublicId);
@@ -55,6 +60,9 @@ class PostController extends Controller
         if ($post->trashed() && !$this->canViewDeletedPost($viewer, $post)) {
             abort(404);
         }
+
+        // Track traffic
+        $post->recordImpression($request);
 
         $commentsEnabled = $this->commentsEnabled($post);
         $canAccessComments = $post->trashed()
@@ -98,6 +106,7 @@ class PostController extends Controller
             'productTags.product.images',
             'productTags.product.variants',
             'reactions',
+            'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
         ])->where('public_id', $postPublicId);
@@ -134,6 +143,7 @@ class PostController extends Controller
             'images' => 'nullable|array',
             'images.*' => 'string',
             'product_id' => 'nullable|integer|exists:products,id',
+            'merchant_id' => 'nullable|integer',
             
             // New Promotion/Restriction Fields
             'is_restricted' => 'nullable|boolean',
@@ -145,18 +155,37 @@ class PostController extends Controller
             'reactions_enabled_override' => 'nullable|boolean',
         ]);
 
-        $user = $request->user();
-        $merchantProfile = $user->merchantProfiles()->where('is_default', true)->first()
-            ?? $user->merchantProfiles()->first();
+        $merchantProfile = $this->merchantFromRequest($request);
 
         if (!$merchantProfile) {
             return response()->json(['message' => 'Tafadhali tengeneza biashara kwanza.'], 403);
+        }
+
+        $attachedProduct = null;
+        if (!empty($validated['product_id'])) {
+            $attachedProduct = Product::query()
+                ->where('merchant_id', $merchantProfile->id)
+                ->with('images')
+                ->find($validated['product_id']);
+
+            if (!$attachedProduct) {
+                return response()->json([
+                    'message' => 'Product hii haipo kwenye profile uliyochagua.',
+                ], 422);
+            }
         }
 
         $promotablesInput = $validated['promotables'] ?? [];
         $hasPromotableGate = count($promotablesInput) > 0;
         $hasSingleUnlockPrice = array_key_exists('restricted_price', $validated) && $validated['restricted_price'] !== null;
         $shouldLockPost = (bool) ($validated['is_restricted'] ?? false) || $hasPromotableGate || $hasSingleUnlockPrice;
+
+        if ($shouldLockPost && ! $this->merchantCanMonetizeContent($merchantProfile)) {
+            return response()->json([
+                'message' => 'Complete KYC before locking content for payment.',
+                'verification_url' => "/merchant/{$merchantProfile->username}/verification",
+            ], 403);
+        }
 
         $isLongForm = !empty(trim((string) ($validated['body'] ?? '')));
         $isShortForm = !$isLongForm;
@@ -176,6 +205,7 @@ class PostController extends Controller
         // 1. Create the Post
         $post = Post::create([
             'merchant_id' => $merchantProfile->id,
+            'source' => 'authored',
             'caption' => $validated['caption'] ?? null,
             'title' => $validated['title'] ?? null,
             'excerpt' => $validated['excerpt'] ?? null,
@@ -190,13 +220,24 @@ class PostController extends Controller
         // Attach Promotables
         foreach ($promotablesInput as $promoInput) {
             $modelClass = match ($promoInput['type']) {
-                'product' => \App\Models\Product::class,
-                'bundle' => \App\Models\Bundle::class,
-                'subscription_plan' => \App\Models\SubscriptionPlan::class,
+                'product' => Product::class,
+                'bundle' => Bundle::class,
+                'subscription_plan' => SubscriptionPlan::class,
                 default => null,
             };
 
             if ($modelClass) {
+                $ownedPromotable = $modelClass::query()
+                    ->where('merchant_id', $merchantProfile->id)
+                    ->whereKey($promoInput['id'])
+                    ->exists();
+
+                if (!$ownedPromotable) {
+                    return response()->json([
+                        'message' => 'Kipengele ulichochagua hakipo kwenye profile hii.',
+                    ], 422);
+                }
+
                 \Illuminate\Support\Facades\DB::table('post_promotables')->insert([
                     'post_id' => $post->id,
                     'promotable_id' => $promoInput['id'],
@@ -227,9 +268,8 @@ class PostController extends Controller
             }
         } elseif (!empty($validated['product_id'])) {
             // Use Product Media (Legacy/Secondary attachment)
-            $product = $user->products()->with('images')->find($validated['product_id']);
-            if ($product && $product->images->isNotEmpty()) {
-                foreach ($product->images as $image) {
+            if ($attachedProduct && $attachedProduct->images->isNotEmpty()) {
+                foreach ($attachedProduct->images as $image) {
                     $post->media()->create([
                         'product_image_id' => $image->id,
                         'media_type' => 'image',
@@ -239,16 +279,13 @@ class PostController extends Controller
         }
 
         // 3. Link Primary Product if attached as product_id
-        if (!empty($validated['product_id'])) {
-            $product = $user->products()->find($validated['product_id']);
-            if ($product) {
-                PostProductTag::create([
-                    'post_id' => $post->id,
-                    'product_id' => $product->id,
-                    'x_coordinate' => 50,
-                    'y_coordinate' => 50,
-                ]);
-            }
+        if ($attachedProduct) {
+            PostProductTag::create([
+                'post_id' => $post->id,
+                'product_id' => $attachedProduct->id,
+                'x_coordinate' => 50,
+                'y_coordinate' => 50,
+            ]);
         }
 
         $post->load([
@@ -265,6 +302,7 @@ class PostController extends Controller
             'productTags.product.images',
             'productTags.product.variants',
             'reactions',
+            'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
         ]);
@@ -273,6 +311,11 @@ class PostController extends Controller
             'message' => 'Post imechapishwa!',
             'post' => PostResource::make($post)->resolve(),
         ]);
+    }
+
+    private function merchantCanMonetizeContent(Merchant $merchant): bool
+    {
+        return $merchant->hasCompletedKyc();
     }
 
     /**
@@ -414,37 +457,7 @@ class PostController extends Controller
 
     private function canAccessPostComments($user, Post $post): bool
     {
-        $hasPromotableGate = !empty($post->promotable_id) && !empty($post->promotable_type);
-        $hasSingleUnlockPrice = $post->restricted_price !== null;
-        $isRestricted = (bool) ($post->is_restricted ?? false) || $hasPromotableGate || $hasSingleUnlockPrice;
-
-        if (!$isRestricted) {
-            return true;
-        }
-
-        if (!$user) {
-            return false;
-        }
-
-        $entitlements = app(EntitlementService::class);
-
-        if ($hasPromotableGate) {
-            $typeMap = [
-                \App\Models\Product::class => 'product',
-                \App\Models\Bundle::class => 'bundle',
-                \App\Models\SubscriptionPlan::class => 'subscription_plan',
-            ];
-            $shortType = $typeMap[$post->promotable_type] ?? null;
-            if ($shortType && $entitlements->hasAccess((int) $user->id, $shortType, (int) $post->promotable_id)) {
-                return true;
-            }
-        }
-
-        if ($hasSingleUnlockPrice && $entitlements->hasAccess((int) $user->id, 'post', (int) $post->id)) {
-            return true;
-        }
-
-        return false;
+        return $this->userCanAccessPost($user, $post, true);
     }
 
     private function commentsEnabled(Post $post): bool
@@ -512,8 +525,21 @@ class PostController extends Controller
     /**
      * Remove the specified post from storage.
      */
-    public function destroy(Request $request, Post $post): JsonResponse
+    public function destroy(Request $request, Merchant|string|Post $merchantOrPost, ?Post $post = null): JsonResponse
     {
+        $scopedMerchant = $merchantOrPost instanceof Post ? $request->route('merchant') : $merchantOrPost;
+        $post = $merchantOrPost instanceof Post ? $merchantOrPost : $post;
+
+        abort_unless($post instanceof Post, 404);
+
+        if (!$scopedMerchant instanceof Merchant && $scopedMerchant) {
+            $scopedMerchant = Merchant::where('username', $scopedMerchant)->firstOrFail();
+        }
+
+        if ($scopedMerchant && (int) $post->merchant_id !== (int) $scopedMerchant->id) {
+            return response()->json(['message' => 'Post hii haipo kwenye profile hii.'], 404);
+        }
+
         // Ownership check: merchant's user_id must match the request user
         if ($post->merchant->user_id !== $request->user()->id) {
             return response()->json(['message' => 'Huna ruhusa ya kufuta post hii.'], 403);
@@ -533,8 +559,36 @@ class PostController extends Controller
 
     private function canViewDeletedPost($user, Post $post): bool
     {
+        return $this->userCanAccessPost($user, $post, false);
+    }
+
+    private function userCanAccessPost($user, Post $post, bool $allowPublicUnrestricted = true): bool
+    {
+        $post->loadMissing([
+            'merchant',
+            'linkedContentItem',
+            'promotableProducts',
+            'promotableBundles',
+            'promotableSubscriptions',
+        ]);
+
+        $promotables = $post->promotables ?? collect();
+        $linkedContentItem = $post->linkedContentItem;
+        $hasPromotableGate = $promotables->isNotEmpty();
+        $hasSingleUnlockPrice = $post->restricted_price !== null;
+        $hasPaidLinkedContent = $linkedContentItem && $linkedContentItem->price !== null;
+        $isRestricted = (bool) ($post->is_restricted ?? false) || $hasPromotableGate || $hasSingleUnlockPrice || $hasPaidLinkedContent;
+
+        if (!$isRestricted && $allowPublicUnrestricted) {
+            return true;
+        }
+
         if (!$user) {
             return false;
+        }
+
+        if ((bool) ($user->is_admin ?? false) || (int) ($post->merchant?->user_id ?? 0) === (int) $user->id) {
+            return true;
         }
 
         $entitlements = app(EntitlementService::class);
@@ -543,19 +597,55 @@ class PostController extends Controller
             return true;
         }
 
-        $hasPromotableGate = !empty($post->promotable_id) && !empty($post->promotable_type);
-        if ($hasPromotableGate) {
-            $typeMap = [
-                \App\Models\Product::class => 'product',
-                \App\Models\Bundle::class => 'bundle',
-                \App\Models\SubscriptionPlan::class => 'subscription_plan',
-            ];
-            $shortType = $typeMap[$post->promotable_type] ?? null;
-            if ($shortType && $entitlements->hasAccess((int) $user->id, $shortType, (int) $post->promotable_id)) {
+        if ($linkedContentItem && $entitlements->hasAccess((int) $user->id, 'content_item', (int) $linkedContentItem->id)) {
+            return true;
+        }
+
+        $typeMap = [
+            \App\Models\Product::class => 'product',
+            \App\Models\Bundle::class => 'bundle',
+            \App\Models\SubscriptionPlan::class => 'subscription_plan',
+        ];
+
+        foreach ($promotables as $promotable) {
+            $shortType = $typeMap[get_class($promotable)] ?? null;
+            if ($shortType && $entitlements->hasAccess((int) $user->id, $shortType, (int) $promotable->id)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private function merchantFromRequest(Request $request): ?Merchant
+    {
+        $routeMerchant = $request->route('merchant') ?: $request->attributes->get('resolved_merchant');
+
+        if ($routeMerchant instanceof Merchant) {
+            return $routeMerchant;
+        }
+
+        if ($routeMerchant) {
+            return Merchant::query()
+                ->where('username', $routeMerchant)
+                ->where('user_id', $request->user()->id)
+                ->firstOrFail();
+        }
+
+        $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
+
+        if ($merchantId) {
+            $merchant = $request->user()
+                ->merchantProfiles()
+                ->where('id', $merchantId)
+                ->first();
+
+            if ($merchant) {
+                return $merchant;
+            }
+        }
+
+        return $request->user()->merchantProfiles()->where('is_default', true)->first()
+            ?? $request->user()->merchantProfiles()->first();
     }
 }

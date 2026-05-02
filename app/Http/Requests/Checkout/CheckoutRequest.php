@@ -66,6 +66,15 @@ class CheckoutRequest extends FormRequest
             'delivery_type' => ['nullable', 'string', Rule::in(['local_boda', 'intercity_bus', 'self_pickup'])],
             'idempotency_key' => 'required|string|max:255',
             'payment_page_id' => 'nullable|integer|exists:payment_pages,id',
+            'service_request_id' => 'nullable|integer|exists:service_requests,id',
+            'service_request_token' => 'nullable|string|max:100',
+            'service_pricing_inputs' => 'nullable|array',
+            'service_pricing_inputs.service_option_id' => 'nullable|string|max:80',
+            'service_pricing_inputs.people' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.hours' => 'nullable|numeric|min:0.25|max:100000',
+            'service_pricing_inputs.quantity' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.start_date' => 'nullable|date',
+            'service_pricing_inputs.end_date' => 'nullable|date|after:service_pricing_inputs.start_date',
         ];
     }
 
@@ -162,6 +171,29 @@ class CheckoutRequest extends FormRequest
 
                     if (!$variantBelongsToProduct) {
                         $validator->errors()->add('variant_id', 'Selected variant is unavailable or out of stock.');
+                    }
+                }
+
+                if ($this->filled('service_request_id')) {
+                    $serviceRequest = \App\Models\ServiceRequest::query()->find((int) $this->input('service_request_id'));
+                    if (!$product?->isService() || !$serviceRequest || (int) $serviceRequest->product_id !== (int) $product->id) {
+                        $validator->errors()->add('service_request_id', 'Service request does not match this service.');
+                        return;
+                    }
+                    if (!$serviceRequest->payment_token || !hash_equals((string) $serviceRequest->payment_token, (string) $this->input('service_request_token'))) {
+                        $validator->errors()->add('service_request_token', 'Service payment link is invalid.');
+                        return;
+                    }
+                    if (!in_array($serviceRequest->status, ['quoted', 'confirmed'], true) || (float) $serviceRequest->quoted_amount <= 0) {
+                        $validator->errors()->add('service_request_id', 'Service request is not payable yet.');
+                        return;
+                    }
+                    if (in_array($serviceRequest->payment_status, ['paid', 'held', 'released', 'disputed', 'payment_initiated'], true)) {
+                        $validator->errors()->add('service_request_id', 'Service request payment is already completed or pending.');
+                        return;
+                    }
+                    if ($serviceRequest->payment_link_expires_at && $serviceRequest->payment_link_expires_at->isPast()) {
+                        $validator->errors()->add('service_request_id', 'Service payment link has expired.');
                     }
                 }
             }

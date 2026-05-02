@@ -27,6 +27,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
     const [expandedShippingId, setExpandedShippingId] = useState(null);
     const [formData, setFormData] = useState({
         name: 'Main Shop',
+        type: 'shop',
         address: '',
         latitude: DEFAULT_CENTER.lat,
         longitude: DEFAULT_CENTER.lng,
@@ -37,6 +38,9 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         allow_self_pickup: true,
         contact_phone: '',
     });
+    const [retailSettings, setRetailSettings] = useState(null);
+    const [savingRoutes, setSavingRoutes] = useState(false);
+    const [shopRoutes, setShopRoutes] = useState([]);
 
     const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
     const { isLoaded } = useJsApiLoader({
@@ -56,6 +60,21 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             }
         }
     }, [locations.length, editingId]);
+
+    useEffect(() => {
+        const fetchRetailSettings = async () => {
+            try {
+                const res = await window.axios.get('/api/retail/settings');
+                const settings = res.data?.data || {};
+                setRetailSettings(settings);
+                setShopRoutes(Array.isArray(settings.shop_routes) ? settings.shop_routes : []);
+            } catch (err) {
+                console.error('Failed to load retail settings', err);
+            }
+        };
+
+        fetchRetailSettings();
+    }, []);
 
     const onLoad = (autocomplete) => {
         autocompleteRef.current = autocomplete;
@@ -95,6 +114,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         setEditingId(null);
         setFormData({
             name: `Shop ${locations.length + 1}`,
+            type: 'shop',
             address: '',
             latitude: DEFAULT_CENTER.lat,
             longitude: DEFAULT_CENTER.lng,
@@ -111,6 +131,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         setEditingId(loc.id);
         setFormData({
             name: loc.name,
+            type: String(loc.type || 'shop').toLowerCase(),
             address: loc.address,
             latitude: Number(loc.latitude),
             longitude: Number(loc.longitude),
@@ -149,7 +170,8 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             }
             if (onRefresh) onRefresh();
         } catch (err) {
-            toast.error(editingId ? 'Imeshindikana kubadilisha eneo.' : 'Imeshindikana kuhifadhi eneo hili.');
+            const fallback = editingId ? 'Imeshindikana kubadilisha eneo.' : 'Imeshindikana kuhifadhi eneo hili.';
+            toast.error(err.response?.data?.message || fallback);
         } finally {
             setIsSaving(false);
         }
@@ -186,6 +208,48 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         setFormData(prev => ({ ...prev, latitude: lat, longitude: lng }));
     };
 
+    const shops = locations.filter((loc) => String(loc.type || '').toLowerCase() === 'shop');
+    const supplyLocations = locations.filter((loc) => ['store', 'warehouse'].includes(String(loc.type || '').toLowerCase()));
+    const routeByShopId = shopRoutes.reduce((acc, row) => {
+        acc[Number(row.shop_location_id)] = row;
+        return acc;
+    }, {});
+
+    const updateShopRoute = (shopId, key, value) => {
+        setShopRoutes((prev) => {
+            const next = [...prev];
+            const idx = next.findIndex((x) => Number(x.shop_location_id) === Number(shopId));
+            if (idx >= 0) {
+                next[idx] = { ...next[idx], [key]: value === '' ? null : Number(value) };
+            } else {
+                next.push({
+                    shop_location_id: Number(shopId),
+                    serving_store_location_id: null,
+                    delivery_pickup_location_id: null,
+                    [key]: value === '' ? null : Number(value),
+                });
+            }
+            return next;
+        });
+    };
+
+    const saveShopRoutes = async () => {
+        if (!retailSettings) return;
+        setSavingRoutes(true);
+        try {
+            await window.axios.patch('/api/retail/settings', {
+                ...retailSettings,
+                shop_routes: shopRoutes,
+            });
+            toast.success('Mpangilio wa mtiririko wa bidhaa umehifadhiwa.');
+            setRetailSettings((prev) => ({ ...(prev || {}), shop_routes: shopRoutes }));
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Imeshindikana kuhifadhi mpangilio wa shop na store.');
+        } finally {
+            setSavingRoutes(false);
+        }
+    };
+
     return (
         <Card className="glass-card shadow-sm mt-6">
             <CardHeader className="p-5 pb-2">
@@ -197,6 +261,56 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                 <p className="text-xs text-muted-foreground mb-4">
                     Weka eneo sahihi la duka lako ili kuweza kuhesabu gharama za usafirishaji kwa wateja wa karibu.
                 </p>
+
+                {shops.length > 0 && (
+                    <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4 space-y-3">
+                <div>
+                    <p className="text-xs font-black uppercase text-brand-700">Mtiririko wa Bidhaa (Rahisi)</p>
+                    <p className="text-[11px] text-brand-700/80">
+                        Chagua stoo inayohudumia kila shop. Hii inafuata uhalisia wa dukani: Shop inauza, Store/Warehouse inasupply.
+                    </p>
+                </div>
+
+                <div className="space-y-2">
+                    {shops.map((shop) => {
+                        const route = routeByShopId[Number(shop.id)] || {};
+                        return (
+                            <div key={shop.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 rounded-xl bg-white border border-brand-100">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase text-slate-500">Shop</p>
+                                    <p className="text-sm font-bold text-slate-900">{shop.name}</p>
+                                </div>
+                                <div>
+                                            <label className="text-[10px] font-black uppercase text-slate-500">Stoo Inayohudumia Shop</label>
+                                            <select
+                                                className="w-full h-9 mt-1 rounded-lg border border-input bg-white px-2 text-xs font-semibold"
+                                                value={route.serving_store_location_id ?? ''}
+                                                onChange={(e) => updateShopRoute(shop.id, 'serving_store_location_id', e.target.value)}
+                                            >
+                                                <option value="">Chagua Store/Warehouse</option>
+                                                {supplyLocations.map((loc) => (
+                                                    <option key={loc.id} value={loc.id}>{loc.name} ({loc.type})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                        );
+                    })}
+                </div>
+
+                        <div className="flex justify-end">
+                            <Button
+                                type="button"
+                                className="h-9 px-4 rounded-xl font-bold"
+                                onClick={saveShopRoutes}
+                                disabled={savingRoutes || !retailSettings}
+                            >
+                                {savingRoutes ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                Hifadhi Mtiririko
+                            </Button>
+                        </div>
+                    </div>
+                )}
 
                 {propLoading || loading ? (
                     <div className="flex justify-center p-4"><Loader2 className="animate-spin h-5 w-5 text-brand-500" /></div>
@@ -213,6 +327,9 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                         <div className="min-w-0">
                                             <div className="flex items-center gap-2">
                                                 <p className="text-sm font-bold truncate">{loc.name}</p>
+                                                <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full font-bold uppercase">
+                                                    {String(loc.type || 'shop').toLowerCase()}
+                                                </span>
                                                 {loc.is_primary && (
                                                     <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
                                                         <CheckCircle2 className="h-2.5 w-2.5" /> PRIMARY
@@ -285,6 +402,18 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                 required
                                 className="bg-muted/30 rounded-xl"
                             />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Aina ya Eneo</label>
+                            <select
+                                value={formData.type}
+                                onChange={e => setFormData({ ...formData, type: e.target.value })}
+                                className="w-full h-10 px-3 rounded-xl border border-input bg-muted/30 text-sm"
+                            >
+                                <option value="shop">Shop (Display/Sales Point)</option>
+                                <option value="store">Store (Stock Source)</option>
+                                <option value="warehouse">Warehouse</option>
+                            </select>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase">Tafuta Eneo (Google Maps)</label>

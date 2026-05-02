@@ -15,7 +15,17 @@ class PostMedia extends Model
     protected $fillable = [
         'post_id',
         'media_url',
-        'media_type', // 'image', 'video', 'pdf'
+        'media_type',
+        'thumbnail_url',
+        'processed_url',
+        'hls_url',
+        'mime',
+        'size',
+        'duration_seconds',
+        'width',
+        'height',
+        'processing_status',
+        'processing_error',
         'product_image_id',
         'likes_count',
     ];
@@ -23,6 +33,10 @@ class PostMedia extends Model
     protected $casts = [
         'likes_count' => 'integer',
         'product_image_id' => 'integer',
+        'size' => 'integer',
+        'duration_seconds' => 'integer',
+        'width' => 'integer',
+        'height' => 'integer',
     ];
 
     /**
@@ -47,5 +61,20 @@ class PostMedia extends Model
     public function getUrlAttribute(): ?string
     {
         return $this->productImage?->image_url ?? $this->media_url;
+    }
+
+    public function getThumbnailUrlAttribute($value): ?string
+    {
+        return $this->productImage?->thumbnail_url ?? $value;
+    }
+
+    public function getProcessedUrlAttribute($value): ?string
+    {
+        return $this->productImage?->processed_url ?? $value;
+    }
+
+    public function getHlsUrlAttribute($value): ?string
+    {
+        return $this->productImage?->hls_url ?? $value;
     }
 }

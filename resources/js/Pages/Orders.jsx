@@ -501,6 +501,8 @@ function OwnedCard({ entry }) {
     const [payingInquiry, setPayingInquiry] = useState(false);
 
     const isDigitalProduct = entry.item_type === 'product' && item.type === 'digital';
+    const isServiceProduct = entry.item_type === 'product' && item.type === 'service';
+    const serviceRequest = orderDetails?.service_request || null;
 
     const handlePayInquiry = async (orderId) => {
         setPayingInquiry(true);
@@ -514,13 +516,14 @@ function OwnedCard({ entry }) {
         }
     };
     const orderId = entry.source_type === 'order' ? entry.source_id : null;
-    const targetUrl = String(item.url || '').trim();
-    const hasExternalUrl = /^[a-z][a-z0-9+\-.]*:\/\//i.test(targetUrl);
-    const isDownloadableDigital = isDigitalProduct && (targetUrl.startsWith('private://') || (!!targetUrl && !hasExternalUrl));
-    const isLinkDigital = isDigitalProduct && hasExternalUrl;
+    const targetUrl = String(item.url || item.download_link || '').trim();
+    const isLinkDigital = isDigitalProduct && /^[a-z][a-z0-9+\-.]*:\/\//i.test(targetUrl);
 
     const handleConfirmReceipt = async () => {
-        if (!confirm('Umehakikisha umepokea mzigo huu na uko katika hali nzuri? Hela zitatumwa kwa muuzaji mara moja.')) return;
+        const message = isServiceProduct
+            ? 'Umehakikisha huduma imetolewa kama mlivyokubaliana? Malipo yatatumwa kwa mtoa huduma.'
+            : 'Umehakikisha umepokea mzigo huu na uko katika hali nzuri? Hela zitatumwa kwa muuzaji mara moja.';
+        if (!confirm(message)) return;
         setConfirmingReceipt(true);
         try {
             await axios.post(`/api/buyer/orders/${orderDetails.id}/confirm-receipt`);
@@ -535,10 +538,10 @@ function OwnedCard({ entry }) {
 
     const handleFileDispute = async (e) => {
         e.preventDefault();
-        if (!unboxingVideo || !disputeReason) return;
+        if (!disputeReason || (!isServiceProduct && !unboxingVideo)) return;
         setDisputeSubmitting(true);
         const formData = new FormData();
-        formData.append('unboxing_video', unboxingVideo);
+        if (unboxingVideo) formData.append('unboxing_video', unboxingVideo);
         formData.append('reason', disputeReason);
         try {
             await axios.post(`/api/buyer/orders/${orderDetails.id}/dispute`, formData, {
@@ -557,7 +560,11 @@ function OwnedCard({ entry }) {
     const labelMap = {
         content_item: { icon: BookOpenText, label: 'Post Content', href: item.slug ? route('content.show', item.slug) : null },
         post: { icon: BookOpenText, label: 'Post Content', href: postRouteKey ? route('post.show', postRouteKey) : null },
-        bundle: { icon: Boxes, label: 'Post Content', href: item.slug ? route('bundle.show', item.slug) : null },
+        bundle: {
+            icon: item.is_course ? BookOpenText : Boxes,
+            label: item.is_course ? 'Course' : 'Bundle',
+            href: item.is_course && item.slug ? `/learn/bundles/${item.slug}` : (item.slug ? route('bundle.show', item.slug) : null),
+        },
         subscription_plan: { icon: Crown, label: 'Post Content', href: item.slug || item.id ? `/plan/${item.slug || item.id}` : null },
         product: { icon: ShoppingBag, label: 'Physical Product', href: item.slug ? route('product.show', item.slug) : null },
     };
@@ -566,7 +573,7 @@ function OwnedCard({ entry }) {
     if (entry.item_type === 'product') {
         if (item.type === 'service') {
             config = { ...config, icon: CalendarClock, label: 'Service/Booking' };
-        } else if (isDownloadableDigital) {
+        } else if (isDigitalProduct && !isLinkDigital) {
             config = { ...config, icon: Download, label: 'Digital File' };
         } else if (isLinkDigital) {
             config = { ...config, icon: ExternalLink, label: 'Digital File' };
@@ -604,14 +611,6 @@ function OwnedCard({ entry }) {
         } finally {
             setIsDownloading(false);
         }
-    };
-
-    const handleOpenExternalDigital = () => {
-        if (!isLinkDigital || !targetUrl) {
-            toast.error('Link ya bidhaa haikupatikana.');
-            return;
-        }
-        window.open(targetUrl, '_blank', 'noopener,noreferrer');
     };
 
     return (
@@ -665,7 +664,112 @@ function OwnedCard({ entry }) {
                 </div>
 
                 <div className="mt-5">
-                    {orderDetails ? (
+                    {isDigitalProduct ? (
+                        <Button className="w-full rounded-2xl" onClick={handleDownload} disabled={isDownloading}>
+                            {isDownloading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Preparing...
+                                </>
+                            ) : isLinkDigital ? (
+                                <>
+                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                    Open Link
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Download
+                                </>
+                            )}
+                        </Button>
+                    ) : isServiceProduct ? (
+                        <div className="space-y-3">
+                            <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">Miadi</p>
+                                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${
+                                        serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'resolved_merchant_paid'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : serviceRequest?.payment_status === 'disputed' || orderDetails?.payment_status === 'disputed'
+                                                ? 'bg-red-100 text-red-700'
+                                            : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'resolved_merchant_paid'
+                                            ? 'Imekamilika'
+                                            : serviceRequest?.payment_status === 'held'
+                                                ? 'SafePay'
+                                                : serviceRequest?.payment_status === 'disputed'
+                                                    ? 'Mgogoro'
+                                                    : (serviceRequest?.payment_status || orderDetails?.payment_status || 'Pending').replaceAll('_', ' ')}
+                                    </span>
+                                </div>
+                                <div className="mt-3 grid gap-2 text-sm">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-muted-foreground">Muda</span>
+                                        <span className="font-black text-right">
+                                            {serviceRequest?.scheduled_at
+                                                ? new Date(serviceRequest.scheduled_at).toLocaleString([], { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+                                                : [serviceRequest?.preferred_date, serviceRequest?.preferred_time].filter(Boolean).join(' ') || 'Mtoa huduma atathibitisha'}
+                                        </span>
+                                    </div>
+                                    {serviceRequest?.service_option?.name && (
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-muted-foreground">Option</span>
+                                            <span className="font-black text-right">{serviceRequest.service_option.name}</span>
+                                        </div>
+                                    )}
+                                    {serviceRequest?.location_text && (
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-muted-foreground">Mahali</span>
+                                            <span className="font-black text-right">{serviceRequest.location_text}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-muted-foreground">Malipo</span>
+                                        <span className="font-black text-right">TZS {Number(orderDetails?.total_paid || serviceRequest?.quoted_amount || 0).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            {serviceRequest?.delivery_status === 'provider_marked_delivered' && orderDetails?.payment_status === 'escrow_locked' ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                        variant="outline"
+                                        className="rounded-2xl border-red-200 text-red-600 hover:bg-red-50"
+                                        onClick={() => setShowDisputeModal(true)}
+                                    >
+                                        Fungua Mgogoro
+                                    </Button>
+                                    <Button
+                                        className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        onClick={handleConfirmReceipt}
+                                        disabled={confirmingReceipt}
+                                    >
+                                        {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Nimepata Huduma'}
+                                    </Button>
+                                </div>
+                            ) : serviceRequest?.payment_status === 'held' ? (
+                                <p className="text-xs text-muted-foreground text-center">
+                                    Malipo yako yako SafePay hadi uthibitishe huduma.
+                                </p>
+                            ) : (
+                                <p className="text-xs text-muted-foreground text-center">
+                                    Umeweka miadi. Mtoa huduma atakujulisha mabadiliko.
+                                </p>
+                            )}
+                            {['held', 'disputed'].includes(serviceRequest?.payment_status) && (
+                                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
+                                    <p className="font-black flex items-center gap-1.5">
+                                        <ShieldCheck className="h-3.5 w-3.5" />
+                                        Ulinzi wa SafePay
+                                    </p>
+                                    <p className="mt-1">
+                                        Takeer hushikilia malipo hadi uthibitishe huduma. Ukiweka mgogoro, malipo yatasimama hadi timu yetu ikague ushahidi.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    ) : orderDetails ? (
                         <div className="space-y-3">
                             {/* Shipping Status Badge */}
                             <div className="flex items-center justify-between p-2 rounded-xl bg-muted/30 border border-muted-foreground/10">
@@ -673,10 +777,17 @@ function OwnedCard({ entry }) {
                                 <span className={`text-[10px] font-black uppercase tracking-widest ${
                                     orderDetails.payment_status === 'resolved_merchant_paid' ? 'text-green-600' :
                                     orderDetails.payment_status === 'disputed' ? 'text-red-600' :
+                                    orderDetails.payment_status === 'failed' ? 'text-red-600' :
                                     'text-amber-600'
                                 }`}>
                                     {(() => {
                                         const delivType = orderDetails.delivery?.delivery_type || orderDetails.delivery?.type;
+                                        // Final status takes precedence
+                                        if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Imekamilika';
+                                        if (orderDetails.payment_status === 'failed') return 'Imesitishwa';
+                                        if (orderDetails.payment_status === 'confirmed') return 'Imepokelewa';
+                                        if (orderDetails.payment_status === 'disputed') return 'Mgogoro';
+
                                         // Inquiry pending — merchant hasn't set shipping yet
                                         if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending') return 'Inasubiri Bei ya Usafiri';
                                         // Inquiry quoted — shipping fee provided, waiting for buyer to pay
@@ -687,8 +798,6 @@ function OwnedCard({ entry }) {
                                         if (orderDetails.payment_status === 'awaiting_merchant_confirmation') return 'Inasubiri Utumaji';
                                         if (orderDetails.payment_status === 'escrow_locked') return orderDetails.delivery?.status || 'Ikiwa Safehold';
                                         if (orderDetails.payment_status === 'shipped') return 'Imetumwa';
-                                        if (orderDetails.payment_status === 'confirmed') return 'Imepokelewa';
-                                        if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Imekamilika';
                                         // Fallback: show delivery type if known
                                         if (delivType) return delivType.replace(/_/g, ' ');
                                         return orderDetails.payment_status?.replace(/_/g, ' ') || 'Inaendelea';
@@ -697,7 +806,7 @@ function OwnedCard({ entry }) {
                             </div>
 
                             {/* Inquiry Action for Buyer */}
-                            {orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending' && (
+                            {orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending' && orderDetails.payment_status === 'pending' && (
                                 <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-brand-700 mb-1 leading-tight">Muuzaji bado hajakupa bei ya usafiri.</p>
                                     <p className="text-[10px] text-brand-800 leading-tight mb-3">Tumia chat hapa chini kukubaliana naye bei ya usafiri.</p>
@@ -712,7 +821,7 @@ function OwnedCard({ entry }) {
                                 </div>
                             )}
 
-                            {orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && (
+                            {orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && orderDetails.payment_status === 'pending' && (
                                 <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
                                     <div className="flex justify-between items-center mb-2">
                                         <p className="text-[10px] font-black uppercase text-emerald-700">Shipping Fee:</p>
@@ -795,10 +904,13 @@ function OwnedCard({ entry }) {
                                     </Button>
                                 </div>
                             )}
-                            
-                            {orderDetails.payment_status === 'confirmed' && (
-                                <Button className="w-full rounded-2xl" disabled>
-                                    Ordered Recieved
+
+                            {(orderDetails.payment_status === 'confirmed' || orderDetails.payment_status === 'resolved_merchant_paid') && (
+                                <Button
+                                    className="w-full h-11 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black uppercase tracking-widest text-[10px]"
+                                    onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
+                                >
+                                    Fungua Chat / Toa Review
                                 </Button>
                             )}
 
@@ -809,25 +921,6 @@ function OwnedCard({ entry }) {
                                 </div>
                             )}
                         </div>
-                    ) : isDownloadableDigital ? (
-                        <Button className="w-full rounded-2xl" onClick={handleDownload} disabled={isDownloading}>
-                            {isDownloading ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Preparing Download...
-                                </>
-                            ) : (
-                                <>
-                                    <Download className="mr-2 h-4 w-4" />
-                                    Download
-                                </>
-                            )}
-                        </Button>
-                    ) : isLinkDigital ? (
-                        <Button className="w-full rounded-2xl" onClick={handleOpenExternalDigital}>
-                            <ExternalLink className="mr-2 h-4 w-4" />
-                            Open Link
-                        </Button>
                     ) : config.href ? (
                         <Link href={config.href}>
                             <Button className="w-full rounded-2xl">
@@ -853,33 +946,46 @@ function OwnedCard({ entry }) {
                                     </button>
                                 </div>
                                 <div className="space-y-2">
-                                    <h2 className="text-2xl font-black tracking-tight">File a Claim</h2>
-                                    <p className="text-sm text-muted-foreground">Tafadhali pakia video ya unboxing na maelezo ya kwanini unataka kurudisha mzigo au kurudishiwa pesa.</p>
+                                    <h2 className="text-2xl font-black tracking-tight">{isServiceProduct ? 'Fungua Mgogoro' : 'File a Claim'}</h2>
+                                    <p className="text-sm text-muted-foreground">
+                                        {isServiceProduct
+                                            ? 'Eleza kilichotokea. Unaweza kuongeza picha, video au PDF kama ushahidi.'
+                                            : 'Tafadhali pakia video ya unboxing na maelezo ya kwanini unataka kurudisha mzigo au kurudishiwa pesa.'}
+                                    </p>
                                 </div>
                                 
                                 <form onSubmit={handleFileDispute} className="space-y-4">
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Unboxing Video (Required)</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                            {isServiceProduct ? 'Ushahidi (si lazima)' : 'Unboxing Video (Required)'}
+                                        </label>
+                                        {isServiceProduct && (
+                                            <p className="text-xs leading-5 text-muted-foreground">
+                                                Unaweza kuweka picha, video au PDF. Mgogoro ukitumwa, Takeer itaendelea kushikilia malipo hadi ushahidi ukaguliwe.
+                                            </p>
+                                        )}
                                         <input 
                                             type="file" 
-                                            accept="video/*" 
+                                            accept={isServiceProduct ? 'image/*,video/*,application/pdf' : 'video/*'}
                                             onChange={e => setUnboxingVideo(e.target.files?.[0])}
-                                            required
+                                            required={!isServiceProduct}
                                             className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Reason for Dispute</label>
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                            {isServiceProduct ? 'Sababu ya mgogoro' : 'Reason for Dispute'}
+                                        </label>
                                         <textarea 
                                             required
                                             value={disputeReason}
                                             onChange={e => setDisputeReason(e.target.value)}
-                                            placeholder="Mf. Bidhaa iliyofika imevunjika..."
+                                            placeholder={isServiceProduct ? 'Mf. Huduma haikutolewa kama tulivyokubaliana...' : 'Mf. Bidhaa iliyofika imevunjika...'}
                                             className="w-full min-h-[100px] rounded-2xl border border-input bg-background p-3 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none"
                                         />
                                     </div>
                                     <Button type="submit" className="w-full h-12 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-brand-500/20" disabled={disputeSubmitting}>
-                                        {disputeSubmitting ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : 'SUBMIT CLAIM'}
+                                        {disputeSubmitting ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : (isServiceProduct ? 'TUMA MGOGORO' : 'SUBMIT CLAIM')}
                                     </Button>
                                 </form>
                             </div>

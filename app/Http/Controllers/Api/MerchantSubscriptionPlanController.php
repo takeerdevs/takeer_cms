@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Bundle;
 use App\Models\ContentItem;
-use App\Models\Product;
+use App\Models\Merchant;
 use App\Models\SubscriptionPlan;
 use App\Models\SubscriptionPlanItem;
 use App\Services\EntitlementService;
@@ -26,7 +26,7 @@ class MerchantSubscriptionPlanController extends Controller
             ->latest()
             ->get();
 
-        return response()->json(['plans' => $plans]);
+        return response()->json(['plans' => $plans, 'data' => $plans]);
     }
 
     public function show(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
@@ -36,7 +36,7 @@ class MerchantSubscriptionPlanController extends Controller
 
         $subscriptionPlan->load('items');
 
-        return response()->json(['subscription_plan' => $subscriptionPlan]);
+        return response()->json(['subscription_plan' => $subscriptionPlan, 'data' => $subscriptionPlan]);
     }
 
     public function store(Request $request, EntitlementService $entitlementService): JsonResponse
@@ -57,7 +57,7 @@ class MerchantSubscriptionPlanController extends Controller
             'tier' => 'nullable|integer|min:1|max:100',
             'status' => 'nullable|string|in:draft,active,archived',
             'items' => 'nullable|array',
-            'items.*.item_type' => 'required_with:items|string|in:product,content_item,bundle',
+            'items.*.item_type' => 'required_with:items|string|in:content_item,bundle',
             'items.*.item_id' => 'required_with:items|integer|min:1',
             'items.*.unlock_after_days' => 'nullable|integer|min:0|max:3650',
         ]);
@@ -120,7 +120,7 @@ class MerchantSubscriptionPlanController extends Controller
             'tier' => 'nullable|integer|min:1|max:100',
             'status' => 'nullable|string|in:draft,active,archived',
             'items' => 'nullable|array',
-            'items.*.item_type' => 'required_with:items|string|in:product,content_item,bundle',
+            'items.*.item_type' => 'required_with:items|string|in:content_item,bundle',
             'items.*.item_id' => 'required_with:items|integer|min:1',
             'items.*.unlock_after_days' => 'nullable|integer|min:0|max:3650',
         ]);
@@ -187,12 +187,6 @@ class MerchantSubscriptionPlanController extends Controller
 
     private function assertItemBelongsToMerchant(int $merchantId, string $itemType, int $itemId): void
     {
-        if ($itemType === 'product') {
-            $exists = Product::where('id', $itemId)->where('merchant_id', $merchantId)->exists();
-            abort_unless($exists, 422, 'Plan item product is invalid.');
-            return;
-        }
-
         if ($itemType === 'content_item') {
             $exists = ContentItem::where('id', $itemId)->where('merchant_id', $merchantId)->exists();
             abort_unless($exists, 422, 'Plan item content is invalid.');
@@ -202,18 +196,41 @@ class MerchantSubscriptionPlanController extends Controller
         if ($itemType === 'bundle') {
             $exists = Bundle::where('id', $itemId)->where('merchant_id', $merchantId)->exists();
             abort_unless($exists, 422, 'Plan item bundle is invalid.');
+            abort_if($this->bundleContainsPhysicalProducts($itemId), 422, 'Subscription bundles cannot include physical products.');
             return;
         }
 
-        abort(422, 'Unsupported plan item type.');
+        abort(422, 'Subscriptions can include content and digital/course bundles only.');
+    }
+
+    private function bundleContainsPhysicalProducts(int $bundleId): bool
+    {
+        return DB::table('bundle_items')
+            ->join('products', 'products.id', '=', 'bundle_items.item_id')
+            ->where('bundle_items.bundle_id', $bundleId)
+            ->where('bundle_items.item_type', 'product')
+            ->where('products.type', 'physical')
+            ->exists();
     }
 
     private function merchantFromRequest(Request $request)
     {
-        $merchant = $request->user()
-            ->merchantProfiles()
-            ->where('is_default', true)
-            ->first() ?? $request->user()->merchantProfiles()->first();
+        $routeMerchant = $request->route('merchant');
+        if ($routeMerchant instanceof Merchant) {
+            return $routeMerchant;
+        }
+
+        $user = $request->user();
+        $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
+        if ($merchantId) {
+            $merchant = $user->merchantProfiles()->where('merchants.id', (int) $merchantId)->first();
+            if ($merchant) {
+                return $merchant;
+            }
+        }
+
+        $merchant = $user->merchantProfiles()->where('is_default', true)->first()
+            ?? $user->merchantProfiles()->first();
 
         abort_unless($merchant, 403, 'Merchant profile not found.');
 

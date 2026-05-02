@@ -52,6 +52,13 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [step, setStep] = useState(1); // 1: Details/Shipping, 2: Payment
     const [paymentMethod, setPaymentMethod] = useState('mobile'); // 'mobile', 'card'
     const [mobileSubMethod, setMobileSubMethod] = useState('account'); // 'account', 'other'
+    const [servicePricingInputs, setServicePricingInputs] = useState({
+        people: '',
+        hours: '',
+        quantity: '',
+        start_date: '',
+        end_date: '',
+    });
 
     const autocompleteRef = useRef(null);
 
@@ -208,6 +215,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
     useEffect(() => {
         const fetchProductData = async () => {
+            if (product?.checkoutType === 'bundle' || product?.purchasable_type === 'bundle') return;
             const hasMerchantLocations = product?.merchant?.locations && product.merchant.locations.length > 0;
             // Only fetch if variants are missing AND product has variants OR if merchant locations are missing
             if (!product?.has_variants && hasMerchantLocations) return;
@@ -220,7 +228,13 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 const res = await fetch(`/api/pwa/product/${routeKey}`, { headers: { Accept: 'application/json' } });
                 const data = await res.json();
                 if (res.ok && data?.product) {
-                    setResolvedProduct(data.product);
+                    setResolvedProduct({
+                        ...data.product,
+                        checkout_price: product?.checkout_price ?? data.product.checkout_price,
+                        service_request_payment: product?.service_request_payment ?? data.product.service_request_payment,
+                        service_request_id: product?.service_request_id ?? data.product.service_request_id,
+                        service_request_token: product?.service_request_token ?? data.product.service_request_token,
+                    });
                 }
             } catch (e) { }
         };
@@ -232,14 +246,20 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const itemType = activeProduct?.purchasable_type || activeProduct?.checkoutType || 'product';
 
     useEffect(() => {
-        if (!isOpen || !activeProduct || itemType !== 'product' || activeProduct?.type !== 'physical') return;
+        const isPhysicalCheckout = (itemType === 'product' && activeProduct?.type === 'physical')
+            || (itemType === 'bundle' && activeProduct?.has_physical_items);
+        if (!isOpen || !activeProduct || !isPhysicalCheckout) return;
         const profileId = activeProduct?.shipping_profile_id;
-        if (!profileId) return;
+        const merchantSlug = activeProduct?.merchant?.slug || activeProduct?.merchant?.username;
+        if (!profileId && !merchantSlug) return;
 
         const loadZones = async () => {
             setLoadingZones(true);
             try {
-                const res = await fetch(`/api/merchant/shipping-profiles/${profileId}/zones`, { headers: { Accept: 'application/json' } });
+                const url = profileId
+                    ? `/api/merchant/shipping-profiles/${profileId}/zones`
+                    : `/api/merchant/${merchantSlug}/shipping-zones`;
+                const res = await fetch(url, { headers: { Accept: 'application/json' } });
                 const json = await res.json();
                 if (res.ok && json.data) {
                     setShippingZones(json.data);
@@ -251,7 +271,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             }
         };
         loadZones();
-    }, [isOpen, activeProduct?.id, activeProduct?.shipping_profile_id]);
+    }, [isOpen, activeProduct?.id, activeProduct?.shipping_profile_id, activeProduct?.has_physical_items, itemType]);
 
     const itemTitle = activeProduct?.title || activeProduct?.name || 'Inapatikana kwa malipo';
     const variants = useMemo(() => (
@@ -331,11 +351,71 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         || filteredVariants[0]
         || variants[0]
         || null;
+    const hasExplicitCheckoutPrice = activeProduct?.checkout_price !== undefined && activeProduct?.checkout_price !== null;
+    const selectedServiceOption = activeProduct?.selected_service_option || null;
     const isVariantSelectionComplete = !activeProduct?.has_variants
         || variantAttributeKeys.every((key) => (variantFilters[key] || '').toString().trim().length > 0);
+    const variablePricingUnits = ['hourly', 'daily', 'nightly', 'weekly', 'monthly', 'yearly', 'per_person', 'per_visit', 'per_session', 'per_project'];
+    const includedCheckoutCharges = Array.isArray(activeProduct?.service_charges)
+        ? activeProduct.service_charges.filter((charge) => charge?.included_in_checkout && Number(charge.amount || 0) > 0)
+        : [];
+    const activePricingUnits = [
+        activeProduct?.type === 'service' && !hasExplicitCheckoutPrice ? (selectedServiceOption?.price_display || activeProduct?.service_price_display) : null,
+        ...(!hasExplicitCheckoutPrice ? includedCheckoutCharges.map((charge) => charge.unit || 'fixed') : []),
+    ].filter((unit) => variablePricingUnits.includes(unit));
+    const needsPeopleInput = activePricingUnits.includes('per_person');
+    const needsHoursInput = activePricingUnits.includes('hourly');
+    const needsDateRangeInput = activePricingUnits.some((unit) => ['daily', 'nightly', 'weekly', 'monthly', 'yearly'].includes(unit));
+    const needsQuantityInput = activePricingUnits.some((unit) => ['per_visit', 'per_session', 'per_project'].includes(unit));
+    const servicePricingMultiplier = (unit) => {
+        const start = servicePricingInputs.start_date ? new Date(`${servicePricingInputs.start_date}T00:00:00`) : null;
+        const end = servicePricingInputs.end_date ? new Date(`${servicePricingInputs.end_date}T00:00:00`) : null;
+        const daySpan = start && end && end > start
+            ? Math.max(1, Math.round((end - start) / 86400000))
+            : 1;
 
-    const basePrice = parseFloat((activeProduct?.checkout_price ?? selectedVariant?.price ?? activeProduct?.price) || 0);
-    const isPhysicalProduct = itemType === 'product' && activeProduct?.type === 'physical';
+        switch (unit) {
+            case 'hourly':
+                return Math.max(1, Number(servicePricingInputs.hours || 1));
+            case 'daily':
+                return daySpan + 1;
+            case 'nightly':
+                return daySpan;
+            case 'weekly':
+                return Math.max(1, Math.ceil(daySpan / 7));
+            case 'monthly':
+                return Math.max(1, Math.ceil(daySpan / 30));
+            case 'yearly':
+                return Math.max(1, Math.ceil(daySpan / 365));
+            case 'per_person':
+                return Math.max(1, Number(servicePricingInputs.people || 1));
+            case 'per_visit':
+            case 'per_session':
+            case 'per_project':
+                return Math.max(1, Number(servicePricingInputs.quantity || 1));
+            default:
+                return 1;
+        }
+    };
+    const checkoutIncludedCharges = useMemo(() => (
+        Array.isArray(activeProduct?.service_charges)
+            ? activeProduct.service_charges.filter((charge) => (
+                charge?.included_in_checkout
+                && Number(charge.amount || 0) > 0
+            ))
+            : []
+    ), [activeProduct?.service_charges]);
+    const checkoutIncludedChargesTotal = useMemo(() => (
+        checkoutIncludedCharges.reduce((sum, charge) => sum + (Number(charge.amount || 0) * servicePricingMultiplier(charge.unit || 'fixed')), 0)
+    ), [checkoutIncludedCharges, servicePricingInputs]);
+
+    const rawBasePrice = parseFloat((activeProduct?.checkout_price ?? selectedVariant?.price ?? selectedServiceOption?.price ?? activeProduct?.price) || 0);
+    const serviceBaseMultiplier = activeProduct?.type === 'service' && !hasExplicitCheckoutPrice
+        ? servicePricingMultiplier(selectedServiceOption?.price_display || activeProduct?.service_price_display)
+        : 1;
+    const basePrice = (rawBasePrice * serviceBaseMultiplier) + (!hasExplicitCheckoutPrice && activeProduct?.type === 'service' ? checkoutIncludedChargesTotal : 0);
+    const isPhysicalProduct = (itemType === 'product' && activeProduct?.type === 'physical')
+        || (itemType === 'bundle' && activeProduct?.has_physical_items);
     const activeShippingZone = shippingZones.find(z => String(z.id) === String(selectedShippingZoneId));
     const isPickup = isSelfPickupChoice || activeShippingZone?.delivery_type === 'self_pickup';
     const shippingFee = (activeShippingZone && isPhysicalProduct && !isSelfPickupChoice) ? parseFloat(activeShippingZone.flat_rate_fee || 0) : 0;
@@ -344,6 +424,13 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     // Step management based on product type
     useEffect(() => {
         if (isOpen) {
+            setServicePricingInputs({
+                people: '',
+                hours: '',
+                quantity: '',
+                start_date: '',
+                end_date: '',
+            });
             if (isPhysicalProduct) {
                 setStep(1); // Physical always stays in one "Details" view
             } else {
@@ -438,6 +525,21 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             return toast.error("Tafadhali chagua eneo/mtaa wako kwenye ramani ili tuweze kufikisha mzigo wako kwa usahihi.");
         }
 
+        if (activeProduct?.type === 'service') {
+            if (needsPeopleInput && Number(servicePricingInputs.people || 0) < 1) {
+                return toast.error("Tafadhali weka idadi ya watu/wageni.");
+            }
+            if (needsHoursInput && Number(servicePricingInputs.hours || 0) <= 0) {
+                return toast.error("Tafadhali weka idadi ya saa.");
+            }
+            if (needsQuantityInput && Number(servicePricingInputs.quantity || 0) < 1) {
+                return toast.error("Tafadhali weka quantity.");
+            }
+            if (needsDateRangeInput && (!servicePricingInputs.start_date || !servicePricingInputs.end_date || servicePricingInputs.end_date <= servicePricingInputs.start_date)) {
+                return toast.error("Tafadhali chagua tarehe ya kuanza na kumaliza.");
+            }
+        }
+
         setLoading(true);
 
         try {
@@ -464,12 +566,23 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 delivery_type: isPhysicalProduct ? (isSelfPickupChoice ? 'self_pickup' : 'shipping') : undefined,
                 delivery_zone_id: (isPhysicalProduct && !isSelfPickupChoice) ? selectedShippingZoneId : undefined,
                 quantity: 1,
-                idempotency_key: `q-${itemType}-${activeProduct.id}-${Date.now()}`,
+                idempotency_key: `q-${itemType}-${activeProduct.id}-${activeProduct.service_request_payment?.id || activeProduct.service_request_id || 'standard'}-${Date.now()}`,
                 buyer_lat: isPhysicalProduct ? customerLat : undefined,
                 buyer_lng: isPhysicalProduct ? customerLng : undefined,
                 physical_address: isPhysicalProduct ? (extraAddressDetails ? `${physicalAddress} (${extraAddressDetails})` : physicalAddress) : undefined,
                 shipping_hotspot_id: (isPhysicalProduct && !isSelfPickupChoice && selectedHotspot) ? selectedHotspot.id : undefined,
                 payment_page_id: activeProduct.payment_page_id || undefined,
+                service_request_id: activeProduct.service_request_payment?.id || activeProduct.service_request_id || product?.service_request_payment?.id || product?.service_request_id || undefined,
+                service_request_token: activeProduct.service_request_payment?.token || activeProduct.service_request_token || product?.service_request_payment?.token || product?.service_request_token || undefined,
+                service_pricing_inputs: activeProduct?.type === 'service' ? {
+                    people: servicePricingInputs.people ? Number(servicePricingInputs.people) : undefined,
+                    hours: servicePricingInputs.hours ? Number(servicePricingInputs.hours) : undefined,
+                    quantity: servicePricingInputs.quantity ? Number(servicePricingInputs.quantity) : undefined,
+                    start_date: servicePricingInputs.start_date || undefined,
+                    end_date: servicePricingInputs.end_date || undefined,
+                    service_option_id: selectedServiceOption?.id || undefined,
+                } : undefined,
+                selected_bundle_items: itemType === 'bundle' ? (activeProduct.selected_bundle_items || undefined) : undefined,
             };
 
             const isInquiry = isPhysicalProduct; // Physical is always an inquiry first
@@ -870,6 +983,84 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                 </div>
                             </div>
                         )}
+
+                        {activeProduct?.type === 'service' && activePricingUnits.length > 0 && (
+                            <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-3 sm:p-4 space-y-3">
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-wider text-brand-700/80">Booking details</p>
+                                    <p className="text-[11px] text-brand-700/70 mt-0.5">Used to calculate service charges before payment.</p>
+                                    {selectedServiceOption && (
+                                        <p className="text-xs font-black text-brand-900 mt-2">
+                                            {selectedServiceOption.name}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {needsPeopleInput && (
+                                        <label className="space-y-1.5">
+                                            <span className="text-xs font-bold text-brand-700/80">People / guests</span>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={servicePricingInputs.people}
+                                                onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, people: e.target.value }))}
+                                                placeholder="Mf. 2"
+                                                className="h-12 bg-white rounded-xl font-bold"
+                                            />
+                                        </label>
+                                    )}
+                                    {needsHoursInput && (
+                                        <label className="space-y-1.5">
+                                            <span className="text-xs font-bold text-brand-700/80">Hours</span>
+                                            <Input
+                                                type="number"
+                                                min="0.25"
+                                                step="0.25"
+                                                value={servicePricingInputs.hours}
+                                                onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, hours: e.target.value }))}
+                                                placeholder="Mf. 3"
+                                                className="h-12 bg-white rounded-xl font-bold"
+                                            />
+                                        </label>
+                                    )}
+                                    {needsQuantityInput && (
+                                        <label className="space-y-1.5">
+                                            <span className="text-xs font-bold text-brand-700/80">Quantity</span>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={servicePricingInputs.quantity}
+                                                onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, quantity: e.target.value }))}
+                                                placeholder="Mf. 1"
+                                                className="h-12 bg-white rounded-xl font-bold"
+                                            />
+                                        </label>
+                                    )}
+                                    {needsDateRangeInput && (
+                                        <>
+                                            <label className="space-y-1.5">
+                                                <span className="text-xs font-bold text-brand-700/80">Start / check-in</span>
+                                                <Input
+                                                    type="date"
+                                                    value={servicePricingInputs.start_date}
+                                                    onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, start_date: e.target.value }))}
+                                                    className="h-12 bg-white rounded-xl font-bold"
+                                                />
+                                            </label>
+                                            <label className="space-y-1.5">
+                                                <span className="text-xs font-bold text-brand-700/80">End / check-out</span>
+                                                <Input
+                                                    type="date"
+                                                    value={servicePricingInputs.end_date}
+                                                    onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, end_date: e.target.value }))}
+                                                    className="h-12 bg-white rounded-xl font-bold"
+                                                />
+                                            </label>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Fixed Footer */}
@@ -883,6 +1074,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                 <div className="text-right">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla</span>
                                     <p className="text-xl font-[900] text-brand-900">TZS {price.toLocaleString()}</p>
+                                    {checkoutIncludedChargesTotal > 0 && activeProduct?.type === 'service' && (
+                                        <p className="text-[10px] font-bold text-emerald-700">
+                                            Includes TZS {checkoutIncludedChargesTotal.toLocaleString()} extras
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 

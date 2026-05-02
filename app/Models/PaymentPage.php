@@ -6,8 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+use App\Traits\InteractsWithImpressions;
+
 class PaymentPage extends Model
 {
+    use InteractsWithImpressions;
     protected $fillable = [
         'merchant_id',
         'slug',
@@ -19,6 +22,7 @@ class PaymentPage extends Model
         'theme_color',
         'settings',
         'is_active',
+        'views_count',
     ];
 
     protected function casts(): array

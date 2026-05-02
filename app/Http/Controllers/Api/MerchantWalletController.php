@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\AdminSetting;
 use App\Models\Order;
+use App\Models\Transaction;
 use App\Models\Wallet;
 use App\Models\WithdrawalRequest;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use App\Models\Merchant;
@@ -19,6 +21,16 @@ class MerchantWalletController extends Controller
      */
     public function show(Request $request, Merchant $merchant)
     {
+        return $this->renderWallet($request, $merchant, false);
+    }
+
+    public function showLedger(Request $request, Merchant $merchant)
+    {
+        return $this->renderWallet($request, $merchant, true);
+    }
+
+    private function renderWallet(Request $request, Merchant $merchant, bool $ledgerMode)
+    {
         $user = $request->user();
         
         // Ensure wallet exists
@@ -26,6 +38,11 @@ class MerchantWalletController extends Controller
             ['user_id' => $user->id],
             ['balance' => 0, 'frozen_balance' => 0]
         );
+        $retailEligible = $merchant->isRetailEligible();
+        $initialLedgerType = $this->normalizeLedgerType($request->query('type'));
+        if (! $retailEligible && in_array($initialLedgerType, ['non-escrow', 'credit'], true)) {
+            $initialLedgerType = null;
+        }
 
         return Inertia::render('Merchant/Wallet', [
             'merchant' => $merchant,
@@ -35,6 +52,9 @@ class MerchantWalletController extends Controller
                 'balance' => (float) $wallet->balance,
                 'frozen_balance' => (float) $wallet->frozen_balance,
             ],
+            'retailEligible' => $retailEligible,
+            'initialLedgerType' => $initialLedgerType,
+            'ledgerMode' => $ledgerMode,
         ]);
     }
 
@@ -44,58 +64,193 @@ class MerchantWalletController extends Controller
     public function history(Request $request, Merchant $merchant)
     {
         $user = $request->user();
-        
-        // We fetch the withdrawal requests for the user.
-        $withdrawals = WithdrawalRequest::where('user_id', $user->id)
-            ->latest()
-            ->take(10)
-            ->get()
-            ->map(function($req) {
-                return [
-                    'id' => $req->id,
-                    'amount' => (float) $req->amount,
-                    'status' => $req->status,
-                    'created_at' => $req->created_at->toIso8601String(),
-                    'type' => 'withdrawal',
-                ];
-            });
+        $type = $this->normalizeLedgerType($request->query('type'));
+        if (! $merchant->isRetailEligible() && in_array($type, ['non-escrow', 'credit'], true)) {
+            $type = null;
+        }
 
-        // We fetch the recent transactions (earnings/fees)
-        $transactions = $user->wallet ? $user->wallet->transactions()
-            ->with(['order.buyer', 'order.product'])
-            ->latest()
-            ->take(20)
-            ->get()
-            ->map(function($tx) {
-                $order = $tx->order;
-                $customerName = $order?->buyer?->name ?? 'Mteja';
-                $productName = $order?->product?->title ?? 'Bidhaa';
-                
-                return [
-                    'id' => $tx->id,
-                    'amount' => (float) $tx->net_amount, // For legacy compatibility
-                    'gross_amount' => (float) $tx->gross_amount,
-                    'fee_amount' => (float) $tx->fee_amount,
-                    'net_amount' => (float) $tx->net_amount,
-                    'tax_amount' => (float) $tx->tax_amount,
-                    'customer_name' => $customerName,
-                    'product_name' => $productName,
-                    'status' => 'completed',
-                    'created_at' => $tx->created_at->toIso8601String(),
-                    'type' => $tx->type,
-                    'reference' => $tx->reference,
-                ];
-            }) : collect();
+        $perPage = min(max((int) $request->integer('per_page', 20), 5), 50);
+        $page = max((int) $request->integer('page', 1), 1);
 
-        // Merge and sort
-        $history = collect($withdrawals)->merge($transactions)
-            ->sortByDesc('created_at')
-            ->values()
-            ->all();
+        $paginator = match ($type) {
+            'escrow', 'non-escrow', 'credit' => $this->paginateSales($merchant, $type, $perPage),
+            'wallet-entry' => $this->paginateWalletEntries($user, $perPage),
+            'withdrawal' => $this->paginateWithdrawals($user, $perPage),
+            default => $this->paginateAllLedger($merchant, $user, $page, $perPage),
+        };
 
         return response()->json([
-            'history' => $history,
+            'history' => $paginator->items(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'type' => $type,
+            ],
         ]);
+    }
+
+    private function normalizeLedgerType($type): ?string
+    {
+        $normalized = str_replace('_', '-', strtolower((string) $type));
+
+        return match ($normalized) {
+            'escrow' => 'escrow',
+            'non-escrow', 'nonescrow', 'cash', 'in-hand' => 'non-escrow',
+            'credit', 'store-credit' => 'credit',
+            'wallet-entry', 'wallet-entries', 'earning', 'earnings', 'wallet', 'revenue' => 'wallet-entry',
+            'withdraw', 'withdrawal', 'payout', 'payouts' => 'withdrawal',
+            default => null,
+        };
+    }
+
+    private function salesQuery(Merchant $merchant, ?string $type = null)
+    {
+        $query = Order::query()
+            ->where('merchant_id', $merchant->id)
+            ->with(['buyer', 'product', 'posStaff.user'])
+            ->latest();
+
+        if (! $merchant->isRetailEligible()) {
+            $query->where('source', 'online');
+        }
+
+        return match ($type) {
+            'escrow' => $query->where('source', 'online'),
+            'non-escrow' => $query->where('source', 'pos')->whereIn('payment_mode', ['cash', 'merchant_mm', 'online_escrow']),
+            'credit' => $query->where('source', 'pos')->where('payment_mode', 'store_credit'),
+            default => $query,
+        };
+    }
+
+    private function paginateSales(Merchant $merchant, string $type, int $perPage)
+    {
+        return $this->throughPaginator(
+            $this->salesQuery($merchant, $type)->paginate($perPage),
+            fn(Order $order) => $this->mapSale($order)
+        );
+    }
+
+    private function paginateWalletEntries($user, int $perPage)
+    {
+        return $this->throughPaginator(
+            Transaction::query()
+                ->where('user_id', $user->id)
+                ->whereIn('type', ['order_revenue', 'platform_fee'])
+                ->with(['order.buyer', 'order.product'])
+                ->latest()
+                ->paginate($perPage),
+            fn(Transaction $transaction) => $this->mapTransaction($transaction)
+        );
+    }
+
+    private function paginateWithdrawals($user, int $perPage)
+    {
+        return $this->throughPaginator(
+            WithdrawalRequest::query()
+                ->where('user_id', $user->id)
+                ->latest()
+                ->paginate($perPage),
+            fn(WithdrawalRequest $withdrawal) => $this->mapWithdrawal($withdrawal)
+        );
+    }
+
+    private function paginateAllLedger(Merchant $merchant, $user, int $page, int $perPage): LengthAwarePaginator
+    {
+        $items = collect()
+            ->merge($this->salesQuery($merchant)->limit(200)->get()->map(fn(Order $order) => $this->mapSale($order)))
+            ->merge(WithdrawalRequest::query()
+                ->where('user_id', $user->id)
+                ->latest()
+                ->limit(200)
+                ->get()
+                ->map(fn(WithdrawalRequest $withdrawal) => $this->mapWithdrawal($withdrawal)))
+            ->sortByDesc('created_at')
+            ->values();
+
+        return new LengthAwarePaginator(
+            $items->forPage($page, $perPage)->values()->all(),
+            $items->count(),
+            $perPage,
+            $page,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
+    }
+
+    private function throughPaginator($paginator, callable $mapper)
+    {
+        $paginator->setCollection($paginator->getCollection()->map($mapper));
+
+        return $paginator;
+    }
+
+    private function mapWithdrawal(WithdrawalRequest $withdrawal): array
+    {
+        return [
+            'id' => $withdrawal->id,
+            'amount' => (float) $withdrawal->amount,
+            'status' => $withdrawal->status,
+            'created_at' => $withdrawal->created_at->toIso8601String(),
+            'type' => 'withdrawal',
+            'ledger_type' => 'withdrawal',
+        ];
+    }
+
+    private function mapTransaction(Transaction $transaction): array
+    {
+        $order = $transaction->order;
+        $grossAmount = (float) $transaction->gross_amount;
+        $netAmount = (float) $transaction->net_amount;
+        $feeAmount = (float) $transaction->fee_amount;
+
+        if ($feeAmount <= 0 && $grossAmount > $netAmount) {
+            $feeAmount = round($grossAmount - $netAmount, 2);
+        }
+
+        return [
+            'id' => $transaction->id,
+            'amount' => $netAmount,
+            'gross_amount' => $grossAmount,
+            'fee_amount' => $feeAmount,
+            'net_amount' => $netAmount,
+            'tax_amount' => (float) $transaction->tax_amount,
+            'customer_name' => $order?->buyer?->name ?? 'Mteja',
+            'product_name' => $order?->product?->title ?? 'Bidhaa',
+            'status' => 'completed',
+            'created_at' => $transaction->created_at->toIso8601String(),
+            'type' => $transaction->type,
+            'ledger_type' => 'wallet-entry',
+            'reference' => $transaction->reference,
+        ];
+    }
+
+    private function mapSale(Order $order): array
+    {
+        $paymentMode = $order->payment_mode ?? 'online_escrow';
+        $ledgerType = $order->source === 'online'
+            ? 'escrow'
+            : ($paymentMode === 'store_credit' ? 'credit' : 'non-escrow');
+
+        $saleTotal = (float) ($order->counter_total ?? $order->grand_total ?? $order->total_paid ?? 0);
+        $paidAmount = (float) ($order->total_paid ?? 0);
+
+        return [
+            'id' => $order->id,
+            'amount' => $saleTotal,
+            'paid_amount' => $paidAmount,
+            'outstanding_amount' => max($saleTotal - $paidAmount, 0),
+            'customer_name' => $order->customer_name ?? $order->buyer?->name ?? 'Mteja',
+            'product_name' => $order->product?->title ?? 'Multiple Items',
+            'payment_mode' => $paymentMode,
+            'ledger_type' => $ledgerType,
+            'status' => $order->payment_status,
+            'source' => $order->source,
+            'created_at' => $order->created_at->toIso8601String(),
+            'type' => 'sale',
+            'reference' => $order->public_id ? 'POS-' . $order->public_id : ($order->transaction_ref ?? $order->id),
+            'staff_name' => $order->posStaff?->user?->name,
+        ];
     }
 
     /**
@@ -116,6 +271,12 @@ class MerchantWalletController extends Controller
         );
 
         $amount = (float) $request->amount;
+
+        if (! $merchant->hasCompletedKyc()) {
+            return back()->withErrors([
+                'amount' => 'Uthibitisho wa Kitambulisho (KYC) unahitajika kabla ya kutoa pesa. Tafadhali kamilisha Verification Center kwanza.',
+            ]);
+        }
 
         $enforcementMode = (string) AdminSetting::get('kyc_enforcement_mode', 'off');
         if ($enforcementMode !== 'off' && !$this->isKycApproved($merchant->kyc_status)) {

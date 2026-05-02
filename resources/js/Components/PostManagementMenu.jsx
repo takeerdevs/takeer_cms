@@ -42,7 +42,9 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
 
         setIsDeleting(true);
         try {
-            await axios.delete(`/merchant/posts/${post.id}`);
+            const merchantSlug = post.merchant?.slug || post.merchant_profile?.username;
+            const deleteUrl = merchantSlug ? `/merchant/${merchantSlug}/posts/${post.id}` : `/merchant/posts/${post.id}`;
+            await axios.delete(deleteUrl);
             setIsOpen(false);
             // If we are on the detail page, go back to feed
             if (window.location.pathname.startsWith('/p/')) {

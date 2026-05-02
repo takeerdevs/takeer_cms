@@ -6,20 +6,27 @@ import { Button } from '@/Components/ui/Button';
 import {
     ArrowLeft,
     BookOpenText,
+    Boxes,
     CalendarClock,
     Camera,
     CircleAlert,
     Download,
     Loader2,
+    MapPin,
     MessageSquare,
     Image as ImageIcon,
+    Play,
     ReceiptText,
+    Save,
     ShieldCheck,
     ShoppingBag,
+    Star,
     Store,
     Truck,
     UserRound,
+    Video,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -33,6 +40,9 @@ function maskPhone(value) {
 function typeMeta(kind) {
     const map = {
         physical_product: { label: 'Physical Product', icon: ShoppingBag, cls: 'bg-amber-100 text-amber-700' },
+        physical_bundle: { label: 'Physical Bundle', icon: Boxes, cls: 'bg-amber-100 text-amber-700' },
+        bundle: { label: 'Bundle', icon: Boxes, cls: 'bg-sky-100 text-sky-700' },
+        course_bundle: { label: 'Course Bundle', icon: BookOpenText, cls: 'bg-indigo-100 text-indigo-700' },
         post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-100 text-sky-700' },
         digital_file: { label: 'Digital File', icon: Download, cls: 'bg-indigo-100 text-indigo-700' },
         service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-100 text-emerald-700' },
@@ -113,7 +123,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     }, [order]);
 
     const canDispatchNow = !!order
-        && order.display_kind === 'physical_product'
+        && order.is_escrow_order
         && ['awaiting_merchant_confirmation', 'escrow_locked'].includes(order.payment_status);
 
     async function submitDispatch(e) {
@@ -222,9 +232,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         }
     }
 
+    const isPos = order?.source === 'pos';
+    const displayId = isPos ? `#POS-${order.public_id}` : `#${order?.transaction_ref || orderId}`;
+
     return (
         <AppLayout>
-            <Head title={`Order #${orderId} | ${merchantName || 'Biashara'} | Takeer`} />
+            <Head title={`Order ${displayId} | ${merchantName || 'Biashara'} | Takeer`} />
 
             <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-5 pb-24">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -239,7 +252,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                         </Button>
                         <div>
                             <h1 className="text-2xl font-black tracking-tight">Order Details</h1>
-                            <p className="text-sm text-muted-foreground">Oda #{orderId} • {merchantName || 'Biashara'}</p>
+                            <p className="text-sm text-muted-foreground">{displayId} • {merchantName || 'Biashara'}</p>
                         </div>
                     </div>
                     <Button
@@ -296,9 +309,18 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-2 text-sm">
-                                    <p><span className="text-muted-foreground">Jina:</span> <span className="font-semibold">{order.buyer?.name || 'N/A'}</span></p>
-                                    <p><span className="text-muted-foreground">Namba:</span> <span className="font-semibold">{order.buyer?.phone_number || 'N/A'}</span></p>
-                                    <p><span className="text-muted-foreground">Masked:</span> <span className="font-semibold">{maskPhone(order.buyer?.phone_number || '') || 'N/A'}</span></p>
+                                    {isPos ? (
+                                        <>
+                                            <p><span className="text-muted-foreground">Jina (POS):</span> <span className="font-semibold">{order.customer_name || 'Anonymous'}</span></p>
+                                            <p><span className="text-muted-foreground">Namba:</span> <span className="font-semibold">{order.customer_phone || 'N/A'}</span></p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <p><span className="text-muted-foreground">Jina:</span> <span className="font-semibold">{order.buyer?.name || 'N/A'}</span></p>
+                                            <p><span className="text-muted-foreground">Namba:</span> <span className="font-semibold">{order.buyer?.phone_number || 'N/A'}</span></p>
+                                            <p><span className="text-muted-foreground">Masked:</span> <span className="font-semibold">{maskPhone(order.buyer?.phone_number || '') || 'N/A'}</span></p>
+                                        </>
+                                    )}
                                 </CardContent>
                             </Card>
 
@@ -310,7 +332,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-2 text-sm">
-                                    <p><span className="text-muted-foreground">Order Ref:</span> <span className="font-semibold">{order.transaction_ref || `#${order.id}`}</span></p>
+                                    <p><span className="text-muted-foreground">Order Ref:</span> <span className="font-semibold">{isPos ? `#POS-${order.public_id}` : (order.transaction_ref || `#${order.id}`)}</span></p>
                                     <p><span className="text-muted-foreground">Kiasi:</span> <span className="font-semibold">{order.quantity || 1}</span></p>
                                     <p><span className="text-muted-foreground">Bei moja:</span> <span className="font-semibold">TZS {Number(order.unit_price || 0).toLocaleString()}</span></p>
                                     <p><span className="text-muted-foreground">Jumla:</span> <span className="font-semibold">TZS {Number(order.total_paid || 0).toLocaleString()}</span></p>
@@ -414,7 +436,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
-                            {order.display_kind === 'physical_product' && order.delivery?.delivery_type === 'self_pickup' && order.payment_status === 'awaiting_merchant_confirmation' && (
+                            {order.is_escrow_order && order.delivery?.delivery_type === 'self_pickup' && order.payment_status === 'awaiting_merchant_confirmation' && (
                                 <Card className="rounded-2xl md:col-span-2 border-brand-200 bg-brand-50/30">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
@@ -442,7 +464,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
-                            {order.display_kind === 'physical_product' && order.delivery?.delivery_type !== 'self_pickup' && (
+                            {order.is_escrow_order && order.delivery?.delivery_type !== 'self_pickup' && (
                                 <Card className="rounded-2xl md:col-span-2">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
@@ -585,6 +607,52 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 </p>
                                             </div>
                                         )}
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {order.review && (
+                                <Card className="rounded-2xl md:col-span-2 border-amber-200 bg-amber-50/20">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                                            <Star className="h-4 w-4 text-amber-600 fill-amber-600" />
+                                            Customer Review
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-2">
+                                        <div className="flex gap-1 mb-2">
+                                            {[1, 2, 3, 4, 5].map(s => (
+                                                <Star key={s} className={cn("h-4 w-4", s <= order.review.rating ? "text-amber-500 fill-amber-500" : "text-amber-200")} />
+                                            ))}
+                                        </div>
+                                        <p className="text-sm font-medium text-amber-900 italic">"{order.review.comment}"</p>
+                                        <p className="text-[10px] text-amber-700/60 font-bold uppercase tracking-widest">
+                                            {order.review.created_at ? new Date(order.review.created_at).toLocaleString() : ''}
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {order.delivery?.buyer_unboxing_video_url && (
+                                <Card className="rounded-2xl md:col-span-2 border-indigo-200 bg-indigo-50/20">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                                            <Video className="h-4 w-4 text-indigo-600" />
+                                            Unboxing Video (Customer)
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="flex items-center justify-between bg-white/60 p-4 rounded-xl border border-indigo-100">
+                                            <p className="text-sm font-bold text-indigo-900">Ushahidi wa Kupokea</p>
+                                            <a
+                                                href={order.delivery.buyer_unboxing_video_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center gap-2 text-xs font-black text-indigo-600 hover:underline bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100"
+                                            >
+                                                <Play className="h-3 w-3" /> TAZAMA VIDEO
+                                            </a>
+                                        </div>
                                     </CardContent>
                                 </Card>
                             )}

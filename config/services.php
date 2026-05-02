@@ -28,6 +28,12 @@ return [
         'redirect' => '/auth/google/callback',
     ],
 
+    'google_calendar' => [
+        'enabled' => env('GOOGLE_CALENDAR_ENABLED', false),
+        'redirect' => env('GOOGLE_CALENDAR_REDIRECT_URI', '/merchant/integrations/google-calendar/callback'),
+        'default_calendar_id' => env('GOOGLE_CALENDAR_DEFAULT_ID', 'primary'),
+    ],
+
     'ses' => [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
@@ -45,6 +51,18 @@ return [
         'api_key' => env('BEEM_AFRICA_API_KEY'),
         'secret_key' => env('BEEM_AFRICA_SECRET_KEY'),
         'sender_id' => env('BEEM_AFRICA_SENDER_ID', 'TAKEER'),
+    ],
+
+    'service_messaging' => [
+        'sms_provider' => env('SERVICE_SMS_PROVIDER', 'pending'),
+        'whatsapp_provider' => env('SERVICE_WHATSAPP_PROVIDER', 'pending'),
+        'email_provider' => env('SERVICE_EMAIL_PROVIDER', 'pending'),
+    ],
+
+    'platform_notifications' => [
+        'sms_provider' => env('PLATFORM_SMS_PROVIDER', 'beem_africa'),
+        'whatsapp_provider' => env('PLATFORM_WHATSAPP_PROVIDER', 'whatsapp_business'),
+        'email_provider' => env('PLATFORM_EMAIL_PROVIDER', 'laravel_mail'),
     ],
 
     'openrouter' => [
@@ -79,6 +97,12 @@ return [
         'encryption_key' => env('FLUTTERWAVE_ENCRYPTION_KEY'),
         'secret_hash' => env('FLUTTERWAVE_SECRET_HASH'),
         'base_url' => env('FLUTTERWAVE_BASE_URL', 'https://api.flutterwave.com/v3'),
+    ],
+
+    'open_exchange_rates' => [
+        'url' => env('OPEN_EXCHANGE_RATES_URL', 'https://openexchangerates.org/api/latest.json'),
+        'key' => env('OPEN_EXCHANGE_RATES_KEY'),
+        'cache_ttl' => env('OPEN_EXCHANGE_RATES_CACHE_TTL', 86400),
     ],
 
 ];

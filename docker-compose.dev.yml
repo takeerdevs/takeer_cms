@@ -14,6 +14,10 @@ services:
       - "8000:8000"
     environment:
       - APP_ENV=local
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,7 +32,36 @@ services:
       retries: 3
       start_period: 60s
 
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: takeer_queue_dev
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan queue:work --queue=media,default --tries=2 --timeout=600 --sleep=3
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+    environment:
+      - APP_ENV=local
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      #app:
+      #  condition: service_healthy
+    networks:
+      - takeer_network
+
   postgres:
+    platform: linux/arm64
     build:
       context: ./docker/postgres
       dockerfile: Dockerfile

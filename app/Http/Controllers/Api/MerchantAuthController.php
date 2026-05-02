@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\MerchantRegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\Merchant;
+use App\Models\Country;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\PhoneService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -37,8 +39,9 @@ class MerchantAuthController extends Controller
         // Consume OTP (one-time use)
         Cache::forget($cacheKey);
 
-        // Check if phone number is already registered
-        $existingUser = User::where('phone_number', $phone)->first();
+        // Check if phone number is already registered. Older accounts may store
+        // local numbers (062...) while new auth requests are normalized to E.164.
+        $existingUser = $this->findUserByPhone($phone, Country::find($validated['country_id'] ?? null));
 
         if ($existingUser) {
             $user = $existingUser;
@@ -98,6 +101,12 @@ class MerchantAuthController extends Controller
                 }
             }
 
+            $selectedCountry = Country::find($validated['country_id'] ?? $countryId);
+            $countryTimezones = $selectedCountry?->timezones() ?? [];
+            $timezone = in_array($validated['timezone'] ?? null, $countryTimezones, true)
+                ? $validated['timezone']
+                : ($selectedCountry?->defaultTimezone() ?? 'Africa/Dar_es_Salaam');
+
             $merchant = Merchant::create([
                 'user_id' => $user->id,
                 'username' => $username,
@@ -107,6 +116,7 @@ class MerchantAuthController extends Controller
                 'is_default' => true,
                 'country_id' => $validated['country_id'] ?? $countryId,
                 'currency_id' => $validated['currency_id'] ?? $currencyId,
+                'timezone' => $timezone,
             ]);
         }
 
@@ -129,27 +139,116 @@ class MerchantAuthController extends Controller
      */
     public function check(\Illuminate\Http\Request $request): JsonResponse
     {
-        $phone = $request->validate(['phone_number' => 'required|string'])['phone_number'];
+        $validated = $request->validate([
+            'phone_number' => 'required|string',
+            'country_id' => 'nullable|exists:countries,id',
+        ]);
+        $phone = $validated['phone_number'];
 
         // Normalize phone for correct lookup
         $sessionCountry = session('user_session_country');
         $region = $sessionCountry['iso_alpha2'] ?? 'TZ';
-        $formattedPhone = \App\Services\PhoneService::formatToE164($phone, $region) ?: $phone;
+        $country = $this->countryFromRequest($request, $region);
+        $formattedPhone = PhoneService::formatToE164($phone, $country?->iso_alpha2 ?? $region) ?: $phone;
 
         // Check if country is active
-        $country = \App\Models\Country::where('iso_alpha2', $region)->first();
         $isActive = $country ? $country->is_active : true;
 
-        $exists = User::where('phone_number', $formattedPhone)
-                      ->where('role', 'merchant')
-                      ->exists();
+        $phoneVariants = PhoneService::variantsForLookup($formattedPhone, $country?->iso_alpha2 ?? $region);
+        $user = User::whereIn('phone_number', $phoneVariants)
+            ->where(function ($query) {
+                $query->where('role', 'merchant')
+                    ->orWhereHas('merchantProfiles');
+            })
+            ->first();
+
+        $exists = (bool) $user;
 
         return response()->json([
             'is_merchant' => $exists,
+            'is_existing_account' => $exists,
             'is_active' => $isActive,
-            'country_name' => $country?->name
+            'country_name' => $country?->name,
+            'phone_number' => $user?->phone_number ?? $formattedPhone,
         ]);
     }
+
+    public function ensurePersonalProfile(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user || ! $user->phone_number) {
+            return response()->json([
+                'message' => 'Tafadhali thibitisha nambari ya simu kwanza.',
+            ], 403);
+        }
+
+        if ($user->role !== 'merchant') {
+            $user->role = 'merchant';
+            $user->save();
+        }
+
+        if (! $user->wallet) {
+            Wallet::create(['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]);
+        }
+
+        $merchant = Merchant::where('user_id', $user->id)->where('type', 'personal')->first()
+            ?? Merchant::where('user_id', $user->id)->first();
+
+        if (! $merchant) {
+            $baseUsername = Str::slug($user->name && ! Str::startsWith($user->name, 'User ')
+                ? $user->name
+                : 'user-' . substr(preg_replace('/\D+/', '', (string) $user->phone_number), -6));
+            $baseUsername = $baseUsername ?: 'user';
+            $username = $baseUsername;
+            $counter = 1;
+
+            while (Merchant::where('username', $username)->exists()) {
+                $username = $baseUsername . '-' . $counter;
+                $counter++;
+            }
+
+            $sessionCountry = session('user_session_country');
+            $country = isset($sessionCountry['iso_alpha2'])
+                ? Country::where('iso_alpha2', $sessionCountry['iso_alpha2'])->first()
+                : null;
+
+            $merchant = Merchant::create([
+                'user_id' => $user->id,
+                'username' => $username,
+                'display_name' => $user->name ?: 'Personal Profile',
+                'type' => 'personal',
+                'is_verified' => false,
+                'is_default' => true,
+                'country_id' => $country?->id,
+                'currency_id' => $country?->default_currency_id,
+                'timezone' => $country?->defaultTimezone() ?? 'Africa/Dar_es_Salaam',
+                'kyc_status' => 'unverified',
+            ]);
+        }
+
+        session(['active_merchant_id' => $merchant->id]);
+
+        return response()->json([
+            'merchant' => $merchant,
+            'user' => UserResource::make($user->fresh(['merchantProfiles'])),
+        ]);
+    }
+
+    private function findUserByPhone(string $phone, Country|string|null $country = null): ?User
+    {
+        return User::whereIn('phone_number', PhoneService::variantsForLookup($phone, $country))->first();
+    }
+
+    private function countryFromRequest(\Illuminate\Http\Request $request, string $fallbackRegion): ?Country
+    {
+        if ($request->filled('country_id')) {
+            return Country::find($request->input('country_id'));
+        }
+
+        return Country::where('iso_alpha2', $fallbackRegion)->first();
+    }
+
     /**
      * Add a new business profile for an existing user.
      */
@@ -174,6 +273,7 @@ class MerchantAuthController extends Controller
             'is_default' => false,
             'country_id' => $baseMerchant?->country_id,
             'currency_id' => $baseMerchant?->currency_id,
+            'timezone' => $baseMerchant?->defaultTimezone(),
             'kyc_status' => 'unverified',
         ]);
 

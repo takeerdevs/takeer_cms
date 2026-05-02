@@ -55,6 +55,16 @@ class Bundle extends Model
         return $this->hasMany(BundleItem::class)->orderBy('sort_order');
     }
 
+    public function courseModules(): HasMany
+    {
+        return $this->hasMany(BundleCourseModule::class)->orderBy('sort_order');
+    }
+
+    public function cohorts(): HasMany
+    {
+        return $this->hasMany(BundleCohort::class)->orderBy('starts_at');
+    }
+
     public function planItems(): HasMany
     {
         return $this->hasMany(SubscriptionPlanItem::class, 'item_id')->where('item_type', 'bundle');

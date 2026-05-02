@@ -58,8 +58,8 @@ export default function MerchantPosts({ merchantUsername = '' }) {
         setLoading(true);
         try {
             const [postsRes, reportsRes, summaryRes] = await Promise.all([
-                axios.get('/merchant/posts/api'),
-                axios.get('/merchant/content-reports/api'),
+                axios.get(`/merchant/${merchantUsername}/posts/api`),
+                axios.get(`/merchant/${merchantUsername}/content-reports/api`),
                 axios.get(`/merchant/${merchantUsername}/orders/api/commerce-summary`).catch(() => ({ data: null })),
             ]);
 
@@ -78,7 +78,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
         setSavingPostInteraction(key);
         try {
             const payload = { [field]: value };
-            await axios.patch(`/merchant/posts/${postId}/interaction/api`, payload);
+            await axios.patch(`/merchant/${merchantUsername}/posts/${postId}/interaction/api`, payload);
             setPosts((current) => current.map((entry) => {
                 if (entry.id !== postId) return entry;
 
@@ -106,7 +106,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
     async function resolveContentReport(reportId, status, actionTaken = 'none') {
         setResolvingReportId(reportId);
         try {
-            await axios.patch(`/merchant/content-reports/${reportId}/resolve/api`, {
+            await axios.patch(`/merchant/${merchantUsername}/content-reports/${reportId}/resolve/api`, {
                 status,
                 action_taken: actionTaken,
             });

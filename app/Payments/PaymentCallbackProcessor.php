@@ -3,7 +3,7 @@
 namespace App\Payments;
 
 use App\Models\Order;
-use App\Models\ProductVariant;
+use App\Models\RetailAuditLog;
 use App\Models\SubscriptionInvoice;
 use App\Models\Transaction;
 use App\Models\UserSubscription;
@@ -45,11 +45,15 @@ class PaymentCallbackProcessor
             return;
         }
 
+        if ($this->isRetailCreditPaymentOrder($order)) {
+            $this->handleRetailCreditPayment($order, $gatewayRef, $gateway);
+            return;
+        }
+
         Log::info("PaymentCallbackProcessor: Processing success for order [{$order->id}] via [{$gateway}] ref [{$gatewayRef}].");
 
         DB::transaction(function () use ($order, $gatewayRef, $gateway) {
-            $isPhysical = $order->purchasable_type === 'product'
-                && $order->product?->isPhysical();
+            $isPhysical = $order->requiresPhysicalFulfillment();
 
             $order->update([
                 'payment_status' => $isPhysical
@@ -60,13 +64,16 @@ class PaymentCallbackProcessor
             ]);
 
             // Log TRA-ready transaction record
+            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
             Transaction::create([
                 'user_id'      => $order->buyer_id,
                 'order_id'     => $order->id,
                 'type'         => 'order_revenue',
+                ...$fee['snapshot'],
                 'gross_amount' => $order->total_paid,
-                'net_amount'   => $order->total_paid * 0.95,   // After 5% Takeer commission
-                'tax_amount'   => ($order->total_paid * 0.05) * 0.18, // 18% VAT on 5% fee
+                'fee_amount'   => $fee['fee_amount'],
+                'net_amount'   => $fee['net_amount'],
+                'tax_amount'   => $fee['tax_amount'],
                 'reference'    => $gatewayRef,
             ]);
 
@@ -80,7 +87,7 @@ class PaymentCallbackProcessor
                 $wallet->increment('frozen_balance', $order->total_paid);
             } else {
                 // Instantly credit merchant for digital goods
-                $wallet->increment('balance', $order->total_paid * 0.95);
+                $wallet->increment('balance', $fee['net_amount']);
                 $this->entitlementService->grantForOrder($order->fresh(['product']));
 
                 // Handle subscription activation
@@ -89,6 +96,13 @@ class PaymentCallbackProcessor
                     $this->entitlementService->grantForSubscription($subscription);
                 }
             }
+
+            \App\Models\ServiceRequest::query()
+                ->where('payment_order_id', $order->id)
+                ->update([
+                    'payment_status' => 'paid',
+                    'status' => 'confirmed',
+                ]);
         });
 
         // Fire events (outside transaction to avoid holding DB locks)
@@ -114,17 +128,17 @@ class PaymentCallbackProcessor
             return;
         }
 
+        if ($this->isRetailCreditPaymentOrder($order)) {
+            $order->update(['payment_status' => 'failed']);
+            Log::info("PaymentCallbackProcessor: POS credit payment order [{$order->id}] failed. Reason: {$reason}");
+            return;
+        }
+
         Log::info("PaymentCallbackProcessor: Marking order [{$order->id}] as failed. Reason: {$reason}");
 
         $order->update(['payment_status' => 'failed']);
 
-        // Restore inventory for physical products
-        if ($order->product?->isPhysical()) {
-            if ($order->variant_id) {
-                ProductVariant::query()->whereKey($order->variant_id)->increment('inventory_count');
-            }
-            $order->product->increment('inventory_count');
-        }
+        $order->releaseInventory();
     }
 
     private function createOrRenewSubscription(Order $order): UserSubscription
@@ -162,5 +176,96 @@ class PaymentCallbackProcessor
         ]);
 
         return $subscription;
+    }
+
+    private function handleRetailCreditPayment(Order $paymentOrder, string $gatewayRef, string $gateway): void
+    {
+        $creditOrderId = (int) data_get($paymentOrder->extra_items, 'credit_order_id');
+        if (!$creditOrderId) {
+            Log::error("PaymentCallbackProcessor: Credit payment order [{$paymentOrder->id}] missing original order id.");
+            return;
+        }
+
+        DB::transaction(function () use ($paymentOrder, $creditOrderId, $gatewayRef, $gateway) {
+            $creditOrder = Order::query()
+                ->whereKey($creditOrderId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$creditOrder) {
+                Log::error("PaymentCallbackProcessor: Original credit order [{$creditOrderId}] not found.");
+                return;
+            }
+
+            $payableTotal = (float) ($creditOrder->counter_total ?? $creditOrder->grand_total ?? $creditOrder->total_paid ?? 0);
+            $currentPaid = (float) ($creditOrder->total_paid ?? 0);
+            $outstanding = max($payableTotal - $currentPaid, 0);
+            $amount = min((float) $paymentOrder->total_paid, $outstanding);
+            $newPaid = round($currentPaid + $amount, 2);
+            $remaining = max($payableTotal - $newPaid, 0);
+
+            if ($amount <= 0) {
+                $paymentOrder->update([
+                    'payment_status' => 'resolved_merchant_paid',
+                    'gateway_ref' => $gatewayRef,
+                    'payment_gateway' => $gateway,
+                ]);
+                Log::warning("PaymentCallbackProcessor: Credit payment order [{$paymentOrder->id}] had no outstanding balance to apply.");
+                return;
+            }
+
+            $creditOrder->update([
+                'total_paid' => $newPaid,
+                'payment_status' => $remaining <= 0 ? 'resolved_merchant_paid' : 'pending',
+            ]);
+
+            $paymentOrder->update([
+                'payment_status' => 'resolved_merchant_paid',
+                'gateway_ref' => $gatewayRef,
+                'payment_gateway' => $gateway,
+            ]);
+
+            $reference = $gatewayRef !== 'N/A' ? $gatewayRef : $paymentOrder->transaction_ref;
+            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($paymentOrder, (float) $amount);
+
+            Transaction::create([
+                'user_id' => $paymentOrder->buyer_id,
+                'order_id' => $paymentOrder->id,
+                'type' => 'order_revenue',
+                ...$fee['snapshot'],
+                'gross_amount' => $amount,
+                'fee_amount' => $fee['fee_amount'],
+                'net_amount' => $fee['net_amount'],
+                'tax_amount' => $fee['tax_amount'],
+                'reference' => $reference,
+            ]);
+
+            $wallet = $creditOrder->merchant->user->wallet()->firstOrCreate(
+                ['user_id' => $creditOrder->merchant->user_id],
+                ['balance' => 0, 'frozen_balance' => 0]
+            );
+            $wallet->increment('balance', $fee['net_amount']);
+
+            RetailAuditLog::create([
+                'merchant_id' => $creditOrder->merchant_id,
+                'staff_id' => null,
+                'user_id' => $paymentOrder->buyer_id,
+                'action' => 'OUTSTANDING_BALANCE_PAYMENT',
+                'description' => "Online payment collected for POS {$creditOrder->public_id}.",
+                'metadata' => [
+                    'order_id' => $creditOrder->id,
+                    'public_id' => $creditOrder->public_id,
+                    'payment_order_id' => $paymentOrder->id,
+                    'amount' => $amount,
+                    'remaining_balance' => $remaining,
+                    'note' => "Online payment via {$gateway}. Ref: {$gatewayRef}",
+                ],
+            ]);
+        });
+    }
+
+    private function isRetailCreditPaymentOrder(Order $order): bool
+    {
+        return (int) data_get($order->extra_items, 'credit_order_id') > 0;
     }
 }

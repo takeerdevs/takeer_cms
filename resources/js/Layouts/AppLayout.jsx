@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import { Home, Search, Plus, ShoppingBag, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Toaster } from 'sonner';
@@ -10,11 +10,13 @@ import SearchOverlay from '@/Components/SearchOverlay';
 import CheckoutModal from '@/Components/CheckoutModal';
 import DigitalDownloadModal from '@/Components/DigitalDownloadModal';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
+import axios from 'axios';
 
 export default function AppLayout({ children, hideTabBar = false }) {
     const { flash, auth } = usePage().props;
     const [composerOpen, setComposerOpen] = useState(false);
     const [composerInitialMode, setComposerInitialMode] = useState('short');
+    const [creatingProfile, setCreatingProfile] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
 
     // Global checkout state
@@ -58,10 +60,39 @@ export default function AppLayout({ children, hideTabBar = false }) {
     }, []);
 
     // Tab bar nav items (visible on all screen sizes)
+    const canOpenComposer = Boolean(auth?.user?.phone_number);
+    const hasMerchantProfile = Boolean(auth?.user?.merchant_profiles?.length);
+
+    const openComposerForCurrentUser = async () => {
+        if (!auth?.user) {
+            router.visit('/merchant/register');
+            return;
+        }
+
+        if (hasMerchantProfile) {
+            setComposerOpen(true);
+            return;
+        }
+
+        setCreatingProfile(true);
+        try {
+            await axios.post('/auth/merchant/ensure-personal');
+            router.reload({
+                only: ['auth'],
+                onSuccess: () => setComposerOpen(true),
+            });
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Tafadhali thibitisha nambari ya simu kwanza.');
+            router.visit('/merchant/register');
+        } finally {
+            setCreatingProfile(false);
+        }
+    };
+
     const navItems = [
         { name: 'Feed', href: '/', icon: Home },
         { name: 'Tafuta', href: '#', icon: Search, isSearch: true },
-        ...(auth?.user?.is_merchant ? [{ name: null, href: null, icon: Plus, isCreate: true }] : []),
+        ...(canOpenComposer ? [{ name: null, href: null, icon: Plus, isCreate: true }] : []),
         { name: 'Oda', href: '/orders', icon: ShoppingBag },
         { name: 'Mimi', href: '/profile', icon: User },
     ];
@@ -86,8 +117,9 @@ export default function AppLayout({ children, hideTabBar = false }) {
                                 return (
                                     <button
                                         key="create"
-                                        onClick={() => setComposerOpen(true)}
-                                        className="flex items-center justify-center transition-transform active:scale-90"
+                                        onClick={openComposerForCurrentUser}
+                                        disabled={creatingProfile}
+                                        className="flex items-center justify-center transition-transform active:scale-90 disabled:opacity-60"
                                     >
                                         <div className="h-11 w-11 rounded-full bg-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20 border-2 border-background">
                                             <Plus className="h-6 w-6 text-white" strokeWidth={3} />

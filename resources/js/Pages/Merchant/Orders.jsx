@@ -241,10 +241,19 @@ function OrderCard({ order, merchantUsername }) {
         shipped: { label: 'Njiani', classes: 'bg-indigo-100 text-indigo-700' },
         resolved_merchant_paid: { label: 'Imekamilika', classes: 'bg-emerald-100 text-emerald-700' },
         disputed: { label: 'Mgogoro', classes: 'bg-red-100 text-red-700' },
+        failed: { label: 'Imesitishwa', classes: 'bg-red-100 text-red-700' },
     };
 
     const config = statusConfig[order.payment_status] || { label: order.payment_status, classes: 'bg-muted text-muted-foreground' };
     const displayTitle = order.display_title || product.title || 'Order item';
+    
+    // POS specific display logic
+    const isPos = order.source === 'pos';
+    const displayId = isPos ? `#POS-${order.public_id}` : `#${order.transaction_ref || order.id}`;
+    const customerIdentifier = isPos 
+        ? (order.customer_name || order.customer_phone || 'Guest') 
+        : (buyer.name || maskedBuyerPhone || 'N/A');
+
     const displayIcon = (() => {
         switch (order.display_icon) {
             case 'book_open': return BookOpenText;
@@ -253,7 +262,7 @@ function OrderCard({ order, merchantUsername }) {
             case 'shopping_bag': return ShoppingBag;
             case 'boxes': return Boxes;
             case 'crown': return Crown;
-            default: return Box;
+            default: return isPos ? Store : Box;
         }
     })();
 
@@ -270,21 +279,21 @@ function OrderCard({ order, merchantUsername }) {
                         </div>
                     )}
                 </div>
-
+ 
                 {/* ── Order Details ── */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${config.classes}`}>
                             {config.label}
                         </span>
-                        <span className="text-xs font-bold text-muted-foreground">#{order.transaction_ref || order.id}</span>
+                        <span className="text-xs font-bold text-muted-foreground">{displayId}</span>
                     </div>
 
                     <h3 className="font-black text-lg truncate leading-tight mt-2">{displayTitle}</h3>
 
                     <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground font-medium">
                         <span className="flex items-center gap-1.5 bg-background border px-2 py-0.5 rounded-lg text-xs">
-                            <Store className="h-3 w-3" /> Mteja: {maskedBuyerPhone || 'N/A'}
+                            <Store className="h-3 w-3" /> {isPos ? 'Mteja POS:' : 'Mteja:'} {customerIdentifier}
                         </span>
                         <span>•</span>
                         <span>Qty: {order.quantity || 1}</span>

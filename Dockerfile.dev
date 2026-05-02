@@ -1,13 +1,14 @@
-FROM php:8.3-fpm
+FROM php:8.4-fpm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git curl zip unzip libpq-dev libonig-dev libxml2-dev \
     libzip-dev libpng-dev libjpeg-dev libfreetype6-dev \
-    libssl-dev supervisor nginx \
+    libssl-dev supervisor nginx ffmpeg \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo pdo_pgsql pgsql mbstring exif pcntl bcmath gd zip opcache \
+    && pecl install redis && docker-php-ext-enable redis \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install pgvector extension
@@ -41,8 +42,11 @@ WORKDIR /var/www/html
 # Copy application files
 COPY . .
 
+# Configure Git to trust the working directory
+RUN git config --global --add safe.directory /var/www/html
+
 # Install Composer dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction 2>/dev/null || \
+RUN rm -rf bootstrap/cache/*.php && \
     composer install --optimize-autoloader --no-interaction
 
 # Install npm dependencies and build assets

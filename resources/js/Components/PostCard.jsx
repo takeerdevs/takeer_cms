@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { MessageCircle, MoreHorizontal, ShoppingBag, Clock, BadgeCheck, Unlock, Lock, X, Boxes, Loader2 } from 'lucide-react';
+import { MessageCircle, MoreHorizontal, ShoppingBag, Clock, BadgeCheck, Crown, Unlock, Lock, X, Boxes, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Link, router, usePage } from '@inertiajs/react';
 import PostManagementMenu from './PostManagementMenu';
 import MediaGrid from './MediaGrid';
@@ -28,15 +28,18 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     // Listen for payment unlock events
     useEffect(() => {
         const handleUnlocking = (e) => {
-            // item_type 'post' maps directly; for content_item we also check
-            const matchesType = ['post', 'content_item'].includes(e.detail?.itemType);
-            const matchesId = String(e.detail?.itemId) === String(localPost.id);
+            const unlockType = localPost.unlock_item_type || 'post';
+            const unlockId = localPost.unlock_item_id || localPost.id;
+            const matchesType = e.detail?.itemType === unlockType;
+            const matchesId = String(e.detail?.itemId) === String(unlockId);
             if (matchesType && matchesId) setIsUnlocking(true);
         };
 
         const handleUnlocked = async (e) => {
-            const matchesType = ['post', 'content_item'].includes(e.detail?.itemType);
-            const matchesId = String(e.detail?.itemId) === String(localPost.id);
+            const unlockType = localPost.unlock_item_type || 'post';
+            const unlockId = localPost.unlock_item_id || localPost.id;
+            const matchesType = e.detail?.itemType === unlockType;
+            const matchesId = String(e.detail?.itemId) === String(unlockId);
             if (!matchesType || !matchesId) return;
 
             // Refetch the post with fresh access
@@ -86,12 +89,35 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     const firstPromotable = promotables[0] || null;
     const promotableType = firstPromotable?.type || null;
     const promotableItem = firstPromotable?.item || null;
+    const isSubscriptionPromotable = promotableType === 'subscription_plan' && Boolean(promotableItem?.slug || firstPromotable?.id);
+    const subscriptionRouteKey = promotableItem?.slug || firstPromotable?.id;
+    const subscriptionItemsCount = Number(promotableItem?.items_count || 0);
+    const subscriptionCadence = `${promotableItem?.interval_count || 1} ${promotableItem?.billing_interval || 'month'}`;
     const promotableBundleRouteKey = promotableItem?.slug || firstPromotable?.id;
     const isBundlePromotable = promotableType === 'bundle' && Boolean(promotableBundleRouteKey);
     const bundleItems = Array.isArray(promotableItem?.bundle_items) ? promotableItem.bundle_items : [];
+    const courseModules = Array.isArray(promotableItem?.course_modules) ? promotableItem.course_modules : [];
+    const isCourseBundle = Boolean(promotableItem?.is_course);
     const shouldShowBundleItemsGrid = isBundlePromotable && bundleItems.length > 0;
     const hasBundlePrice = Number(promotableItem?.price || 0) > 0;
-    const bundleItemsCount = Number(promotableItem?.items_count ?? promotableItem?.items?.length ?? 0);
+    const bundleItemsCount = courseModules.length > 0
+        ? courseModules.reduce((sum, module) => sum + (module.lessons?.length || 0), 0)
+        : Number(promotableItem?.items_count ?? promotableItem?.items?.length ?? 0);
+    const courseModuleGroups = useMemo(() => {
+        if (!isCourseBundle) return [];
+        if (courseModules.length > 0) return courseModules;
+        const groups = [];
+        bundleItems.forEach((item) => {
+            const title = item.section_title || 'Moduli';
+            let group = groups.find((entry) => entry.title === title);
+            if (!group) {
+                group = { title, lessons: [] };
+                groups.push(group);
+            }
+            group.lessons.push(item);
+        });
+        return groups;
+    }, [bundleItems, courseModules, isCourseBundle]);
     const isImageLikeUrl = (value) => /^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|avif)(\?.*)?$/i.test(String(value || '').trim());
     const resolveBundleItemHref = (item) => {
         if (item?.item_type === 'product') {
@@ -110,7 +136,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     const shouldShowPremiumCtas = isLocked && (hasSingleUnlockOption || hasPromotableOption);
 
     const attachedProduct = postData.product || postData.product_tags?.[0]?.product || null;
-    const shouldShowOpenCta = !isLocked && isLongForm && !attachedProduct && !isBundlePromotable;
+    const shouldShowOpenCta = !isLocked && isLongForm && !attachedProduct && !isBundlePromotable && !isSubscriptionPromotable;
     const productRouteKey = attachedProduct?.slug || attachedProduct?.id;
     const attachedProductVariants = ((attachedProduct?.variants || []).filter((variant) => (
         variant?.is_active !== false
@@ -121,6 +147,55 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
         .filter((value) => Number.isFinite(value));
     const minVariantPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : 0;
     const maxVariantPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : 0;
+    const variantPriceLabel = minVariantPrice === maxVariantPrice
+        ? `TZS ${minVariantPrice.toLocaleString()}`
+        : `TZS ${minVariantPrice.toLocaleString()} - ${maxVariantPrice.toLocaleString()}`;
+    const attachedProductIsService = attachedProduct?.type === 'service';
+    const attachedServiceTrust = attachedProductIsService ? (attachedProduct?.service_trust || {}) : {};
+    const attachedServiceTrustReady = Boolean(attachedServiceTrust.trust_ready);
+    const attachedServiceCredentialOk = !attachedServiceTrust.credential_required || Boolean(attachedServiceTrust.credential_verified);
+    const attachedProductServiceMode = attachedProduct?.service_mode || (
+        attachedProduct?.service_is_showcase || attachedProduct?.service_pricing_model === 'showcase_only'
+            ? 'showcase_only'
+            : attachedProduct?.service_pricing_model === 'contract_quote'
+                ? 'request_quote'
+                : 'pay_now'
+    );
+    const attachedProductPriceDisplay = attachedProduct?.service_price_display || (
+        attachedProduct?.service_pricing_model === 'hourly_rate'
+            ? 'hourly'
+            : attachedProduct?.service_pricing_model === 'contract_quote'
+                ? 'quote_only'
+                : 'fixed'
+    );
+    const serviceUnitLabels = {
+        hourly: ' / hour',
+        daily: ' / day',
+        nightly: ' / night',
+        weekly: ' / week',
+        monthly: ' / month',
+        yearly: ' / year',
+        per_person: ' / person',
+        per_visit: ' / visit',
+        per_session: ' / session',
+        per_project: ' / project',
+    };
+    const attachedProductPrice = Number(attachedProduct?.discounted_price > 0 ? attachedProduct.discounted_price : attachedProduct?.price || 0);
+    const attachedProductPriceLabel = (() => {
+        if (!attachedProductIsService) return `TZS ${attachedProductPrice.toLocaleString()}`;
+        if (attachedProductPriceDisplay === 'hidden' || attachedProductServiceMode === 'showcase_only') return 'Contact provider';
+        if (attachedProductPriceDisplay === 'quote_only' || attachedProductServiceMode === 'request_quote') return 'Quote after request';
+        if (attachedProductPriceDisplay === 'starts_from') return `From TZS ${attachedProductPrice.toLocaleString()}`;
+        if (attachedProductPriceDisplay === 'package') return `TZS ${attachedProductPrice.toLocaleString()} package`;
+        return `TZS ${attachedProductPrice.toLocaleString()}${serviceUnitLabels[attachedProductPriceDisplay] || ''}`;
+    })();
+    const attachedProductCtaLabel = readOnly
+        ? 'View'
+        : attachedProduct?.has_access
+            ? 'Fungua'
+            : attachedProductIsService
+                ? (attachedProductServiceMode === 'book_appointment' ? 'Book' : 'View Service')
+                : 'Nunua';
     const variantAttributeSummary = useMemo(() => {
         if (!hasVariantPricing) return [];
 
@@ -158,7 +233,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
         bgStyle: postData.bg_style,
         hasMedia,
     });
-    const feedSummaryText = String((isBundlePromotable ? (promotableItem?.description || postData.excerpt) : (postData.excerpt || postData.caption)) || '')
+    const feedSummaryText = String(((isBundlePromotable || isSubscriptionPromotable) ? (promotableItem?.description || postData.excerpt) : (postData.excerpt || postData.caption)) || '')
         .replace(/\s+/g, ' ')
         .trim();
 
@@ -186,10 +261,10 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
         e.stopPropagation();
 
         openCheckout({
-            id: postData.id,
+            id: postData.unlock_item_id || postData.id,
             title: postData.title || 'Locked content',
             price: singleUnlockPrice,
-            checkoutType: 'post',
+            checkoutType: postData.unlock_item_type || 'post',
         });
     };
 
@@ -410,7 +485,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                             {hasVariantPricing ? (
                                 <div className="space-y-0.5">
                                     <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">
-                                        TZS {minVariantPrice.toLocaleString()} - {maxVariantPrice.toLocaleString()}
+                                        {variantPriceLabel}
                                     </p>
                                     <p className="text-[11px] text-slate-600 leading-tight truncate">
                                         {variantAttributeSummary.join(", ")}
@@ -419,7 +494,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                             ) : (
                                 <div className="flex items-center gap-2">
                                     <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">
-                                        TZS {Number(attachedProduct.discounted_price > 0 ? attachedProduct.discounted_price : attachedProduct.price).toLocaleString()}
+                                        {attachedProductPriceLabel}
                                     </p>
                                     {attachedProduct.discounted_price > 0 && Number(attachedProduct.discounted_price) < Number(attachedProduct.price) && (
                                         <p className="text-muted-foreground text-sm line-through opacity-70">
@@ -430,6 +505,34 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                             )}
                         </div>
                     </Link>
+                    {attachedProductIsService && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    {attachedServiceTrustReady ? (
+                                        <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+                                    ) : (
+                                        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                                    )}
+                                    <span className="text-xs font-black text-emerald-950 truncate">
+                                        {attachedServiceTrustReady ? 'Imekaguliwa na Takeer' : 'Uhakiki unaendelea'}
+                                    </span>
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 shrink-0">
+                                    SafePay
+                                </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-600">
+                                <span>{attachedServiceTrust.identity_verified ? 'KYC' : 'KYC pending'}</span>
+                                <span>•</span>
+                                <span>{attachedServiceCredentialOk ? 'Leseni OK' : 'Leseni pending'}</span>
+                                <span>•</span>
+                                <span>{attachedServiceTrust.completed_services_count || 0} completed</span>
+                                <span>•</span>
+                                <span>{attachedServiceTrust.disputes_count || 0} disputes</span>
+                            </div>
+                        </div>
+                    )}
                     <div className="px-3.5 pb-3">
                         <button
                             onClick={(e) => {
@@ -462,7 +565,56 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                             }}
                             className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 dark:from-brand-500 dark:to-brand-400 text-white text-base font-extrabold hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-brand-500/25"
                         >
-                            <ShoppingBag className="h-4 w-4" /> {readOnly ? 'View' : (attachedProduct.has_access ? 'Fungua' : 'Nunua')}
+                            <ShoppingBag className="h-4 w-4" /> {attachedProductCtaLabel}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {isSubscriptionPromotable && (
+                <div className="my-1 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60">
+                    <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="h-12 w-12 rounded-2xl bg-emerald-100 flex items-center justify-center shrink-0">
+                                    <Crown className="h-6 w-6 text-emerald-700" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Subscription</p>
+                                    <p className="text-xl font-black leading-tight truncate">{promotableItem?.name || promotableItem?.title || 'Membership'}</p>
+                                </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">TZS</p>
+                                <p className="text-xl font-black text-brand-600">{Number(promotableItem?.price || 0).toLocaleString()}</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                            <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Access</p>
+                                <p className="mt-1 text-sm font-black">{subscriptionItemsCount > 0 ? `${subscriptionItemsCount} items` : 'Member content'}</p>
+                            </div>
+                            <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Renewal</p>
+                                <p className="mt-1 text-sm font-black capitalize">{subscriptionCadence}</p>
+                            </div>
+                        </div>
+
+                        <p className="mt-3 text-sm leading-6 text-muted-foreground line-clamp-2">
+                            {promotableItem?.description || 'Jiunge kupata maudhui ya wanachama na updates mpya kadri zinavyoongezwa.'}
+                        </p>
+                    </div>
+                    <div className="px-4 pb-4">
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                router.visit(`/plan/${subscriptionRouteKey}`);
+                            }}
+                            className="w-full h-11 rounded-xl bg-emerald-600 text-white text-base font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20"
+                        >
+                            <Crown className="h-4 w-4" /> View Membership
                         </button>
                     </div>
                 </div>
@@ -470,7 +622,38 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
 
             {isBundlePromotable && (
                 <div className="my-1 rounded-2xl border border-sky-200/70 bg-gradient-to-br from-white to-sky-50/40 dark:border-sky-900/50 dark:from-slate-900 dark:to-sky-950/40 overflow-hidden">
-                    {shouldShowBundleItemsGrid && (
+                    {isCourseBundle && courseModuleGroups.length > 0 ? (
+                        <div className="p-3 space-y-2">
+                            <div className="rounded-xl border border-sky-100 bg-white/85 px-3 py-2 dark:border-sky-900/50 dark:bg-slate-900/80">
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Course Curriculum</p>
+                                <div className="mt-2 grid grid-cols-2 gap-2 text-center">
+                                    <div className="rounded-lg bg-sky-50 px-2 py-2 dark:bg-sky-950/40">
+                                        <p className="text-lg font-black text-sky-900 dark:text-sky-100">{courseModuleGroups.length}</p>
+                                        <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">Modules</p>
+                                    </div>
+                                    <div className="rounded-lg bg-sky-50 px-2 py-2 dark:bg-sky-950/40">
+                                        <p className="text-lg font-black text-sky-900 dark:text-sky-100">{bundleItemsCount}</p>
+                                        <p className="text-[10px] font-bold text-sky-700 dark:text-sky-300">Lessons</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {courseModuleGroups.slice(0, 3).map((module, idx) => (
+                                <div key={`${module.title}-${idx}`} className="rounded-xl border border-border/70 bg-background px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="text-sm font-black truncate">{module.title}</p>
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{module.lessons.length} lessons</span>
+                                    </div>
+                                    <div className="mt-1 space-y-1">
+                                        {module.lessons.slice(0, 2).map((lesson, lessonIdx) => (
+                                            <p key={`${lesson.item_type}-${lesson.item_id}-${lessonIdx}`} className="text-xs text-muted-foreground truncate">
+                                                {lesson.is_preview ? 'Preview · ' : ''}{lesson.lesson_title || lesson.title}
+                                            </p>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : shouldShowBundleItemsGrid && (
                         <div className="grid grid-cols-2 gap-1 p-1.5">
                             {bundleItems.slice(0, 6).map((item, idx) => {
                                 const href = resolveBundleItemHref(item);
@@ -527,8 +710,9 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                                 </p>
                             )}
                             <p className="text-[11px] text-slate-600 leading-tight truncate mt-0.5">
-                                {bundleItemsCount > 0 ? `${bundleItemsCount} item(s)` : 'Bundle access'}
-                                {promotableItem?.is_course ? ' • Course' : ''}
+                                {isCourseBundle
+                                    ? `${courseModuleGroups.length || 1} module(s) • ${bundleItemsCount} lesson(s)`
+                                    : (bundleItemsCount > 0 ? `${bundleItemsCount} item(s)` : 'Bundle access')}
                             </p>
                         </div>
                     </Link>
@@ -541,7 +725,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                             }}
                             className="w-full h-11 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 dark:from-sky-500 dark:to-cyan-400 text-white text-base font-extrabold hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-sky-500/25"
                         >
-                            <Boxes className="h-4 w-4" /> {readOnly ? 'View Bundle' : 'Open Bundle'}
+                            <Boxes className="h-4 w-4" /> {isCourseBundle ? (readOnly ? 'View Course' : 'Open Course') : (readOnly ? 'View Bundle' : 'Open Bundle')}
                         </button>
                     </div>
                 </div>

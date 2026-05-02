@@ -13,8 +13,7 @@ class SendOtpRequest extends FormRequest
 
     protected function prepareForValidation()
     {
-        $sessionCountry = session('user_session_country');
-        $region = $sessionCountry['iso_alpha2'] ?? 'TZ';
+        $region = $this->resolveRegion();
 
         if ($this->has('phone_number')) {
             $formatted = \App\Services\PhoneService::formatToE164($this->phone_number, $region);
@@ -30,11 +29,23 @@ class SendOtpRequest extends FormRequest
     {
         return [
             'phone_number' => ['required', 'string', 'max:20'],
+            'country_id' => ['nullable', 'exists:countries,id'],
         ];
     }
 
     public function messages(): array
     {
         return [];
+    }
+
+    private function resolveRegion(): string
+    {
+        if ($this->filled('country_id')) {
+            return \App\Models\Country::whereKey($this->input('country_id'))->value('iso_alpha2') ?: 'TZ';
+        }
+
+        $sessionCountry = session('user_session_country');
+
+        return $sessionCountry['iso_alpha2'] ?? 'TZ';
     }
 }

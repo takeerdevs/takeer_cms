@@ -12,40 +12,52 @@ import {
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 
-export default function MerchantWallet({ merchantUsername, merchantName, wallet, merchant }) {
+export default function MerchantWallet({ merchantUsername, merchantName, wallet, merchant, retailEligible = false, initialLedgerType = null, ledgerMode = false }) {
     const { auth, flash, errors: pageErrors } = usePage().props;
     const [history, setHistory] = useState([]);
+    const [meta, setMeta] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState('earnings');
+    const [ledgerType, setLedgerType] = useState(initialLedgerType);
 
     const storageUsedMb = merchant?.storage_used_mb || 0;
     const storageLimitMb = merchant?.storage_limit_mb || 500;
     const storagePercentage = merchant?.storage_percentage || 0;
     const tier = merchant?.subscription_tier || 'free';
+    const isBusinessWallet = Boolean(retailEligible);
+    const allowedLedgerTypes = isBusinessWallet
+        ? [null, 'escrow', 'non-escrow', 'credit', 'wallet-entry', 'withdrawal']
+        : [null, 'escrow', 'wallet-entry', 'withdrawal'];
+    const effectiveLedgerType = allowedLedgerTypes.includes(ledgerType) ? ledgerType : null;
 
     const { data, setData, post, processing, errors, reset, clearErrors } = useForm({
         amount: '',
         method: 'mobile_money',
     });
 
-    const getFilteredHistory = () => {
-        if (activeTab === 'earnings') {
-            return history.filter(item => item.type === 'order_revenue' || item.type === 'platform_fee');
-        }
-        return history.filter(item => item.type === 'withdrawal');
-    };
+    const isSalesLedger = ['escrow', 'non-escrow', 'credit'].includes(effectiveLedgerType);
+    const isWalletEntryLedger = effectiveLedgerType === 'wallet-entry';
+    const isWithdrawalLedger = effectiveLedgerType === 'withdrawal';
+    const ledgerItems = history;
 
     useEffect(() => {
         fetchHistory();
-    }, [merchantUsername]);
+    }, [merchantUsername, effectiveLedgerType]);
 
-    const fetchHistory = async () => {
+    useEffect(() => {
+        setLedgerType(initialLedgerType);
+    }, [initialLedgerType]);
+
+    const fetchHistory = async (page = null) => {
         setLoading(true);
         try {
-            // Adjust the URL if you change where the axios object lives, assuming window.axios
-            const res = await window.axios.get(`/merchant/${merchantUsername}/wallet/api/history`);
+            const requestedPage = page || Number(new URLSearchParams(window.location.search).get('page') || 1);
+            const params = new URLSearchParams({ page: String(requestedPage) });
+            if (effectiveLedgerType) params.set('type', effectiveLedgerType);
+
+            const res = await window.axios.get(`/merchant/${merchantUsername}/wallet/api/history?${params.toString()}`);
             setHistory(res.data.history || []);
+            setMeta(res.data.meta || null);
         } catch (error) {
             console.error('Failed to fetch wallet history', error);
         } finally {
@@ -61,6 +73,18 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                 setIsWithdrawModalOpen(false);
                 fetchHistory(); // Refresh history slightly later
             },
+        });
+    };
+
+    const goToLedger = (type = null, page = 1) => {
+        const nextType = allowedLedgerTypes.includes(type) ? type : null;
+        const params = new URLSearchParams();
+        if (nextType) params.set('type', nextType);
+        if (page > 1) params.set('page', String(page));
+
+        router.visit(`/merchant/${merchantUsername}/wallet/ledger${params.toString() ? `?${params.toString()}` : ''}`, {
+            preserveScroll: true,
+            preserveState: false,
         });
     };
 
@@ -80,6 +104,66 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
         }).format(date);
     };
 
+    const ledgerTypeMeta = (item) => {
+        if (!isBusinessWallet && item.ledger_type === 'escrow') {
+            return { label: 'Sale', cls: 'bg-brand-100 text-brand-700 border-brand-200' };
+        }
+        if (item.ledger_type === 'escrow') {
+            return { label: 'Escrow', cls: 'bg-brand-100 text-brand-700 border-brand-200' };
+        }
+        if (item.ledger_type === 'credit') {
+            return { label: 'Credit', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
+        }
+        return { label: 'Non-escrow', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+    };
+
+    const paymentModeLabel = (mode) => ({
+        online_escrow: isBusinessWallet ? 'Online Escrow' : 'Online Sale',
+        cash: 'Cash',
+        merchant_mm: 'Merchant Mobile Money',
+        store_credit: 'Store Credit',
+    }[mode] || mode || 'N/A');
+
+    const ledgerTitle = isBusinessWallet ? ({
+        escrow: 'Escrow Ledger',
+        'non-escrow': 'Non-escrow Ledger',
+        credit: 'Credit Ledger',
+        'wallet-entry': 'Wallet Entries',
+        withdrawal: 'Payouts Ledger',
+    }[effectiveLedgerType] || 'All Ledger') : ({
+        escrow: 'Sales',
+        'wallet-entry': 'Wallet Entries',
+        withdrawal: 'Payouts',
+    }[effectiveLedgerType] || 'All Activity');
+
+    const ledgerSubtitle = isBusinessWallet ? ({
+        escrow: 'Online escrow sales held or released through Takeer.',
+        'non-escrow': 'Cash and merchant mobile money sales collected outside escrow.',
+        credit: 'Store credit sales, partial payments, and outstanding balances.',
+        'wallet-entry': 'Technical wallet movements such as escrow releases and fee records.',
+        withdrawal: 'Withdrawal and payout requests.',
+    }[effectiveLedgerType] || 'All sales and payout activity in one place.') : ({
+        escrow: 'Digital product and content sales paid through Takeer.',
+        'wallet-entry': 'Balance movements, fee records, and released earnings.',
+        withdrawal: 'Withdrawal and payout requests.',
+    }[effectiveLedgerType] || 'Digital sales, wallet movements, and payouts in one place.');
+
+    const ledgerTabs = isBusinessWallet
+        ? [
+            [null, 'All'],
+            ['escrow', 'Escrow'],
+            ['non-escrow', 'Non-escrow'],
+            ['credit', 'Credit'],
+            ['wallet-entry', 'Wallet Entries'],
+            ['withdrawal', 'Payouts'],
+        ]
+        : [
+            [null, 'All'],
+            ['escrow', 'Sales'],
+            ['wallet-entry', 'Wallet Entries'],
+            ['withdrawal', 'Payouts'],
+        ];
+
     return (
         <AppLayout>
             <Head title={`Pochi ya ${merchantName || 'Biashara Yangu'} | Takeer`} />
@@ -98,7 +182,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                         </Button>
                         <div>
                             <h1 className="text-xl md:text-2xl font-black tracking-tight flex items-center gap-2">
-                                Pochi Yangu <Wallet className="h-5 w-5 text-brand-600" />
+                                Wallet <Wallet className="h-5 w-5 text-brand-600" />
                             </h1>
                             <p className="text-sm text-muted-foreground mt-0.5">
                                 Usimamizi wa mapato ya <span className="font-semibold text-foreground">{merchantName || 'Biashara'}</span>
@@ -122,7 +206,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
 
                 {/* Balances & Storage */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="md:col-span-2 bg-gradient-to-br from-brand-600 to-brand-800 border-0 text-white shadow-xl shadow-brand-600/20 overflow-hidden relative">
+                    <Card className="md:col-span-2 bg-brand-600 border-0 text-white shadow-xl shadow-brand-600/20 overflow-hidden relative">
                         <div className="absolute top-0 right-0 p-4 opacity-10">
                             <Wallet className="w-32 h-32" />
                         </div>
@@ -133,7 +217,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                         <div className="p-1.5 bg-white/20 rounded-md backdrop-blur-sm">
                                             <Wallet className="h-4 w-4" />
                                         </div>
-                                        <p className="text-sm font-semibold opacity-90 uppercase tracking-wider">Salio Lipatikano</p>
+                                        <p className="text-sm font-semibold opacity-90 uppercase tracking-wider">Salio Lililopo</p>
                                     </div>
                                     <h2 className="text-4xl md:text-5xl font-black tracking-tight">{formatMoney(wallet.balance)}</h2>
                                     <p className="text-sm opacity-80 mt-2 flex items-center gap-1">
@@ -141,7 +225,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                     </p>
                                 </div>
                                 <Button
-                                    className="bg-white text-brand-700 hover:bg-brand-50 h-12 px-8 rounded-xl font-bold shadow-md shrink-0"
+                                    className="bg-white text-brand-600 hover:bg-white/90 h-12 px-8 rounded-xl font-black shadow-lg shadow-black/5 shrink-0"
                                     onClick={() => setIsWithdrawModalOpen(true)}
                                     disabled={wallet.balance < 5000}
                                 >
@@ -180,7 +264,13 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                     <p className="text-[10px] text-muted-foreground">{storageUsedMb} MB kati ya {storageLimitMb} MB</p>
                                 </div>
                             </div>
-                            <Button variant="outline" size="sm" className="w-full text-[10px] font-bold h-8 border-brand-200 text-brand-700 hover:bg-brand-50">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                onClick={() => router.visit(`/merchant/${merchantUsername}/platform-subscriptions/storage`)}
+                                className="w-full text-[10px] font-black h-8 border-brand-200 text-brand-600 hover:bg-brand-50"
+                            >
                                 UPGRADE STORAGE
                             </Button>
                         </CardContent>
@@ -189,25 +279,25 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
 
                 {/* Ledger / History Tabs */}
                 <div className="space-y-4">
-                    <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-xl w-fit border border-border">
-                        <button
-                            onClick={() => setActiveTab('earnings')}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'earnings'
-                                    ? 'bg-white shadow-sm text-brand-700'
-                                    : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                        >
-                            Mapato (Earnings)
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('payouts')}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'payouts'
-                                    ? 'bg-white shadow-sm text-brand-700'
-                                    : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                        >
-                            Payouts
-                        </button>
+                    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-1">
+                            <h2 className="text-lg font-black text-slate-950">{ledgerTitle}</h2>
+                            <p className="text-sm text-muted-foreground">{ledgerSubtitle}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {ledgerTabs.map(([type, label]) => (
+                                <button
+                                    key={type || 'all'}
+                                    onClick={() => goToLedger(type)}
+                                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${effectiveLedgerType === type
+                                        ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                                        : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-brand-50 hover:text-brand-700 hover:border-brand-100'
+                                        }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <Card className="border-border shadow-sm overflow-hidden">
@@ -217,14 +307,14 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                     <div className="h-8 w-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
                                     <p className="font-bold text-sm">Inapakia Ledger...</p>
                                 </div>
-                            ) : getFilteredHistory().length === 0 ? (
+                            ) : ledgerItems.length === 0 ? (
                                 <div className="p-16 text-center flex flex-col items-center">
                                     <div className="h-20 w-20 bg-muted/50 rounded-3xl flex items-center justify-center mb-6 border border-border/50">
                                         <History className="h-10 w-10 text-muted-foreground opacity-30" />
                                     </div>
                                     <h3 className="font-black text-xl">Hakuna Historia</h3>
                                     <p className="text-muted-foreground text-sm mt-2 max-w-xs leading-relaxed">
-                                        Miamala yako ya {activeTab === 'earnings' ? 'mapato ya mauzo' : 'kutoa pesa'} itaonekana hapa pindi itakapofanyika.
+                                        Miamala yako ya {ledgerTitle.toLowerCase()} itaonekana hapa pindi itakapofanyika.
                                     </p>
                                 </div>
                             ) : (
@@ -233,31 +323,86 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                         <thead>
                                             <tr className="bg-muted/30 border-b border-border">
                                                 <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Tarehe</th>
-                                                {activeTab === 'earnings' ? (
+                                                {isSalesLedger ? (
+                                                    <>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Sale / Customer</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Type</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Status</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-right">Amount</th>
+                                                    </>
+                                                ) : isWalletEntryLedger ? (
                                                     <>
                                                         <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Mteja / Bidhaa</th>
                                                         <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Gross</th>
-                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-red-500">Fee</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-red-500">Takeer Fee</th>
                                                         <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-green-600">Net</th>
                                                     </>
-                                                ) : (
+                                                ) : isWithdrawalLedger ? (
                                                     <>
                                                         <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Njia ya Malipo</th>
                                                         <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Status</th>
                                                         <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-right">Kiasi</th>
                                                     </>
+                                                ) : (
+                                                    <>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Ledger</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Details</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Status</th>
+                                                        <th className="p-4 text-[11px] font-black uppercase tracking-widest text-muted-foreground text-right">Amount</th>
+                                                    </>
                                                 )}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">
-                                            {getFilteredHistory().map((item, index) => (
+                                            {ledgerItems.map((item, index) => (
                                                 <tr key={index} className="hover:bg-muted/10 transition-colors group">
                                                     <td className="p-4">
                                                         <p className="text-sm font-bold text-foreground whitespace-nowrap">{formatDate(item.created_at)}</p>
                                                         <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Ref: {item.reference || 'N/A'}</p>
                                                     </td>
 
-                                                    {activeTab === 'earnings' ? (
+                                                    {isSalesLedger ? (() => {
+                                                        const meta = ledgerTypeMeta(item);
+
+                                                        return (
+                                                            <>
+                                                                <td className="p-4">
+                                                                    <p className="text-sm font-bold leading-tight">{item.customer_name}</p>
+                                                                    <p className="text-xs text-muted-foreground mt-0.5 italic">{item.product_name}</p>
+                                                                    {item.staff_name && (
+                                                                        <p className="text-[10px] text-muted-foreground mt-1 font-bold">Staff: {item.staff_name}</p>
+                                                                    )}
+                                                                </td>
+                                                                <td className="p-4">
+                                                                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${meta.cls}`}>
+                                                                        {meta.label}
+                                                                    </span>
+                                                                    <p className="text-[10px] text-muted-foreground mt-1 font-bold">{paymentModeLabel(item.payment_mode)}</p>
+                                                                </td>
+                                                                <td className="p-4">
+                                                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${item.status === 'resolved_merchant_paid' || item.status === 'escrow_locked'
+                                                                        ? 'bg-green-100 text-green-700'
+                                                                        : item.status === 'pending'
+                                                                            ? 'bg-amber-100 text-amber-700'
+                                                                            : 'bg-muted text-muted-foreground'
+                                                                        }`}>
+                                                                        {item.status?.replaceAll('_', ' ') || 'N/A'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="p-4 text-right">
+                                                                    <p className="text-sm font-black">{formatMoney(item.amount)}</p>
+                                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                                        Paid: {formatMoney(item.paid_amount)}
+                                                                    </p>
+                                                                    {item.outstanding_amount > 0 && (
+                                                                        <p className="text-[10px] font-black text-amber-600 mt-0.5">
+                                                                            Due: {formatMoney(item.outstanding_amount)}
+                                                                        </p>
+                                                                    )}
+                                                                </td>
+                                                            </>
+                                                        );
+                                                    })() : isWalletEntryLedger ? (
                                                         <>
                                                             <td className="p-4">
                                                                 <p className="text-sm font-bold leading-tight">{item.customer_name}</p>
@@ -266,25 +411,26 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                                             <td className="p-4 text-sm font-semibold opacity-70">
                                                                 {formatMoney(item.gross_amount)}
                                                             </td>
-                                                            <td className="p-4 text-sm font-bold text-red-500/80">
-                                                                -{formatMoney(item.fee_amount)}
+                                                            <td className="p-4">
+                                                                <p className="text-sm font-bold text-red-500/80">-{formatMoney(item.fee_amount)}</p>
+                                                                <p className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-tighter">Platform fee</p>
                                                             </td>
                                                             <td className="p-4">
                                                                 <p className="text-sm font-black text-green-600">{formatMoney(item.net_amount)}</p>
                                                                 <p className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-tighter">Deposited</p>
                                                             </td>
                                                         </>
-                                                    ) : (
+                                                    ) : isWithdrawalLedger ? (
                                                         <>
                                                             <td className="p-4">
                                                                 <p className="text-sm font-bold capitalize">{item.method || 'Mobile Money'}</p>
                                                             </td>
                                                             <td className="p-4">
                                                                 <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${item.status === 'completed' || item.status === 'approved'
-                                                                        ? 'bg-green-100 text-green-700'
-                                                                        : item.status === 'pending'
-                                                                            ? 'bg-amber-100 text-amber-700'
-                                                                            : 'bg-muted text-muted-foreground'
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : item.status === 'pending'
+                                                                        ? 'bg-amber-100 text-amber-700'
+                                                                        : 'bg-muted text-muted-foreground'
                                                                     }`}>
                                                                     {item.status === 'completed' ? 'Tayari' : item.status === 'pending' ? 'Inasubiri' : item.status}
                                                                 </span>
@@ -293,7 +439,48 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                                                 <p className="text-lg font-black">{formatMoney(item.amount)}</p>
                                                             </td>
                                                         </>
-                                                    )}
+                                                    ) : (() => {
+                                                        const meta = item.type === 'sale'
+                                                            ? ledgerTypeMeta(item)
+                                                            : item.type === 'withdrawal'
+                                                                ? { label: 'Payout', cls: 'bg-slate-100 text-slate-700 border-slate-200' }
+                                                                : { label: 'Wallet Entry', cls: 'bg-green-100 text-green-700 border-green-200' };
+
+                                                        return (
+                                                            <>
+                                                                <td className="p-4">
+                                                                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${meta.cls}`}>
+                                                                        {meta.label}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="p-4">
+                                                                    <p className="text-sm font-bold leading-tight">{item.customer_name || item.method || 'Mobile Money'}</p>
+                                                                    <p className="text-xs text-muted-foreground mt-0.5 italic">
+                                                                        {item.product_name || paymentModeLabel(item.payment_mode) || 'Payout request'}
+                                                                    </p>
+                                                                </td>
+                                                                <td className="p-4">
+                                                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${item.status === 'completed' || item.status === 'approved' || item.status === 'resolved_merchant_paid' || item.status === 'escrow_locked'
+                                                                        ? 'bg-green-100 text-green-700'
+                                                                        : item.status === 'pending'
+                                                                            ? 'bg-amber-100 text-amber-700'
+                                                                            : 'bg-muted text-muted-foreground'
+                                                                        }`}>
+                                                                        {item.status?.replaceAll('_', ' ') || 'N/A'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="p-4 text-right">
+                                                                    <p className="text-sm font-black">{formatMoney(item.amount)}</p>
+                                                                    {item.outstanding_amount > 0 && (
+                                                                        <p className="text-[10px] font-black text-amber-600 mt-0.5">
+                                                                            Due: {formatMoney(item.outstanding_amount)}
+                                                                        </p>
+                                                                    )}
+                                                                </td>
+                                                            </>
+                                                        );
+                                                    })()
+                                                    }
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -302,6 +489,31 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                             )}
                         </CardContent>
                     </Card>
+                    {meta && meta.last_page > 1 && (
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <p className="text-xs font-bold text-muted-foreground">
+                                Page {meta.current_page} of {meta.last_page} • {meta.total} records
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    className="h-10 rounded-xl"
+                                    disabled={meta.current_page <= 1}
+                                    onClick={() => goToLedger(effectiveLedgerType, meta.current_page - 1)}
+                                >
+                                    Previous
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className="h-10 rounded-xl"
+                                    disabled={meta.current_page >= meta.last_page}
+                                    onClick={() => goToLedger(effectiveLedgerType, meta.current_page + 1)}
+                                >
+                                    Next
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -332,7 +544,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                 onChange={e => setData('amount', e.target.value)}
                             />
                             <div className="flex justify-between text-xs font-medium text-muted-foreground">
-                                <span>Salio Lipatikano: {formatMoney(wallet.balance)}</span>
+                                <span>Salio Lililopo: {formatMoney(wallet.balance)}</span>
                                 {data.amount && parseInt(data.amount) > wallet.balance && (
                                     <span className="text-red-500">Salio halitoshi</span>
                                 )}

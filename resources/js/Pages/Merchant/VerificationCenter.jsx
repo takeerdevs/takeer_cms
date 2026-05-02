@@ -19,7 +19,11 @@ import {
     Fingerprint,
     CreditCard,
     FileText,
-    Globe
+    Globe,
+    BadgeCheck,
+    AlertCircle,
+    Trash2,
+    ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -33,7 +37,19 @@ export default function VerificationCenter({ merchantUsername, auth }) {
     const [selectedDoc, setSelectedDoc] = useState(null);
     const [isCountryActive, setIsCountryActive] = useState(true);
     const [countryName, setCountryName] = useState('');
-
+    const [view, setView] = useState('main');
+    const [serviceCategories, setServiceCategories] = useState([]);
+    const [serviceCredentials, setServiceCredentials] = useState([]);
+    const [credentialForm, setCredentialForm] = useState({
+        service_category_id: '',
+        document_type: 'professional_license',
+        document_name: '',
+        document_number: '',
+        issuer: '',
+        issued_at: '',
+        expires_at: '',
+        document: null,
+    });
 
     const [form, setForm] = useState({
         first_name: auth?.user?.name?.split(' ')[0] || '',
@@ -54,7 +70,33 @@ export default function VerificationCenter({ merchantUsername, auth }) {
 
     useEffect(() => {
         fetchKycStatus();
+        fetchServiceCategories();
+        fetchServiceCredentials();
     }, []);
+
+    const serviceCategoryChoices = serviceCategories.flatMap((category) => {
+        const children = category.children || [];
+        if (children.length === 0) {
+            return [{
+                id: category.id,
+                label: category.name,
+                risk_level: category.risk_level || 'standard',
+                required_documents: category.required_documents || [],
+            }];
+        }
+
+        return children.map((child) => ({
+            id: child.id,
+            label: `${category.name} / ${child.name}`,
+            risk_level: child.risk_level || category.risk_level || 'standard',
+            required_documents: child.required_documents || category.required_documents || [],
+        }));
+    });
+
+    const categoriesRequiringLicense = serviceCategoryChoices.filter((category) => (
+        (category.required_documents || []).includes('professional_license')
+        || ['elevated', 'regulated', 'restricted'].includes(category.risk_level)
+    ));
 
     const fetchKycStatus = async () => {
         setLoading(true);
@@ -75,6 +117,24 @@ export default function VerificationCenter({ merchantUsername, auth }) {
         }
     };
 
+    const fetchServiceCategories = async () => {
+        try {
+            const res = await axios.get('/api/service-categories');
+            setServiceCategories(res.data?.data || []);
+        } catch (err) {
+            console.error('Failed to load service categories', err);
+        }
+    };
+
+    const fetchServiceCredentials = async () => {
+        try {
+            const res = await axios.get(`/merchant/${merchantUsername}/service-credentials/api`);
+            setServiceCredentials(res.data?.credentials || []);
+        } catch (err) {
+            console.error('Failed to load service credentials', err);
+        }
+    };
+
     const handleFileChange = (e, field) => {
         const file = e.target.files[0];
         if (file) {
@@ -85,6 +145,11 @@ export default function VerificationCenter({ merchantUsername, auth }) {
             };
             reader.readAsDataURL(file);
         }
+    };
+
+    const handleCredentialFileChange = (event) => {
+        const file = event.target.files?.[0] || null;
+        setCredentialForm((prev) => ({ ...prev, document: file }));
     };
 
     const handleDocSelect = (docType) => {
@@ -115,6 +180,55 @@ export default function VerificationCenter({ merchantUsername, auth }) {
             toast.error(msg);
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const submitServiceCredential = async (event) => {
+        event.preventDefault();
+        if (!credentialForm.service_category_id || !credentialForm.document_name || !credentialForm.document) {
+            toast.error('Chagua category, jina la cheti/leseni, na faili.');
+            return;
+        }
+
+        setSubmitting(true);
+        const formData = new FormData();
+        Object.entries(credentialForm).forEach(([key, value]) => {
+            if (value) formData.append(key, value);
+        });
+
+        try {
+            await axios.post(`/merchant/${merchantUsername}/service-credentials/api`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            toast.success('Credential imepokelewa.');
+            setCredentialForm({
+                service_category_id: '',
+                document_type: 'professional_license',
+                document_name: '',
+                document_number: '',
+                issuer: '',
+                issued_at: '',
+                expires_at: '',
+                document: null,
+            });
+            setView('main');
+            fetchServiceCredentials();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Imeshindwa kutuma credential.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const deleteCredential = async (credential) => {
+        if (!window.confirm('Futa credential hii?')) return;
+
+        try {
+            await axios.delete(`/merchant/${merchantUsername}/service-credentials/api/${credential.id}`);
+            toast.success('Credential imefutwa.');
+            fetchServiceCredentials();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Imeshindwa kufuta credential.');
         }
     };
 
@@ -174,6 +288,7 @@ export default function VerificationCenter({ merchantUsername, auth }) {
                         size="icon"
                         onClick={() => {
                             if (view === 'form') setView('selection');
+                            else if (view === 'credential') setView('main');
                             else if (view === 'selection') setView('main');
                             else router.visit('/profile');
                         }}
@@ -286,6 +401,82 @@ export default function VerificationCenter({ merchantUsername, auth }) {
                                     </CardContent>
                                 </Card>
                             </div>
+
+                            <div className="space-y-4">
+                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">3. Leseni za Huduma</h2>
+                                <Card className="border-2 border-slate-100 overflow-hidden bg-white">
+                                    <CardContent className="p-6 space-y-5">
+                                        <div className="flex gap-4">
+                                            <div className="h-12 w-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
+                                                <BadgeCheck className="h-6 w-6" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-black text-slate-900">Vyeti na leseni za category maalum</h3>
+                                                <p className="text-sm text-slate-600 font-medium mt-1 leading-relaxed">
+                                                    Huduma kama clinic, afya, legal, transport, security, internet service, na kazi za kiufundi zinaweza kuhitaji cheti au leseni kabla ya kuchapishwa.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            {serviceCredentials.length === 0 ? (
+                                                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
+                                                    <p className="text-sm font-bold text-slate-600">Bado hujapakia credential ya huduma.</p>
+                                                </div>
+                                            ) : serviceCredentials.map((credential) => (
+                                                <div key={credential.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <p className="font-black text-slate-900">{credential.document_name}</p>
+                                                            <p className="text-xs font-bold text-slate-500">
+                                                                {credential.subcategory_name ? `${credential.category_name} / ${credential.subcategory_name}` : credential.category_name}
+                                                            </p>
+                                                            <p className="text-xs text-slate-500 mt-1">
+                                                                {credential.issuer || 'Issuer haijawekwa'}{credential.expires_at ? ` · Inaisha ${credential.expires_at}` : ''}
+                                                            </p>
+                                                        </div>
+                                                        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${
+                                                            credential.status === 'verified'
+                                                                ? 'bg-emerald-100 text-emerald-700'
+                                                                : credential.status === 'rejected'
+                                                                    ? 'bg-red-100 text-red-700'
+                                                                    : 'bg-amber-100 text-amber-700'
+                                                        }`}>
+                                                            {credential.status === 'verified' ? 'Imethibitishwa' : credential.status === 'rejected' ? 'Imekataliwa' : 'Inahakikiwa'}
+                                                        </span>
+                                                    </div>
+                                                    {credential.rejection_reason && (
+                                                        <p className="mt-2 text-xs font-semibold text-red-700">{credential.rejection_reason}</p>
+                                                    )}
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        {credential.document_url && (
+                                                            <a href={credential.document_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-brand-700">
+                                                                Fungua faili <ExternalLink className="h-3 w-3" />
+                                                            </a>
+                                                        )}
+                                                        {credential.status !== 'verified' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => deleteCredential(credential)}
+                                                                className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700"
+                                                            >
+                                                                Futa <Trash2 className="h-3 w-3" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <Button
+                                            className="w-full h-14 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-lg"
+                                            onClick={() => setView('credential')}
+                                        >
+                                            Pakia Cheti/Leseni
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            </div>
                         </motion.div>
                     ) : view === 'selection' ? (
                         <motion.div 
@@ -315,6 +506,132 @@ export default function VerificationCenter({ merchantUsername, auth }) {
                                     onClick={() => handleDocSelect('Voters ID')}
                                 />
                             </div>
+                        </motion.div>
+                    ) : view === 'credential' ? (
+                        <motion.div
+                            key="credential"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="pb-20"
+                        >
+                            <form onSubmit={submitServiceCredential} className="space-y-5">
+                                <div className="p-6 rounded-[2rem] border-2 border-amber-100 bg-amber-50/40">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-xl bg-amber-600 text-white flex items-center justify-center">
+                                            <BadgeCheck className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-black text-slate-900">Pakia cheti au leseni</h3>
+                                            <p className="text-sm font-bold text-slate-500">Chagua category ambayo document hii inaruhusu kufanya kazi.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <label className="space-y-2 block">
+                                    <span className="text-xs font-black uppercase tracking-widest text-slate-400">Category ya huduma</span>
+                                    <select
+                                        className="h-14 w-full rounded-2xl border-2 border-slate-100 bg-white px-4 font-bold"
+                                        value={credentialForm.service_category_id}
+                                        onChange={(event) => setCredentialForm((prev) => ({ ...prev, service_category_id: event.target.value }))}
+                                        required
+                                    >
+                                        <option value="">Chagua category</option>
+                                        {categoriesRequiringLicense.map((category) => (
+                                            <option key={category.id} value={category.id}>{category.label}</option>
+                                        ))}
+                                    </select>
+                                </label>
+
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <label className="space-y-2 block">
+                                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">Aina ya document</span>
+                                        <select
+                                            className="h-14 w-full rounded-2xl border-2 border-slate-100 bg-white px-4 font-bold"
+                                            value={credentialForm.document_type}
+                                            onChange={(event) => setCredentialForm((prev) => ({ ...prev, document_type: event.target.value }))}
+                                        >
+                                            <option value="professional_license">Leseni ya taaluma</option>
+                                            <option value="certification">Cheti</option>
+                                            <option value="permit">Kibali</option>
+                                            <option value="business_license">Leseni ya biashara</option>
+                                            <option value="other">Nyingine</option>
+                                        </select>
+                                    </label>
+                                    <label className="space-y-2 block">
+                                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">Jina la document</span>
+                                        <Input
+                                            value={credentialForm.document_name}
+                                            onChange={(event) => setCredentialForm((prev) => ({ ...prev, document_name: event.target.value }))}
+                                            className="h-14 rounded-2xl border-2 border-slate-100 font-bold"
+                                            placeholder="Mf. Medical practice license"
+                                            required
+                                        />
+                                    </label>
+                                </div>
+
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <Input
+                                        value={credentialForm.document_number}
+                                        onChange={(event) => setCredentialForm((prev) => ({ ...prev, document_number: event.target.value }))}
+                                        className="h-14 rounded-2xl border-2 border-slate-100 font-bold"
+                                        placeholder="Namba ya document"
+                                    />
+                                    <Input
+                                        value={credentialForm.issuer}
+                                        onChange={(event) => setCredentialForm((prev) => ({ ...prev, issuer: event.target.value }))}
+                                        className="h-14 rounded-2xl border-2 border-slate-100 font-bold"
+                                        placeholder="Mamlaka/taasisi iliyotoa"
+                                    />
+                                </div>
+
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <label className="space-y-2 block">
+                                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">Ilitolewa</span>
+                                        <Input
+                                            type="date"
+                                            value={credentialForm.issued_at}
+                                            onChange={(event) => setCredentialForm((prev) => ({ ...prev, issued_at: event.target.value }))}
+                                            className="h-14 rounded-2xl border-2 border-slate-100 font-bold"
+                                        />
+                                    </label>
+                                    <label className="space-y-2 block">
+                                        <span className="text-xs font-black uppercase tracking-widest text-slate-400">Inaisha</span>
+                                        <Input
+                                            type="date"
+                                            value={credentialForm.expires_at}
+                                            onChange={(event) => setCredentialForm((prev) => ({ ...prev, expires_at: event.target.value }))}
+                                            className="h-14 rounded-2xl border-2 border-slate-100 font-bold"
+                                        />
+                                    </label>
+                                </div>
+
+                                <label className="block rounded-[2rem] border-4 border-dashed border-slate-100 bg-slate-50 p-8 text-center cursor-pointer">
+                                    <input
+                                        type="file"
+                                        className="hidden"
+                                        accept="image/*,application/pdf"
+                                        onChange={handleCredentialFileChange}
+                                    />
+                                    <FileText className="h-10 w-10 mx-auto text-slate-400" />
+                                    <p className="mt-3 font-black text-slate-800">
+                                        {credentialForm.document ? credentialForm.document.name : 'Chagua PDF au picha'}
+                                    </p>
+                                    <p className="text-xs font-bold text-slate-400 mt-1">JPG, PNG, WEBP au PDF. Max 10MB.</p>
+                                </label>
+
+                                <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800 flex gap-2">
+                                    <AlertCircle className="h-5 w-5 shrink-0" />
+                                    <p>Baada ya kupakia, Takeer itaikagua. Ukithibitishwa, utaweza kuchapisha services zinazohitaji credential hii.</p>
+                                </div>
+
+                                <Button
+                                    type="submit"
+                                    className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black text-xl"
+                                    disabled={submitting}
+                                >
+                                    {submitting ? 'Inatuma...' : 'Wasilisha Credential'}
+                                </Button>
+                            </form>
                         </motion.div>
                     ) : view === 'form' && (
                         <motion.div 

@@ -6,9 +6,9 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/Components/ui/Dialog';
 import {
-    User, UserCircle, Shield, Settings, LogOut, Store, ExternalLink, LayoutDashboard, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
+    User, UserCircle, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
     Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, Banknote, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
-    Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark
+    Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive
 } from 'lucide-react';
 import axios from 'axios';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -32,6 +32,7 @@ export default function Profile({
     recentOrders = [],
     thisMonthEarnings = 0,
     salesBreakdown = { digital: 0, physical: 0, services: 0 },
+    commerceHubSummary = { physical: 0, digital: 0, services: 0, posts: 0, bundles: 0, subscriptions: 0 },
     countries = [],
     currencies = [],
     merchantKyc = null,
@@ -42,9 +43,30 @@ export default function Profile({
 
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
     const [isCreateShopModalOpen, setIsCreateShopModalOpen] = useState(false);
+    const [retailDashboard, setRetailDashboard] = useState(null);
+    const retailEligible = isRetailEligible(activeMerchant, merchantKyc, merchantKycStatus);
+    const retailActive = retailEligible && activeMerchant?.active_modules?.includes('retail_ops');
+
+    useEffect(() => {
+        if (retailActive) {
+            axios.get('/api/retail/dashboard')
+                .then(res => setRetailDashboard(res.data))
+                .catch(err => console.error('Failed to load retail stats', err));
+        } else {
+            setRetailDashboard(null);
+        }
+    }, [activeMerchant, retailActive]);
 
     const isVerified = activeMerchant?.is_verified ?? false;
     const merchantSlug = activeMerchant?.username ?? '';
+    const commerceHubItems = [
+        { key: 'physical', title: 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products` },
+        { key: 'digital', title: 'Digital Downloads', count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads` },
+        { key: 'services', title: 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services` },
+        { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts` },
+        { key: 'bundles', title: 'Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles` },
+        { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions` },
+    ];
 
     // Verification State
     const [verifView, setVerifView] = useState('main'); // main, selection, form
@@ -149,6 +171,14 @@ export default function Profile({
             currency: 'TZS',
             minimumFractionDigits: 0,
         }).format(amount);
+    };
+
+    const fetchDashboard = () => {
+        if (retailActive) {
+            axios.get('/api/retail/dashboard')
+                .then(res => setRetailDashboard(res.data))
+                .catch(err => console.error('Failed to load retail stats', err));
+        }
     };
 
     // Verification Handlers
@@ -351,17 +381,61 @@ export default function Profile({
                     </CreateDialogContent>
                 </CreateDialog>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8">
                     <div className="lg:col-span-12 space-y-6">
 
                         {isVerified ? (
                             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+
                                 {/* ── Performance Stats ── */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <StatCard title="Available Balance" value={formatMoney(0)} icon={Wallet} color="text-emerald-600" bgColor="bg-emerald-50" borderColor="border-emerald-100" />
-                                    <StatCard title="Total Balance" value={formatMoney(thisMonthEarnings)} icon={Banknote} color="text-brand-600" bgColor="bg-brand-50" borderColor="border-brand-100" />
-                                    <StatCard title="Payments (Weekly)" value={formatMoney(weeklyStats.payments)} icon={TrendingUp} trend={weeklyStats.percentChange} color="text-blue-600" bgColor="bg-blue-50" borderColor="border-blue-100" />
-                                    <StatCard title="Transactions" value={weeklyStats.transactions} icon={CreditCard} color="text-indigo-600" bgColor="bg-indigo-50" borderColor="border-indigo-100" />
+                                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {retailActive ? (
+                                        <>
+                                            <StatCard
+                                                title="Takeer Balance (Escrow)"
+                                                value={formatMoney(retailDashboard?.metrics?.takeer_balance || 0)}
+                                                icon={Wallet}
+                                                color="text-emerald-600"
+                                                bgColor="bg-emerald-50"
+                                                borderColor="border-emerald-100"
+                                                onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=escrow`)}
+                                            />
+                                            <StatCard
+                                                title="Today's In-Hand Revenue"
+                                                value={formatMoney(retailDashboard?.metrics?.today_in_hand || 0)}
+                                                icon={Banknote}
+                                                color="text-brand-600"
+                                                bgColor="bg-brand-50"
+                                                borderColor="border-brand-100"
+                                                onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=non-escrow`)}
+                                            />
+                                            <StatCard
+                                                title="Outstanding Credit"
+                                                value={formatMoney(retailDashboard?.metrics?.outstanding_credit || 0)}
+                                                icon={TrendingUp}
+                                                color="text-amber-600"
+                                                bgColor="bg-amber-50"
+                                                borderColor="border-amber-100"
+                                                onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=credit`)}
+                                            />
+                                            <StatCard
+                                                title="Total Balance"
+                                                value={formatMoney(thisMonthEarnings)}
+                                                icon={CreditCard}
+                                                color="text-blue-600"
+                                                bgColor="bg-blue-50"
+                                                borderColor="border-blue-100"
+                                                onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger`)}
+                                            />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <StatCard title="Available Balance" value={formatMoney(0)} icon={Wallet} color="text-emerald-600" bgColor="bg-emerald-50" borderColor="border-emerald-100" />
+                                            <StatCard title="Total Balance" value={formatMoney(thisMonthEarnings)} icon={Banknote} color="text-brand-600" bgColor="bg-brand-50" borderColor="border-brand-100" />
+                                            <StatCard title="Payments (Weekly)" value={formatMoney(weeklyStats.payments)} icon={TrendingUp} trend={weeklyStats.percentChange} color="text-blue-600" bgColor="bg-blue-50" borderColor="border-blue-100" />
+                                            <StatCard title="Transactions" value={weeklyStats.transactions} icon={CreditCard} color="text-indigo-600" bgColor="bg-indigo-50" borderColor="border-indigo-100" />
+                                        </>
+                                    )}
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -370,8 +444,14 @@ export default function Profile({
                                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Actions</h3>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <ActionBtn icon={Plus} label="New Item" href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
-                                                <ActionBtn icon={LayoutDashboard} label="Studio" href={`/merchant/${merchantSlug}/products`} color="bg-slate-900" textColor="text-white" />
+                                                {retailEligible && (
+                                                    <ActionBtn icon={Store} label="Retail Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/retail-operations`} color="bg-amber-50" textColor="text-amber-700" borderColor="border-amber-100" />
+                                                )}
+                                                <ActionBtn icon={HardDrive} label="Storage Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/storage`} color="bg-sky-50" textColor="text-sky-700" borderColor="border-sky-100" />
                                                 <ActionBtn icon={Wallet} label="Wallet" href={`/merchant/${merchantSlug}/wallet`} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
+                                                {retailActive && (
+                                                    <ActionBtn icon={Store} label="Retail" href={`/merchant/${merchantSlug}/retail/dashboard`} color="bg-brand-50" textColor="text-brand-700" borderColor="border-brand-100" />
+                                                )}
                                                 <ActionBtn icon={Settings} label="Settings" href={`/merchant/${merchantSlug}/settings`} color="bg-slate-50" textColor="text-slate-700" borderColor="border-slate-100" />
                                             </div>
                                         </div>
@@ -388,46 +468,77 @@ export default function Profile({
                                         </Card>
                                     </div>
 
-                                    <div className="lg:col-span-2 space-y-3">
-                                        <div className="flex items-center justify-between px-1">
-                                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Miamala ya Hivi Karibuni</h3>
-                                            <Link href={`/merchant/${merchantSlug}/orders`} className="text-xs font-bold text-brand-600 hover:underline">Ona Zote</Link>
+                                    <div className="lg:col-span-2 space-y-6">
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <div>
+                                                    <h3 className="text-xs font-bold uppercase tracking-wider">Commerce Hub</h3>
+                                                    <p className="mt-1 text-xs text-slate-500">Nenda moja kwa moja kwenye sehemu unayotaka kusimamia.</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+                                                {commerceHubItems.map((item) => (
+                                                    <button
+                                                        key={item.key}
+                                                        type="button"
+                                                        onClick={() => router.visit(item.href)}
+                                                        className="group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="h-10 w-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center border border-brand-100 group-hover:bg-brand-600 group-hover:text-white transition-colors">
+                                                                <item.icon className="h-5 w-5" />
+                                                            </div>
+                                                            <span className="text-2xl font-black text-slate-900">{Number(item.count || 0).toLocaleString()}</span>
+                                                        </div>
+                                                        <p className="mt-3 text-sm font-black text-slate-900 leading-tight">{item.title}</p>
+                                                        <p className="mt-1 text-[11px] font-semibold text-slate-400">Tap to manage</p>
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
 
                                         <div className="space-y-3">
-                                            {recentOrders.length === 0 ? (
-                                                <div className="py-12 text-center rounded-2xl border border-dashed border-slate-200">
-                                                    <ShoppingBag className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                                                    <p className="text-slate-400 font-medium text-sm">Huna miamala bado.</p>
-                                                </div>
-                                            ) : (
-                                                recentOrders.map(order => (
-                                                    <Card key={order.id} className="border border-slate-100 hover:border-brand-200 transition-all rounded-xl shadow-sm group">
-                                                        <CardContent className="p-4">
-                                                            <div className="flex items-center justify-between gap-4">
-                                                                <div className="flex items-center gap-3 min-w-0">
-                                                                    <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 transition-colors group-hover:bg-brand-50 group-hover:border-brand-100">
-                                                                        {React.createElement(iconFromKey(order.display_icon), { className: 'h-6 w-6 text-slate-500 group-hover:text-brand-600' })}
-                                                                    </div>
-                                                                    <div className="min-w-0">
-                                                                        <div className="flex items-center gap-2 mb-0.5">
-                                                                            <span className="text-[10px] font-bold text-slate-400">#{order.id}</span>
-                                                                            {statusBadge(order.status)}
+                                            <div className="flex items-center justify-between px-1">
+                                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Miamala ya Hivi Karibuni</h3>
+                                                <Link href={`/merchant/${merchantSlug}/orders`} className="text-xs font-bold text-brand-600 hover:underline">Ona Zote</Link>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                {recentOrders.length === 0 ? (
+                                                    <div className="py-12 text-center rounded-2xl border border-dashed border-slate-200">
+                                                        <ShoppingBag className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                                                        <p className="text-slate-400 font-medium text-sm">Huna miamala bado.</p>
+                                                    </div>
+                                                ) : (
+                                                    recentOrders.map(order => (
+                                                        <Card key={order.id} className="border border-slate-100 hover:border-brand-200 transition-all rounded-xl shadow-sm group">
+                                                            <CardContent className="p-4">
+                                                                <div className="flex items-center justify-between gap-4">
+                                                                    <div className="flex items-center gap-3 min-w-0">
+                                                                        <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 transition-colors group-hover:bg-brand-50 group-hover:border-brand-100">
+                                                                            {React.createElement(iconFromKey(order.display_icon), { className: 'h-6 w-6 text-slate-500 group-hover:text-brand-600' })}
                                                                         </div>
-                                                                        <p className="font-bold text-slate-900 truncate text-sm">{order.display_title || 'Order item'}</p>
-                                                                        <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">
-                                                                            {order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}
-                                                                        </p>
+                                                                        <div className="min-w-0">
+                                                                            <div className="flex items-center gap-2 mb-0.5">
+                                                                                <span className="text-[10px] font-bold text-slate-400">#{order.id}</span>
+                                                                                {statusBadge(order.status)}
+                                                                            </div>
+                                                                            <p className="font-bold text-slate-900 truncate text-sm">{order.display_title || 'Order item'}</p>
+                                                                            <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">
+                                                                                {order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}
+                                                                            </p>
+                                                                        </div>
                                                                     </div>
+                                                                    <p className="font-bold text-slate-900 text-lg">
+                                                                        {formatMoney(order.amount || 0)}
+                                                                    </p>
                                                                 </div>
-                                                                <p className="font-bold text-slate-900 text-lg">
-                                                                    {formatMoney(order.amount || 0)}
-                                                                </p>
-                                                            </div>
-                                                        </CardContent>
-                                                    </Card>
-                                                ))
-                                            )}
+                                                            </CardContent>
+                                                        </Card>
+                                                    ))
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -448,9 +559,9 @@ export default function Profile({
                                                         <Clock className="h-8 w-8" />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <h2 className="text-xl font-bold text-slate-900">Maelezo Yako Inahakikiwa</h2>
+                                                        <h2 className="text-xl font-bold text-slate-900">Taarifa zinahakikiwa</h2>
                                                         <p className="text-slate-600 text-sm max-w-sm mx-auto">
-                                                            Tumeshapokea nyaraka zako. Timu yetu inazihakiki sasa hivi. Huu mchakato huchukua masaa 12-24.
+                                                            Tumeshapokea nyaraka zako. Timu yetu inazihakiki. Huu mchakato huchukua masaa 12-24.
                                                         </p>
                                                     </div>
                                                 </motion.div>
@@ -518,16 +629,23 @@ export default function Profile({
                                                                             </div>
                                                                             <div>
                                                                                 <p className="font-bold text-slate-900 text-sm">Barua Pepe</p>
-                                                                                <p className="text-xs text-slate-500">Google Verification</p>
+                                                                                <p className="text-xs text-slate-500">{auth?.user?.email || 'Google Verification'}</p>
                                                                             </div>
                                                                         </div>
-                                                                        <Button
-                                                                            size="sm"
-                                                                            className="h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 flex items-center gap-2"
-                                                                        >
-                                                                            <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-3.5 w-3.5" alt="Google" />
-                                                                            Unganisha
-                                                                        </Button>
+                                                                        {auth?.user?.email_verified_at ? (
+                                                                            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase">
+                                                                                <CheckCircle2 className="h-3 w-3" /> Imethibitishwa
+                                                                            </div>
+                                                                        ) : (
+                                                                            <Button
+                                                                                size="sm"
+                                                                                className="h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 flex items-center gap-2"
+                                                                                onClick={() => window.location.href = '/auth/google/redirect'}
+                                                                            >
+                                                                                <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-3.5 w-3.5" alt="Google" />
+                                                                                Unganisha
+                                                                            </Button>
+                                                                        )}
                                                                     </div>
                                                                 </>
                                                             ) : (
@@ -590,7 +708,7 @@ export default function Profile({
                                                                 onClick={() => {
                                                                     const bizType = activeMerchant?.type || 'personal';
                                                                     setForm(prev => ({ ...prev, business_type: bizType }));
-                                                                    
+
                                                                     if (bizType !== 'personal') {
                                                                         // Since they must be verified to create a business,
                                                                         // we go straight to the form and pre-fill the identity.
@@ -684,23 +802,23 @@ export default function Profile({
                                             ) : verifView === 'form' && (
                                                 <motion.div key="form" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-2xl mx-auto">
                                                     <div className="flex items-center gap-3">
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon" 
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
                                                             onClick={() => {
                                                                 if (form.business_type !== 'personal' && form.business_type !== 'individual') {
                                                                     setVerifView(null);
                                                                 } else {
                                                                     setVerifView('selection');
                                                                 }
-                                                            }} 
+                                                            }}
                                                             className="rounded-lg border border-slate-200 h-9 w-9"
                                                         >
                                                             <ArrowLeft className="h-4 w-4" />
                                                         </Button>
                                                         <h2 className="text-lg font-bold text-slate-900">
-                                                            {form.business_type !== 'personal' && form.business_type !== 'individual' 
-                                                                ? 'Uhakiki wa Biashara' 
+                                                            {form.business_type !== 'personal' && form.business_type !== 'individual'
+                                                                ? 'Uhakiki wa Biashara'
                                                                 : `Maelezo ya ${selectedDoc}`}
                                                         </h2>
                                                     </div>
@@ -861,7 +979,7 @@ export default function Profile({
                                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-slate-50 overflow-hidden">
                                         <div className="p-6 space-y-4">
                                             <DetailRow label="Namba ya Simu" value={auth?.user?.phone_number ? `${auth.user.phone_number.slice(0, 4)} ••• ••• ${auth.user.phone_number.slice(-3)}` : '+255 ••• ••• ***'} />
-                                            <DetailRow label="Barua Pepe" value={auth?.user?.email || 'Hujajaza'} />
+                                            <DetailRow label="Barua Pepe" value={maskEmail(auth?.user?.email) || 'Hujajaza'} />
                                             <DetailRow label="Jina la Mtumiaji" value={`@${activeMerchant?.username || 'user'}`} />
                                             <div className="flex items-center justify-between py-3">
                                                 <span className="text-slate-500 font-medium text-sm">Hali ya Akaunti</span>
@@ -884,11 +1002,32 @@ export default function Profile({
     );
 }
 
+function isRetailEligible(merchant, merchantKyc = null, merchantKycStatus = 'unverified') {
+    if (!merchant) return false;
+
+    const businessTypes = ['sole_proprietor', 'business', 'ngo'];
+    const kyc = merchantKyc || merchant.kyc;
+
+    return businessTypes.includes(merchant.type)
+        && Boolean(merchant.is_verified)
+        && (merchant.kyc_status || merchantKycStatus) === 'verified'
+        && kyc?.status === 'verified'
+        && businessTypes.includes(kyc?.business_type);
+}
+
 // ── Sub-Components ──
 
-function StatCard({ title, value, icon: Icon, color, bgColor, borderColor, trend }) {
+function StatCard({ title, value, icon: Icon, color, bgColor, borderColor, trend, onClick }) {
+    const Comp = onClick ? 'button' : 'div';
     return (
-        <div className={`p-5 rounded-2xl border ${borderColor} ${bgColor} space-y-3 shadow-sm`}>
+        <Comp
+            type={onClick ? 'button' : undefined}
+            onClick={onClick}
+            className={cn(
+                `p-5 rounded-2xl border ${borderColor} ${bgColor} space-y-3 shadow-sm text-left w-full`,
+                onClick && 'transition-transform active:scale-[0.99] cursor-pointer'
+            )}
+        >
             <div className="flex items-center justify-between">
                 <div className={`h-9 w-9 rounded-lg bg-white border ${borderColor} flex items-center justify-center ${color}`}>
                     <Icon className="h-4.5 w-4.5" />
@@ -906,7 +1045,7 @@ function StatCard({ title, value, icon: Icon, color, bgColor, borderColor, trend
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{title}</p>
                 <p className={cn("text-xl font-bold mt-0.5 truncate", color === 'text-slate-900' ? "text-slate-900" : color)}>{value}</p>
             </div>
-        </div>
+        </Comp>
     );
 }
 
@@ -982,4 +1121,23 @@ function DetailRow({ label, value }) {
             <span className="font-bold text-slate-900 text-sm">{value}</span>
         </div>
     );
+}
+
+function maskEmail(email) {
+    if (!email) return '';
+
+    const [name, domain] = String(email).split('@');
+    if (!name || !domain) return email;
+
+    const visibleName = name.length <= 2
+        ? name[0]
+        : `${name.slice(0, 2)}${'•'.repeat(Math.min(4, name.length - 2))}`;
+
+    const [domainName, ...tldParts] = domain.split('.');
+    const tld = tldParts.join('.');
+    const visibleDomain = domainName.length <= 2
+        ? domainName[0]
+        : `${domainName[0]}${'•'.repeat(Math.min(4, domainName.length - 1))}`;
+
+    return `${visibleName}@${visibleDomain}${tld ? `.${tld}` : ''}`;
 }

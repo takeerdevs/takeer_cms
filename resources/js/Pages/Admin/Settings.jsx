@@ -4,7 +4,7 @@ import { Head } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { Settings2, Eye, EyeOff, Save, CheckCircle2, Cpu, Key } from 'lucide-react';
+import { Settings2, Eye, EyeOff, Save, CheckCircle2, Cpu, Key, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 const OPENROUTER_MODELS = [
@@ -37,6 +37,9 @@ export default function AdminSettings() {
         kyc_trigger_order_count: '0',
         kyc_trigger_withdrawal_tzs: '0',
         catalog_item_picker_default_limit: '5',
+        upload_allowed_extensions: 'jpg,jpeg,png,webp,gif,mp4,mov,webm,pdf,zip,doc,docx,xls,xlsx,ppt,pptx,csv,txt',
+        upload_allowed_mime_types: 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,application/zip,application/x-zip-compressed,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/csv,text/plain',
+        upload_max_file_mb: '500',
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -77,6 +80,9 @@ export default function AdminSettings() {
                     kyc_trigger_order_count: settings.kyc_trigger_order_count,
                     kyc_trigger_withdrawal_tzs: settings.kyc_trigger_withdrawal_tzs,
                     catalog_item_picker_default_limit: settings.catalog_item_picker_default_limit,
+                    upload_allowed_extensions: settings.upload_allowed_extensions,
+                    upload_allowed_mime_types: settings.upload_allowed_mime_types,
+                    upload_max_file_mb: settings.upload_max_file_mb,
                 }),
             });
             const data = await res.json();
@@ -241,6 +247,46 @@ export default function AdminSettings() {
                                 onChange={(e) => set('catalog_item_picker_default_limit', e.target.value)}
                             />
                             <p className="text-xs text-slate-500">Used when no search term is entered in bundle/subscription create forms.</p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-white border-slate-200 shadow-sm">
+                    <CardContent className="p-6 space-y-4">
+                        <h2 className="font-bold text-slate-900 flex items-center gap-2">
+                            <ShieldCheck className="h-4 w-4 text-brand-600" /> Upload Policy
+                        </h2>
+                        <p className="text-xs text-slate-600">Allow only the file types merchants can upload for products, posts, chat attachments, and digital content.</p>
+
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Max File Size (MB)</label>
+                            <Input
+                                type="number"
+                                min="1"
+                                max="500"
+                                value={settings.upload_max_file_mb}
+                                onChange={(e) => set('upload_max_file_mb', e.target.value)}
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Allowed Extensions</label>
+                            <textarea
+                                className="w-full min-h-20 rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm font-mono"
+                                value={settings.upload_allowed_extensions}
+                                onChange={(e) => set('upload_allowed_extensions', e.target.value)}
+                            />
+                            <p className="text-xs text-slate-500">Comma or newline separated. Example: jpg,png,pdf,mp4</p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Allowed MIME Types</label>
+                            <textarea
+                                className="w-full min-h-28 rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm font-mono"
+                                value={settings.upload_allowed_mime_types}
+                                onChange={(e) => set('upload_allowed_mime_types', e.target.value)}
+                            />
+                            <p className="text-xs text-slate-500">Server detected MIME types must match this list.</p>
                         </div>
                     </CardContent>
                 </Card>

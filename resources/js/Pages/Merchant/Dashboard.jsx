@@ -41,6 +41,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
             disputed: { label: 'MGOGORO', cls: 'bg-red-500/20 text-red-700 dark:text-red-300' },
             resolved_buyer_refunded: { label: 'REFUNDED', cls: 'bg-slate-500/20 text-slate-700 dark:text-slate-300' },
             pending: { label: 'PENDING', cls: 'bg-slate-500/20 text-slate-700 dark:text-slate-300' },
+            failed: { label: 'IMESITISHWA', cls: 'bg-red-500/20 text-red-700 dark:text-red-300' },
         };
         const s = map[status] ?? { label: status, cls: 'bg-muted text-muted-foreground' };
         return (
@@ -184,7 +185,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                 {/* KPI chips */}
                 <div className="grid grid-cols-3 gap-2">
                     {[
-                        { label: 'Bidhaa', value: summary.total_products, icon: Package, color: 'text-brand-600', link: `/merchant/${merchantSlug}/content?tab=products` },
+                        { label: 'Bidhaa', value: summary.total_products, icon: Package, color: 'text-brand-600', link: `/merchant/${merchantSlug}/products` },
                         { label: 'Oda Leo', value: summary.orders_today, icon: TrendingUp, color: 'text-green-600' },
                         { label: 'Zinasubiri', value: summary.orders_pending, icon: Truck, color: 'text-amber-600' },
                     ].map(({ label, value, icon: Icon, color, link }) => (
@@ -215,9 +216,9 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                         <Button
                             variant="outline"
                             className="h-14 rounded-2xl font-bold flex items-center gap-2"
-                            onClick={() => router.visit(`/merchant/${merchantSlug}/content`)}
+                            onClick={() => router.visit(`/merchant/${merchantSlug}/posts`)}
                         >
-                            <BookOpenText className="h-5 w-5" /> Commerce Studio
+                            <BookOpenText className="h-5 w-5" /> Posts
                         </Button>
                         <Button
                             variant="outline"
@@ -238,38 +239,50 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 <p className="text-sm font-semibold">Hakuna oda mpya.</p>
                             </div>
                         ) : (
-                            recentOrders.map(order => (
-                                <Card
-                                    key={order.id}
-                                    className="overflow-hidden cursor-pointer hover:border-brand-300 transition-colors"
-                                    onClick={() => router.visit(`/merchant/${merchantSlug}/orders/${order.id}`)}
-                                >
-                                    <CardContent className="p-4 md:p-5">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="min-w-0 flex items-start gap-3">
-                                                <div className="h-11 w-11 rounded-xl border bg-accent/50 flex items-center justify-center shrink-0">
-                                                    {React.createElement(iconFromKey(order.display_icon), { className: 'h-5 w-5 text-brand-600' })}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center flex-wrap gap-2 mb-1">
-                                                        <span className="text-xs text-muted-foreground font-mono">#{order.id}</span>
-                                                        {statusBadge(order.status)}
-                                                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${typeMeta(order.display_kind).cls}`}>
-                                                            {React.createElement(typeMeta(order.display_kind).icon, { className: 'h-3 w-3' })}
-                                                            {typeMeta(order.display_kind).label}
-                                                        </span>
+                            recentOrders.map(order => {
+                                const isPos = order.source === 'pos';
+                                const displayId = isPos ? `#POS-${order.public_id}` : `#${order.transaction_ref || order.id || order.id}`;
+
+                                return (
+                                    <Card
+                                        key={order.id}
+                                        className="overflow-hidden cursor-pointer hover:border-brand-300 transition-colors group"
+                                        onClick={() => router.visit(`/merchant/${merchantSlug}/orders/${order.id}`)}
+                                    >
+                                        <CardContent className="p-4 md:p-5">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0 flex items-start gap-4">
+                                                    <div className="h-14 w-14 rounded-2xl border bg-accent/50 flex items-center justify-center shrink-0 overflow-hidden">
+                                                        {order.display_image ? (
+                                                            <img src={order.display_image} className="h-full w-full object-cover group-hover:scale-110 transition-transform" alt="" />
+                                                        ) : (
+                                                            React.createElement(iconFromKey(order.display_icon), { className: 'h-6 w-6 text-brand-600 opacity-60' })
+                                                        )}
                                                     </div>
-                                                    <p className="font-semibold text-sm md:text-base truncate">{order.display_title || 'Order item'}</p>
-                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                        {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
-                                                    </p>
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center flex-wrap gap-2 mb-1">
+                                                            <span className="text-[10px] font-black text-muted-foreground tracking-widest">{displayId}</span>
+                                                            {statusBadge(order.status)}
+                                                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${typeMeta(order.display_kind).cls}`}>
+                                                                {React.createElement(typeMeta(order.display_kind).icon, { className: 'h-3 w-3' })}
+                                                                {typeMeta(order.display_kind).label}
+                                                            </span>
+                                                        </div>
+                                                        <p className="font-black text-sm md:text-lg truncate group-hover:text-brand-700 transition-colors">{order.display_title || 'Order item'}</p>
+                                                        <p className="text-[10px] text-muted-foreground mt-1 font-medium">
+                                                            {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Price</p>
+                                                    <p className="font-black text-brand-600 text-lg md:text-2xl">TZS {Number(order.amount || 0).toLocaleString()}</p>
                                                 </div>
                                             </div>
-                                            <p className="font-black text-foreground shrink-0 text-lg md:text-2xl">TZS {Number(order.amount || 0).toLocaleString()}</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))
+                                        </CardContent>
+                                    </Card>
+                                );
+                            })
                         )}
                     </div>
                 </div>

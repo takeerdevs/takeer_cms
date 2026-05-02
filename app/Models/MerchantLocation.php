@@ -20,6 +20,7 @@ class MerchantLocation extends Model
         'is_primary',
         'allow_self_pickup',
         'contact_phone',
+        'type',
     ];
 
     protected function casts(): array
@@ -48,5 +49,20 @@ class MerchantLocation extends Model
     public function productInventories(): HasMany
     {
         return $this->hasMany(ProductLocationInventory::class, 'merchant_location_id');
+    }
+
+    public function staff(): HasMany
+    {
+        return $this->hasMany(MerchantStaff::class, 'assigned_location_id');
+    }
+
+    public function stockTransfersFrom(): HasMany
+    {
+        return $this->hasMany(StockTransfer::class, 'from_location_id');
+    }
+
+    public function stockTransfersTo(): HasMany
+    {
+        return $this->hasMany(StockTransfer::class, 'to_location_id');
     }
 }

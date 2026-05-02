@@ -23,6 +23,7 @@ class PostResource extends JsonResource
 
         $this->loadMissing('media.productImage');
         $mediaItems = $this->media ?? collect();
+        $linkedContentItem = $this->relationLoaded('linkedContentItem') ? $this->linkedContentItem : null;
         $fallbackMedia = $mediaItems->first();
         $user = $request->user();
         $commentsEnabled = $this->effectiveCommentsEnabled();
@@ -33,11 +34,16 @@ class PostResource extends JsonResource
         $attachedPromotables = $this->promotables ?? collect();
         $hasPromotableGate = $attachedPromotables->isNotEmpty();
         $hasSingleUnlockPrice = $this->restricted_price !== null;
-        $isRestricted = (bool) ($this->is_restricted ?? false) || $hasPromotableGate || $hasSingleUnlockPrice;
+        $hasPaidLinkedContent = $linkedContentItem && $linkedContentItem->price !== null;
+        $singleUnlockPrice = $this->restricted_price ?? ($hasPaidLinkedContent ? $linkedContentItem->price : null);
+        $unlockItemType = $hasPaidLinkedContent ? 'content_item' : 'post';
+        $unlockItemId = $hasPaidLinkedContent ? (int) $linkedContentItem->id : (int) $this->id;
+        $isRestricted = (bool) ($this->is_restricted ?? false) || $hasPromotableGate || $hasSingleUnlockPrice || $hasPaidLinkedContent;
         $hasAccess = true;
         $isAdminViewer = (bool) ($user?->is_admin ?? false);
+        $isOwnerViewer = $user && (int) ($this->merchant?->user_id ?? 0) === (int) $user->id;
 
-        if ($isRestricted && !$isAdminViewer) {
+        if ($isRestricted && !$isAdminViewer && !$isOwnerViewer) {
             $hasAccess = false;
             if ($user) {
                 // 1. Check access for the attached promotions (Bundles/Plans)
@@ -63,6 +69,11 @@ class PostResource extends JsonResource
                 if (!$hasAccess && $hasSingleUnlockPrice) {
                     $hasAccess = app(EntitlementService::class)->hasAccess((int) $user->id, 'post', (int) $this->id);
                 }
+
+                // 3. Content published into the feed should unlock via the exact content item entitlement.
+                if (!$hasAccess && $hasPaidLinkedContent) {
+                    $hasAccess = app(EntitlementService::class)->hasAccess((int) $user->id, 'content_item', (int) $linkedContentItem->id);
+                }
             }
         }
 
@@ -72,9 +83,12 @@ class PostResource extends JsonResource
 
         // ── Masking ──────────────────────────────────────────────────────────
         $displayCaption = $hasAccess ? $this->caption : null;
-        $displayBody = $hasAccess ? $this->body : null;
-        $displayTitle = $this->title ?: $resolvedProduct?->title;
+        $displayBody = $hasAccess
+            ? ($linkedContentItem?->body ?? $this->body)
+            : null;
+        $displayTitle = $linkedContentItem?->title ?: ($this->title ?: $resolvedProduct?->title);
         $displayExcerpt = $this->excerpt
+            ?: $linkedContentItem?->excerpt
             ?: (is_string($resolvedProduct?->description ?? null) ? trim((string) $resolvedProduct->description) : null);
         $isLongFormPost = !empty($displayBody) || !empty($displayExcerpt);
 
@@ -106,15 +120,19 @@ class PostResource extends JsonResource
             'public_id' => $this->public_id,
             'permalink' => url('/p/' . ($this->public_id ?: $this->id)),
             'merchant_id' => $this->merchant_id,
+            'content_item_id' => $linkedContentItem?->id,
             'caption' => $displayCaption,
             'title' => $displayTitle,
             'excerpt' => $displayExcerpt,
             'body' => $displayBody,
+            'content_format' => $linkedContentItem?->format,
             'bg_style' => $this->bg_style,
             'post_type' => $isLongFormPost ? 'long' : 'short',
             'is_restricted' => $isRestricted,
             'has_access' => $hasAccess,
-            'restricted_price' => $this->restricted_price,
+            'restricted_price' => $singleUnlockPrice,
+            'unlock_item_type' => $unlockItemType,
+            'unlock_item_id' => $unlockItemId,
             
             'promotables' => $this->when($this->promotables->isNotEmpty(), function() {
                 return $this->promotables->map(function ($promotable) {
@@ -137,13 +155,41 @@ class PostResource extends JsonResource
                             'billing_interval' => $promotable->billing_interval,
                             'interval_count' => $promotable->interval_count,
                             'status' => $promotable->status,
+                            'items_count' => $promotable->relationLoaded('items')
+                                ? $promotable->items->count()
+                                : $promotable->items()->count(),
+                        ];
+                    }
+
+                    if ($promotable instanceof \App\Models\Product) {
+                        $item = [
+                            'id' => $promotable->id,
+                            'slug' => $promotable->slug,
+                            'title' => $promotable->title,
+                            'description' => $promotable->description ?? null,
+                            'price' => $promotable->price !== null ? (float) $promotable->price : null,
+                            'type' => $promotable->type,
+                            'image_url' => $promotable->image_url,
                         ];
                     }
 
                     if ($promotable instanceof \App\Models\Bundle) {
                         $bundleItems = $promotable->relationLoaded('items')
                             ? $promotable->items
-                            : $promotable->items()->orderBy('sort_order')->get(['item_type', 'item_id', 'selected_variant_id', 'selected_variant_snapshot', 'sort_order']);
+                            : $promotable->items()->orderBy('sort_order')->get([
+                                'item_type',
+                                'item_id',
+                                'selected_variant_id',
+                                'selected_variant_snapshot',
+                                'section_title',
+                                'lesson_title',
+                                'lesson_summary',
+                                'supporting_materials',
+                                'lesson_duration_minutes',
+                                'unlock_after_days',
+                                'is_preview',
+                                'sort_order',
+                            ]);
 
                         $productIds = $bundleItems->where('item_type', 'product')->pluck('item_id')->filter()->unique()->values();
                         $variantIds = $bundleItems->where('item_type', 'product')->pluck('selected_variant_id')->filter()->unique()->values();
@@ -183,6 +229,13 @@ class PostResource extends JsonResource
                                     'price' => (float) ($variant?->price ?? $product->discounted_price ?? $product->price ?? 0),
                                     'image_url' => $variant?->swatch_image_url ?: $product->image_url,
                                     'product_type' => $product->type,
+                                    'section_title' => $entry->section_title,
+                                    'lesson_title' => $entry->lesson_title,
+                                    'lesson_summary' => $entry->lesson_summary,
+                                    'supporting_materials' => $entry->supporting_materials ?? [],
+                                    'lesson_duration_minutes' => $entry->lesson_duration_minutes,
+                                    'unlock_after_days' => (int) ($entry->unlock_after_days ?? 0),
+                                    'is_preview' => (bool) ($entry->is_preview ?? false),
                                     'selected_variant_id' => $variant ? (int) $variant->id : ($selectedVariantId > 0 ? $selectedVariantId : null),
                                     'selected_variant' => $variant ? [
                                         'id' => (int) $variant->id,
@@ -207,6 +260,13 @@ class PostResource extends JsonResource
                                     'price' => (float) ($content->price ?? 0),
                                     'image_url' => null,
                                     'product_type' => null,
+                                    'section_title' => $entry->section_title,
+                                    'lesson_title' => $entry->lesson_title,
+                                    'lesson_summary' => $entry->lesson_summary,
+                                    'supporting_materials' => $entry->supporting_materials ?? [],
+                                    'lesson_duration_minutes' => $entry->lesson_duration_minutes,
+                                    'unlock_after_days' => (int) ($entry->unlock_after_days ?? 0),
+                                    'is_preview' => (bool) ($entry->is_preview ?? false),
                                     'selected_variant_id' => null,
                                     'selected_variant' => null,
                                     'is_available' => $content->visibility === 'published',
@@ -215,6 +275,13 @@ class PostResource extends JsonResource
 
                             return null;
                         })->filter()->values();
+
+                        $courseModules = $promotable->relationLoaded('courseModules')
+                            ? $promotable->courseModules
+                            : $promotable->courseModules()
+                                ->with(['lessons.assets', 'lessons.liveSession'])
+                                ->orderBy('sort_order')
+                                ->get();
 
                         $item = [
                             'id' => $promotable->id,
@@ -226,6 +293,36 @@ class PostResource extends JsonResource
                             'is_course' => (bool) ($promotable->is_course ?? false),
                             'is_individual_sale' => (bool) ($promotable->is_individual_sale ?? false),
                             'course_cover_image_url' => $promotable->course_cover_image_url,
+                            'course_modules' => $courseModules->map(fn ($module) => [
+                                'id' => $module->id,
+                                'title' => $module->title,
+                                'sort_order' => (int) ($module->sort_order ?? 0),
+                                'lessons' => $module->lessons->map(fn ($lesson) => [
+                                    'id' => $lesson->id,
+                                    'title' => $lesson->title,
+                                    'summary' => $lesson->summary,
+                                    'duration_minutes' => $lesson->duration_minutes !== null ? (int) $lesson->duration_minutes : null,
+                                    'unlock_after_days' => (int) ($lesson->unlock_after_days ?? 0),
+                                    'is_preview' => (bool) ($lesson->is_preview ?? false),
+                                    'assets' => $lesson->assets->map(fn ($asset) => [
+                                        'role' => $asset->role,
+                                        'asset_type' => $asset->asset_type,
+                                        'asset_id' => $asset->asset_id !== null ? (int) $asset->asset_id : null,
+                                        'name' => $asset->name,
+                                        'url' => $asset->url,
+                                        'mime' => $asset->mime,
+                                        'size' => $asset->size !== null ? (int) $asset->size : null,
+                                    ])->values(),
+                                    'live_session' => $lesson->liveSession ? [
+                                        'starts_at' => $lesson->liveSession->starts_at?->toISOString(),
+                                        'duration_minutes' => $lesson->liveSession->duration_minutes !== null ? (int) $lesson->liveSession->duration_minutes : null,
+                                        'timezone' => $lesson->liveSession->timezone,
+                                        'meeting_url' => $lesson->liveSession->meeting_url,
+                                        'venue' => $lesson->liveSession->venue,
+                                        'capacity' => $lesson->liveSession->capacity !== null ? (int) $lesson->liveSession->capacity : null,
+                                    ] : null,
+                                ])->values(),
+                            ])->values(),
                             'items_count' => $promotable->items_count ?? ($promotable->relationLoaded('items') ? $promotable->items->count() : $bundleItemCards->count()),
                             'bundle_items' => $bundleItemCards,
                         ];
@@ -260,10 +357,27 @@ class PostResource extends JsonResource
                 'id' => $item->id,
                 'url' => $item->url,
                 'type' => $item->media_type,
+                'media_type' => $item->media_type,
+                'thumbnail_url' => $item->thumbnail_url,
+                'processed_url' => $item->processed_url,
+                'hls_url' => $item->hls_url,
+                'mime' => $item->mime,
+                'size' => $item->size !== null ? (int) $item->size : null,
+                'duration_seconds' => $item->duration_seconds !== null ? (int) $item->duration_seconds : null,
+                'width' => $item->width !== null ? (int) $item->width : null,
+                'height' => $item->height !== null ? (int) $item->height : null,
+                'processing_status' => $item->processing_status ?: 'ready',
                 'likes_count' => $item->likes_count,
             ]),
 
-            'images' => (!$hasAccess && $isRestricted) ? [] : $mediaItems->map(fn($item) => $item->url)->toArray(),
+            'images' => (!$hasAccess && $isRestricted) ? [] : $mediaItems->map(fn($item) => [
+                'url' => $item->url,
+                'type' => $item->media_type,
+                'media_type' => $item->media_type,
+                'thumbnail_url' => $item->thumbnail_url,
+                'processed_url' => $item->processed_url,
+                'hls_url' => $item->hls_url,
+            ])->toArray(),
             'media_url' => (!$hasAccess && $isRestricted) ? null : ($fallbackMedia ? $fallbackMedia->url : null),
             'media_type' => (!$hasAccess && $isRestricted) ? 'locked' : ($fallbackMedia ? $fallbackMedia->media_type : 'text'),
             

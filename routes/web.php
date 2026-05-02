@@ -7,18 +7,25 @@ use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\MerchantAuthController;
 use App\Http\Controllers\Api\MerchantBundleController;
+use App\Http\Controllers\Api\MerchantCourseController;
 use App\Http\Controllers\Api\MerchantContentController;
 use App\Http\Controllers\Api\EntitlementController;
 use App\Http\Controllers\Api\ContentReportModerationController;
 use App\Http\Controllers\Api\DispatchController;
 use App\Http\Controllers\Api\MerchantOrderController;
+use App\Http\Controllers\Api\MerchantPlatformSubscriptionController;
 use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
+use App\Http\Controllers\Api\ServiceRequestController;
+use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminCatalogController;
+use App\Http\Controllers\Api\AdminFeePolicyController;
 use App\Http\Controllers\Api\AdminSettingsController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\MerchantProfileController;
 use App\Http\Resources\PostResource;
+use App\Http\Resources\ProductResource;
+use App\Http\Resources\SubscriptionPlanResource;
 use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\Merchant;
@@ -33,6 +40,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 // ─── PUBLIC PAYMENT PAGES (Commerce Pro) ───────────────────────────────────
+Route::get('/pay/retail-credit/{publicId}', [\App\Http\Controllers\Api\RetailCreditPaymentController::class, 'show'])->name('retail-credit-payment.show');
 Route::get('/pay/{slug}', [\App\Http\Controllers\Api\PublicPaymentPageController::class, 'show'])->name('payment-page.show');
 Route::get('/course/{product:slug}', [\App\Http\Controllers\Api\PublicCourseController::class, 'show'])->name('course.player');
 Route::post('/course/lesson/{lesson}/complete', [\App\Http\Controllers\Api\PublicCourseController::class, 'toggleCompletion'])->name('course.lesson.complete');
@@ -51,6 +59,7 @@ Route::get('/', function () {
         'productTags.product.variants',
         'productTags.product.images',
         'reactions',
+        'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
     ])->latest()->take(20)->get();
@@ -63,16 +72,81 @@ Route::get('/', function () {
 Route::get('/p/{postPublicId}', [PostController::class, 'showByPublicId'])->name('post.show');
 
 Route::get('/product/{product}', function (Product $product) {
-    $product->load(['merchant.user', 'merchant.storefrontSetting', 'attributes', 'images', 'variants']);
-    // Ensure available_stock is included in the JSON representation
+    $product->load([
+        'merchant.user',
+        'merchant.storefrontSetting',
+        'attributes.brand',
+        'attributes.model',
+        'images',
+        'variants',
+        'categoryAttributeValues.categoryAttribute'
+    ]);
+
+    // Ensure available_stock is included
     $product->append('available_stock');
     $kycEnforcementMode = (string) AdminSetting::get('kyc_enforcement_mode', 'off');
     $product->setAttribute('verification_required_for_listing', $kycEnforcementMode === 'listings_and_withdrawals');
 
+    // Track traffic
+    $product->recordImpression(request());
+
     return Inertia::render('ProductDetail', [
-        'product' => $product
+        'product' => ProductResource::make($product)->resolve()
     ]);
 })->name('product.show');
+
+Route::get('/service-requests/{publicId}/pay/{token}', function (string $publicId, string $token) {
+    $serviceRequest = \App\Models\ServiceRequest::query()
+        ->where('public_id', $publicId)
+        ->where('payment_token', $token)
+        ->with([
+            'product.merchant.user',
+            'product.merchant.storefrontSetting',
+            'product.attributes.brand',
+            'product.attributes.model',
+            'product.images',
+            'product.variants',
+            'product.categoryAttributeValues.categoryAttribute',
+        ])
+        ->firstOrFail();
+
+    $paymentStatus = (string) $serviceRequest->payment_status;
+    $paymentComplete = in_array($paymentStatus, ['paid', 'held', 'released', 'disputed'], true);
+
+    abort_unless(
+        in_array($serviceRequest->status, ['quoted', 'confirmed'], true)
+        && (float) $serviceRequest->quoted_amount > 0
+        && ($paymentComplete || !$serviceRequest->payment_link_expires_at || $serviceRequest->payment_link_expires_at->isFuture()),
+        404
+    );
+
+    $product = $serviceRequest->product;
+    abort_unless($product && $product->type === 'service', 404);
+    $product->append('available_stock');
+    $product->setAttribute('checkout_price', (float) $serviceRequest->quoted_amount);
+    $product->setAttribute('verification_required_for_listing', false);
+    $product->setAttribute('service_request_payment', [
+        'id' => $serviceRequest->id,
+        'public_id' => $serviceRequest->public_id,
+        'token' => $serviceRequest->payment_token,
+        'quoted_amount' => (float) $serviceRequest->quoted_amount,
+        'status' => $serviceRequest->status,
+        'payment_status' => $serviceRequest->payment_status,
+        'delivery_status' => $serviceRequest->delivery_status,
+        'expires_at' => $serviceRequest->payment_link_expires_at?->toISOString(),
+    ]);
+
+    return Inertia::render('ProductDetail', [
+        'product' => ProductResource::make($product)->resolve(),
+    ]);
+})->name('service-request.pay');
+
+Route::get('/search', function (Request $request) {
+    return Inertia::render('Search', [
+        'initialQuery' => trim((string) $request->query('q', '')),
+        'initialPage' => max((int) $request->query('page', 1), 1),
+    ]);
+})->name('search.page');
 
 Route::get('/content/{contentItem}', function (Request $request, string $contentItem, EntitlementService $entitlementService) {
     $internalShortTitle = '__short_locked__';
@@ -171,14 +245,14 @@ Route::get('/content/{contentItem}', function (Request $request, string $content
 Route::get('/bundle/{bundle}', function (Bundle $bundle) {
     abort_if($bundle->status !== 'published', 404);
 
-    $bundle->load(['merchant', 'items']);
+    $bundle->load(['merchant.locations', 'items', 'courseModules.lessons.assets', 'courseModules.lessons.liveSession', 'cohorts']);
     $productIds = $bundle->items->where('item_type', 'product')->pluck('item_id')->filter()->unique()->values();
     $variantIds = $bundle->items->where('item_type', 'product')->pluck('selected_variant_id')->filter()->unique()->values();
     $contentIds = $bundle->items->where('item_type', 'content_item')->pluck('item_id')->filter()->unique()->values();
     $productLookup = Product::query()
         ->whereIn('id', $productIds)
         ->with(['images:id,product_id,image_url,order'])
-        ->get(['id', 'title', 'price', 'discounted_price', 'type', 'has_variants'])
+        ->get(['id', 'title', 'price', 'discounted_price', 'type', 'has_variants', 'shipping_profile_id'])
         ->keyBy('id');
     $variantLookup = \App\Models\ProductVariant::query()
         ->whereIn('id', $variantIds)
@@ -191,6 +265,52 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
         ->keyBy('id');
 
     $bundlePayload = $bundle->toArray();
+    $bundlePayload['course_modules'] = $bundle->courseModules->map(fn ($module) => [
+        'id' => $module->id,
+        'title' => $module->title,
+        'sort_order' => (int) ($module->sort_order ?? 0),
+        'lessons' => $module->lessons->map(fn ($lesson) => [
+            'id' => $lesson->id,
+            'title' => $lesson->title,
+            'summary' => $lesson->summary,
+            'duration_minutes' => $lesson->duration_minutes !== null ? (int) $lesson->duration_minutes : null,
+            'unlock_after_days' => (int) ($lesson->unlock_after_days ?? 0),
+            'is_preview' => (bool) ($lesson->is_preview ?? false),
+            'sort_order' => (int) ($lesson->sort_order ?? 0),
+            'assets' => $lesson->assets->map(fn ($asset) => [
+                'id' => $asset->id,
+                'role' => $asset->role,
+                'asset_type' => $asset->asset_type,
+                'asset_id' => $asset->asset_id !== null ? (int) $asset->asset_id : null,
+                'selected_variant_id' => $asset->selected_variant_id !== null ? (int) $asset->selected_variant_id : null,
+                'selected_variant_snapshot' => $asset->selected_variant_snapshot,
+                'name' => $asset->name,
+                'url' => $asset->url,
+                'mime' => $asset->mime,
+                'size' => $asset->size !== null ? (int) $asset->size : null,
+                'sort_order' => (int) ($asset->sort_order ?? 0),
+            ])->values()->all(),
+            'live_session' => $lesson->liveSession ? [
+                'id' => $lesson->liveSession->id,
+                'starts_at' => $lesson->liveSession->starts_at?->toISOString(),
+                'duration_minutes' => $lesson->liveSession->duration_minutes !== null ? (int) $lesson->liveSession->duration_minutes : null,
+                'timezone' => $lesson->liveSession->timezone,
+                'meeting_url' => $lesson->liveSession->meeting_url,
+                'venue' => $lesson->liveSession->venue,
+                'capacity' => $lesson->liveSession->capacity !== null ? (int) $lesson->liveSession->capacity : null,
+                'notes' => $lesson->liveSession->notes,
+            ] : null,
+        ])->values()->all(),
+    ])->values()->all();
+    $bundlePayload['cohorts'] = $bundle->cohorts->map(fn ($cohort) => [
+        'id' => $cohort->id,
+        'name' => $cohort->name,
+        'starts_at' => $cohort->starts_at?->toISOString(),
+        'enrollment_deadline' => $cohort->enrollment_deadline?->toISOString(),
+        'capacity' => $cohort->capacity !== null ? (int) $cohort->capacity : null,
+        'access_rule' => $cohort->access_rule,
+        'status' => $cohort->status,
+    ])->values()->all();
     $bundlePayload['items'] = $bundle->items->map(function ($item) use ($productLookup, $variantLookup, $contentLookup) {
         if ($item->item_type === 'product') {
             $product = $productLookup->get((int) $item->item_id);
@@ -221,6 +341,7 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
                 'section_title' => $item->section_title,
                 'lesson_title' => $item->lesson_title,
                 'lesson_summary' => $item->lesson_summary,
+                'supporting_materials' => $item->supporting_materials ?? [],
                 'lesson_duration_minutes' => $item->lesson_duration_minutes,
                 'unlock_after_days' => (int) ($item->unlock_after_days ?? 0),
                 'is_preview' => (bool) ($item->is_preview ?? false),
@@ -229,6 +350,7 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
                 'price' => $variant ? (float) ($variant->price ?? 0) : ($product ? (float) ($product->discounted_price ?? $product->price ?? 0) : 0),
                 'image_url' => $variant?->swatch_image_url ?: $product?->image_url,
                 'product_type' => $product?->type,
+                'shipping_profile_id' => $product?->shipping_profile_id,
             ];
         }
 
@@ -243,6 +365,7 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
                 'section_title' => $item->section_title,
                 'lesson_title' => $item->lesson_title,
                 'lesson_summary' => $item->lesson_summary,
+                'supporting_materials' => $item->supporting_materials ?? [],
                 'lesson_duration_minutes' => $item->lesson_duration_minutes,
                 'unlock_after_days' => (int) ($item->unlock_after_days ?? 0),
                 'is_preview' => (bool) ($item->is_preview ?? false),
@@ -251,6 +374,7 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
                 'price' => $content ? (float) ($content->price ?? 0) : 0,
                 'image_url' => null,
                 'product_type' => null,
+                'shipping_profile_id' => null,
             ];
         }
 
@@ -263,6 +387,7 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
             'section_title' => $item->section_title,
             'lesson_title' => $item->lesson_title,
             'lesson_summary' => $item->lesson_summary,
+            'supporting_materials' => $item->supporting_materials ?? [],
             'lesson_duration_minutes' => $item->lesson_duration_minutes,
             'unlock_after_days' => (int) ($item->unlock_after_days ?? 0),
             'is_preview' => (bool) ($item->is_preview ?? false),
@@ -271,8 +396,27 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
             'price' => 0,
             'image_url' => null,
             'product_type' => null,
+            'shipping_profile_id' => null,
         ];
     })->values()->all();
+
+    $bundlePayload['merchant'] = [
+        'id' => $bundle->merchant->id,
+        'name' => $bundle->merchant->name,
+        'display_name' => $bundle->merchant->display_name,
+        'username' => $bundle->merchant->username,
+        'slug' => $bundle->merchant->username,
+        'can_self_pickup' => $bundle->merchant->locations->where('allow_self_pickup', true)->isNotEmpty(),
+        'locations' => $bundle->merchant->locations->map(fn ($loc) => [
+            'id' => $loc->id,
+            'name' => $loc->name,
+            'address' => $loc->address,
+            'latitude' => $loc->latitude !== null ? (float) $loc->latitude : null,
+            'longitude' => $loc->longitude !== null ? (float) $loc->longitude : null,
+            'allow_self_pickup' => (bool) $loc->allow_self_pickup,
+            'contact_phone' => $loc->contact_phone,
+        ])->values()->all(),
+    ];
 
     return Inertia::render('BundleDetail', [
         'bundle' => $bundlePayload,
@@ -284,28 +428,52 @@ Route::get('/plan/{subscriptionPlan}', function (SubscriptionPlan $subscriptionP
 
     $subscriptionPlan->load(['merchant', 'items']);
 
-    // Load latest posts linked to this subscription plan for content preview
-    $linkedPosts = Post::where('promotable_type', SubscriptionPlan::class)
-        ->where('promotable_id', $subscriptionPlan->id)
-        ->where('is_restricted', true)
-        ->latest()
-        ->get(['id', 'public_id', 'title', 'excerpt', 'caption', 'created_at']);
+    $contentItemIds = $subscriptionPlan->items
+        ->where('item_type', 'content_item')
+        ->pluck('item_id')
+        ->filter()
+        ->unique()
+        ->values();
 
-    $totalLinkedContent = $linkedPosts->count();
-    $previewPosts = $linkedPosts->take(3)->map(function ($post) {
-        return [
+    $planContent = ContentItem::query()
+        ->whereIn('id', $contentItemIds)
+        ->latest('published_at')
+        ->get(['id', 'slug', 'title', 'excerpt', 'published_at', 'created_at'])
+        ->map(fn ($item) => [
+            'id' => $item->id,
+            'type' => 'content_item',
+            'slug' => $item->slug,
+            'title' => $item->title,
+            'excerpt' => $item->excerpt,
+            'created_at' => $item->published_at ?? $item->created_at,
+        ]);
+
+    $linkedPosts = Post::query()
+        ->join('post_promotables', 'post_promotables.post_id', '=', 'posts.id')
+        ->where('post_promotables.promotable_type', SubscriptionPlan::class)
+        ->where('post_promotables.promotable_id', $subscriptionPlan->id)
+        ->where('posts.is_restricted', true)
+        ->select('posts.id', 'posts.public_id', 'posts.title', 'posts.excerpt', 'posts.caption', 'posts.created_at')
+        ->latest('posts.created_at')
+        ->get()
+        ->map(fn ($post) => [
             'id' => $post->id,
+            'type' => 'post',
             'public_id' => $post->public_id,
             'title' => $post->title,
             'excerpt' => $post->excerpt ?: \Illuminate\Support\Str::limit($post->caption, 120),
             'created_at' => $post->created_at,
-        ];
-    })->values()->all();
+        ]);
+
+    $allPreviewContent = $planContent
+        ->concat($linkedPosts)
+        ->sortByDesc('created_at')
+        ->values();
 
     return Inertia::render('SubscriptionPlanDetail', [
-        'subscriptionPlan' => $subscriptionPlan,
-        'contentPreview' => $previewPosts,
-        'totalLinkedContent' => $totalLinkedContent,
+        'subscriptionPlan' => SubscriptionPlanResource::make($subscriptionPlan)->resolve(request()),
+        'contentPreview' => $allPreviewContent->take(3)->values()->all(),
+        'totalLinkedContent' => $allPreviewContent->count(),
     ]);
 })->name('subscription-plan.show');
 
@@ -322,6 +490,13 @@ Route::get('/privacy', function () {
     return Inertia::render('Privacy');
 })->name('privacy');
 
+Route::get('/{merchantSlug}/terminal', function (string $merchantSlug) {
+    $merchant = \App\Models\Merchant::where('username', $merchantSlug)->firstOrFail();
+    return Inertia::render('Auth/StaffPinLogin', [
+        'merchant' => $merchant
+    ]);
+})->name('retail.terminal');
+
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::get('/feed', function () {
@@ -335,6 +510,9 @@ Route::get('/feed', function () {
         'productTags.product.attributes',
         'productTags.product.images',
         'reactions',
+        'promotableProducts',
+        'promotableBundles',
+        'promotableSubscriptions',
     ])->latest()->take(20)->get();
 
     return Inertia::render('Feed', [
@@ -345,9 +523,10 @@ Route::get('/feed', function () {
 // ─── AUTH (Stateful) ───────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
     Route::post('/otp/send', [AuthController::class, 'sendOtp'])->middleware('throttle:5,10');
-    Route::post('/otp/verify', [AuthController::class, 'verifyOtp']);
+    Route::post('/otp/verify', [AuthController::class, 'verifyOtp'])->middleware('throttle:6,10');
     Route::post('/merchant/check', [MerchantAuthController::class, 'check']);
     Route::post('/merchant/register', [MerchantAuthController::class, 'register']);
+    Route::post('/merchant/ensure-personal', [MerchantAuthController::class, 'ensurePersonalProfile'])->middleware('auth');
     Route::post('/session/bootstrap', [AuthController::class, 'bootstrapSession'])->middleware('auth:sanctum');
 });
 
@@ -364,6 +543,7 @@ Route::middleware('auth')->group(function () {
             
             if ($user && $googleUser->getEmail()) {
                 $user->email = $googleUser->getEmail();
+                $user->email_verified_at = now();
                 $user->save();
                 return redirect('/profile/settings')->with('success', 'Akaunti yako ya Google imeunganishwa kikamilifu!');
             }
@@ -377,7 +557,7 @@ Route::middleware('auth')->group(function () {
 // ─── MERCHANT ───────────────────────────────────────────────────────────────
 Route::get('/merchant/register', function () {
     return Inertia::render('Auth/MerchantRegister', [
-        'countries' => Country::select('id', 'name', 'iso_alpha2 as code', 'default_currency_id')->get(),
+        'countries' => Country::select('id', 'name', 'iso_alpha2 as code', 'default_currency_id', 'timezone', 'settings')->get(),
         'currencies' => Currency::select('id', 'code', 'symbol', 'name')->get(),
     ]);
 });
@@ -398,6 +578,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/orders/data/subscriptions', [SubscriptionController::class, 'mySubscriptions']);
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
     Route::get('/orders/{order}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadLocal'])->name('web.download.local');
+    Route::get('/learn/bundles/{bundle}', [\App\Http\Controllers\Api\BundleCourseController::class, 'show'])->name('bundle.learn');
+    Route::post('/learn/bundle-lessons/{lesson}/complete', [\App\Http\Controllers\Api\BundleCourseController::class, 'toggleCompletion'])->name('bundle.lesson.complete');
+    Route::post('/learn/bundle-live-sessions/{session}/check-in', [\App\Http\Controllers\Api\BundleCourseController::class, 'checkIn'])->name('bundle.live-session.check-in');
 
     Route::post('/merchant/switch/{username}', [\App\Http\Controllers\Api\MerchantSwitchController::class, 'switch'])->name('merchant.switch');
     Route::post('/merchant/add-business', [\App\Http\Controllers\Api\MerchantAuthController::class, 'addBusinessProfile'])->name('merchant.add-business');
@@ -464,6 +647,31 @@ Route::middleware('auth')->group(function () {
             }
         }
 
+        $commerceHubSummary = [
+            'physical' => 0,
+            'digital' => 0,
+            'services' => 0,
+            'posts' => 0,
+            'bundles' => 0,
+            'subscriptions' => 0,
+        ];
+
+        if ($activeMerchant) {
+            $productTypeCounts = $activeMerchant->products()
+                ->selectRaw('type, COUNT(*) as total')
+                ->groupBy('type')
+                ->pluck('total', 'type');
+
+            $commerceHubSummary = [
+                'physical' => (int) ($productTypeCounts['physical'] ?? 0),
+                'digital' => (int) ($productTypeCounts['digital'] ?? 0),
+                'services' => (int) ($productTypeCounts['service'] ?? 0),
+                'posts' => (int) $activeMerchant->posts()->count(),
+                'bundles' => (int) $activeMerchant->bundles()->count(),
+                'subscriptions' => (int) $activeMerchant->subscriptionPlans()->count(),
+            ];
+        }
+
         return Inertia::render('Profile', [
             'activeMerchant' => $activeMerchant,
             'thisMonthEarnings' => (float) $thisMonthEarnings,
@@ -496,6 +704,7 @@ Route::middleware('auth')->group(function () {
                     ];
                 }) : [],
             'salesBreakdown' => $breakdown,
+            'commerceHubSummary' => $commerceHubSummary,
             'countries' => \App\Models\Country::select('id', 'name', 'iso_alpha2 as code', 'default_currency_id')->get(),
             'currencies' => \App\Models\Currency::select('id', 'code', 'symbol', 'name')->get(),
             'merchantKyc' => $activeMerchant ? $activeMerchant->kyc : null,
@@ -553,6 +762,7 @@ Route::middleware('auth')->group(function () {
             'display_name' => 'required|string|max:100',
             'country_id' => 'required|exists:countries,id',
             'currency_id' => 'required|exists:currencies,id',
+            'timezone' => 'nullable|timezone',
         ]);
 
         $user = $request->user();
@@ -573,6 +783,12 @@ Route::middleware('auth')->group(function () {
             $user->save();
         }
 
+        $country = \App\Models\Country::find($validated['country_id']);
+        $countryTimezones = $country?->timezones() ?? [];
+        $timezone = in_array($validated['timezone'] ?? null, $countryTimezones, true)
+            ? $validated['timezone']
+            : ($country?->defaultTimezone() ?? 'Africa/Dar_es_Salaam');
+
         // Create the new merchant profile
         $merchant = \App\Models\Merchant::create([
             'user_id' => $user->id,
@@ -582,6 +798,7 @@ Route::middleware('auth')->group(function () {
             'is_default' => !$user->merchantProfiles()->exists(), // true if first shop
             'country_id' => $validated['country_id'],
             'currency_id' => $validated['currency_id'],
+            'timezone' => $timezone,
         ]);
 
         return redirect()->to('/merchant/' . $merchant->username . '/dashboard');
@@ -599,7 +816,7 @@ Route::middleware('auth')->group(function () {
 
         abort_unless($isParticipant, 403);
 
-        $isEscrowOrder = ($orderModel->product?->type === 'physical');
+        $isEscrowOrder = $orderModel->requiresPhysicalFulfillment();
         $orderFlow = $isEscrowOrder ? 'escrow' : 'instant';
 
         $actingAs = $request->query('acting_as', 'buyer');
@@ -636,6 +853,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings', [MerchantProfileController::class, 'update'])->name('merchant.settings.update');
 
         Route::get('/upload', function (Merchant $merchant) {
+            abort_unless($merchant->canSellProducts(), 403, 'Complete KYC before uploading products.');
+
             return Inertia::render('Merchant/Upload', [
                 'merchantUsername' => $merchant->username,
             ]);
@@ -644,7 +863,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/products', function (Request $request, Merchant $merchant) {
             return Inertia::render('Merchant/Products', [
                 'merchantUsername' => $merchant->username,
-                'redirectToStudio' => false,
                 'typeScope' => 'physical',
             ]);
         });
@@ -655,15 +873,6 @@ Route::middleware('auth')->group(function () {
                 'productId' => $productId,
             ]);
         })->whereNumber('productId');
-
-        Route::get('/content', function (Request $request, Merchant $merchant) {
-            return Inertia::render('Merchant/Content', [
-                'merchantUsername' => $merchant->username,
-                'initialTab' => (string) $request->query('tab', 'hub'),
-                'pageMode' => 'hub',
-                'itemPickerDefaultLimit' => (int) AdminSetting::get('catalog_item_picker_default_limit', 5),
-            ]);
-        });
 
         Route::get('/posts', function (Merchant $merchant) {
             return Inertia::render('Merchant/Posts', [
@@ -677,6 +886,14 @@ Route::middleware('auth')->group(function () {
                 'itemPickerDefaultLimit' => (int) AdminSetting::get('catalog_item_picker_default_limit', 5),
             ]);
         });
+        Route::get('/bundles/{bundle:id}/course', function (Merchant $merchant, Bundle $bundle) {
+            abort_unless((int) $bundle->merchant_id === (int) $merchant->id && $bundle->is_course, 404);
+
+            return Inertia::render('Merchant/CourseManager', [
+                'merchantUsername' => $merchant->username,
+                'bundleId' => $bundle->id,
+            ]);
+        });
 
         Route::get('/subscriptions', function (Merchant $merchant) {
             return Inertia::render('Merchant/Subscriptions', [
@@ -686,17 +903,18 @@ Route::middleware('auth')->group(function () {
         });
 
         Route::get('/services', function (Merchant $merchant) {
+            $merchant->loadMissing('country');
+
             return Inertia::render('Merchant/Products', [
                 'merchantUsername' => $merchant->username,
-                'redirectToStudio' => false,
                 'typeScope' => 'service',
+                'merchantTimezone' => $merchant->defaultTimezone(),
             ]);
         });
 
         Route::get('/downloads', function (Merchant $merchant) {
             return Inertia::render('Merchant/Products', [
                 'merchantUsername' => $merchant->username,
-                'redirectToStudio' => false,
                 'typeScope' => 'digital',
             ]);
         });
@@ -709,12 +927,79 @@ Route::middleware('auth')->group(function () {
         });
 
         Route::get('/wallet', [\App\Http\Controllers\Api\MerchantWalletController::class, 'show'])->name('merchant.wallet');
+        Route::get('/wallet/ledger', [\App\Http\Controllers\Api\MerchantWalletController::class, 'showLedger'])->name('merchant.wallet.ledger');
         Route::post('/wallet/withdraw', [\App\Http\Controllers\Api\MerchantWalletController::class, 'requestWithdrawal'])->name('merchant.wallet.withdraw');
+        Route::get('/platform-subscriptions/retail-operations', function (Merchant $merchant) {
+            abort_unless($merchant->isRetailEligible(), 403, 'Retail Operations is only available for verified business accounts with completed business KYC.');
+
+            return Inertia::render('Merchant/PlatformSubscription', [
+                'merchantUsername' => $merchant->username,
+                'merchantName' => $merchant->display_name,
+                'featureKey' => 'retail_ops',
+            ]);
+        })->name('merchant.platform-subscriptions.retail-operations');
+        Route::get('/platform-subscriptions/storage', function (Merchant $merchant) {
+            return Inertia::render('Merchant/PlatformSubscription', [
+                'merchantUsername' => $merchant->username,
+                'merchantName' => $merchant->display_name,
+                'featureKey' => 'storage',
+            ]);
+        })->name('merchant.platform-subscriptions.storage');
+        Route::get('/platform-subscriptions/api', [MerchantPlatformSubscriptionController::class, 'index']);
+        Route::post('/platform-subscriptions/trial', [MerchantPlatformSubscriptionController::class, 'startTrial']);
+        Route::post('/platform-subscriptions/simulate-payment', [MerchantPlatformSubscriptionController::class, 'simulatePayment']);
 
         // ── Merchant-scoped API endpoints (still session-scoped internally) ──
+        Route::get('/products/api', [UploadController::class, 'index']);
+        Route::get('/products/{id}/api', [UploadController::class, 'show'])->whereNumber('id');
+        Route::delete('/products/{id}', [UploadController::class, 'deleteProduct'])->whereNumber('id');
+        Route::post('/products/{product}/hotspots', [UploadController::class, 'syncHotspots'])->whereNumber('product');
+        Route::post('/upload/media', [UploadController::class, 'uploadMedia']);
+        Route::post('/upload/draft', [UploadController::class, 'draftProduct']);
+        Route::post('/upload/manual', [UploadController::class, 'manualDraft']);
+        Route::post('/upload/publish', [UploadController::class, 'publishProduct']);
+        Route::get('/catalog/schema', [UploadController::class, 'catalogSchema']);
+        Route::post('/posts', [PostController::class, 'store']);
+        Route::delete('/posts/{post}', [PostController::class, 'destroy']);
+
+        Route::get('/content-items/api', [MerchantContentController::class, 'index']);
+        Route::post('/content-items/api', [MerchantContentController::class, 'store']);
+        Route::get('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show']);
+        Route::put('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update']);
+        Route::delete('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy']);
+        Route::get('/posts/api', [MerchantContentController::class, 'posts']);
+        Route::patch('/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction']);
+        Route::get('/content-reports/api', [ContentReportModerationController::class, 'merchantIndex']);
+        Route::patch('/content-reports/{contentReport:id}/resolve/api', [ContentReportModerationController::class, 'merchantResolve']);
+
+        Route::get('/bundles/api', fn (Request $request, Merchant $merchant, MerchantBundleController $controller) => $controller->index($request));
+        Route::post('/bundles/api', fn (Request $request, Merchant $merchant, MerchantBundleController $controller, EntitlementService $entitlementService) => $controller->store($request, $entitlementService));
+        Route::get('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller) => $controller->show($request, $bundle));
+        Route::put('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller, EntitlementService $entitlementService) => $controller->update($request, $bundle, $entitlementService));
+        Route::delete('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller) => $controller->destroy($request, $bundle));
+        Route::get('/bundles/{bundle:id}/course/api', [MerchantCourseController::class, 'dashboard']);
+        Route::post('/bundles/{bundle:id}/course/sessions/{session:id}/check-in-code', [MerchantCourseController::class, 'generateCheckInCode']);
+        Route::post('/bundles/{bundle:id}/course/sessions/{session:id}/attendance', [MerchantCourseController::class, 'markAttendance']);
+
+        Route::get('/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'index']);
+        Route::post('/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'store']);
+        Route::get('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'show']);
+        Route::put('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'update']);
+        Route::delete('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy']);
+
         Route::get('/orders/api', [MerchantOrderController::class, 'index']);
         Route::get('/orders/api/summary', [MerchantOrderController::class, 'summary']);
         Route::get('/orders/api/commerce-summary', [MerchantOrderController::class, 'commerceSummary']);
+        Route::get('/service-requests/api', [ServiceRequestController::class, 'merchantIndex']);
+        Route::get('/service-requests/{serviceRequest}/attachments/{field}/{index}', [ServiceRequestController::class, 'showAttachment'])->where('field', '[^/]+')->whereNumber('index');
+        Route::patch('/service-requests/{serviceRequest}/status', [ServiceRequestController::class, 'updateStatus']);
+        Route::post('/service-requests/{serviceRequest}/mark-delivered', [ServiceRequestController::class, 'markDelivered']);
+        Route::post('/service-requests/{serviceRequest}/prepare-notification', [ServiceRequestController::class, 'prepareNotification']);
+        Route::post('/service-requests/{serviceRequest}/prepare-calendar-event', [ServiceRequestController::class, 'prepareCalendarEvent']);
+        Route::get('/service-scheduling/api', [ServiceRequestController::class, 'scheduling']);
+        Route::put('/service-scheduling/api', [ServiceRequestController::class, 'updateScheduling']);
+        Route::get('/service-sessions/api', [ServiceRequestController::class, 'sessions']);
+        Route::put('/service-sessions/api', [ServiceRequestController::class, 'updateSessions']);
         Route::get('/orders/{order}/api', [MerchantOrderController::class, 'show']);
         Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity']);
         Route::post('/dispatch/{order}/local', [DispatchController::class, 'local']);
@@ -732,11 +1017,69 @@ Route::middleware('auth')->group(function () {
         // KYC endpoints
         Route::get('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'show']);
         Route::post('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'store']);
+        Route::get('/service-credentials/api', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'index']);
+        Route::post('/service-credentials/api', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'store']);
+        Route::delete('/service-credentials/api/{credential}', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'destroy']);
         
         Route::get('/verification', function (Merchant $merchant) {
             return Inertia::render('Merchant/VerificationCenter', [
                 'merchantUsername' => $merchant->username,
             ]);
+        });
+
+        // ── RETAIL OPS PAGES ──
+        Route::middleware('retail_ops')->prefix('retail')->group(function () {
+            Route::get('/dashboard', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Dashboard', [
+                    'merchant' => $merchant->load('currency'),
+                ]);
+            })->middleware('retail_role:MANAGER');
+
+            Route::get('/trust-safety', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/TrustSafety', [
+                    'merchant' => $merchant->load('currency'),
+                ]);
+            })->middleware('retail_role:MANAGER');
+
+            Route::get('/staff', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Staff', ['merchant' => $merchant]);
+            })->middleware('retail_role:MANAGER');
+            Route::get('/customers', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Customers', ['merchant' => $merchant]);
+            })->middleware('retail_role:MANAGER,STOREKEEPER');
+            Route::get('/outstanding', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Outstanding', [
+                    'merchant' => $merchant->load('currency'),
+                ]);
+            })->middleware('retail_role:MANAGER,CASHIER');
+            Route::get('/transfers', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Transfers', ['merchant' => $merchant]);
+            })->middleware('retail_role:MANAGER,STOREKEEPER');
+            Route::get('/products/{product:id}/timeline', function (Merchant $merchant, \App\Models\Product $product) {
+                abort_unless((int) $product->merchant_id === (int) $merchant->id, 404);
+                return Inertia::render('Merchant/Retail/ProductTimeline', [
+                    'merchant' => $merchant->load('currency'),
+                    'productId' => $product->id,
+                ]);
+            })->middleware('retail_role:MANAGER,STOREKEEPER');
+            Route::get('/inventory', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Inventory', ['merchant' => $merchant->load('currency')]);
+            })->middleware('retail_role:MANAGER,STOREKEEPER');
+            Route::get('/storekeeper', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Storekeeper', ['merchant' => $merchant]);
+            })->middleware('retail_role:MANAGER,STOREKEEPER,CASHIER');
+
+            Route::get('/settings', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Settings', ['merchant' => $merchant]);
+            })->middleware('retail_role:MANAGER');
+
+            Route::get('/pos', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/PosTerminal', [
+                    'merchant' => $merchant->load('currency'),
+                ]);
+            })->middleware('retail_role:MANAGER,CASHIER');
+
+            Route::get('/onboarding/template', [\App\Http\Controllers\Api\RetailOnboardingController::class, 'downloadTemplate']);
         });
     });
 
@@ -765,7 +1108,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/merchant/posts', [PostController::class, 'store']);
         Route::delete('/merchant/posts/{post}', [PostController::class, 'destroy']);
 
-        // Commerce Studio Management (session-auth web endpoints)
+        // Commerce management (session-auth web endpoints)
         Route::get('/merchant/content-items/api', [MerchantContentController::class, 'index']);
         Route::post('/merchant/content-items/api', [MerchantContentController::class, 'store']);
         Route::get('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show']);
@@ -798,12 +1141,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/merchant/{merchant:username}/payment-pages/api/search', [\App\Http\Controllers\Api\PaymentPageController::class, 'searchAttachables'])->name('merchant.payment-pages.search');
     });
 
-    Route::get('/merchant/content', function (Request $request) {
-        $merchant = $request->user()->merchantProfiles()->where('is_default', true)->first()
-            ?? $request->user()->merchantProfiles()->first();
-        if (!$merchant) return redirect('/merchant/register');
-        return redirect("/merchant/{$merchant->username}/content");
-    });
 });
 
 Route::get('/m/{slug}', function (string $slug) {
@@ -839,9 +1176,19 @@ Route::middleware(['auth', 'admin'])->group(function () {
     Route::prefix('/admin/api')->group(function () {
         Route::get('/disputes', [AdminController::class, 'indexDisputes']);
         Route::post('/disputes/{dispute}/resolve', [AdminController::class, 'resolveDispute']);
+        Route::post('/disputes/{dispute}/trust-safety', [AdminController::class, 'handleTrustSafetyDispute']);
+        Route::get('/trust-safety-reviews', [AdminController::class, 'indexTrustSafetyReviews']);
+        Route::post('/trust-safety-reviews/{review}', [AdminController::class, 'resolveTrustSafetyReview']);
+        Route::get('/service-risk', [AdminController::class, 'serviceRiskDashboard']);
+        Route::get('/notifications', [AdminController::class, 'notificationLogs']);
 
         Route::get('/withdrawals', [AdminSettingsController::class, 'withdrawals']);
         Route::post('/withdrawals/{withdrawal}/approve', [AdminController::class, 'approveWithdrawal']);
+        Route::get('/platform-wallet', [AdminSettingsController::class, 'platformWallet']);
+        Route::get('/fee-policies', [AdminFeePolicyController::class, 'index']);
+        Route::post('/fee-policies', [AdminFeePolicyController::class, 'store']);
+        Route::put('/fee-policies/{feePolicy}', [AdminFeePolicyController::class, 'update']);
+        Route::delete('/fee-policies/{feePolicy}', [AdminFeePolicyController::class, 'destroy']);
 
         Route::get('/settings', [AdminSettingsController::class, 'index']);
         Route::put('/settings', [AdminSettingsController::class, 'update']);
@@ -852,14 +1199,19 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
         Route::get('/merchants', [AdminController::class, 'indexMerchants']);
         Route::get('/merchants/{merchant:id}', [AdminController::class, 'showMerchant']);
+        Route::put('/merchants/{merchant:id}/settings', [AdminController::class, 'updateMerchantSettings']);
         Route::get('/kyc/view', [AdminController::class, 'viewKycFile']);
         Route::get('/merchants/{merchant:id}/products', [AdminController::class, 'merchantProducts']);
+        Route::get('/services', [AdminController::class, 'services']);
         Route::get('/merchants/{merchant:id}/posts', [AdminController::class, 'merchantPosts']);
         Route::get('/merchants/{merchant:id}/orders', [AdminController::class, 'merchantOrders']);
         Route::get('/merchants/{merchant:id}/catalog/{type}', [AdminController::class, 'merchantCatalogByType']);
         Route::put('/merchants/{merchant:id}', [AdminController::class, 'updateMerchant']);
         Route::post('/merchants/{merchant:id}/approve-kyc', [AdminController::class, 'approveKyc']);
         Route::post('/merchants/{merchant:id}/reject-kyc', [AdminController::class, 'rejectKyc']);
+        Route::post('/merchants/{merchant:id}/service-credentials/{credential}/approve', [AdminController::class, 'approveServiceCredential']);
+        Route::post('/merchants/{merchant:id}/service-credentials/{credential}/reject', [AdminController::class, 'rejectServiceCredential']);
+        Route::post('/merchants/{merchant:id}/service-risk/suspend', [AdminController::class, 'suspendMerchantForServiceRisk']);
         Route::post('/merchants/{merchant:id}/toggle-suspension', [AdminController::class, 'toggleSuspension']);
         Route::get('/feed', [AdminController::class, 'adminFeed']);
         Route::get('/posts/{postRef}', [AdminController::class, 'adminPostDetail']);
@@ -882,6 +1234,10 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::post('/catalog/brands/{brand}/models', [AdminCatalogController::class, 'storeBrandModel']);
         Route::put('/catalog/brand-models/{brandModel}', [AdminCatalogController::class, 'updateBrandModel']);
         Route::delete('/catalog/brand-models/{brandModel}', [AdminCatalogController::class, 'destroyBrandModel']);
+        Route::get('/service-categories', [ServiceCategoryController::class, 'index']);
+        Route::post('/service-categories', [ServiceCategoryController::class, 'store']);
+        Route::put('/service-categories/{serviceCategory}', [ServiceCategoryController::class, 'update']);
+        Route::delete('/service-categories/{serviceCategory}', [ServiceCategoryController::class, 'destroy']);
     });
 
     Route::get('/admin', function () {
@@ -890,6 +1246,15 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     Route::get('/admin/disputes', function () {
         return Inertia::render('Admin/Disputes');
+    });
+    Route::get('/admin/trust-safety-reviews', function () {
+        return Inertia::render('Admin/TrustSafetyReviews');
+    });
+    Route::get('/admin/service-risk', function () {
+        return Inertia::render('Admin/ServiceRisk');
+    });
+    Route::get('/admin/notifications', function () {
+        return Inertia::render('Admin/Notifications');
     });
 
     Route::get('/admin/users', function () {
@@ -905,6 +1270,9 @@ Route::middleware(['auth', 'admin'])->group(function () {
     });
     Route::get('/admin/merchants/{merchant}', function (string $merchant) {
         return Inertia::render('Admin/MerchantDetails', ['merchantId' => (int) $merchant]);
+    });
+    Route::get('/admin/merchants/{merchant}/settings', function (string $merchant) {
+        return Inertia::render('Admin/MerchantSettings', ['merchantId' => (int) $merchant]);
     });
     Route::get('/admin/merchants/{merchant}/catalog/{type}', function (string $merchant, string $type) {
         return Inertia::render('Admin/MerchantCatalogType', ['merchantId' => (int) $merchant, 'type' => $type]);
@@ -922,8 +1290,34 @@ Route::middleware(['auth', 'admin'])->group(function () {
         return Inertia::render('Admin/Categories');
     });
 
+    Route::get('/admin/service-categories', function () {
+        return Inertia::render('Admin/ServiceCategories');
+    });
+
+    Route::get('/admin/services', function () {
+        return Inertia::render('Admin/Services');
+    });
+
     Route::get('/admin/withdrawals', function () {
         return Inertia::render('Admin/Withdrawals');
+    });
+
+    Route::get('/admin/platform-wallet', function () {
+        return Inertia::render('Admin/PlatformWallet');
+    });
+
+    Route::get('/admin/fee-policies', function () {
+        return Inertia::render('Admin/FeePolicies', [
+            'currencies' => Currency::query()
+                ->where('is_active', true)
+                ->orderByDesc('is_base_currency')
+                ->orderBy('code')
+                ->get(['id', 'code', 'name', 'symbol', 'is_base_currency']),
+        ]);
+    });
+
+    Route::get('/admin/subscriptions', function () {
+        return Inertia::render('Admin/Subscriptions');
     });
 
     Route::get('/admin/countries', [\App\Http\Controllers\Admin\CountryController::class, 'index'])->name('admin.countries');

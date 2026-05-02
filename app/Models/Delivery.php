@@ -23,6 +23,7 @@ class Delivery extends Model
         'buyer_release_pin',
         'pickup_pin',
         'whatsapp_pin_url',
+        'buyer_unboxing_video_url',
     ];
 
     public function order(): BelongsTo

@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
-use App\Models\ProductVariant;
 use App\Models\SubscriptionInvoice;
 use App\Models\UserSubscription;
 use App\Models\Transaction;
@@ -45,37 +44,52 @@ class PaymentWebhookController extends Controller
 
         if ($status == 0) { // Success
             DB::transaction(function () use ($order, $mpesaReceiptNumber) {
-                $isPhysical = $order->purchasable_type === 'product' && $order->product?->isPhysical();
+                $serviceRequest = \App\Models\ServiceRequest::query()
+                    ->where('payment_order_id', $order->id)
+                    ->first();
+                $isPhysical = $order->requiresPhysicalFulfillment();
+                $isHeldService = (bool) $serviceRequest;
 
                 $order->update([
-                    'payment_status' => $isPhysical ? 'awaiting_merchant_confirmation' : 'resolved_merchant_paid'
+                    'payment_status' => ($isPhysical || $isHeldService) ? 'escrow_locked' : 'resolved_merchant_paid'
                 ]);
 
                 // Log TRA-ready transaction
+                $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
                 Transaction::create([
                     'user_id' => $order->buyer_id,
                     'order_id' => $order->id,
                     'type' => 'order_revenue',
+                    ...$fee['snapshot'],
                     'gross_amount' => $order->total_paid,
-                    'net_amount' => $order->total_paid * 0.95, // After 5% fee
-                    'tax_amount' => ($order->total_paid * 0.05) * 0.18, // 18% VAT on the 5% fee
+                    'fee_amount' => $fee['fee_amount'],
+                    'net_amount' => $fee['net_amount'],
+                    'tax_amount' => $fee['tax_amount'],
                     'reference' => $mpesaReceiptNumber,
                 ]);
 
-                if ($isPhysical) {
-                    // Freeze funds in merchant's wallet
+                if ($isPhysical || $isHeldService) {
+                    // Freeze funds in merchant's wallet until delivery/customer confirmation.
                     $wallet = $order->merchant->user->wallet()->firstOrCreate(['user_id' => $order->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);
                     $wallet->increment('frozen_balance', $order->total_paid);
                 } else {
                     // Instantly release payout for non-physical commerce items.
                     $wallet = $order->merchant->user->wallet()->firstOrCreate(['user_id' => $order->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);
-                    $wallet->increment('balance', $order->total_paid * 0.95);
+                    $wallet->increment('balance', $fee['net_amount']);
                     $this->entitlementService->grantForOrder($order->fresh(['product']));
 
                     if ($order->purchasable_type === 'subscription_plan') {
                         $subscription = $this->createOrRenewSubscription($order);
                         $this->entitlementService->grantForSubscription($subscription);
                     }
+                }
+
+                if ($serviceRequest) {
+                    $serviceRequest->update([
+                        'payment_status' => 'held',
+                        'delivery_status' => 'scheduled',
+                        'status' => 'confirmed',
+                    ]);
                 }
             });
 
@@ -91,13 +105,10 @@ class PaymentWebhookController extends Controller
 
         } else { // Failed
             $order->update(['payment_status' => 'failed']);
-            // Restore inventory
-            if ($order->product?->isPhysical()) {
-                if ($order->variant_id) {
-                    ProductVariant::query()->whereKey($order->variant_id)->increment('inventory_count');
-                }
-                $order->product->increment('inventory_count');
-            }
+            \App\Models\ServiceRequest::query()
+                ->where('payment_order_id', $order->id)
+                ->update(['payment_status' => 'failed']);
+            $order->releaseInventory();
         }
 
         return response()->json(['message' => 'Webhook received']);

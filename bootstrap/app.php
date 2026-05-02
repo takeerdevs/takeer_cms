@@ -15,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (Schedule $schedule) {
         $schedule->command('orders:release-expired')->everyMinute();
+        $schedule->command('currency:update-rates')->dailyAt('03:15')->withoutOverlapping();
+        $schedule->command('service-credentials:monitor-expiry')->dailyAt('04:15')->withoutOverlapping();
+        $schedule->command('bundle-courses:log-reminders')->everyFifteenMinutes()->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(prepend: [
@@ -34,6 +37,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
             'merchant_status' => \App\Http\Middleware\CheckMerchantStatus::class,
             'own_merchant' => \App\Http\Middleware\EnsureUserOwnsMerchant::class,
+            'retail_ops' => \App\Http\Middleware\EnsureRetailModuleActive::class,
+            'retail_role' => \App\Http\Middleware\EnsureRetailStaffRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

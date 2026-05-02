@@ -52,7 +52,7 @@ class CommerceCatalogController extends Controller
         abort_if($bundle->status !== 'published', 404);
 
         return response()->json([
-            'bundle' => BundleResource::make($bundle->loadMissing(['merchant', 'items'])),
+            'bundle' => BundleResource::make($bundle->loadMissing(['merchant', 'items', 'courseModules.lessons.assets', 'courseModules.lessons.liveSession', 'cohorts'])),
         ]);
     }
 

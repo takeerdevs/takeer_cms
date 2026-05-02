@@ -19,13 +19,7 @@ class PhoneService
     {
         $phoneUtil = PhoneNumberUtil::getInstance();
 
-        // 1. Resolve ISO alpha2 code
-        $regionCode = 'TZ'; // Standard fallback
-        if ($country instanceof Country) {
-            $regionCode = strtoupper($country->iso_alpha2);
-        } elseif (is_string($country) && strlen($country) === 2) {
-            $regionCode = strtoupper($country);
-        }
+        $regionCode = self::regionCode($country);
 
         try {
             // 2. Parse number in the context of the guessed region
@@ -46,5 +40,57 @@ class PhoneService
         }
 
         return '';
+    }
+
+    /**
+     * Return common persisted forms for matching older local-format records.
+     */
+    public static function variantsForLookup(string $phone, $country = null): array
+    {
+        $phoneUtil = PhoneNumberUtil::getInstance();
+        $regionCode = self::regionCode($country);
+        $digits = preg_replace('/\D+/', '', $phone);
+        $variants = array_filter([$phone, $digits]);
+
+        $formatted = self::formatToE164($phone, $country);
+        if ($formatted !== '') {
+            $variants[] = $formatted;
+            $variants[] = ltrim($formatted, '+');
+        }
+
+        try {
+            $numberProto = $phoneUtil->parse($phone, $regionCode);
+            if ($phoneUtil->isValidNumber($numberProto)) {
+                $e164 = $phoneUtil->format($numberProto, PhoneNumberFormat::E164);
+                $national = preg_replace('/\D+/', '', $phoneUtil->format($numberProto, PhoneNumberFormat::NATIONAL));
+                $significant = $phoneUtil->getNationalSignificantNumber($numberProto);
+
+                $variants[] = $e164;
+                $variants[] = ltrim($e164, '+');
+                $variants[] = $national;
+                $variants[] = $significant;
+
+                if ($significant !== '' && ! str_starts_with($significant, '0')) {
+                    $variants[] = '0' . $significant;
+                }
+            }
+        } catch (NumberParseException $e) {
+            // Keep the simple variants above.
+        }
+
+        return array_values(array_unique(array_filter($variants)));
+    }
+
+    private static function regionCode($country): string
+    {
+        if ($country instanceof Country) {
+            return strtoupper($country->iso_alpha2);
+        }
+
+        if (is_string($country) && strlen($country) === 2) {
+            return strtoupper($country);
+        }
+
+        return 'TZ';
     }
 }

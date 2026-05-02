@@ -2046,11 +2046,18 @@ class ExchangeRateHistorySeeder extends Seeder
         ];
 
         foreach ($exchangeRateHistoryData as $data) {
-            // Ensure the $fillable array in your App\Models\ExchangeRateHistory.php
-            // includes all fields being inserted here for ::create() to work.
-            // Fields: currency_code, rate, effective_date, is_manual
-            // If 'id' is included, ensure it's fillable or use updateOrCreate/forceCreate.
-            ExchangeRateHistory::create($data);
+            ExchangeRateHistory::updateOrCreate(
+                [
+                    'base_currency_code' => $data['base_currency_code'] ?? 'USD',
+                    'currency_code' => $data['currency_code'],
+                    'effective_date' => $data['effective_date'],
+                ],
+                [
+                    'rate' => $data['rate'],
+                    'is_manual' => $data['is_manual'],
+                    'source' => $data['source'] ?? 'seed',
+                ]
+            );
         }
     }
 }

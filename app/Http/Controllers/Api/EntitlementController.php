@@ -14,6 +14,7 @@ use App\Models\ContentReport;
 use App\Models\Entitlement;
 use App\Models\Post;
 use App\Models\Product;
+use App\Models\ServiceRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\Order;
 use App\Services\EntitlementService;
@@ -79,7 +80,7 @@ class EntitlementController extends Controller
                 'item' => match ($entitlement->item_type) {
                     'product' => $resolved ? ProductResource::make($resolved->loadMissing(['attributes', 'images', 'merchant']))->resolve($request) : null,
                     'content_item' => $resolved ? ContentItemResource::make($resolved->loadMissing('merchant'))->resolve($request) : null,
-                    'bundle' => $resolved ? BundleResource::make($resolved->loadMissing(['merchant', 'items']))->resolve($request) : null,
+                    'bundle' => $resolved ? BundleResource::make($resolved->loadMissing(['merchant', 'items', 'courseModules.lessons.assets', 'courseModules.lessons.liveSession', 'cohorts']))->resolve($request) : null,
                     'subscription_plan' => $resolved ? SubscriptionPlanResource::make($resolved->loadMissing(['merchant', 'items']))->resolve($request) : null,
                     'post' => $resolved ? PostResource::make($resolved->loadMissing([
                         'merchant.user',
@@ -99,30 +100,9 @@ class EntitlementController extends Controller
                     ]))->resolve($request) : null,
                     default => null,
                 },
-                'order_details' => ($entitlement->source_type === 'order' && $entitlement->item_type === 'product' && $resolved instanceof Product && $resolved->type === 'physical') ? (function() use ($entitlement) {
-                    $order = Order::with('delivery.shippingZone')->find($entitlement->source_id);
-                    if (!$order) return null;
-                    return [
-                        'id' => $order->id,
-                        'public_id' => $order->public_id,
-                        'payment_status' => $order->payment_status,
-                        'shipping_fee' => $order->shipping_fee,
-                        'total_paid' => $order->total_paid,
-                        'is_inquiry' => (bool) $order->is_inquiry,
-                        'inquiry_status' => $order->inquiry_status,
-                        'delivery' => $order->delivery ? [
-                            'status' => $order->delivery->delivery_status,
-                            // Prefer direct delivery_type field, fall back to zone type
-                            'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
-                            'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
-                            'pickup_pin' => $order->delivery->pickup_pin,
-                            'buyer_release_pin' => $order->delivery->buyer_release_pin,
-                            'bus_company' => $order->delivery->bus_company,
-                            'waybill_tracking_number' => $order->delivery->waybill_tracking_number,
-                            'waybill_photo_url' => $order->delivery->waybill_photo_url,
-                        ] : null,
-                    ];
-                })() : null,
+                'order_details' => ($entitlement->source_type === 'order' && $entitlement->item_type === 'product' && $resolved instanceof Product)
+                    ? $this->buildProductOrderDetails((int) $entitlement->source_id, $resolved)
+                    : null,
             ];
         });
 
@@ -131,7 +111,7 @@ class EntitlementController extends Controller
             $inquiriesQuery = Order::with(['merchant', 'product'])
                 ->where('buyer_id', $request->user()->id)
                 ->where('is_inquiry', true)
-                ->whereNotIn('payment_status', ['resolved_merchant_paid', 'resolved_buyer_refunded']);
+                ->whereNotIn('payment_status', ['resolved_buyer_refunded']);
             
             if ($days > 0) {
                 $inquiriesQuery->where('created_at', '>=', now()->subDays($days));
@@ -297,6 +277,68 @@ class EntitlementController extends Controller
         }
 
         return 'post_content';
+    }
+
+    private function buildProductOrderDetails(int $orderId, Product $product): ?array
+    {
+        $order = Order::with('delivery.shippingZone')->find($orderId);
+        if (!$order) {
+            return null;
+        }
+
+        $details = [
+            'id' => $order->id,
+            'public_id' => $order->public_id,
+            'payment_status' => $order->payment_status,
+            'shipping_fee' => $order->shipping_fee,
+            'total_paid' => $order->total_paid,
+            'is_inquiry' => (bool) $order->is_inquiry,
+            'inquiry_status' => $order->inquiry_status,
+            'delivery' => $order->delivery ? [
+                'status' => $order->delivery->delivery_status,
+                'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
+                'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
+                'pickup_pin' => $order->delivery->pickup_pin,
+                'buyer_release_pin' => $order->delivery->buyer_release_pin,
+                'bus_company' => $order->delivery->bus_company,
+                'waybill_tracking_number' => $order->delivery->waybill_tracking_number,
+                'waybill_photo_url' => $order->delivery->waybill_photo_url,
+            ] : null,
+        ];
+
+        if ($product->type === 'service') {
+            $serviceRequest = ServiceRequest::query()
+                ->where('payment_order_id', $order->id)
+                ->first();
+
+            $details['service_request'] = $serviceRequest ? [
+                'id' => $serviceRequest->id,
+                'public_id' => $serviceRequest->public_id,
+                'request_type' => $serviceRequest->request_type,
+                'status' => $serviceRequest->status,
+                'payment_status' => $serviceRequest->payment_status,
+                'delivery_status' => $serviceRequest->delivery_status,
+                'delivered_at' => $serviceRequest->delivered_at?->toISOString(),
+                'customer_confirmed_at' => $serviceRequest->customer_confirmed_at?->toISOString(),
+                'disputed_at' => $serviceRequest->disputed_at?->toISOString(),
+                'auto_confirm_after' => $serviceRequest->auto_confirm_after?->toISOString(),
+                'preferred_date' => $serviceRequest->preferred_date?->toDateString(),
+                'preferred_time' => $serviceRequest->preferred_time,
+                'scheduled_at' => $serviceRequest->scheduled_at?->toISOString(),
+                'scheduled_ends_at' => $serviceRequest->scheduled_ends_at?->toISOString(),
+                'timezone' => $serviceRequest->timezone,
+                'duration_minutes' => $serviceRequest->duration_minutes,
+                'location_text' => $serviceRequest->location_text,
+                'quoted_amount' => $serviceRequest->quoted_amount !== null ? (float) $serviceRequest->quoted_amount : null,
+                'service_option' => $serviceRequest->metadata['service_option'] ?? null,
+                'service_session' => [
+                    'id' => $serviceRequest->metadata['service_session_id'] ?? null,
+                    'title' => $serviceRequest->metadata['service_session_title'] ?? null,
+                ],
+            ] : null;
+        }
+
+        return $details;
     }
 
     private function buildSearchBlob(Entitlement $entitlement, Product|ContentItem|Bundle|SubscriptionPlan|Post|null $resolved): string

@@ -87,7 +87,7 @@ class User extends Authenticatable
         $merchantIds = $this->merchantProfiles()->pluck('id');
 
         return Order::whereIn('merchant_id', $merchantIds)
-            ->with('product:id,title,type')
+            ->with(['product:id,title,type,url,download_link', 'product.images'])
             ->latest()
             ->take(5)
             ->get()
@@ -96,20 +96,25 @@ class User extends Authenticatable
 
                 return [
                     'id' => $order->id,
+                    'public_id' => $order->public_id,
+                    'source' => $order->source,
                     'amount' => (float) $order->total_paid,
                     'status' => $order->payment_status,
                     'created_at' => $order->created_at?->toISOString(),
                     'display_title' => $display['title'],
                     'display_kind' => $display['kind'],
                     'display_icon' => $display['icon'],
+                    'display_image' => $display['image'],
                 ];
             });
     }
 
-    private function resolveOrderDisplay(Order $order): array
+    public function resolveOrderDisplay(Order $order): array
     {
-        if ($order->purchasable_type === 'product' && $order->product) {
-            $productType = $order->product->type;
+        // Try direct product relationship first (common for POS orders)
+        if ($order->product || ($order->purchasable_type === 'product' && $order->product)) {
+            $product = $order->product;
+            $productType = $product->type;
             $kind = match ($productType) {
                 'physical' => 'physical_product',
                 'service' => 'service_booking',
@@ -117,13 +122,14 @@ class User extends Authenticatable
             };
 
             return [
-                'title' => $order->product->title ?: 'Untitled product',
+                'title' => $product->title ?: 'Untitled product',
                 'kind' => $kind,
                 'icon' => match ($kind) {
                     'physical_product' => 'shopping_bag',
                     'service_booking' => 'calendar_clock',
                     default => 'download',
                 },
+                'image' => $product->image_url,
             ];
         }
 
@@ -133,6 +139,7 @@ class User extends Authenticatable
                 'title' => $post?->title ?: 'Post content',
                 'kind' => 'post_content',
                 'icon' => 'book_open',
+                'image' => $post?->cover_image_url,
             ];
         }
 
@@ -142,6 +149,7 @@ class User extends Authenticatable
                 'title' => $content?->title ?: 'Post content',
                 'kind' => 'post_content',
                 'icon' => 'book_open',
+                'image' => $content?->cover_image_url,
             ];
         }
 
@@ -151,6 +159,7 @@ class User extends Authenticatable
                 'title' => $bundle?->title ?: 'Post content',
                 'kind' => 'post_content',
                 'icon' => 'boxes',
+                'image' => $bundle?->cover_image_url,
             ];
         }
 
@@ -160,6 +169,7 @@ class User extends Authenticatable
                 'title' => $plan?->name ?: 'Post content',
                 'kind' => 'post_content',
                 'icon' => 'crown',
+                'image' => null,
             ];
         }
 
@@ -167,6 +177,7 @@ class User extends Authenticatable
             'title' => $order->product?->title ?: 'Order item',
             'kind' => 'post_content',
             'icon' => 'book_open',
+            'image' => $order->product?->image_url,
         ];
     }
 
@@ -235,6 +246,16 @@ class User extends Authenticatable
         return $this->hasMany(Entitlement::class);
     }
 
+    public function cohortEnrollments(): HasMany
+    {
+        return $this->hasMany(BundleCohortEnrollment::class);
+    }
+
+    public function liveSessionAttendances(): HasMany
+    {
+        return $this->hasMany(BundleLiveSessionAttendance::class);
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
     public function isMerchant(): bool
@@ -260,5 +281,12 @@ class User extends Authenticatable
     public function addresses(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(UserAddress::class);
+    }
+
+    public function staffProfile(int $merchantId)
+    {
+        return \App\Models\MerchantStaff::where('user_id', $this->id)
+            ->where('merchant_id', $merchantId)
+            ->first();
     }
 }

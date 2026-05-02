@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             CountrySeeder::class,
             ExchangeRateHistorySeeder::class,
             CatalogDemoSeeder::class,
+            ServiceCategorySeeder::class,
         ]);
     }
 }

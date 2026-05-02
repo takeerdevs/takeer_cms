@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 
 export default function ContentItemDetail({ contentItem, hasAccess, previewBody }) {
     const [secureBody, setSecureBody] = useState(null);
+    const [secureFileUrl, setSecureFileUrl] = useState(null);
     const [loadingBody, setLoadingBody] = useState(false);
     const merchant = contentItem?.merchant || {};
     const checkoutItem = {
@@ -33,6 +34,7 @@ export default function ContentItemDetail({ contentItem, hasAccess, previewBody 
 
                 if (active) {
                     setSecureBody(bodyRes.data?.body || '');
+                    setSecureFileUrl(bodyRes.data?.file_url || null);
                 }
             } catch (error) {
                 if (active) {
@@ -100,13 +102,29 @@ export default function ContentItemDetail({ contentItem, hasAccess, previewBody 
                                         <p className="text-sm text-muted-foreground">Opening secure content...</p>
                                     </div>
                                 ) : (
-                                    contentItem.format === 'editorjs' ? (
-                                        <EditorJsRenderer data={secureBody} />
-                                    ) : contentItem.format === 'html' ? (
-                                        <div className="leading-8" dangerouslySetInnerHTML={{ __html: sanitizeHtml(secureBody || '') }} />
-                                    ) : (
-                                        <div className="whitespace-pre-wrap leading-8">{secureBody || ''}</div>
-                                    )
+                                    <>
+                                        {secureFileUrl && (
+                                            <div className="mb-5 rounded-3xl border border-brand-200 bg-brand-50/60 p-5">
+                                                <p className="text-sm font-black text-brand-900">Lesson file is ready</p>
+                                                <p className="mt-1 text-sm text-brand-800/75">Open the file using the secure link below.</p>
+                                                <a
+                                                    href={secureFileUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="mt-4 inline-flex h-11 items-center justify-center rounded-2xl bg-brand-600 px-5 text-sm font-black text-white"
+                                                >
+                                                    Open lesson file
+                                                </a>
+                                            </div>
+                                        )}
+                                        {contentItem.format === 'editorjs' ? (
+                                            <EditorJsRenderer data={secureBody} />
+                                        ) : contentItem.format === 'html' ? (
+                                            <div className="leading-8" dangerouslySetInnerHTML={{ __html: sanitizeHtml(secureBody || '') }} />
+                                        ) : (
+                                            <div className="whitespace-pre-wrap leading-8">{secureBody || ''}</div>
+                                        )}
+                                    </>
                                 )
                             ) : (
                                 <>

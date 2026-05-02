@@ -20,7 +20,8 @@ class ChatController extends Controller
     {
         // Security: only buyer or merchant can view chat
         $userId = $request->user()->id;
-        if ($order->buyer_id !== $userId && $order->product->merchant_id !== $userId && $request->user()->role !== 'admin') {
+        $merchantUserId = $order->merchant?->user_id ?? $order->product?->merchant?->user_id;
+        if ($order->buyer_id !== $userId && $merchantUserId !== $userId && $request->user()->role !== 'admin') {
             return response()->json(['message' => 'Unauthorized access to chat.'], 403);
         }
 
@@ -38,7 +39,8 @@ class ChatController extends Controller
 
     public function __construct(
         private readonly \App\Payments\GatewayRegistry $gatewayRegistry,
-    ) {}
+    ) {
+    }
 
     /**
      * Send a new message inside the Safe-Chat thread
@@ -56,12 +58,13 @@ class ChatController extends Controller
         $userId = $request->user()->id;
 
         // Security check
-        if ($order->buyer_id !== $userId && $order->product->merchant_id !== $userId) {
+        $merchantUserId = $order->merchant?->user_id ?? $order->product?->merchant?->user_id;
+        if ($order->buyer_id !== $userId && $merchantUserId !== $userId) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Determine receiver securely based strictly on context
-        $receiverId = ($validated['acting_as'] === 'merchant') ? $order->buyer_id : $order->product->merchant->user_id ?? $order->product->merchant_id;
+        $receiverId = ($validated['acting_as'] === 'merchant') ? $order->buyer_id : $merchantUserId;
 
         $payload = $validated['payload'] ?? [];
         $payload['acting_as'] = $validated['acting_as'];
@@ -78,11 +81,11 @@ class ChatController extends Controller
 
         if (($validated['type'] ?? 'text') === 'action') {
             $actionType = $validated['payload']['action_type'] ?? null;
-            
+
             if ($actionType === 'discount') {
                 $mode = $validated['payload']['mode'] ?? 'set';
-                $amount = (float)($validated['payload']['amount'] ?? 0);
-                
+                $amount = (float) ($validated['payload']['amount'] ?? 0);
+
                 if ($mode === 'add') {
                     $order->discount_amount = ($order->discount_amount ?? 0) + $amount;
                 } elseif ($mode === 'deduct') {
@@ -92,7 +95,7 @@ class ChatController extends Controller
                 } else {
                     $order->discount_amount = $amount;
                 }
-                
+
                 $order->total_paid = $this->calculateTotal($order);
                 $order->save();
             } elseif ($actionType === 'quantity') {
@@ -114,23 +117,33 @@ class ChatController extends Controller
                 if ($order->dispute) {
                     $order->dispute->update(['status' => 'resolved']);
                 }
-                $order->payment_status = 'escrow_locked'; 
+                $order->payment_status = 'escrow_locked';
                 $order->save();
             } elseif ($actionType === 'complaint_appealed') {
                 if ($order->dispute) {
                     $order->dispute->update(['status' => 'escalated']);
                 }
             } elseif ($actionType === 'review') {
-                \App\Models\ProductReview::create([
-                    'order_id' => $order->id,
-                    'product_id' => $order->product_id,
-                    'user_id' => $userId,
-                    'rating' => $validated['payload']['stars'] ?? 5,
-                    'comment' => $validated['payload']['comment'] ?? ''
-                ]);
+                // Prevent duplicate reviews for the same order
+                $exists = \App\Models\ProductReview::where('order_id', $order->id)->exists();
+                if (!$exists) {
+                    \App\Models\ProductReview::create([
+                        'order_id' => $order->id,
+                        'product_id' => $order->product_id,
+                        'user_id' => $userId,
+                        'rating' => $validated['payload']['stars'] ?? 5,
+                        'comment' => $validated['payload']['comment'] ?? ''
+                    ]);
+                }
             } elseif ($actionType === 'shipping_proof') {
                 $order->merchant_dispatch_video_url = $validated['payload']['mediaUrl'] ?? null;
                 $order->save();
+            } elseif ($actionType === 'unboxing_video') {
+                if ($order->delivery) {
+                    $order->delivery->update([
+                        'buyer_unboxing_video_url' => $validated['payload']['mediaUrl'] ?? null
+                    ]);
+                }
             } elseif ($actionType === 'suggest_product') {
                 // No model mutation needed, payload carries product info
             } elseif ($actionType === 'add_to_order') {
@@ -144,7 +157,7 @@ class ChatController extends Controller
                     } else {
                         $extra = $order->extra_items ?? [];
                         $exists = false;
-                        
+
                         foreach ($extra as &$existing) {
                             $existingKey = isset($existing['variant_id']) ? "v-{$existing['variant_id']}" : "p-{$existing['id']}";
                             if ($existingKey === $itemKey) {
@@ -173,8 +186,8 @@ class ChatController extends Controller
                 if ($order->payment_status !== 'paid') {
                     $itemId = $validated['payload']['id'] ?? null;
                     $variantId = $validated['payload']['variant_id'] ?? null;
-                    $isMain = (int)$order->product_id === (int)$itemId && (!$variantId || (int)$order->variant_id === (int)$variantId);
-                    
+                    $isMain = (int) $order->product_id === (int) $itemId && (!$variantId || (int) $order->variant_id === (int) $variantId);
+
                     if ($isMain) {
                         $extra = $order->extra_items ?? [];
                         if (!empty($extra)) {
@@ -195,9 +208,10 @@ class ChatController extends Controller
                     } else {
                         // Remove from extra items
                         $extra = $order->extra_items ?? [];
-                        $order->extra_items = array_values(array_filter($extra, function($e) use ($itemId, $variantId) {
-                            if ($variantId) return (int)($e['variant_id'] ?? 0) !== (int)$variantId;
-                            return (int)$e['id'] !== (int)$itemId;
+                        $order->extra_items = array_values(array_filter($extra, function ($e) use ($itemId, $variantId) {
+                            if ($variantId)
+                                return (int) ($e['variant_id'] ?? 0) !== (int) $variantId;
+                            return (int) $e['id'] !== (int) $itemId;
                         }));
                         $order->total_paid = $this->calculateTotal($order);
                         $order->save();
@@ -207,17 +221,18 @@ class ChatController extends Controller
                 if ($order->payment_status !== 'paid') {
                     $itemId = $validated['payload']['id'] ?? null;
                     $variantId = $validated['payload']['variant_id'] ?? null;
-                    $newQty = (int)($validated['payload']['quantity'] ?? 1);
-                    if ($newQty < 1) $newQty = 1;
+                    $newQty = (int) ($validated['payload']['quantity'] ?? 1);
+                    if ($newQty < 1)
+                        $newQty = 1;
 
-                    $isMain = (int)$order->product_id === (int)$itemId && (!$variantId || (int)$order->variant_id === (int)$variantId);
-                    
+                    $isMain = (int) $order->product_id === (int) $itemId && (!$variantId || (int) $order->variant_id === (int) $variantId);
+
                     if ($isMain) {
                         $order->quantity = $newQty;
                     } else {
                         $extra = $order->extra_items ?? [];
                         foreach ($extra as &$e) {
-                            $itemMatch = (int)$e['id'] === (int)$itemId && (!$variantId || (int)($e['variant_id'] ?? 0) === (int)$variantId);
+                            $itemMatch = (int) $e['id'] === (int) $itemId && (!$variantId || (int) ($e['variant_id'] ?? 0) === (int) $variantId);
                             if ($itemMatch) {
                                 $e['quantity'] = $newQty;
                                 break;
@@ -244,9 +259,9 @@ class ChatController extends Controller
                         $payload = $request->input('payload', []);
                         $deliveryType = $payload['delivery_type'] ?? 'shipping';
                         $zoneId = $payload['delivery_zone_id'] ?? null;
-                        $shippingFee = (float)($payload['shipping_fee'] ?? 0);
-                        
-                        $order->shipping_fee = $shippingFee;
+                        $shippingFee = (float) ($payload['shipping_fee'] ?? 0);
+
+                        $order->shipping_fee = ($deliveryType === 'self_pickup') ? 0 : $shippingFee;
                         $order->total_paid = $this->calculateTotal($order);
                         $order->save();
 
@@ -257,7 +272,12 @@ class ChatController extends Controller
                         $delivery->latitude = $payload['latitude'] ?? $delivery->latitude;
                         $delivery->longitude = $payload['longitude'] ?? $delivery->longitude;
                         $delivery->shipping_hotspot_id = $payload['shipping_hotspot_id'] ?? $delivery->shipping_hotspot_id;
-                        
+
+                        // Generate pickup PIN if customer chose self_pickup and one doesn't exist yet
+                        if ($deliveryType === 'self_pickup' && !$delivery->pickup_pin) {
+                            $delivery->pickup_pin = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+                        }
+
                         if ($delivery->delivery_status === 'inquiry') {
                             $delivery->delivery_status = ($deliveryType === 'self_pickup') ? 'awaiting_boda' : 'inquiry';
                         }
@@ -277,14 +297,14 @@ class ChatController extends Controller
 
         return response()->json([
             'message' => $message,
-            'order' => $order->fresh()->load(['product', 'merchant.locations', 'delivery', 'dispute'])
+            'order' => $order->fresh()->load(['product', 'merchant.locations', 'delivery', 'dispute', 'review'])
         ], 201);
     }
 
     private function triggerPaymentPush(Request $request, Order $order, string $paymentPhone): Order
     {
         if ($order->payment_status !== 'pending') {
-            throw new \Exception('Malipo tayari yameashiriwa au kukamilishwa.');
+            throw new \Exception('Malipo yamekamilishwa.');
         }
 
         // 1. Precise recalculation to avoid discrepancies
@@ -295,7 +315,7 @@ class ChatController extends Controller
         try {
             $gateway = $this->gatewayRegistry->resolve($request, $paymentPhone);
             $countryCode = $this->gatewayRegistry->resolveCountry($request, $paymentPhone);
-            
+
             $order->payment_gateway = $gateway->getName();
             $order->country_code = $countryCode;
             $order->save();
@@ -306,34 +326,37 @@ class ChatController extends Controller
         // 3. Trigger Gateway Payment
         try {
             // SIMULATION: Auto-approve payment for testing
-            $isPhysical = $order->product?->isPhysical();
+            $isPhysical = $order->requiresPhysicalFulfillment();
             $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : 'resolved_merchant_paid';
-            
+
             $order->update(['payment_status' => $targetStatus]);
-            
+
             if (!$isPhysical) {
                 app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
             }
 
             // Log TRA-ready transaction simulation
+            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
             \App\Models\Transaction::create([
                 'user_id' => $order->buyer_id,
                 'order_id' => $order->id,
                 'type' => 'order_revenue',
+                ...$fee['snapshot'],
                 'gross_amount' => $order->total_paid,
-                'net_amount' => $order->total_paid * 0.95,
-                'tax_amount' => ($order->total_paid * 0.05) * 0.18,
+                'fee_amount' => $fee['fee_amount'],
+                'net_amount' => $fee['net_amount'],
+                'tax_amount' => $fee['tax_amount'],
                 'reference' => 'SIM-CHAT-' . strtoupper(\Illuminate\Support\Str::random(10)),
             ]);
 
             // Freeze funds in merchant's wallet simulation
-            $merchantUser = $order->merchant->user ?? $order->product->merchant->user ?? null;
+            $merchantUser = $order->merchant->user ?? $order->product?->merchant?->user ?? null;
             if ($merchantUser) {
                 $wallet = $merchantUser->wallet()->firstOrCreate(
                     ['user_id' => $merchantUser->id],
                     ['balance' => 0, 'frozen_balance' => 0]
                 );
-                
+
                 if ($isPhysical) {
                     $wallet->increment('frozen_balance', $order->total_paid);
                 } else {
@@ -341,7 +364,7 @@ class ChatController extends Controller
                 }
             }
 
-            return $order->fresh()->load(['product', 'merchant.locations', 'delivery', 'dispute']);
+            return $order->fresh()->load(['product', 'merchant.locations', 'delivery', 'dispute', 'review']);
 
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('ChatController@triggerPaymentPush error', [
@@ -359,7 +382,8 @@ class ChatController extends Controller
     public function merchantProducts(Request $request, Order $order): JsonResponse
     {
         $userId = $request->user()->id;
-        if ($order->merchant_id !== $userId && $order->product->merchant_id !== $userId && $request->user()->role !== 'admin') {
+        $merchantUserId = $order->merchant?->user_id ?? $order->product?->merchant?->user_id;
+        if ($merchantUserId !== $userId && $request->user()->role !== 'admin') {
             // Customer can also browse products for "Bidhaa Zaid"
             if ($order->buyer_id !== $userId) {
                 return response()->json(['message' => 'Unauthorized'], 403);
@@ -367,7 +391,7 @@ class ChatController extends Controller
         }
 
         $search = $request->query('q');
-        $merchantId = $order->merchant_id ?: $order->product->merchant_id;
+        $merchantId = $order->merchant_id ?: $order->product?->merchant_id;
 
         $products = Product::where('merchant_id', $merchantId)
             ->with(['variants', 'images', 'attributes'])
@@ -387,7 +411,7 @@ class ChatController extends Controller
         $baseTotal = ($order->unit_price * $order->quantity);
         $shipping = $order->shipping_fee ?? 0;
         $discount = $order->discount_amount ?? 0;
-        
+
         $total = ($baseTotal + $shipping) - $discount;
 
         if ($order->extra_items) {

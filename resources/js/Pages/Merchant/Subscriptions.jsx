@@ -42,14 +42,8 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
         loadPage();
     }, []);
 
-    const productOptions = useMemo(() => (
-        products.map((product) => ({
-            key: `product-${product.id}`,
-            item_type: 'product',
-            item_id: product.id,
-            label: product.title,
-            meta: product.type,
-        }))
+    const productsById = useMemo(() => (
+        new Map(products.map((product) => [Number(product.id), product]))
     ), [products]);
 
     const contentOptions = useMemo(() => (
@@ -63,16 +57,21 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
     ), [contentItems]);
 
     const bundleOptions = useMemo(() => (
-        bundles.map((bundle) => ({
-            key: `bundle-${bundle.id}`,
-            item_type: 'bundle',
-            item_id: bundle.id,
-            label: bundle.title,
-            meta: `${bundle.items?.length || 0} items`,
-        }))
-    ), [bundles]);
+        bundles
+            .filter((bundle) => !((bundle.items || []).some((item) => {
+                if (item.item_type !== 'product') return false;
+                return productsById.get(Number(item.item_id))?.type === 'physical';
+            })))
+            .map((bundle) => ({
+                key: `bundle-${bundle.id}`,
+                item_type: 'bundle',
+                item_id: bundle.id,
+                label: bundle.title,
+                meta: bundle.is_course ? 'Course bundle' : `${bundle.items?.length || 0} content items`,
+            }))
+    ), [bundles, productsById]);
 
-    const planSelectableItems = useMemo(() => [...productOptions, ...contentOptions, ...bundleOptions], [productOptions, contentOptions, bundleOptions]);
+    const planSelectableItems = useMemo(() => [...contentOptions, ...bundleOptions], [contentOptions, bundleOptions]);
     const sortOptionsByLatest = (options) => (
         [...options].sort((a, b) => Number(b.item_id || 0) - Number(a.item_id || 0))
     );
@@ -116,17 +115,17 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
         setLoading(true);
         try {
             const [productsRes, contentRes, bundleRes, planRes, summaryRes] = await Promise.all([
-                axios.get('/merchant/products/api'),
-                axios.get('/merchant/content-items/api'),
-                axios.get('/merchant/bundles/api'),
-                axios.get('/merchant/subscription-plans/api'),
+                axios.get(`/merchant/${merchantUsername}/products/api`),
+                axios.get(`/merchant/${merchantUsername}/content-items/api`),
+                axios.get(`/merchant/${merchantUsername}/bundles/api`),
+                axios.get(`/merchant/${merchantUsername}/subscription-plans/api`),
                 axios.get(`/merchant/${merchantUsername}/orders/api/commerce-summary`).catch(() => ({ data: null })),
             ]);
 
             setProducts(productsRes.data?.data || []);
             setContentItems(contentRes.data?.data || []);
-            setBundles(bundleRes.data?.data || []);
-            setPlans(planRes.data?.data || []);
+            setBundles(bundleRes.data?.bundles || bundleRes.data?.data || []);
+            setPlans(planRes.data?.plans || planRes.data?.data || []);
             setCommerceSummary(summaryRes.data || null);
         } catch (error) {
             toast.error('Imeshindwa kupakia subscriptions page.');
@@ -179,10 +178,10 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
             };
 
             if (planForm.id) {
-                await axios.put(`/merchant/subscription-plans/${planForm.id}/api`, payload);
+                await axios.put(`/merchant/${merchantUsername}/subscription-plans/${planForm.id}/api`, payload);
                 toast.success('Subscription plan imesasishwa.');
             } else {
-                await axios.post('/merchant/subscription-plans/api', payload);
+                await axios.post(`/merchant/${merchantUsername}/subscription-plans/api`, payload);
                 toast.success('Subscription plan imeundwa.');
             }
 
@@ -199,7 +198,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
         if (!window.confirm('Una uhakika unataka kufuta tier hii?')) return;
 
         try {
-            await axios.delete(`/merchant/subscription-plans/${id}/api`);
+            await axios.delete(`/merchant/${merchantUsername}/subscription-plans/${id}/api`);
             toast.success('Tier imefutwa.');
             if (planForm.id === id) resetForm();
             await loadPage();
@@ -269,7 +268,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                 <Crown className="h-5 w-5 text-emerald-600" />
                                 {planForm.id ? 'Edit Subscription Tier' : 'Create Subscription Tier'}
                             </CardTitle>
-                            <CardDescription>Build recurring access plans with pricing cadence and included items.</CardDescription>
+                            <CardDescription>Build recurring access plans for member-only content, downloads, and course bundles.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid md:grid-cols-2 gap-4">
@@ -352,14 +351,14 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                             <div className="space-y-3">
                                 <div>
                                     <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Included Access</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Showing latest {selectableItemsLimit} items by default. Search to find older ones.</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Subscriptions unlock content items and digital/course bundles. Physical products stay outside subscriptions.</p>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Search Items</label>
                                     <Input
                                         value={planItemSearch}
                                         onChange={(e) => setPlanItemSearch(e.target.value)}
-                                        placeholder="Search products, content, or bundles..."
+                                        placeholder="Search content or course bundles..."
                                     />
                                 </div>
                                 <div className="grid gap-2">

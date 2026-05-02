@@ -4,9 +4,10 @@ import { Head, router } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/Dialog';
-import { ArrowLeft, Eye, ShoppingCart, Pencil, Trash2, Package, Boxes, Loader2, MapPin, Link as LinkIcon, FileText } from 'lucide-react';
+import { ArrowLeft, Eye, ShoppingCart, Pencil, Trash2, Package, Boxes, Loader2, MapPin, Link as LinkIcon, FileText, PlayCircle } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import VideoPlayer from '@/Components/VideoPlayer';
 
 export default function ProductDetails({ merchantUsername, productId }) {
     const [loading, setLoading] = useState(true);
@@ -19,7 +20,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
     const loadProduct = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`/merchant/products/${productId}/api`);
+            const res = await axios.get(`/merchant/${merchantUsername}/products/${productId}/api`);
             const payload = res.data?.data || res.data;
             setProduct(payload || null);
         } catch (error) {
@@ -41,6 +42,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
     );
     const images = product?.images || [];
     const activeImage = images[activeImageIndex] || null;
+    const activeImageIsVideo = (activeImage?.media_type || activeImage?.type) === 'video';
     const activeImageHotspots = activeImage?.hotspots || [];
     const attributeChips = useMemo(() => {
         return (product?.category_attribute_values || [])
@@ -70,13 +72,40 @@ export default function ProductDetails({ merchantUsername, productId }) {
         const rows = [
             product?.attributes?.category ? { label: 'Category', value: product.attributes.category } : null,
             product?.attributes?.sub_category ? { label: 'Subcategory', value: product.attributes.sub_category } : null,
+            product?.attributes?.brand_name ? { label: 'Brand', value: product.attributes.brand_name } : null,
+            product?.attributes?.model_name ? { label: 'Model', value: product.attributes.model_name } : null,
             product?.compare_at_price ? { label: 'Compare Price', value: `TZS ${Number(product.compare_at_price).toLocaleString()}` } : null,
             { label: 'Stock Mode', value: hasVariants ? 'Variant-level stock' : 'Single stock' },
             product?.attributes?.suggested_description ? { label: 'Description', value: product.attributes.suggested_description } : null,
-            product?.url || product?.download_link ? { label: 'Delivery / URL', value: product.url || product.download_link } : null,
+            (product?.type === 'digital' && (product?.url || product?.download_link)) ? { label: 'Delivery / URL', value: product.url || product.download_link } : null,
         ].filter(Boolean);
         return rows;
     }, [product, hasVariants]);
+
+    const stockPerLocation = useMemo(() => {
+        if (!product) return [];
+        const locMap = {};
+
+        // Aggregate from product-level inventories
+        (product.location_inventories || []).forEach(inv => {
+            const locId = inv.merchant_location_id;
+            const locName = inv.location_name || `Location ${locId}`;
+            if (!locMap[locId]) locMap[locId] = { name: locName, quantity: 0 };
+            locMap[locId].quantity += Number(inv.quantity || 0);
+        });
+
+        // Aggregate from variants
+        (product.variants || []).forEach(variant => {
+            (variant.location_inventories || []).forEach(inv => {
+                const locId = inv.merchant_location_id;
+                const locName = inv.location_name || `Location ${locId}`;
+                if (!locMap[locId]) locMap[locId] = { name: locName, quantity: 0 };
+                locMap[locId].quantity += Number(inv.quantity || 0);
+            });
+        });
+
+        return Object.values(locMap);
+    }, [product]);
 
     const handleDelete = async () => {
         if (!product) return;
@@ -84,7 +113,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
 
         setDeleting(true);
         try {
-            await axios.delete(`/merchant/products/${product.id}`);
+            await axios.delete(`/merchant/${merchantUsername}/products/${product.id}`);
             toast.success('Bidhaa imeondolewa.');
             router.visit(`/merchant/${merchantUsername}/products`);
         } catch (error) {
@@ -118,10 +147,12 @@ export default function ProductDetails({ merchantUsername, productId }) {
                         <Button className="rounded-xl bg-brand-600 hover:bg-brand-700 text-white" onClick={() => router.visit(`/merchant/${merchantUsername}/upload?edit=${productId}`)}>
                             <Pencil className="h-4 w-4 mr-1" /> Hariri
                         </Button>
-                        <Button variant="outline" className="rounded-xl text-red-600 hover:text-red-700" onClick={handleDelete} disabled={deleting}>
-                            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
-                            Futa
-                        </Button>
+                        {(Number(product?.purchases_count || 0) === 0) && (
+                            <Button variant="outline" className="rounded-xl text-red-600 hover:text-red-700" onClick={handleDelete} disabled={deleting}>
+                                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                                Futa
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -158,8 +189,8 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                     <StatCard icon={ShoppingCart} label="Purchases" value={Number(product.purchases_count || 0).toLocaleString()} />
                                     <StatCard
                                         icon={Boxes}
-                                        label="Stock"
-                                        value={hasVariants ? totalVariantStock.toLocaleString() : Number(product.inventory_count || 0).toLocaleString()}
+                                        label="Available Stock"
+                                        value={stockPerLocation.reduce((sum, loc) => sum + loc.quantity, 0).toLocaleString()}
                                     />
                                 </div>
 
@@ -205,11 +236,35 @@ export default function ProductDetails({ merchantUsername, productId }) {
                             </CardContent>
                         </Card>
 
+                        {stockPerLocation.length > 0 && (
+                            <Card>
+                                <CardContent className="p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm font-bold">Stock per Location</p>
+                                        <MapPin className="h-4 w-4 text-slate-400" />
+                                    </div>
+                                    <div className="divide-y divide-slate-100">
+                                        {stockPerLocation.map((loc, idx) => (
+                                            <div key={idx} className="py-2.5 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-2 w-2 rounded-full bg-brand-500" />
+                                                    <span className="text-sm font-medium text-slate-700">{loc.name}</span>
+                                                </div>
+                                                <span className={`text-sm font-black ${loc.quantity > 0 ? 'text-slate-900' : 'text-red-500'}`}>
+                                                    {loc.quantity.toLocaleString()}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
                         <Card>
                             <CardContent className="p-4 space-y-3">
-                                <p className="text-sm font-bold">Photos & Hotspots</p>
+                                <p className="text-sm font-bold">Media & Hotspots</p>
                                 {images.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">Hakuna picha zilizowekwa.</p>
+                                    <p className="text-sm text-muted-foreground">Hakuna media zilizowekwa.</p>
                                 ) : (
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                         {images.map((img, idx) => (
@@ -223,7 +278,24 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                                     setImageModalOpen(true);
                                                 }}
                                             >
-                                                <img src={img.image_url} alt={`Product ${idx + 1}`} className="h-full w-full object-cover" />
+                                                {(img.media_type || img.type) === 'video' ? (
+                                                    <>
+                                                        {img.thumbnail_url ? (
+                                                            <img src={img.thumbnail_url} alt={`Product ${idx + 1}`} className="h-full w-full object-cover" />
+                                                        ) : (
+                                                            <div className="h-full w-full bg-slate-900 flex items-center justify-center">
+                                                                <PlayCircle className="h-8 w-8 text-white/70" />
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                            <div className="h-9 w-9 rounded-full bg-black/55 flex items-center justify-center">
+                                                                <PlayCircle className="h-5 w-5 text-white" />
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <img src={img.image_url} alt={`Product ${idx + 1}`} className="h-full w-full object-cover" />
+                                                )}
                                                 {(img.hotspots || []).length > 0 && (
                                                     <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white">
                                                         <MapPin className="h-3 w-3" /> {(img.hotspots || []).length}
@@ -284,8 +356,21 @@ export default function ProductDetails({ merchantUsername, productId }) {
                     ) : (
                         <div className="space-y-3">
                             <div className="relative overflow-hidden rounded-xl border border-slate-200">
-                                <img src={activeImage.image_url} alt={`Product ${activeImageIndex + 1}`} className="w-full max-h-[70vh] object-contain bg-black/5" />
-                                {activeImageHotspots.map((spot) => (
+                                {activeImageIsVideo ? (
+                                    <VideoPlayer
+                                        src={activeImage.image_url || activeImage.url}
+                                        processedUrl={activeImage.processed_url}
+                                        hlsUrl={activeImage.hls_url}
+                                        poster={activeImage.thumbnail_url || undefined}
+                                        controls
+                                        playsInline
+                                        preload="metadata"
+                                        className="w-full max-h-[70vh] object-contain bg-black"
+                                    />
+                                ) : (
+                                    <img src={activeImage.image_url} alt={`Product ${activeImageIndex + 1}`} className="w-full max-h-[70vh] object-contain bg-black/5" />
+                                )}
+                                {!activeImageIsVideo && activeImageHotspots.map((spot) => (
                                     <button
                                         key={spot.id}
                                         type="button"

@@ -13,8 +13,7 @@ class MerchantRegisterRequest extends FormRequest
 
     protected function prepareForValidation()
     {
-        $sessionCountry = session('user_session_country');
-        $region = $sessionCountry['iso_alpha2'] ?? 'TZ';
+        $region = $this->resolveRegion();
 
         if ($this->has('phone_number')) {
             $formatted = \App\Services\PhoneService::formatToE164($this->phone_number, $region);
@@ -28,11 +27,6 @@ class MerchantRegisterRequest extends FormRequest
 
     public function rules(): array
     {
-        $phone = $this->input('phone_number');
-        $exists = \App\Models\User::where('phone_number', $phone)
-            ->where('role', 'merchant')
-            ->exists();
-
         return [
             'phone_number' => ['required', 'string', 'max:20'],
             'otp' => ['required', 'string', 'size:6'],
@@ -40,6 +34,7 @@ class MerchantRegisterRequest extends FormRequest
             'display_name' => ['nullable', 'string', 'max:255'],
             'country_id' => ['nullable', 'exists:countries,id'],
             'currency_id' => ['nullable', 'exists:currencies,id'],
+            'timezone' => ['nullable', 'timezone'],
         ];
     }
 
@@ -51,5 +46,16 @@ class MerchantRegisterRequest extends FormRequest
             'store_name.required' => 'Jina la biashara linahitajika.',
             'display_name.required' => 'Jina la kuonyesha linahitajika.',
         ];
+    }
+
+    private function resolveRegion(): string
+    {
+        if ($this->filled('country_id')) {
+            return \App\Models\Country::whereKey($this->input('country_id'))->value('iso_alpha2') ?: 'TZ';
+        }
+
+        $sessionCountry = session('user_session_country');
+
+        return $sessionCountry['iso_alpha2'] ?? 'TZ';
     }
 }

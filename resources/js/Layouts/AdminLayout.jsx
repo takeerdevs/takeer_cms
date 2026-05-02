@@ -4,19 +4,26 @@ import { Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, ShieldAlert, Users, ArrowDownToLine,
-    Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper, ShieldCheck, Globe
+    Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper, ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell
 } from 'lucide-react';
 
 const adminNav = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
     { name: 'Disputes', href: '/admin/disputes', icon: ShieldAlert },
+    { name: 'Safety Reviews', href: '/admin/trust-safety-reviews', icon: ShieldCheck },
+    { name: 'Notifications', href: '/admin/notifications', icon: Bell },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Merchants', href: '/admin/merchants', icon: Store },
     { name: 'Verifications', href: '/admin/verifications', icon: ShieldCheck },
     { name: 'Content Reports', href: '/admin/content-reports', icon: Flag },
     { name: 'Feed Monitor', href: '/admin/feed', icon: Newspaper },
+    { name: 'Services', href: '/admin/services', icon: Calendar },
+    { name: 'Service Categories', href: '/admin/service-categories', icon: Shapes },
     { name: 'Categories', href: '/admin/categories', icon: Shapes },
     { name: 'Countries', href: '/admin/countries', icon: Globe },
+    { name: 'Platform Wallet', href: '/admin/platform-wallet', icon: Wallet },
+    { name: 'Pricing & Fees', href: '/admin/fee-policies', icon: Percent },
+    { name: 'Subscriptions', href: '/admin/subscriptions', icon: Crown },
     { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowDownToLine },
     { name: 'AI Settings', href: '/admin/settings', icon: Settings2 },
 ];

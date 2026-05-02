@@ -58,7 +58,7 @@ export default function ProfileSwitcher({ className, onCreateBusiness }) {
                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className="absolute top-full right-0 mt-2 w-72 bg-card/95 backdrop-blur-xl border border-border/50 rounded-[2rem] shadow-2xl overflow-hidden p-2"
+                            className="fixed left-4 right-4 top-28 bg-card/95 backdrop-blur-xl border border-border/50 rounded-[2rem] shadow-2xl overflow-hidden p-2 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72"
                         >
                             <div className="p-3 border-b border-border/50">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-2">Badili Akaunti</p>

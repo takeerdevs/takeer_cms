@@ -10,11 +10,38 @@ use Illuminate\Http\Request;
 
 class MerchantLocationController extends Controller
 {
+    private function normalizeLocationType(?string $type): ?string
+    {
+        if (!$type) return null;
+
+        return match (strtolower(trim($type))) {
+            'shop' => 'SHOP',
+            'store' => 'STORE',
+            'warehouse' => 'WAREHOUSE',
+            default => null,
+        };
+    }
+
     private function merchantFromRequest(Request $request): Merchant
     {
-        $user = $request->user();
+        if ($request->attributes->has('active_merchant')) {
+            return $request->attributes->get('active_merchant');
+        }
 
-        $merchant = $user->merchantProfiles()->where('is_default', true)->first()
+        $user = $request->user();
+        $merchantId = $request->input('merchant_id') ?? session('active_merchant_id');
+
+        if ($merchantId) {
+            $merchant = $user->merchantProfiles()
+                ->where('merchants.id', $merchantId)
+                ->first();
+
+            abort_unless($merchant, 403, 'Unauthorized merchant context.');
+
+            return $merchant;
+        }
+
+        $merchant = $user->merchantProfiles()->where('is_active', true)->first()
             ?? $user->merchantProfiles()->first();
 
         if (!$merchant) {
@@ -48,13 +75,29 @@ class MerchantLocationController extends Controller
             'is_primary' => 'boolean',
             'allow_self_pickup' => 'boolean',
             'contact_phone' => 'nullable|string|max:50',
+            'type' => 'nullable|string|in:shop,store,warehouse',
         ]);
+
+        if (array_key_exists('type', $validated)) {
+            $validated['type'] = $this->normalizeLocationType($validated['type']);
+        }
 
         if ($validated['is_primary'] ?? false) {
             MerchantLocation::where('merchant_id', $merchant->id)->update(['is_primary' => false]);
         }
 
         $location = $merchant->locations()->create($validated);
+
+        // Automatically add owner as Manager for this location
+        \App\Models\MerchantStaff::firstOrCreate([
+            'merchant_id' => $merchant->id,
+            'user_id' => $merchant->user_id,
+            'assigned_location_id' => $location->id,
+        ], [
+            'role' => 'MANAGER',
+            'pin_hash' => \Illuminate\Support\Facades\Hash::make('0000'), // Default PIN for owners
+            'is_active' => true,
+        ]);
 
         return response()->json([
             'message' => 'Shop location saved.',
@@ -80,7 +123,12 @@ class MerchantLocationController extends Controller
             'is_primary' => 'boolean',
             'allow_self_pickup' => 'boolean',
             'contact_phone' => 'nullable|string|max:50',
+            'type' => 'nullable|string|in:shop,store,warehouse',
         ]);
+
+        if (array_key_exists('type', $validated)) {
+            $validated['type'] = $this->normalizeLocationType($validated['type']);
+        }
 
         if ($validated['is_primary'] ?? false) {
             MerchantLocation::where('merchant_id', $merchant->id)

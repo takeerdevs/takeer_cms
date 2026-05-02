@@ -10,6 +10,17 @@ class ProductImage extends Model
     protected $fillable = [
         'product_id',
         'image_url',
+        'media_type',
+        'thumbnail_url',
+        'processed_url',
+        'hls_url',
+        'mime',
+        'size',
+        'duration_seconds',
+        'width',
+        'height',
+        'processing_status',
+        'processing_error',
         'order',
         'hotspots',
         'likes_count',
@@ -21,6 +32,10 @@ class ProductImage extends Model
             'hotspots' => 'array',
             'order' => 'integer',
             'likes_count' => 'integer',
+            'size' => 'integer',
+            'duration_seconds' => 'integer',
+            'width' => 'integer',
+            'height' => 'integer',
         ];
     }
 
