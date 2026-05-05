@@ -55,6 +55,11 @@ class StockTransferController extends Controller
             ->whereNull('product_variant_id');
     }
 
+    private function transferQuantity(StockTransfer $transfer): float
+    {
+        return (float) ($transfer->quantity_decimal ?? $transfer->quantity ?? 0);
+    }
+
     private function activeStaffContext(Request $request): ?\App\Models\MerchantStaff
     {
         $merchant = $request->attributes->get('active_merchant');
@@ -83,7 +88,7 @@ class StockTransferController extends Controller
         $staffId = $request->input('staff_id');
         
         $query = $merchant->stockTransfers()
-            ->with(['product', 'variant', 'fromLocation', 'toLocation', 'requestedBy.user', 'dispatchedBy.user', 'receivedBy.user'])
+            ->with(['product.unitType', 'variant', 'fromLocation', 'toLocation', 'requestedBy.user', 'dispatchedBy.user', 'receivedBy.user'])
             ->latest();
 
         if (in_array($staffRole, ['STOREKEEPER', 'CASHIER'], true)) {
@@ -134,9 +139,10 @@ class StockTransferController extends Controller
                     (int) $transfer->product_id,
                     $transfer->product_variant_id ? (int) $transfer->product_variant_id : null
                 )
-                ->value('quantity');
+                ->selectRaw('COALESCE(quantity_decimal, quantity) as available_quantity')
+                ->value('available_quantity');
 
-            $transfer->setAttribute('available_source_quantity', (int) ($available ?? 0));
+            $transfer->setAttribute('available_source_quantity', (float) ($available ?? 0));
             return $transfer;
         });
 
@@ -159,10 +165,11 @@ class StockTransferController extends Controller
             ->get();
 
         foreach ($transfers as $t) {
+            $quantity = $this->transferQuantity($t);
             $events->push([
                 'type' => 'TRANSFER_REQUEST',
                 'at' => optional($t->created_at)->toISOString(),
-                'qty' => (int) $t->quantity,
+                'qty' => $quantity,
                 'from' => $t->fromLocation?->name,
                 'to' => $t->toLocation?->name,
                 'actor' => $t->requestedBy?->user?->name,
@@ -173,7 +180,7 @@ class StockTransferController extends Controller
                 $events->push([
                     'type' => 'TRANSFER_DISPATCHED',
                     'at' => optional($t->dispatched_at)->toISOString(),
-                    'qty' => (int) $t->quantity,
+                    'qty' => $quantity,
                     'from' => $t->fromLocation?->name,
                     'to' => $t->toLocation?->name,
                     'actor' => $t->dispatchedBy?->user?->name,
@@ -185,7 +192,7 @@ class StockTransferController extends Controller
                 $events->push([
                     'type' => 'TRANSFER_RECEIVED',
                     'at' => optional($t->received_at)->toISOString(),
-                    'qty' => (int) $t->quantity,
+                    'qty' => $quantity,
                     'from' => $t->fromLocation?->name,
                     'to' => $t->toLocation?->name,
                     'actor' => $t->receivedBy?->user?->name,
@@ -207,7 +214,7 @@ class StockTransferController extends Controller
             $events->push([
                 'type' => 'POS_SALE',
                 'at' => optional($sale->order?->created_at)->toISOString(),
-                'qty' => (int) $sale->quantity,
+                'qty' => (float) ($sale->quantity_decimal ?? $sale->quantity),
                 'from' => $sale->location?->name,
                 'to' => 'Customer',
                 'actor' => $sale->order?->posStaff?->user?->name,
@@ -313,7 +320,7 @@ class StockTransferController extends Controller
             'product_variant_id' => 'nullable|exists:product_variants,id',
             'from_location_id' => 'required|exists:merchant_locations,id',
             'to_location_id' => 'required|exists:merchant_locations,id|different:from_location_id',
-            'quantity' => 'required|integer|min:1',
+            'quantity' => 'required|numeric|min:0.001',
             'notes' => 'nullable|string',
             'staff_id' => 'nullable|exists:merchant_staffs,id',
         ]);
@@ -352,13 +359,16 @@ class StockTransferController extends Controller
             return response()->json(['message' => 'Source/Destination location does not belong to this merchant.'], 422);
         }
 
+        $requestedQuantity = (float) $validated['quantity'];
+
         $transfer = StockTransfer::create([
             'merchant_id' => $merchant->id,
             'product_id' => $validated['product_id'],
             'product_variant_id' => $validated['product_variant_id'] ?? null,
             'from_location_id' => $validated['from_location_id'],
             'to_location_id' => $validated['to_location_id'],
-            'quantity' => $validated['quantity'],
+            'quantity' => (int) ceil($requestedQuantity),
+            'quantity_decimal' => $requestedQuantity,
             'requested_by_staff_id' => $validated['staff_id'] ?? $staff?->id,
             'status' => 'PENDING',
             'notes' => $validated['notes'] ?? null,
@@ -366,7 +376,7 @@ class StockTransferController extends Controller
 
         return response()->json([
             'message' => 'Stock transfer request created.',
-            'data' => $transfer->load(['product', 'fromLocation', 'toLocation'])
+            'data' => $transfer->load(['product.unitType', 'fromLocation', 'toLocation'])
         ], 201);
     }
 
@@ -411,12 +421,24 @@ class StockTransferController extends Controller
                 )
                 ->first();
 
-            if (!$inventory || $inventory->quantity < $transfer->quantity) {
+            $requestedQuantity = $this->transferQuantity($transfer);
+            $integerQuantity = (int) ceil($requestedQuantity);
+            $availableQuantity = (float) ($inventory?->quantity_decimal ?? $inventory?->quantity ?? 0);
+
+            if (!$inventory || $availableQuantity < $requestedQuantity) {
                 return response()->json(['message' => 'Insufficient stock at the source location.'], 422);
             }
 
-            // Deduct from source
-            $inventory->decrement('quantity', $transfer->quantity);
+            // Deduct from source while keeping the legacy whole-number column as ceil(decimal stock).
+            if ($inventory->quantity_decimal !== null) {
+                $newQuantity = max(0, $availableQuantity - $requestedQuantity);
+                $inventory->update([
+                    'quantity' => (int) ceil($newQuantity),
+                    'quantity_decimal' => $newQuantity,
+                ]);
+            } else {
+                $inventory->decrement('quantity', $integerQuantity);
+            }
 
             $transfer->update([
                 'status' => 'DISPATCHED',
@@ -426,7 +448,7 @@ class StockTransferController extends Controller
 
             return response()->json([
                 'message' => 'Items dispatched. Stock deducted from source.',
-                'data' => $transfer
+                'data' => $transfer->fresh(['product.unitType', 'variant', 'fromLocation', 'toLocation'])
             ]);
         });
     }
@@ -478,10 +500,16 @@ class StockTransferController extends Controller
                     'product_id' => $transfer->product_id,
                     'product_variant_id' => $transfer->product_variant_id,
                     'quantity' => 0,
+                    'quantity_decimal' => 0,
                 ]);
             }
 
-            $inventory->increment('quantity', $transfer->quantity);
+            $requestedQuantity = $this->transferQuantity($transfer);
+            $newQuantity = (float) ($inventory->quantity_decimal ?? $inventory->quantity ?? 0) + $requestedQuantity;
+            $inventory->update([
+                'quantity' => (int) ceil($newQuantity),
+                'quantity_decimal' => $newQuantity,
+            ]);
 
             $transfer->update([
                 'status' => 'RECEIVED',
@@ -507,7 +535,7 @@ class StockTransferController extends Controller
 
             return response()->json([
                 'message' => 'Items received. Stock added to destination.',
-                'data' => $transfer
+                'data' => $transfer->fresh(['product.unitType', 'variant', 'fromLocation', 'toLocation'])
             ]);
         });
     }

@@ -64,7 +64,7 @@ class PosController extends Controller
         }
 
         $productsQuery = Product::where('merchant_id', $merchant->id)
-            ->with(['variants.locationInventories.location', 'attributes.categoryRelation', 'attributes.brand', 'attributes.model', 'categoryAttributeValues.categoryAttribute', 'locationInventories' => function($q) use ($locationId) {
+            ->with(['unitType', 'variants.locationInventories.location', 'attributes.categoryRelation', 'attributes.brand', 'attributes.model', 'categoryAttributeValues.categoryAttribute', 'locationInventories' => function($q) use ($locationId) {
                 if ($locationId) $q->where('merchant_location_id', $locationId);
             }])
             ->withCount(['orders' => function($q) {
@@ -116,7 +116,7 @@ class PosController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.variant_id' => 'nullable|exists:product_variants,id',
-            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.quantity' => 'required|numeric|min:0.001',
             'items.*.unit_price' => 'required|numeric',
             'items.*.source_location_id' => 'nullable|exists:merchant_locations,id',
             'total_amount' => 'required|numeric',
@@ -273,6 +273,10 @@ class PosController extends Controller
             $transferCount = 0;
             foreach ($validated['items'] as $item) {
                 $sourceLocationId = (int) ($item['source_location_id'] ?? $checkoutLocationId);
+                $requestedQuantity = (float) $item['quantity'];
+                $integerQuantity = (int) ceil($requestedQuantity);
+                $product = Product::findOrFail($item['product_id']);
+                $sellableQuantity = max(0.001, (float) ($product->sellable_quantity ?: 1));
 
                 // If source is a different location, create transfer workflow instead of immediate deduction.
                 if ($sourceLocationId !== $checkoutLocationId) {
@@ -283,7 +287,8 @@ class PosController extends Controller
                         'product_variant_id' => $item['variant_id'] ?? null,
                         'from_location_id' => $sourceLocationId,
                         'to_location_id' => $checkoutLocationId,
-                        'quantity' => $item['quantity'],
+                        'quantity' => $integerQuantity,
+                        'quantity_decimal' => $requestedQuantity,
                         'requested_by_staff_id' => $validated['staff_id'],
                         'status' => 'PENDING',
                         'notes' => 'Auto-created from POS checkout request for cross-location fulfillment.',
@@ -297,17 +302,37 @@ class PosController extends Controller
                         !empty($item['variant_id']) ? (int) $item['variant_id'] : null
                     )->first();
 
-                    if (!$inventory || $inventory->quantity < $item['quantity']) {
+                    $availableQuantity = (float) ($inventory?->quantity_decimal ?? $inventory?->quantity ?? 0);
+                    if (!$inventory || $availableQuantity < $requestedQuantity) {
                         throw new \Exception("Insufficient stock for product ID {$item['product_id']} at this location.");
                     }
 
-                    $inventory->decrement('quantity', $item['quantity']);
+                    if ($inventory->quantity_decimal !== null) {
+                        $newQuantity = max(0, $availableQuantity - $requestedQuantity);
+                        $inventory->update([
+                            'quantity' => (int) ceil($newQuantity),
+                            'quantity_decimal' => $newQuantity,
+                        ]);
+                    } else {
+                        $inventory->decrement('quantity', $integerQuantity);
+                    }
 
                     // Global stock reflects physically issued inventory only.
                     if (!empty($item['variant_id'])) {
-                        ProductVariant::whereKey($item['variant_id'])->decrement('inventory_count', $item['quantity']);
+                        $variant = ProductVariant::find($item['variant_id']);
+                        if ($variant) {
+                            $newVariantQuantity = max(0, (float) ($variant->inventory_quantity ?? $variant->inventory_count ?? 0) - $requestedQuantity);
+                            $variant->update([
+                                'inventory_count' => (int) ceil($newVariantQuantity),
+                                'inventory_quantity' => $newVariantQuantity,
+                            ]);
+                        }
                     }
-                    Product::whereKey($item['product_id'])->decrement('inventory_count', $item['quantity']);
+                    $newProductQuantity = max(0, (float) ($product->inventory_quantity ?? $product->inventory_count ?? 0) - $requestedQuantity);
+                    $product->update([
+                        'inventory_count' => (int) ceil($newProductQuantity),
+                        'inventory_quantity' => $newProductQuantity,
+                    ]);
                 }
 
                 // 4. Create POS Sale Item
@@ -316,9 +341,10 @@ class PosController extends Controller
                     'product_id' => $item['product_id'],
                     'product_variant_id' => $item['variant_id'] ?? null,
                     'location_id' => $checkoutLocationId,
-                    'quantity' => $item['quantity'],
+                    'quantity' => (int) ceil((float) $item['quantity']),
+                    'quantity_decimal' => (float) $item['quantity'],
                     'unit_price' => $item['unit_price'],
-                    'price_at_sale' => $item['unit_price'] * $item['quantity'],
+                    'price_at_sale' => $item['unit_price'] * ($requestedQuantity / $sellableQuantity),
                 ]);
             }
 
@@ -370,18 +396,41 @@ class PosController extends Controller
             $items = $order->posItems;
             foreach ($items as $item) {
                 // Restore Location Inventory
-                $this->locationInventoryQuery(
+                $inventory = $this->locationInventoryQuery(
                         (int) $item->location_id,
                         (int) $item->product_id,
                         $item->product_variant_id ? (int) $item->product_variant_id : null
                     )
-                    ->increment('quantity', $item->quantity);
+                    ->first();
+                $restoredQuantity = (float) ($item->quantity_decimal ?? $item->quantity);
+                if ($inventory) {
+                    $newQuantity = (float) ($inventory->quantity_decimal ?? $inventory->quantity ?? 0) + $restoredQuantity;
+                    $inventory->update([
+                        'quantity' => (int) ceil($newQuantity),
+                        'quantity_decimal' => $newQuantity,
+                    ]);
+                }
 
                 // Global Stock Sync (Restore)
+                $restoredQuantity = (float) ($item->quantity_decimal ?? $item->quantity);
                 if ($item->product_variant_id) {
-                    ProductVariant::whereKey($item->product_variant_id)->increment('inventory_count', $item->quantity);
+                    $variant = ProductVariant::find($item->product_variant_id);
+                    if ($variant) {
+                        $newVariantQuantity = (float) ($variant->inventory_quantity ?? $variant->inventory_count ?? 0) + $restoredQuantity;
+                        $variant->update([
+                            'inventory_count' => (int) ceil($newVariantQuantity),
+                            'inventory_quantity' => $newVariantQuantity,
+                        ]);
+                    }
                 }
-                Product::whereKey($item->product_id)->increment('inventory_count', $item->quantity);
+                $product = Product::find($item->product_id);
+                if ($product) {
+                    $newProductQuantity = (float) ($product->inventory_quantity ?? $product->inventory_count ?? 0) + $restoredQuantity;
+                    $product->update([
+                        'inventory_count' => (int) ceil($newProductQuantity),
+                        'inventory_quantity' => $newProductQuantity,
+                    ]);
+                }
             }
 
             $order->update(['payment_status' => 'failed']);

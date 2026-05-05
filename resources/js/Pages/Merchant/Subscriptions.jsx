@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Textarea } from '@/Components/ui/Textarea';
-import { Crown, Loader2, Plus, Save, Trash2, Pencil, Clock3 } from 'lucide-react';
+import { Crown, Loader2, Plus, Save, Trash2, Pencil, Clock3, Users, PauseCircle, XCircle, CheckCircle2, MessageCircle, Send, ExternalLink } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -25,6 +25,14 @@ const initialPlanForm = {
 };
 
 const weekDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const initialCommunityForm = {
+    title: '',
+    excerpt: '',
+    body: '',
+    caption: '',
+    comments_enabled_override: true,
+    reactions_enabled_override: true,
+};
 
 export default function MerchantSubscriptions({ merchantUsername = '', itemPickerDefaultLimit = 5 }) {
     const [loading, setLoading] = useState(true);
@@ -36,6 +44,17 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
     const [planForm, setPlanForm] = useState(initialPlanForm);
     const [planItemSearch, setPlanItemSearch] = useState('');
     const [commerceSummary, setCommerceSummary] = useState(null);
+    const [selectedMembersPlan, setSelectedMembersPlan] = useState(null);
+    const [members, setMembers] = useState([]);
+    const [memberStats, setMemberStats] = useState(null);
+    const [membersLoading, setMembersLoading] = useState(false);
+    const [memberBusyId, setMemberBusyId] = useState(null);
+    const [selectedCommunityPlan, setSelectedCommunityPlan] = useState(null);
+    const [communityPosts, setCommunityPosts] = useState([]);
+    const [communityLoading, setCommunityLoading] = useState(false);
+    const [communitySaving, setCommunitySaving] = useState(false);
+    const [communityDeletingId, setCommunityDeletingId] = useState(null);
+    const [communityForm, setCommunityForm] = useState(initialCommunityForm);
     const selectableItemsLimit = Math.min(20, Math.max(1, Number(itemPickerDefaultLimit) || 5));
 
     useEffect(() => {
@@ -56,6 +75,18 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
         }))
     ), [contentItems]);
 
+    const digitalProductOptions = useMemo(() => (
+        products
+            .filter((product) => product.type === 'digital')
+            .map((product) => ({
+                key: `product-${product.id}`,
+                item_type: 'product',
+                item_id: product.id,
+                label: product.title,
+                meta: `${product.digital_delivery_type || product.delivery_mode || 'digital'} · TZS ${Number(product.price || 0).toLocaleString()}`,
+            }))
+    ), [products]);
+
     const bundleOptions = useMemo(() => (
         bundles
             .filter((bundle) => !((bundle.items || []).some((item) => {
@@ -71,7 +102,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
             }))
     ), [bundles, productsById]);
 
-    const planSelectableItems = useMemo(() => [...contentOptions, ...bundleOptions], [contentOptions, bundleOptions]);
+    const planSelectableItems = useMemo(() => [...contentOptions, ...digitalProductOptions, ...bundleOptions], [contentOptions, digitalProductOptions, bundleOptions]);
     const sortOptionsByLatest = (options) => (
         [...options].sort((a, b) => Number(b.item_id || 0) - Number(a.item_id || 0))
     );
@@ -161,6 +192,21 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
         });
     }
 
+    async function loadMembers(plan) {
+        if (!plan) return;
+        setSelectedMembersPlan(plan);
+        setMembersLoading(true);
+        try {
+            const res = await axios.get(`/merchant/${merchantUsername}/subscription-plans/${plan.id}/members/api`);
+            setMembers(res.data?.members || []);
+            setMemberStats(res.data?.stats || null);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kupakia members.');
+        } finally {
+            setMembersLoading(false);
+        }
+    }
+
     async function savePlan() {
         setSaving(true);
         try {
@@ -207,6 +253,64 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
         }
     }
 
+    async function updateMemberStatus(memberId, status) {
+        if (!selectedMembersPlan) return;
+        setMemberBusyId(`${memberId}:${status}`);
+        try {
+            await axios.patch(`/merchant/${merchantUsername}/subscription-plans/${selectedMembersPlan.id}/members/${memberId}/api`, { status });
+            toast.success('Member access updated.');
+            await loadMembers(selectedMembersPlan);
+            await loadPage();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kusasisha member.');
+        } finally {
+            setMemberBusyId(null);
+        }
+    }
+
+    async function loadCommunityPosts(plan) {
+        if (!plan) return;
+        setSelectedCommunityPlan(plan);
+        setCommunityLoading(true);
+        try {
+            const res = await axios.get(`/merchant/${merchantUsername}/subscription-plans/${plan.id}/community-posts/api`);
+            setCommunityPosts(res.data?.posts || []);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kupakia member posts.');
+        } finally {
+            setCommunityLoading(false);
+        }
+    }
+
+    async function publishCommunityPost() {
+        if (!selectedCommunityPlan) return;
+        setCommunitySaving(true);
+        try {
+            const res = await axios.post(`/merchant/${merchantUsername}/subscription-plans/${selectedCommunityPlan.id}/community-posts/api`, communityForm);
+            setCommunityPosts((current) => [res.data?.post, ...current].filter(Boolean));
+            setCommunityForm(initialCommunityForm);
+            toast.success(res.data?.message || 'Member post published.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kuchapisha member post.');
+        } finally {
+            setCommunitySaving(false);
+        }
+    }
+
+    async function deleteCommunityPost(postId) {
+        if (!selectedCommunityPlan || !postId || !window.confirm('Futa member post hii?')) return;
+        setCommunityDeletingId(postId);
+        try {
+            await axios.delete(`/merchant/${merchantUsername}/subscription-plans/${selectedCommunityPlan.id}/community-posts/${postId}/api`);
+            setCommunityPosts((current) => current.filter((post) => Number(post.id) !== Number(postId)));
+            toast.success('Member post imefutwa.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kufuta member post.');
+        } finally {
+            setCommunityDeletingId(null);
+        }
+    }
+
     function togglePlanItem(option) {
         setPlanForm((current) => {
             const exists = current.items.some((item) => item.item_type === option.item_type && item.item_id === option.item_id);
@@ -248,8 +352,8 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
             <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
                 <Card className="rounded-[24px] border-brand-200/70">
                     <CardHeader>
-                        <CardTitle className="text-lg font-black">Subscriptions Summary</CardTitle>
-                        <CardDescription>{commerceSummary?.date ? `Daily metrics for ${commerceSummary.date}` : 'Useful performance snapshot for subscriptions.'}</CardDescription>
+                        <CardTitle className="text-lg font-black">Creator Club Summary</CardTitle>
+                        <CardDescription>{commerceSummary?.date ? `Daily metrics for ${commerceSummary.date}` : 'Recurring membership access for creator clubs, paid communities, and subscriber-only drops.'}</CardDescription>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
                         {summaryCards.map((item) => (
@@ -266,9 +370,9 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl font-black">
                                 <Crown className="h-5 w-5 text-emerald-600" />
-                                {planForm.id ? 'Edit Subscription Tier' : 'Create Subscription Tier'}
+                                {planForm.id ? 'Edit Creator Club Tier' : 'Create Creator Club Tier'}
                             </CardTitle>
-                            <CardDescription>Build recurring access plans for member-only content, downloads, and course bundles.</CardDescription>
+                            <CardDescription>Build recurring access plans for member-only posts, digital products, live events, downloads, and course bundles.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid md:grid-cols-2 gap-4">
@@ -351,14 +455,14 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                             <div className="space-y-3">
                                 <div>
                                     <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Included Access</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Subscriptions unlock content items and digital/course bundles. Physical products stay outside subscriptions.</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Creator Club tiers unlock posts/articles, digital products, live events, and digital/course bundles. Physical products stay outside memberships.</p>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Search Items</label>
                                     <Input
                                         value={planItemSearch}
                                         onChange={(e) => setPlanItemSearch(e.target.value)}
-                                        placeholder="Search content or course bundles..."
+                                        placeholder="Search content, digital products, or course bundles..."
                                     />
                                 </div>
                                 <div className="grid gap-2">
@@ -423,7 +527,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
                     <Card className="rounded-[24px]">
                         <CardHeader>
-                            <CardTitle className="text-lg font-black">Subscription Ladder</CardTitle>
+                            <CardTitle className="text-lg font-black">Creator Club Ladder</CardTitle>
                             <CardDescription>Your membership and recurring access offers.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
@@ -436,10 +540,18 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-black text-foreground">{item.name}</p>
-                                        <p className="text-xs text-muted-foreground mt-1">{item.status} · {item.billing_interval} every {item.interval_count}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {item.status} · {item.billing_interval} every {item.interval_count} · {Number(item.active_members_count || 0).toLocaleString()} active members
+                                        </p>
                                         <p className="text-xs font-bold uppercase tracking-widest text-brand-700 mt-2">TZS {Number(item.price || 0).toLocaleString()}</p>
                                     </div>
                                     <div className="flex items-center gap-1">
+                                        <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9" onClick={() => loadCommunityPosts(item)}>
+                                            <MessageCircle className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9" onClick={() => loadMembers(item)}>
+                                            <Users className="h-4 w-4" />
+                                        </Button>
                                         <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9" onClick={() => startEditPlan(item)}>
                                             <Pencil className="h-4 w-4" />
                                         </Button>
@@ -452,6 +564,162 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                         </CardContent>
                     </Card>
                 </div>
+
+                {selectedCommunityPlan && (
+                    <Card className="rounded-[24px] border-emerald-200/70">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-lg font-black">
+                                <MessageCircle className="h-5 w-5 text-emerald-600" />
+                                Member Feed: {selectedCommunityPlan.name}
+                            </CardTitle>
+                            <CardDescription>Publish subscriber-only updates, drops, discussions, and long-form notes directly into this membership.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
+                            <div className="rounded-2xl border border-border/70 bg-background p-4 space-y-3">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Title</label>
+                                    <Input value={communityForm.title} onChange={(e) => setCommunityForm({ ...communityForm, title: e.target.value })} placeholder="Mf. Member update ya wiki hii" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Short preview</label>
+                                    <Input value={communityForm.excerpt} onChange={(e) => setCommunityForm({ ...communityForm, excerpt: e.target.value })} placeholder="A quick summary members will see..." />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Post body</label>
+                                    <Textarea rows={7} value={communityForm.body} onChange={(e) => setCommunityForm({ ...communityForm, body: e.target.value })} placeholder="Write the member-only post..." />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Feed caption</label>
+                                    <Textarea rows={3} value={communityForm.caption} onChange={(e) => setCommunityForm({ ...communityForm, caption: e.target.value })} placeholder="Optional short caption for the feed..." />
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    <label className="flex items-center gap-3 rounded-xl border px-3 py-2 text-sm font-bold">
+                                        <input type="checkbox" checked={Boolean(communityForm.comments_enabled_override)} onChange={(e) => setCommunityForm({ ...communityForm, comments_enabled_override: e.target.checked })} />
+                                        Comments
+                                    </label>
+                                    <label className="flex items-center gap-3 rounded-xl border px-3 py-2 text-sm font-bold">
+                                        <input type="checkbox" checked={Boolean(communityForm.reactions_enabled_override)} onChange={(e) => setCommunityForm({ ...communityForm, reactions_enabled_override: e.target.checked })} />
+                                        Reactions
+                                    </label>
+                                </div>
+                                <Button className="w-full rounded-xl bg-emerald-600 text-white hover:bg-emerald-700" onClick={publishCommunityPost} disabled={communitySaving}>
+                                    {communitySaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                                    Publish to members
+                                </Button>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                        {communityPosts.length.toLocaleString()} member posts
+                                    </p>
+                                    {selectedCommunityPlan.slug && (
+                                        <Link href={`/plan/${selectedCommunityPlan.slug}#community`} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black">
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                            View page
+                                        </Link>
+                                    )}
+                                </div>
+                                {communityLoading ? (
+                                    <div className="py-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin" /> Loading member posts...
+                                    </div>
+                                ) : communityPosts.length === 0 ? (
+                                    <EmptyState icon={MessageCircle} title="No member posts yet" body="Publish the first update for this creator club tier." />
+                                ) : (
+                                    <div className="divide-y divide-border rounded-2xl border border-border overflow-hidden">
+                                        {communityPosts.map((post) => (
+                                            <div key={post.id} className="p-4 flex items-start justify-between gap-3">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-sm font-black truncate">{post.title || post.caption || 'Member post'}</p>
+                                                    <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                                                        {post.excerpt || post.body || post.caption || 'Subscriber-only update'}
+                                                    </p>
+                                                    <p className="mt-2 text-[11px] text-muted-foreground">
+                                                        {post.created_at ? new Date(post.created_at).toLocaleString() : ''} · {Number(post.comment_count || 0).toLocaleString()} comments
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Link href={`/p/${post.public_id || post.id}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl hover:bg-accent">
+                                                        <ExternalLink className="h-4 w-4" />
+                                                    </Link>
+                                                    <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9 text-red-600 hover:text-red-700" onClick={() => deleteCommunityPost(post.id)} disabled={communityDeletingId === post.id}>
+                                                        {communityDeletingId === post.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {selectedMembersPlan && (
+                    <Card className="rounded-[24px] border-brand-200/70">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-lg font-black">
+                                <Users className="h-5 w-5 text-brand-600" />
+                                Members: {selectedMembersPlan.name}
+                            </CardTitle>
+                            <CardDescription>Pause, cancel, or reactivate membership access. Access entitlements update with the member status.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                {[
+                                    { label: 'Total', value: memberStats?.total ?? members.length },
+                                    { label: 'Active', value: memberStats?.active ?? 0 },
+                                    { label: 'Paused', value: memberStats?.paused ?? 0 },
+                                    { label: 'Cancelled', value: memberStats?.cancelled ?? 0 },
+                                ].map((stat) => (
+                                    <div key={stat.label} className="rounded-2xl border border-border/70 px-4 py-3">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">{stat.label}</p>
+                                        <p className="mt-2 text-xl font-black">{Number(stat.value || 0).toLocaleString()}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {membersLoading ? (
+                                <div className="py-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Loading members...
+                                </div>
+                            ) : members.length === 0 ? (
+                                <EmptyState icon={Users} title="No members yet" body="Members will appear here after customers subscribe to this tier." />
+                            ) : (
+                                <div className="divide-y divide-border rounded-2xl border border-border overflow-hidden">
+                                    {members.map((member) => (
+                                        <div key={member.id} className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-black truncate">{member.user?.name || 'Member'}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {member.user?.phone_number || member.user?.email || 'No contact'} · <span className="font-bold capitalize">{member.status}</span>
+                                                </p>
+                                                <p className="text-[11px] text-muted-foreground">
+                                                    Period ends: {member.current_period_end ? new Date(member.current_period_end).toLocaleDateString() : 'Not set'}
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <Button variant="outline" size="sm" className="rounded-xl text-emerald-700" onClick={() => updateMemberStatus(member.id, 'active')} disabled={!!memberBusyId}>
+                                                    {memberBusyId === `${member.id}:active` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                                    Active
+                                                </Button>
+                                                <Button variant="outline" size="sm" className="rounded-xl text-amber-700" onClick={() => updateMemberStatus(member.id, 'paused')} disabled={!!memberBusyId}>
+                                                    {memberBusyId === `${member.id}:paused` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PauseCircle className="h-3.5 w-3.5" />}
+                                                    Pause
+                                                </Button>
+                                                <Button variant="outline" size="sm" className="rounded-xl text-red-700" onClick={() => updateMemberStatus(member.id, 'cancelled')} disabled={!!memberBusyId}>
+                                                    {memberBusyId === `${member.id}:cancelled` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </AppLayout>
     );

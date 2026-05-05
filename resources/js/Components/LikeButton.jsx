@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart } from 'lucide-react';
 import axios from 'axios';
@@ -8,6 +8,25 @@ export default function LikeButton({ postId, initialCount = 0, initialLiked = fa
     const [count, setCount] = useState(initialCount);
     const [burst, setBurst] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+
+    useEffect(() => {
+        if (!window.Echo || !postId) return;
+
+        const channel = window.Echo.channel('posts');
+        const listener = (event) => {
+            if (String(event.post_id) !== String(postId)) return;
+            const nextCount = Number(event.like_count ?? event.likes_count);
+            if (Number.isFinite(nextCount)) {
+                setCount(nextCount);
+            }
+        };
+
+        channel.listen('.post.engagement.updated', listener);
+
+        return () => {
+            channel.stopListening('.post.engagement.updated', listener);
+        };
+    }, [postId]);
 
     const toggle = async (e) => {
         if (e) {

@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\PostResource;
 use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\Merchant;
+use App\Models\Post;
+use App\Models\Product;
 use App\Models\SubscriptionPlan;
 use App\Models\SubscriptionPlanItem;
+use App\Models\UserSubscription;
 use App\Services\EntitlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +26,10 @@ class MerchantSubscriptionPlanController extends Controller
 
         $plans = SubscriptionPlan::where('merchant_id', $merchant->id)
             ->with('items')
+            ->withCount([
+                'subscriptions as active_members_count' => fn ($query) => $query->where('status', 'active'),
+                'subscriptions as total_members_count',
+            ])
             ->orderBy('tier')
             ->latest()
             ->get();
@@ -35,6 +43,10 @@ class MerchantSubscriptionPlanController extends Controller
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
 
         $subscriptionPlan->load('items');
+        $subscriptionPlan->loadCount([
+            'subscriptions as active_members_count' => fn ($query) => $query->where('status', 'active'),
+            'subscriptions as total_members_count',
+        ]);
 
         return response()->json(['subscription_plan' => $subscriptionPlan, 'data' => $subscriptionPlan]);
     }
@@ -57,7 +69,7 @@ class MerchantSubscriptionPlanController extends Controller
             'tier' => 'nullable|integer|min:1|max:100',
             'status' => 'nullable|string|in:draft,active,archived',
             'items' => 'nullable|array',
-            'items.*.item_type' => 'required_with:items|string|in:content_item,bundle',
+            'items.*.item_type' => 'required_with:items|string|in:content_item,bundle,product',
             'items.*.item_id' => 'required_with:items|integer|min:1',
             'items.*.unlock_after_days' => 'nullable|integer|min:0|max:3650',
         ]);
@@ -120,7 +132,7 @@ class MerchantSubscriptionPlanController extends Controller
             'tier' => 'nullable|integer|min:1|max:100',
             'status' => 'nullable|string|in:draft,active,archived',
             'items' => 'nullable|array',
-            'items.*.item_type' => 'required_with:items|string|in:content_item,bundle',
+            'items.*.item_type' => 'required_with:items|string|in:content_item,bundle,product',
             'items.*.item_id' => 'required_with:items|integer|min:1',
             'items.*.unlock_after_days' => 'nullable|integer|min:0|max:3650',
         ]);
@@ -172,6 +184,157 @@ class MerchantSubscriptionPlanController extends Controller
         return response()->json(['message' => 'Subscription plan deleted.']);
     }
 
+    public function members(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
+    {
+        $merchant = $this->merchantFromRequest($request);
+        $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
+
+        $members = UserSubscription::query()
+            ->with('user:id,name,email,phone_number')
+            ->where('subscription_plan_id', $subscriptionPlan->id)
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'members' => $members->map(fn (UserSubscription $subscription) => $this->serializeMember($subscription))->values(),
+            'stats' => [
+                'total' => $members->count(),
+                'active' => $members->where('status', 'active')->count(),
+                'paused' => $members->where('status', 'paused')->count(),
+                'cancelled' => $members->whereIn('status', ['cancelled', 'expired'])->count(),
+            ],
+        ]);
+    }
+
+    public function updateMember(Request $request, SubscriptionPlan $subscriptionPlan, UserSubscription $userSubscription, EntitlementService $entitlementService): JsonResponse
+    {
+        $merchant = $this->merchantFromRequest($request);
+        $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
+        abort_unless((int) $userSubscription->subscription_plan_id === (int) $subscriptionPlan->id, 404);
+        abort_unless((int) $userSubscription->merchant_id === (int) $merchant->id, 404);
+
+        $validated = $request->validate([
+            'status' => 'required|string|in:active,paused,cancelled',
+        ]);
+
+        $status = $validated['status'];
+        $updates = [
+            'status' => $status,
+            'ended_at' => null,
+            'cancelled_at' => null,
+        ];
+
+        if ($status === 'cancelled') {
+            $updates['auto_renew'] = false;
+            $updates['cancelled_at'] = now();
+            $updates['ended_at'] = now();
+        }
+
+        $userSubscription->update($updates);
+
+        if ($status === 'active') {
+            $entitlementService->grantForSubscription($userSubscription->fresh());
+        } else {
+            $entitlementService->revokeForSubscription($userSubscription->fresh());
+        }
+
+        return response()->json([
+            'message' => 'Member access updated.',
+            'member' => $this->serializeMember($userSubscription->fresh('user')),
+        ]);
+    }
+
+    public function communityPosts(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
+    {
+        $merchant = $this->merchantFromRequest($request);
+        $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
+
+        $posts = $this->communityPostQuery($subscriptionPlan)
+            ->latest('posts.created_at')
+            ->take(30)
+            ->get();
+
+        return response()->json([
+            'posts' => PostResource::collection($posts)->resolve($request),
+            'count' => $posts->count(),
+        ]);
+    }
+
+    public function storeCommunityPost(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
+    {
+        $merchant = $this->merchantFromRequest($request);
+        $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
+
+        $validated = $request->validate([
+            'title' => ['nullable', 'string', 'max:160'],
+            'excerpt' => ['nullable', 'string', 'max:500'],
+            'body' => ['nullable', 'string', 'max:20000'],
+            'caption' => ['nullable', 'string', 'max:2000'],
+            'comments_enabled_override' => ['nullable', 'boolean'],
+            'reactions_enabled_override' => ['nullable', 'boolean'],
+        ]);
+
+        $hasContent = collect(['title', 'excerpt', 'body', 'caption'])
+            ->contains(fn (string $key) => trim((string) ($validated[$key] ?? '')) !== '');
+        abort_unless($hasContent, 422, 'Write something for members before publishing.');
+
+        $post = DB::transaction(function () use ($merchant, $subscriptionPlan, $validated) {
+            $post = Post::query()->create([
+                'merchant_id' => $merchant->id,
+                'source' => 'member_community',
+                'title' => $validated['title'] ?? null,
+                'excerpt' => $validated['excerpt'] ?? null,
+                'body' => $validated['body'] ?? null,
+                'caption' => $validated['caption'] ?? null,
+                'is_restricted' => true,
+                'restricted_price' => null,
+                'comments_enabled_override' => $validated['comments_enabled_override'] ?? null,
+                'reactions_enabled_override' => $validated['reactions_enabled_override'] ?? null,
+            ]);
+
+            DB::table('post_promotables')->insert([
+                'post_id' => $post->id,
+                'promotable_type' => SubscriptionPlan::class,
+                'promotable_id' => $subscriptionPlan->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return $post;
+        });
+
+        $post = $this->communityPostQuery($subscriptionPlan)
+            ->where('posts.id', $post->id)
+            ->firstOrFail();
+
+        return response()->json([
+            'message' => 'Member post published.',
+            'post' => PostResource::make($post)->resolve($request),
+        ], 201);
+    }
+
+    public function destroyCommunityPost(Request $request, SubscriptionPlan $subscriptionPlan, Post $post): JsonResponse
+    {
+        $merchant = $this->merchantFromRequest($request);
+        $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
+        abort_unless((int) $post->merchant_id === (int) $merchant->id, 404);
+
+        $belongsToPlan = DB::table('post_promotables')
+            ->where('post_id', $post->id)
+            ->where('promotable_type', SubscriptionPlan::class)
+            ->where('promotable_id', $subscriptionPlan->id)
+            ->exists();
+        abort_unless($belongsToPlan, 404);
+
+        $post->update([
+            'comments_enabled_override' => false,
+            'reactions_enabled_override' => false,
+        ]);
+        $post->delete();
+
+        return response()->json(['message' => 'Member post removed.']);
+    }
+
     private function validatePlanSchedule(array $data): void
     {
         $interval = $data['billing_interval'] ?? 'monthly';
@@ -183,6 +346,23 @@ class MerchantSubscriptionPlanController extends Controller
         if ($interval === 'monthly' && isset($data['monthly_day']) && ((int) $data['monthly_day'] < 1 || (int) $data['monthly_day'] > 28)) {
             abort(422, 'monthly_day must be between 1 and 28.');
         }
+    }
+
+    private function communityPostQuery(SubscriptionPlan $subscriptionPlan)
+    {
+        return Post::query()
+            ->with([
+                'merchant.storefrontSetting',
+                'linkPreview',
+                'linkedContentItem',
+                'media.productImage',
+                'productTags.product.attributes',
+                'productTags.product.images',
+                'productTags.product.variants',
+                'reactions',
+                'promotableSubscriptions',
+            ])
+            ->whereHas('promotableSubscriptions', fn ($query) => $query->whereKey($subscriptionPlan->id));
     }
 
     private function assertItemBelongsToMerchant(int $merchantId, string $itemType, int $itemId): void
@@ -200,7 +380,16 @@ class MerchantSubscriptionPlanController extends Controller
             return;
         }
 
-        abort(422, 'Subscriptions can include content and digital/course bundles only.');
+        if ($itemType === 'product') {
+            $exists = Product::where('id', $itemId)
+                ->where('merchant_id', $merchantId)
+                ->where('type', 'digital')
+                ->exists();
+            abort_unless($exists, 422, 'Subscription product is invalid.');
+            return;
+        }
+
+        abort(422, 'Subscriptions can include content, digital products, and digital/course bundles only.');
     }
 
     private function bundleContainsPhysicalProducts(int $bundleId): bool
@@ -240,5 +429,26 @@ class MerchantSubscriptionPlanController extends Controller
     private function ensureOwnership(int $merchantId, int $planMerchantId): void
     {
         abort_if($merchantId !== $planMerchantId, 403, 'Unauthorized.');
+    }
+
+    private function serializeMember(UserSubscription $subscription): array
+    {
+        return [
+            'id' => $subscription->id,
+            'status' => $subscription->status,
+            'auto_renew' => (bool) $subscription->auto_renew,
+            'started_at' => $subscription->started_at?->toISOString(),
+            'current_period_start' => $subscription->current_period_start?->toISOString(),
+            'current_period_end' => $subscription->current_period_end?->toISOString(),
+            'next_billing_at' => $subscription->next_billing_at?->toISOString(),
+            'cancelled_at' => $subscription->cancelled_at?->toISOString(),
+            'ended_at' => $subscription->ended_at?->toISOString(),
+            'user' => $subscription->user ? [
+                'id' => $subscription->user->id,
+                'name' => $subscription->user->name,
+                'email' => $subscription->user->email,
+                'phone_number' => $subscription->user->phone_number,
+            ] : null,
+        ];
     }
 }

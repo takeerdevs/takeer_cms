@@ -3,7 +3,9 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import { Link, usePage } from '@inertiajs/react';
-import { Loader2, Store, Link as LinkIcon, Share2, ArrowRight, GripVertical, Star, BookOpenText, Boxes, Crown, Lock } from 'lucide-react';
+import { Loader2, Store, Share2, ArrowRight, GripVertical, Star, BookOpenText, Boxes, Crown, Lock, CalendarClock, FileText, Images, Music, PenLine, Video, Code2, DownloadCloud } from 'lucide-react';
+import { trackAttributionEvent } from '@/lib/attribution';
+import { productPriceLabel } from '@/lib/productUnits';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
@@ -56,12 +58,15 @@ export default function MiniStore({ merchantSlug, initialData }) {
     const contentItems = data?.[0]?.content_items || [];
     const bundles = data?.[0]?.bundles || [];
     const subscriptionPlans = data?.[0]?.subscription_plans || [];
+    const allProducts = data?.[0]?.products || [];
+    const productDiscovery = data?.[0]?.product_discovery || {};
+    const monetizationSummary = data?.[0]?.monetization_summary || null;
 
     const isLoadingMore = isValidating && size > 0;
     const isReachingEnd = data && data[data.length - 1]?.posts.links.next === null;
     const [isLoadingNext, setIsLoadingNext] = useState(false);
     const [editMode, setEditMode] = useState(false);
-    const [sectionOrder, setSectionOrder] = useState(['featured', 'products', 'downloads', 'services', 'content', 'courses', 'bundles', 'memberships', 'links', 'updates']);
+    const [sectionOrder, setSectionOrder] = useState(['featured', 'memberships', 'events', 'premium_media', 'commissions', 'downloads', 'content', 'courses', 'bundles', 'services', 'products', 'links', 'updates']);
     const [dragKey, setDragKey] = useState(null);
     const [links, setLinks] = useState([]);
     const [customSections, setCustomSections] = useState([]);
@@ -97,6 +102,20 @@ export default function MiniStore({ merchantSlug, initialData }) {
         if (storefrontSettings.featured_product_id) setFeaturedId(storefrontSettings.featured_product_id);
     }, [storefrontSettings]);
 
+    useEffect(() => {
+        if (!merchant?.id && !merchantSlug) return;
+
+        trackAttributionEvent('storefront_view', {
+            entity_type: merchant?.id ? 'merchant' : undefined,
+            entity_id: merchant?.id || undefined,
+            merchant_id: merchant?.id || undefined,
+            merchant_username: merchant?.slug || merchantSlug,
+            metadata: {
+                storefront_slug: merchant?.slug || merchantSlug,
+            },
+        });
+    }, [merchant?.id, merchant?.slug, merchantSlug]);
+
     const isOwner = !!auth?.user && !!merchant?.slug && auth.user.merchant_profiles?.some(p => p.username === merchant.slug);
 
     useEffect(() => {
@@ -123,35 +142,29 @@ export default function MiniStore({ merchantSlug, initialData }) {
     }, [sectionOrder, links, featuredId, merchant, auth, customSections, hiddenSections, isOwner]);
 
     const sections = useMemo(() => {
-        const products = [];
-        const downloads = [];
-        const services = [];
-        posts.forEach((post) => {
-            const product = getAttachedProduct(post);
-            if (!product) return;
-            if (product.type === 'digital') {
-                downloads.push(product);
-                return;
-            }
-            if (product.type === 'service') {
-                services.push(product);
-                return;
-            }
-            products.push(product);
-        });
+        const rankProducts = (items) => [...items].sort((a, b) => discoveryScore(b, productDiscovery) - discoveryScore(a, productDiscovery));
+        const products = rankProducts(allProducts.filter((product) => product.type === 'physical'));
+        const downloads = rankProducts(allProducts.filter((product) => product.type === 'digital' && !['video_stream', 'audio_stream', 'gallery_pack', 'live_event', 'custom_delivery'].includes(product.digital_delivery_type)));
+        const services = rankProducts(allProducts.filter((product) => product.type === 'service'));
+        const events = rankProducts(allProducts.filter((product) => product.type === 'digital' && product.digital_delivery_type === 'live_event'));
+        const premiumMedia = rankProducts(allProducts.filter((product) => product.type === 'digital' && ['video_stream', 'audio_stream', 'gallery_pack'].includes(product.digital_delivery_type)));
+        const commissions = rankProducts(allProducts.filter((product) => product.type === 'digital' && product.digital_delivery_type === 'custom_delivery'));
 
         const courseBundles = bundles.filter((item) => item.is_course);
         const regularBundles = bundles.filter((item) => !item.is_course);
 
         return [
             { key: 'featured', title: 'Featured', items: [], href: null },
+            { key: 'memberships', title: 'Creator Club', items: subscriptionPlans, href: `/m/${merchantSlug}/memberships` },
+            { key: 'events', title: 'Live Events', items: events, href: `/m/${merchantSlug}/downloads` },
+            { key: 'premium_media', title: 'Premium Media', items: premiumMedia, href: `/m/${merchantSlug}/downloads` },
+            { key: 'commissions', title: 'Custom Work', items: commissions, href: `/m/${merchantSlug}/downloads` },
             { key: 'products', title: 'Bidhaa', items: products, href: `/m/${merchantSlug}/products` },
             { key: 'downloads', title: 'Downloads', items: downloads, href: `/m/${merchantSlug}/downloads` },
             { key: 'services', title: 'Huduma', items: services, href: `/m/${merchantSlug}/services` },
             { key: 'content', title: 'Knowledge', items: contentItems, href: `/m/${merchantSlug}/content` },
             { key: 'courses', title: 'Courses', items: courseBundles, href: `/m/${merchantSlug}/courses` },
             { key: 'bundles', title: 'Bundles', items: regularBundles, href: `/m/${merchantSlug}/bundles` },
-            { key: 'memberships', title: 'Memberships', items: subscriptionPlans, href: `/m/${merchantSlug}/memberships` },
             { key: 'links', title: 'Links', items: links, href: null, emptyText: 'Ongeza link zako.' },
             { key: 'updates', title: 'Updates', items: [], href: `/m/${merchantSlug}/feed`, emptyText: 'View latest posts from this shop.' },
             ...customSections.map((section) => ({
@@ -163,21 +176,34 @@ export default function MiniStore({ merchantSlug, initialData }) {
                 emptyText: 'Ongeza link kwa section hili.',
             })),
         ];
-    }, [posts, merchantSlug, links, customSections, contentItems, bundles, subscriptionPlans]);
+    }, [allProducts, merchantSlug, links, customSections, contentItems, bundles, subscriptionPlans, productDiscovery]);
 
     const orderedSections = useMemo(() => {
         const map = new Map(sections.map(s => [s.key, s]));
-        return sectionOrder.map(key => map.get(key)).filter(Boolean);
+        const ordered = sectionOrder.map(key => map.get(key)).filter(Boolean);
+        const orderedKeys = new Set(ordered.map((section) => section.key));
+        const missing = sections.filter((section) => !orderedKeys.has(section.key));
+        return [...ordered, ...missing];
     }, [sections, sectionOrder]);
+    const quickSections = orderedSections
+        .filter((section) => !['featured', 'links', 'updates'].includes(section.key) && section.items.length > 0)
+        .slice(0, 6);
 
     const featuredProduct = useMemo(() => {
         const allProducts = sections.find(s => s.key === 'products')?.items || [];
         const allDownloads = sections.find(s => s.key === 'downloads')?.items || [];
         const allServices = sections.find(s => s.key === 'services')?.items || [];
-        const pool = [...allProducts, ...allDownloads, ...allServices];
+        const allEvents = sections.find(s => s.key === 'events')?.items || [];
+        const allMedia = sections.find(s => s.key === 'premium_media')?.items || [];
+        const allCommissions = sections.find(s => s.key === 'commissions')?.items || [];
+        const pool = [...allEvents, ...allMedia, ...allCommissions, ...allDownloads, ...allServices, ...allProducts]
+            .sort((a, b) => discoveryScore(b, productDiscovery) - discoveryScore(a, productDiscovery));
         if (featuredId) return pool.find(p => String(p.id) === String(featuredId)) || pool[0] || null;
         return pool[0] || null;
-    }, [sections, featuredId]);
+    }, [sections, featuredId, productDiscovery]);
+    const hasStoreItems = Boolean(featuredProduct)
+        || orderedSections.some((section) => !['featured', 'links', 'updates'].includes(section.key) && section.items.length > 0)
+        || links.length > 0;
 
     const handleDragStart = (key) => {
         setDragKey(key);
@@ -248,31 +274,63 @@ export default function MiniStore({ merchantSlug, initialData }) {
             <Head title={`${merchant?.name || 'Biashara'} | Takeer Minisite`} />
 
             {/* Storefront Hero (Stan-style simplicity) */}
-            <div className="bg-white border-b">
-                <div className="max-w-3xl mx-auto px-5 py-10 text-center">
-                    <div className="mx-auto h-20 w-20 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 shadow-sm overflow-hidden">
-                        {merchant?.avatar_url ? (
-                            <img src={merchant.avatar_url} alt={merchant.name} className="w-full h-full object-cover" />
-                        ) : (
-                            <Store className="h-9 w-9" />
+            <div className="bg-slate-50 border-b">
+                <div className="max-w-3xl mx-auto px-4 py-5">
+                    <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="h-16 w-16 rounded-2xl bg-brand-100 flex items-center justify-center text-brand-700 shadow-sm overflow-hidden shrink-0">
+                                {merchant?.avatar_url ? (
+                                    <img src={merchant.avatar_url} alt={merchant.name} className="w-full h-full object-cover" />
+                                ) : (
+                                    <Store className="h-7 w-7" />
+                                )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <h1 className="text-xl font-black leading-tight text-foreground truncate">{merchant?.name || 'Biashara'}</h1>
+                                <p className="text-sm text-muted-foreground mt-0.5">@{merchant?.slug || merchantSlug}</p>
+                            </div>
+                            <button
+                                className="h-10 w-10 rounded-xl bg-brand-600 text-white flex items-center justify-center hover:bg-brand-700 transition-colors shrink-0"
+                                onClick={() => navigator.share?.({ title: merchant?.name, url: window.location.href })}
+                                title="Share"
+                            >
+                                <Share2 className="h-4 w-4" />
+                            </button>
+                        </div>
+                        {monetizationSummary && (
+                            <div className="mt-4 grid grid-cols-3 gap-2 text-left">
+                                <StorefrontStat label="Offers" value={monetizationSummary.paid_offers} />
+                                <StorefrontStat label="Members" value={monetizationSummary.active_members} />
+                                <StorefrontStat label="Events" value={monetizationSummary.live_events} />
+                            </div>
+                        )}
+                        {quickSections.length > 0 && (
+                            <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                                {quickSections.map((section) => {
+                                    const meta = sectionMeta(section.key);
+                                    const Icon = meta.icon;
+                                    return (
+                                        <a
+                                            key={`quick-${section.key}`}
+                                            href={`#${section.key}`}
+                                            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700"
+                                        >
+                                            <Icon className="h-3.5 w-3.5 text-brand-600" />
+                                            {section.title}
+                                        </a>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {isOwner && (
+                            <button
+                                className={`mt-3 h-8 px-4 rounded-full border text-xs font-bold ${editMode ? 'bg-accent border-border' : 'border-border'} hover:bg-accent transition-colors`}
+                                onClick={() => setEditMode(v => !v)}
+                            >
+                                {editMode ? 'Maliza Mpangilio' : 'Panga Sections'}
+                            </button>
                         )}
                     </div>
-                    <h1 className="mt-4 text-2xl font-black text-foreground">{merchant?.name || 'Biashara'}</h1>
-                    <p className="text-sm text-muted-foreground mt-1">@{merchant?.slug || merchantSlug}</p>
-                    <button
-                        className="mt-4 h-9 px-5 rounded-full bg-brand-600 text-white text-sm font-bold hover:bg-brand-700 transition-colors"
-                        onClick={() => navigator.share?.({ title: merchant?.name, url: window.location.href })}
-                    >
-                        <Share2 className="h-4 w-4 inline-block mr-1.5" /> Shiriki
-                    </button>
-                    {isOwner && (
-                        <button
-                            className={`mt-3 h-8 px-4 rounded-full border text-xs font-bold ${editMode ? 'bg-accent border-border' : 'border-border'} hover:bg-accent transition-colors`}
-                            onClick={() => setEditMode(v => !v)}
-                        >
-                            {editMode ? 'Maliza Mpangilio' : 'Panga Sections'}
-                        </button>
-                    )}
                     {editMode && isOwner && (
                         <div className="mt-4 bg-card border border-border rounded-2xl p-3 text-left">
                             <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-2">Add Section</p>
@@ -296,8 +354,8 @@ export default function MiniStore({ merchantSlug, initialData }) {
             </div>
 
             {/* Store Sections */}
-            <div className="max-w-3xl mx-auto px-5 py-8 space-y-8">
-                {posts.length === 0 ? (
+            <div className="max-w-3xl mx-auto px-4 py-5 space-y-6">
+                {!hasStoreItems ? (
                     <div className="text-center text-muted-foreground py-16">
                         Muuzaji bado hajaweka bidhaa zozote.
                     </div>
@@ -310,17 +368,22 @@ export default function MiniStore({ merchantSlug, initialData }) {
 
                             return (
                                 <section
+                                    id={section.key}
                                     key={section.key}
-                                    className="space-y-3"
+                                    className="space-y-2.5 scroll-mt-4"
                                     draggable={editMode}
                                     onDragStart={() => handleDragStart(section.key)}
                                     onDragOver={(e) => editMode && e.preventDefault()}
                                     onDrop={() => handleDrop(section.key)}
                                 >
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
                                             {editMode && <GripVertical className="h-4 w-4 text-muted-foreground" />}
-                                            <h2 className="text-sm font-black uppercase tracking-widest text-muted-foreground">{section.title}</h2>
+                                            {React.createElement(sectionMeta(section.key).icon, { className: 'h-4 w-4 text-brand-600 shrink-0' })}
+                                            <div className="min-w-0">
+                                                <h2 className="text-sm font-black uppercase tracking-widest text-foreground truncate">{section.title}</h2>
+                                                <p className="text-[11px] font-semibold text-muted-foreground">{sectionMeta(section.key).subtitle}</p>
+                                            </div>
                                         </div>
                                         {editMode && isOwner && (
                                             <button
@@ -369,15 +432,16 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                                                         <Star className="h-4 w-4 text-amber-500" />
-                                                        Featured
+                                                        {featuredId ? 'Featured' : 'Best offer'}
                                                     </div>
+                                                    <DiscoveryBadges badges={discoveryBadges(featuredProduct, productDiscovery)} />
                                                     <p className="text-base font-black text-foreground truncate">{featuredProduct.title}</p>
                                                     <p className="text-sm text-muted-foreground mt-0.5">
-                                                        {featuredProduct.type === 'digital' ? 'Download' : featuredProduct.type === 'service' ? 'Service' : 'Product'}
+                                                        {productLabel(featuredProduct)}
                                                     </p>
                                                 </div>
                                                 <div className="text-sm font-black text-brand-600">
-                                                    TZS {Number(featuredProduct.price).toLocaleString()}
+                                                    {productPriceLabel(featuredProduct)}
                                                 </div>
                                             </Link>
                                         ) : (
@@ -597,8 +661,9 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <p className="text-sm font-bold text-foreground truncate">{product.title}</p>
+                                                        <DiscoveryBadges badges={discoveryBadges(product, productDiscovery)} compact />
                                                         <p className="text-xs text-muted-foreground mt-0.5">
-                                                            {product.type === 'digital' ? 'Download' : product.type === 'service' ? 'Service' : 'Product'}
+                                                            {productLabel(product)}
                                                         </p>
                                                         {section.key === 'services' && serviceLocations.length > 0 && (
                                                             <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
@@ -607,7 +672,7 @@ export default function MiniStore({ merchantSlug, initialData }) {
                                                         )}
                                                     </div>
                                                     <div className="text-sm font-black text-brand-600">
-                                                        TZS {Number(product.price).toLocaleString()}
+                                                        {productPriceLabel(product)}
                                                     </div>
                                                     {editMode && isOwner && (
                                                         <button
@@ -650,4 +715,93 @@ export default function MiniStore({ merchantSlug, initialData }) {
 
         </AppLayout>
     );
+}
+
+function StorefrontStat({ label, value }) {
+    return (
+        <div className="rounded-2xl border border-border bg-card px-3 py-2 text-center">
+            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className="mt-1 text-base font-black text-foreground">{Number(value || 0).toLocaleString()}</p>
+        </div>
+    );
+}
+
+function DiscoveryBadges({ badges = [], compact = false }) {
+    if (!Array.isArray(badges) || badges.length === 0) return null;
+
+    return (
+        <div className={`flex flex-wrap gap-1 ${compact ? 'mt-1' : 'mb-1.5'}`}>
+            {badges.slice(0, compact ? 2 : 3).map((badge, index) => (
+                <span
+                    key={`${badge.label}-${index}`}
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${badgeToneClass(badge.tone)}`}
+                >
+                    {badge.label}
+                </span>
+            ))}
+        </div>
+    );
+}
+
+function badgeToneClass(tone) {
+    const map = {
+        amber: 'bg-amber-50 text-amber-700 border border-amber-100',
+        sky: 'bg-sky-50 text-sky-700 border border-sky-100',
+        violet: 'bg-violet-50 text-violet-700 border border-violet-100',
+        rose: 'bg-rose-50 text-rose-700 border border-rose-100',
+        emerald: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+    };
+
+    return map[tone] || 'bg-slate-50 text-slate-600 border border-slate-100';
+}
+
+function discoveryScore(product, productDiscovery = {}) {
+    return Number(productDiscovery?.[product?.id]?.score || 0);
+}
+
+function discoveryBadges(product, productDiscovery = {}) {
+    return productDiscovery?.[product?.id]?.badges || [];
+}
+
+function sectionMeta(key) {
+    const map = {
+        featured: { icon: Star, subtitle: 'Best place to start' },
+        memberships: { icon: Crown, subtitle: 'Recurring access and perks' },
+        events: { icon: CalendarClock, subtitle: 'Paid workshops and webinars' },
+        premium_media: { icon: Video, subtitle: 'Videos, audio, and galleries' },
+        commissions: { icon: PenLine, subtitle: 'Order custom digital work' },
+        downloads: { icon: DownloadCloud, subtitle: 'Files, templates, docs, software' },
+        content: { icon: BookOpenText, subtitle: 'Articles, guides, newsletters' },
+        courses: { icon: BookOpenText, subtitle: 'Courses and learning bundles' },
+        bundles: { icon: Boxes, subtitle: 'Grouped offers and packs' },
+        services: { icon: Store, subtitle: 'Book or request services' },
+        products: { icon: Store, subtitle: 'Physical products' },
+        links: { icon: Share2, subtitle: 'Creator links' },
+        updates: { icon: ArrowRight, subtitle: 'Latest posts' },
+    };
+
+    return map[key] || { icon: Store, subtitle: 'Creator offer' };
+}
+
+function productLabel(product) {
+    if (product?.type === 'service') return 'Service';
+    if (product?.type !== 'digital') return 'Product';
+
+    const map = {
+        video_stream: 'Premium video',
+        audio_stream: 'Premium audio',
+        gallery_pack: 'Gallery pack',
+        live_event: 'Live event',
+        custom_delivery: 'Custom work',
+        external_link: 'External digital access',
+        file: product.digital_content_type === 'software'
+            ? 'Software'
+            : product.digital_content_type === 'document'
+                ? 'Document'
+                : product.digital_content_type === 'ebook'
+                    ? 'E-book'
+                    : 'Digital download',
+    };
+
+    return map[product.digital_delivery_type] || 'Digital download';
 }

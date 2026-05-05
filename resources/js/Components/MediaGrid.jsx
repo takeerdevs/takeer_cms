@@ -1,56 +1,172 @@
 import React from 'react';
-import { FileVideo, Play } from 'lucide-react';
+import { FileVideo, Loader2, Volume2, VolumeX } from 'lucide-react';
 
 // Determine if a URL is a video
 const isVideo = (url = '') => /\.(mp4|mov|webm|ogg)(\?|$)/i.test(url) || url.includes('video');
+const AUTOPLAY_REQUEST_EVENT = 'takeer:social-video-autoplay-request';
+const isProcessingVideo = (item) => {
+    if (!item || typeof item === 'string') return false;
+    return ['pending', 'processing'].includes(item.processing_status) && !item.processed_url && !item.hls_url;
+};
 
-function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null }) {
+function AutoplayVideoThumb({ src, poster, className, onAspect }) {
+    const videoRef = React.useRef(null);
+    const mutedRef = React.useRef(true);
+    const [muted, setMuted] = React.useState(true);
+
+    React.useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !src) return undefined;
+
+        let isVisible = false;
+        const attemptAutoplay = () => {
+            if (!isVisible || document.hidden) return;
+            video.muted = mutedRef.current;
+            window.dispatchEvent(new CustomEvent(AUTOPLAY_REQUEST_EVENT, { detail: { video } }));
+            const playPromise = video.play?.();
+            if (playPromise?.catch) playPromise.catch(() => {});
+        };
+        const pauseForOtherVideo = (event) => {
+            if (event.detail?.video !== video) video.pause();
+        };
+        const pauseWhenHidden = () => {
+            if (document.hidden) video.pause();
+            else attemptAutoplay();
+        };
+
+        const observer = typeof IntersectionObserver !== 'undefined'
+            ? new IntersectionObserver(([entry]) => {
+                isVisible = entry.isIntersecting && entry.intersectionRatio >= 0.6;
+                if (isVisible) attemptAutoplay();
+                else video.pause();
+            }, { threshold: [0, 0.6, 0.9] })
+            : null;
+
+        if (observer) observer.observe(video);
+        else {
+            isVisible = true;
+            attemptAutoplay();
+        }
+
+        window.addEventListener(AUTOPLAY_REQUEST_EVENT, pauseForOtherVideo);
+        document.addEventListener('visibilitychange', pauseWhenHidden);
+
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener(AUTOPLAY_REQUEST_EVENT, pauseForOtherVideo);
+            document.removeEventListener('visibilitychange', pauseWhenHidden);
+        };
+    }, [src]);
+
+    React.useEffect(() => {
+        mutedRef.current = muted;
+        const video = videoRef.current;
+        if (!video) return;
+        video.muted = muted;
+        if (!muted) {
+            const playPromise = video.play?.();
+            if (playPromise?.catch) playPromise.catch(() => {});
+        }
+    }, [muted]);
+
+    return (
+        <>
+            <video
+                ref={videoRef}
+                src={src}
+                poster={poster || undefined}
+                className={className}
+                muted={muted}
+                loop
+                playsInline
+                preload="metadata"
+                onLoadedMetadata={(e) => {
+                    if (!onAspect) return;
+                    const { videoWidth, videoHeight } = e.currentTarget;
+                    if (videoWidth && videoHeight) onAspect(videoWidth, videoHeight);
+                }}
+            />
+            <div
+                aria-hidden="true"
+                className="absolute inset-0 z-10 bg-transparent"
+                onContextMenu={(event) => event.preventDefault()}
+            />
+            <button
+                type="button"
+                aria-label={muted ? 'Unmute video' : 'Mute video'}
+                onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setMuted((current) => !current);
+                }}
+                className="absolute bottom-3 right-3 z-20 h-10 w-10 rounded-full bg-black/55 backdrop-blur-md text-white flex items-center justify-center shadow-lg border border-white/10 hover:bg-black/70 transition-colors"
+            >
+                {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+            </button>
+        </>
+    );
+}
+
+function getItemAspect(item) {
+    if (!item || typeof item === 'string') return null;
+    const width = Number(item.width || item.media_width || 0);
+    const height = Number(item.height || item.media_height || 0);
+    return width > 0 && height > 0 ? width / height : null;
+}
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null, fit = 'cover' }) {
     if (!item) return null;
     const video = typeof item === 'string'
         ? isVideo(item)
         : item?.type?.startsWith?.('video') || item?.media_type === 'video';
-    const src = typeof item === 'string' ? item : item?.url ?? item?.preview;
+    const src = typeof item === 'string' ? item : item?.processed_url ?? item?.url ?? item?.preview;
     const poster = typeof item === 'string' ? null : item?.thumbnail_url ?? item?.poster ?? null;
+    const processing = video && isProcessingVideo(item);
 
     return (
         <div
-            className={`relative overflow-hidden bg-zinc-900 cursor-pointer select-none group ${className}`}
+            className={`relative overflow-hidden ${fit === 'contain' ? 'bg-transparent' : 'bg-zinc-900'} cursor-pointer select-none group ${className}`}
             onClick={() => onTap(index)}
         >
             {video ? (
                 <>
-                    {poster ? (
-                        <img
-                            src={poster}
-                            alt=""
-                            className="w-full h-full object-cover group-active:brightness-90 transition-all"
-                            onLoad={(e) => {
-                                if (!onAspect) return;
-                                const { naturalWidth, naturalHeight } = e.currentTarget;
-                                if (naturalWidth && naturalHeight) onAspect(index, naturalWidth, naturalHeight);
-                            }}
-                        />
+                    {processing ? (
+                        <div className="w-full h-full bg-zinc-950 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                            <Loader2 className="h-7 w-7 text-white/70 animate-spin" />
+                            <span className="text-sm font-semibold text-white">Processing video...</span>
+                            <span className="text-[11px] text-white/55">Playback will be ready shortly.</span>
+                        </div>
                     ) : (
-                        <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
-                            <FileVideo className="h-9 w-9 text-white/55" />
-                        </div>
-                    )}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="h-10 w-10 rounded-full bg-black/55 flex items-center justify-center">
-                            <Play className="h-5 w-5 text-white fill-white ml-0.5" />
-                        </div>
-                    </div>
-                    {!poster && (
-                        <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-white/90">
-                            Video
-                        </span>
+                        <>
+                            {src ? (
+                                <AutoplayVideoThumb
+                                    src={src}
+                                    poster={poster}
+                                    className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} group-active:brightness-90 transition-all`}
+                                    onAspect={(width, height) => onAspect?.(index, width, height)}
+                                />
+                            ) : (
+                                <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                                    <FileVideo className="h-9 w-9 text-white/55" />
+                                </div>
+                            )}
+                            {!src && (
+                                <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-white/90">
+                                    Video
+                                </span>
+                            )}
+                        </>
                     )}
                 </>
             ) : (
                 <img
                     src={src}
                     alt=""
-                    className={`w-full h-full object-cover group-active:brightness-90 transition-all`}
+                    className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} group-active:brightness-90 transition-all`}
                     onLoad={(e) => {
                         if (!onAspect) return;
                         const { naturalWidth, naturalHeight } = e.currentTarget;
@@ -83,12 +199,29 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
     if (!items.length) return null;
 
     const count = items.length;
-    const [aspects, setAspects] = React.useState({});
+    const [aspects, setAspects] = React.useState(() => (
+        Object.fromEntries(items.map((item, index) => [index, getItemAspect(item)]).filter(([, aspect]) => aspect))
+    ));
+
+    React.useEffect(() => {
+        setAspects((prev) => {
+            let next = prev;
+            items.forEach((item, index) => {
+                if (next[index]) return;
+                const aspect = getItemAspect(item);
+                if (!aspect) return;
+                if (next === prev) next = { ...prev };
+                next[index] = aspect;
+            });
+            return next;
+        });
+    }, [items]);
 
     const handleAspect = React.useCallback((index, width, height) => {
         setAspects((prev) => {
-            if (prev[index]) return prev;
-            return { ...prev, [index]: width / height };
+            const nextAspect = width / height;
+            if (prev[index] && Math.abs(prev[index] - nextAspect) < 0.03) return prev;
+            return { ...prev, [index]: nextAspect };
         });
     }, []);
 
@@ -104,9 +237,32 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
 
     // ── 1 item ──────────────────────────────────────────────────────────────
     if (count === 1) {
+        const aspect = ratioAt(0) || getItemAspect(items[0]) || 4 / 3;
+        const displayAspect = clamp(aspect, 0.65, 1.91);
+        const maxHeight = 'min(78vh, 860px)';
+        const maxWidth = aspect < 0.9
+            ? `min(100%, ${Math.round(78 * displayAspect)}vh, ${Math.round(860 * displayAspect)}px)`
+            : '100%';
+
         return (
-            <div className="w-full aspect-[4/3] overflow-hidden bg-zinc-900">
-                <MediaThumb item={items[0]} index={0} onTap={onTap} className="w-full h-full" onAspect={handleAspect} />
+            <div className="w-full flex justify-center bg-background">
+                <div
+                    className="w-full overflow-hidden bg-transparent"
+                    style={{
+                        aspectRatio: displayAspect,
+                        maxWidth,
+                        maxHeight,
+                    }}
+                >
+                    <MediaThumb
+                        item={items[0]}
+                        index={0}
+                        onTap={onTap}
+                        className="w-full h-full"
+                        onAspect={handleAspect}
+                        fit="contain"
+                    />
+                </div>
             </div>
         );
     }

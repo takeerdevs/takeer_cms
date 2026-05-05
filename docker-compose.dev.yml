@@ -18,6 +18,8 @@ services:
       - DB_PORT=5432
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FLARESOLVERR_TIMEOUT=15000
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,7 +41,7 @@ services:
     container_name: takeer_queue_dev
     restart: unless-stopped
     working_dir: /var/www/html
-    command: php artisan queue:work --queue=media,default --tries=2 --timeout=600 --sleep=3
+    command: php artisan queue:work --queue=media,default --tries=2 --timeout=1800 --sleep=3
     volumes:
       - .:/var/www/html
       - /var/www/html/vendor
@@ -50,6 +52,8 @@ services:
       - DB_PORT=5432
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FLARESOLVERR_TIMEOUT=15000
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,6 +87,18 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: takeer_flaresolverr_dev
+    environment:
+      - LOG_LEVEL=info
+      - TZ=Africa/Dar_es_Salaam
+    ports:
+      - "8192:8191"
+    networks:
+      - takeer_network
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine

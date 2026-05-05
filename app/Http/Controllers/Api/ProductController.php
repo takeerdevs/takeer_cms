@@ -15,7 +15,7 @@ class ProductController extends Controller
      */
     public function show(Product $product): JsonResponse
     {
-        $product->loadMissing(['attributes', 'merchant.user', 'merchant.locations', 'variants.locationInventories', 'locationInventories']);
+        $product->loadMissing(['attributes', 'unitType', 'merchant.user', 'merchant.locations', 'variants.locationInventories', 'locationInventories']);
 
         return response()->json([
             'product' => ProductResource::make($product),
@@ -46,6 +46,7 @@ class ProductController extends Controller
 
         $product->update([
             'inventory_count' => $validated['inventory_count'],
+            'inventory_quantity' => $validated['inventory_count'],
             'buffer_stock' => $validated['buffer_stock'] ?? $product->buffer_stock,
         ]);
 

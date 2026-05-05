@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { Bell, ShieldAlert, Users, ArrowDownToLine, Settings2, TrendingUp, Store, Flag, Shapes, Wallet, ShieldCheck } from 'lucide-react';
+import { Bell, ShieldAlert, Users, ArrowDownToLine, Settings2, TrendingUp, Store, Flag, Shapes, Wallet, ShieldCheck, Tags, Ruler } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
@@ -39,6 +39,8 @@ export default function AdminDashboard() {
         { name: 'Merchants', href: '/admin/merchants', icon: Store, desc: 'Control merchant account access and trust' },
         { name: 'Content Reports', href: '/admin/content-reports', icon: Flag, desc: 'Moderate reported content' },
         { name: 'Categories', href: '/admin/categories', icon: Shapes, desc: 'Manage category tree and attributes' },
+        { name: 'Brands & Models', href: '/admin/brands', icon: Tags, desc: 'Manage reusable brand and model catalog' },
+        { name: 'Sellable Units', href: '/admin/sellable-units', icon: Ruler, desc: 'Manage units, conversions, and quick quantities' },
         { name: 'Platform Wallet', href: '/admin/platform-wallet', icon: Wallet, desc: 'Track Takeer fees, GMV, and transaction proof' },
         { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowDownToLine, desc: 'Approve pending payout requests' },
         { name: 'AI Settings', href: '/admin/settings', icon: Settings2, desc: 'Configure AI providers and keys' },

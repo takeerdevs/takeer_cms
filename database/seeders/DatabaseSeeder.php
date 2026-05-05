@@ -19,7 +19,10 @@ class DatabaseSeeder extends Seeder
             CurrencySeeder::class,
             CountrySeeder::class,
             ExchangeRateHistorySeeder::class,
+            ProductUnitTypeSeeder::class,
             CatalogDemoSeeder::class,
+            ProductSafetyAttributeSeeder::class,
+            ProductCategoryUnitSeeder::class,
             ServiceCategorySeeder::class,
         ]);
     }

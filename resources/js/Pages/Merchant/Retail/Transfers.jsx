@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
+import { productQuantityLabel, productStockLabel } from '@/lib/productUnits';
 
 export default function Transfers({ merchant }) {
     const [transfers, setTransfers] = useState([]);
@@ -101,7 +102,7 @@ export default function Transfers({ merchant }) {
                 String(rowVariantId || '') === String(variantId || '');
         });
 
-        return Number(inventory?.quantity || 0);
+        return Number(inventory?.quantity_decimal ?? inventory?.quantity ?? 0);
     };
 
     const fetchTransfers = async () => {
@@ -187,6 +188,7 @@ export default function Transfers({ merchant }) {
     };
 
     const transferVariantLabel = (transfer) => variantLabel(transfer?.variant, transfer?.product?.title);
+    const transferQuantityLabel = (transfer) => productQuantityLabel(transfer?.product, Number(transfer?.quantity_decimal ?? transfer?.quantity ?? 0));
     const isShopLocation = (location) => String(location?.type || '').toLowerCase() === 'shop';
     const needsShopDispatchVerification = (transfer) => transfer.status === 'PENDING' && isShopLocation(transfer.from_location);
     const needsShopReceiptVerification = (transfer) => transfer.status === 'DISPATCHED' && isShopLocation(transfer.to_location);
@@ -306,7 +308,7 @@ export default function Transfers({ merchant }) {
                                             const qty = locationStockForSelectedItem(loc.id);
                                             return (
                                                 <option key={loc.id} value={loc.id}>
-                                                    {loc.name} {form.product_id ? `(${qty} in stock)` : ''}
+                                                    {loc.name} {form.product_id ? `(${productStockLabel(selectedTransferItem?.product, qty)})` : ''}
                                                 </option>
                                             );
                                         })}
@@ -325,7 +327,7 @@ export default function Transfers({ merchant }) {
                                             const qty = locationStockForSelectedItem(loc.id);
                                             return (
                                                 <option key={loc.id} value={loc.id}>
-                                                    {loc.name} {form.product_id ? `(${qty} in stock)` : ''}
+                                                    {loc.name} {form.product_id ? `(${productStockLabel(selectedTransferItem?.product, qty)})` : ''}
                                                 </option>
                                             );
                                         })}
@@ -336,7 +338,8 @@ export default function Transfers({ merchant }) {
                                     <input
                                         required
                                         type="number"
-                                        min="1"
+                                        min="0.001"
+                                        step={selectedTransferItem?.product?.unit_type?.allows_decimal ? '0.001' : '1'}
                                         className="flex h-12 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm font-black"
                                         value={form.quantity}
                                         onChange={e => setForm({ ...form, quantity: e.target.value })}
@@ -378,7 +381,7 @@ export default function Transfers({ merchant }) {
                                                     {label}
                                                 </p>
                                             )}
-                                            <p className="text-xl font-black text-brand-600">{t.quantity} Units</p>
+                                            <p className="text-xl font-black text-brand-600">{transferQuantityLabel(t)}</p>
                                         </div>
                                     </button>
 

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
     User, UserCircle, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
     Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, Banknote, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
-    Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive
+    Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone
 } from 'lucide-react';
 import axios from 'axios';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -33,6 +33,7 @@ export default function Profile({
     thisMonthEarnings = 0,
     salesBreakdown = { digital: 0, physical: 0, services: 0 },
     commerceHubSummary = { physical: 0, digital: 0, services: 0, posts: 0, bundles: 0, subscriptions: 0 },
+    creatorMonetization = null,
     countries = [],
     currencies = [],
     merchantKyc = null,
@@ -66,6 +67,7 @@ export default function Profile({
         { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts` },
         { key: 'bundles', title: 'Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles` },
         { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions` },
+        { key: 'marketing', title: 'Marketing', count: 0, icon: Megaphone, href: `/merchant/${merchantSlug}/marketing` },
     ];
 
     // Verification State
@@ -387,56 +389,127 @@ export default function Profile({
                         {isVerified ? (
                             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
 
-                                {/* ── Performance Stats ── */}
-                                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {retailActive ? (
-                                        <>
-                                            <StatCard
-                                                title="Takeer Balance (Escrow)"
-                                                value={formatMoney(retailDashboard?.metrics?.takeer_balance || 0)}
-                                                icon={Wallet}
-                                                color="text-emerald-600"
-                                                bgColor="bg-emerald-50"
-                                                borderColor="border-emerald-100"
-                                                onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=escrow`)}
-                                            />
-                                            <StatCard
-                                                title="Today's In-Hand Revenue"
-                                                value={formatMoney(retailDashboard?.metrics?.today_in_hand || 0)}
-                                                icon={Banknote}
-                                                color="text-brand-600"
-                                                bgColor="bg-brand-50"
-                                                borderColor="border-brand-100"
-                                                onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=non-escrow`)}
-                                            />
-                                            <StatCard
-                                                title="Outstanding Credit"
-                                                value={formatMoney(retailDashboard?.metrics?.outstanding_credit || 0)}
-                                                icon={TrendingUp}
-                                                color="text-amber-600"
-                                                bgColor="bg-amber-50"
-                                                borderColor="border-amber-100"
-                                                onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=credit`)}
-                                            />
-                                            <StatCard
-                                                title="Total Balance"
-                                                value={formatMoney(thisMonthEarnings)}
-                                                icon={CreditCard}
-                                                color="text-blue-600"
-                                                bgColor="bg-blue-50"
-                                                borderColor="border-blue-100"
-                                                onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger`)}
-                                            />
-                                        </>
-                                    ) : (
-                                        <>
-                                            <StatCard title="Available Balance" value={formatMoney(0)} icon={Wallet} color="text-emerald-600" bgColor="bg-emerald-50" borderColor="border-emerald-100" />
-                                            <StatCard title="Total Balance" value={formatMoney(thisMonthEarnings)} icon={Banknote} color="text-brand-600" bgColor="bg-brand-50" borderColor="border-brand-100" />
-                                            <StatCard title="Payments (Weekly)" value={formatMoney(weeklyStats.payments)} icon={TrendingUp} trend={weeklyStats.percentChange} color="text-blue-600" bgColor="bg-blue-50" borderColor="border-blue-100" />
-                                            <StatCard title="Transactions" value={weeklyStats.transactions} icon={CreditCard} color="text-indigo-600" bgColor="bg-indigo-50" borderColor="border-indigo-100" />
-                                        </>
-                                    )}
-                                </div>
+                                {retailActive && (
+                                    <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <StatCard
+                                            title="Takeer Balance (Escrow)"
+                                            value={formatMoney(retailDashboard?.metrics?.takeer_balance || 0)}
+                                            icon={Wallet}
+                                            color="text-emerald-600"
+                                            bgColor="bg-emerald-50"
+                                            borderColor="border-emerald-100"
+                                            onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=escrow`)}
+                                        />
+                                        <StatCard
+                                            title="Today's In-Hand Revenue"
+                                            value={formatMoney(retailDashboard?.metrics?.today_in_hand || 0)}
+                                            icon={Banknote}
+                                            color="text-brand-600"
+                                            bgColor="bg-brand-50"
+                                            borderColor="border-brand-100"
+                                            onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=non-escrow`)}
+                                        />
+                                        <StatCard
+                                            title="Outstanding Credit"
+                                            value={formatMoney(retailDashboard?.metrics?.outstanding_credit || 0)}
+                                            icon={TrendingUp}
+                                            color="text-amber-600"
+                                            bgColor="bg-amber-50"
+                                            borderColor="border-amber-100"
+                                            onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=credit`)}
+                                        />
+                                        <StatCard
+                                            title="Total Balance"
+                                            value={formatMoney(thisMonthEarnings)}
+                                            icon={CreditCard}
+                                            color="text-blue-600"
+                                            bgColor="bg-blue-50"
+                                            borderColor="border-blue-100"
+                                            onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger`)}
+                                        />
+                                    </div>
+                                )}
+
+                                {creatorMonetization && (
+                                    <Card className="border border-brand-100 rounded-2xl overflow-hidden shadow-sm bg-gradient-to-br from-white to-brand-50/40">
+                                        <CardHeader className="pb-2">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-900">Creator Monetization</CardTitle>
+                                                    <p className="mt-1 text-xs font-semibold text-slate-500">{creatorMonetization.window}</p>
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    className="rounded-xl text-xs font-black"
+                                                    onClick={() => router.visit(`/m/${merchantSlug}`)}
+                                                >
+                                                    <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                                                    Storefront
+                                                </Button>
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <div className="grid grid-cols-3 gap-3">
+                                                <MiniMetric label="Revenue" value={formatMoney(creatorMonetization.total_revenue || 0)} />
+                                                <MiniMetric label="Orders" value={Number(creatorMonetization.total_orders || 0).toLocaleString()} />
+                                                <MiniMetric label="Members" value={Number(creatorMonetization.active_members || 0).toLocaleString()} />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                                                <MiniMetric label="Released" value={formatMoney(creatorMonetization.released_revenue || 0)} />
+                                                <MiniMetric label="Pending" value={formatMoney(creatorMonetization.pending_revenue || 0)} />
+                                                <MiniMetric label="Est. net" value={formatMoney(creatorMonetization.estimated_net || 0)} />
+                                                <MiniMetric label="Change" value={`${Number(creatorMonetization.revenue_change_percent || 0).toLocaleString()}%`} />
+                                            </div>
+                                            <div className="grid gap-3 md:grid-cols-3">
+                                                <PayoutMetric label="Available payout" value={formatMoney(creatorMonetization.payouts?.available_balance || 0)} icon={Wallet} tone="emerald" />
+                                                <PayoutMetric label="Held / escrow" value={formatMoney(creatorMonetization.payouts?.held_balance || 0)} icon={ShieldCheck} tone="blue" />
+                                                <PayoutMetric label="Pending withdrawals" value={formatMoney(creatorMonetization.payouts?.pending_withdrawals || 0)} icon={Banknote} tone="amber" />
+                                            </div>
+                                            <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                                                <div className="rounded-2xl border border-white bg-white/80 p-3">
+                                                    <div className="flex items-center justify-between gap-3 mb-3">
+                                                        <div>
+                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-900">Revenue by content type</p>
+                                                            <p className="text-[11px] font-semibold text-slate-500">Gross sales grouped by creator monetization format.</p>
+                                                        </div>
+                                                        <Button
+                                                            variant="outline"
+                                                            className="rounded-xl text-[11px] font-black h-8"
+                                                            onClick={() => router.visit(`/merchant/${merchantSlug}/wallet/ledger`)}
+                                                        >
+                                                            Ledger
+                                                        </Button>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        {(creatorMonetization.buckets || [])
+                                                            .filter((bucket) => Number(bucket.revenue || 0) > 0 || Number(bucket.orders || 0) > 0)
+                                                            .map((bucket) => (
+                                                                <MonetizationBucketRow
+                                                                    key={bucket.key}
+                                                                    bucket={bucket}
+                                                                    total={creatorMonetization.total_revenue || 0}
+                                                                    formatMoney={formatMoney}
+                                                                />
+                                                            ))}
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-2xl border border-white bg-white/80 p-3">
+                                                    <p className="text-xs font-black uppercase tracking-wider text-slate-900">Top earners</p>
+                                                    <p className="text-[11px] font-semibold text-slate-500 mb-3">Best selling offers in this window.</p>
+                                                    <div className="space-y-2">
+                                                        {(creatorMonetization.top_items || []).length > 0 ? (
+                                                            creatorMonetization.top_items.map((item) => (
+                                                                <TopCreatorItem key={`${item.kind}-${item.title}`} item={item} formatMoney={formatMoney} iconFromKey={iconFromKey} />
+                                                            ))
+                                                        ) : (
+                                                            <p className="text-sm font-semibold text-slate-500 py-4 text-center">No paid creator sales yet.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
 
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                     <div className="lg:col-span-1 space-y-6">
@@ -448,6 +521,7 @@ export default function Profile({
                                                     <ActionBtn icon={Store} label="Retail Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/retail-operations`} color="bg-amber-50" textColor="text-amber-700" borderColor="border-amber-100" />
                                                 )}
                                                 <ActionBtn icon={HardDrive} label="Storage Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/storage`} color="bg-sky-50" textColor="text-sky-700" borderColor="border-sky-100" />
+                                                <ActionBtn icon={Megaphone} label="Marketing" href={`/merchant/${merchantSlug}/marketing`} color="bg-violet-50" textColor="text-violet-700" borderColor="border-violet-100" />
                                                 <ActionBtn icon={Wallet} label="Wallet" href={`/merchant/${merchantSlug}/wallet`} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
                                                 {retailActive && (
                                                     <ActionBtn icon={Store} label="Retail" href={`/merchant/${merchantSlug}/retail/dashboard`} color="bg-brand-50" textColor="text-brand-700" borderColor="border-brand-100" />
@@ -1070,6 +1144,76 @@ function BreakdownRow({ label, count, color, total }) {
             </div>
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div className={cn("h-full rounded-full transition-all duration-700", color)} style={{ width: `${percentage}%` }} />
+            </div>
+        </div>
+    );
+}
+
+function MiniMetric({ label, value }) {
+    return (
+        <div className="rounded-xl border border-white bg-white/80 px-3 py-3">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+            <p className="mt-1 text-sm md:text-base font-black text-slate-900 truncate">{value}</p>
+        </div>
+    );
+}
+
+function PayoutMetric({ label, value, icon: Icon, tone = 'emerald' }) {
+    const toneClasses = {
+        emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        blue: 'bg-blue-50 text-blue-700 border-blue-100',
+        amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    }[tone] || 'bg-slate-50 text-slate-700 border-slate-100';
+
+    return (
+        <div className={`rounded-2xl border bg-white/80 p-3 ${toneClasses}`}>
+            <div className="flex items-center gap-2">
+                <Icon className="h-4 w-4" />
+                <p className="text-[10px] font-black uppercase tracking-wider">{label}</p>
+            </div>
+            <p className="mt-2 text-sm md:text-base font-black text-slate-900 truncate">{value}</p>
+        </div>
+    );
+}
+
+function MonetizationBucketRow({ bucket, total, formatMoney }) {
+    const share = Number(bucket.share ?? (total > 0 ? (Number(bucket.revenue || 0) / total) * 100 : 0));
+
+    return (
+        <div>
+            <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-black text-slate-900 truncate">{bucket.label}</p>
+                    <p className="text-[11px] font-semibold text-slate-500">
+                        {Number(bucket.orders || 0).toLocaleString()} orders · {Number(bucket.units || 0).toLocaleString()} units · {share.toFixed(1)}%
+                    </p>
+                </div>
+                <div className="text-right shrink-0">
+                    <p className="text-sm font-black text-slate-900">{formatMoney(bucket.revenue || 0)}</p>
+                    <p className="text-[10px] font-semibold text-slate-500">{formatMoney(bucket.pending || 0)} pending</p>
+                </div>
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full bg-brand-600" style={{ width: `${Math.min(Math.max(share, 0), 100)}%` }} />
+            </div>
+        </div>
+    );
+}
+
+function TopCreatorItem({ item, formatMoney, iconFromKey }) {
+    const Icon = iconFromKey(item.icon);
+
+    return (
+        <div className="rounded-xl border border-slate-100 bg-white px-3 py-2">
+            <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
+                    <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black text-slate-900 truncate">{item.title}</p>
+                    <p className="text-[11px] font-semibold text-slate-500 truncate">{item.bucket_label} · {Number(item.orders || 0).toLocaleString()} orders</p>
+                </div>
+                <p className="text-sm font-black text-brand-600 shrink-0">{formatMoney(item.revenue || 0)}</p>
             </div>
         </div>
     );

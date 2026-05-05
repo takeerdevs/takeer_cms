@@ -39,6 +39,8 @@ class AdminSettingsController extends Controller
             'storage_trial_days' => '0',
             'retail_access_mode' => 'free',
             'retail_trial_days' => '0',
+            'analytics_retention_days' => '365',
+            'analytics_exclude_admins' => '1',
         ], AdminSetting::allAsMap());
 
         // Mask secret keys for display (show last 4 chars only)
@@ -87,6 +89,8 @@ class AdminSettingsController extends Controller
             'storage_trial_days',
             'retail_access_mode',
             'retail_trial_days',
+            'analytics_retention_days',
+            'analytics_exclude_admins',
         ];
 
         foreach ($allowed as $key) {
@@ -106,6 +110,12 @@ class AdminSettingsController extends Controller
                 }
                 if (in_array($key, ['storage_trial_days', 'retail_trial_days'], true)) {
                     $value = (string) max(0, min(365, (int) $value));
+                }
+                if ($key === 'analytics_retention_days') {
+                    $value = (string) max(30, min(1095, (int) $value));
+                }
+                if ($key === 'analytics_exclude_admins') {
+                    $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
                 }
                 if (in_array($key, ['upload_allowed_extensions', 'upload_allowed_mime_types'], true)) {
                     $value = collect(preg_split('/[\s,]+/', strtolower((string) $value)))

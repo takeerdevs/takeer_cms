@@ -40,6 +40,8 @@ export default function AdminSettings() {
         upload_allowed_extensions: 'jpg,jpeg,png,webp,gif,mp4,mov,webm,pdf,zip,doc,docx,xls,xlsx,ppt,pptx,csv,txt',
         upload_allowed_mime_types: 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,application/zip,application/x-zip-compressed,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/csv,text/plain',
         upload_max_file_mb: '500',
+        analytics_retention_days: '365',
+        analytics_exclude_admins: '1',
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -83,6 +85,8 @@ export default function AdminSettings() {
                     upload_allowed_extensions: settings.upload_allowed_extensions,
                     upload_allowed_mime_types: settings.upload_allowed_mime_types,
                     upload_max_file_mb: settings.upload_max_file_mb,
+                    analytics_retention_days: settings.analytics_retention_days,
+                    analytics_exclude_admins: settings.analytics_exclude_admins,
                 }),
             });
             const data = await res.json();
@@ -247,6 +251,44 @@ export default function AdminSettings() {
                                 onChange={(e) => set('catalog_item_picker_default_limit', e.target.value)}
                             />
                             <p className="text-xs text-slate-500">Used when no search term is entered in bundle/subscription create forms.</p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-white border-slate-200 shadow-sm">
+                    <CardContent className="p-6 space-y-4">
+                        <h2 className="font-bold text-slate-900 flex items-center gap-2">
+                            <ShieldCheck className="h-4 w-4 text-brand-600" /> Analytics Privacy
+                        </h2>
+                        <p className="text-xs text-slate-600">Control first-party behavior tracking retention and whether admin activity appears in analytics reports.</p>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Retention Period (days)</label>
+                                <Input
+                                    type="number"
+                                    min="30"
+                                    max="1095"
+                                    value={settings.analytics_retention_days}
+                                    onChange={(e) => set('analytics_retention_days', e.target.value)}
+                                />
+                                <p className="text-xs text-slate-500">Analytics reports ignore events older than this period. Suggested: 365.</p>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <label className="flex items-start gap-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={String(settings.analytics_exclude_admins) === '1'}
+                                        onChange={(e) => set('analytics_exclude_admins', e.target.checked ? '1' : '0')}
+                                        className="mt-1 h-4 w-4 rounded border-slate-300"
+                                    />
+                                    <span>
+                                        <span className="block text-sm font-bold text-slate-900">Exclude admins from analytics</span>
+                                        <span className="mt-1 block text-xs leading-5 text-slate-600">Admin page views and test behavior will not pollute buyer and creator reports.</span>
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>

@@ -4,7 +4,9 @@ import { Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, ShieldAlert, Users, ArrowDownToLine,
-    Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper, ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell
+    Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper,
+    ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell, BarChart3,
+    Tags, Ruler
 } from 'lucide-react';
 
 const adminNav = [
@@ -12,6 +14,7 @@ const adminNav = [
     { name: 'Disputes', href: '/admin/disputes', icon: ShieldAlert },
     { name: 'Safety Reviews', href: '/admin/trust-safety-reviews', icon: ShieldCheck },
     { name: 'Notifications', href: '/admin/notifications', icon: Bell },
+    { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Merchants', href: '/admin/merchants', icon: Store },
     { name: 'Verifications', href: '/admin/verifications', icon: ShieldCheck },
@@ -20,6 +23,8 @@ const adminNav = [
     { name: 'Services', href: '/admin/services', icon: Calendar },
     { name: 'Service Categories', href: '/admin/service-categories', icon: Shapes },
     { name: 'Categories', href: '/admin/categories', icon: Shapes },
+    { name: 'Brands & Models', href: '/admin/brands', icon: Tags },
+    { name: 'Sellable Units', href: '/admin/sellable-units', icon: Ruler },
     { name: 'Countries', href: '/admin/countries', icon: Globe },
     { name: 'Platform Wallet', href: '/admin/platform-wallet', icon: Wallet },
     { name: 'Pricing & Fees', href: '/admin/fee-policies', icon: Percent },

@@ -124,6 +124,7 @@ export default function Disputes() {
                             const buyer = order.buyer || {};
                             const merchant = order.merchant || {};
                             const delivery = order.delivery || {};
+                            const refundPolicy = order.refund_policy || dispute.refund_policy_snapshot || null;
                             const isOpen = dispute.status === 'open';
                             const isPosCreditReport = dispute.buyer_unboxing_video_url === 'pos-credit-link-report';
                             const canSettleEscrow = order.payment_mode === 'online_escrow' && Number(order.total_paid || 0) > 0;
@@ -179,6 +180,21 @@ export default function Disputes() {
                                                 <p className="text-slate-700 mt-1">{dispute.dispute_reason || 'No reason provided.'}</p>
                                             </div>
                                         </div>
+
+                                        {refundPolicy && (
+                                            <div className={`rounded-xl border p-3 text-sm ${refundPolicy.status === 'eligible' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                                                <p className="font-black uppercase tracking-wider text-xs">
+                                                    Refund policy context: {refundPolicy.status === 'eligible' ? 'Eligible for review' : 'Not eligible by policy'}
+                                                </p>
+                                                <p className="mt-1">{refundPolicy.reason || dispute.refund_eligibility_reason || 'No policy reason recorded.'}</p>
+                                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold">
+                                                    <span>Policy: {refundPolicy.policy || 'standard'}</span>
+                                                    {refundPolicy.window_days !== null && refundPolicy.window_days !== undefined && <span>Window: {refundPolicy.window_days} days</span>}
+                                                    <span>Access count: {refundPolicy.download_count || 0}</span>
+                                                    {refundPolicy.refund_locked_at && <span>Locked: {new Date(refundPolicy.refund_locked_at).toLocaleDateString()}</span>}
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {isOpen ? (
                                             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-3">

@@ -30,6 +30,7 @@ class DispatchController extends Controller
     {
         $this->authorizeMerchantOrder($request, $order);
         $this->ensurePhysicalOrder($order);
+        $this->ensurePaidDispatchableOrder($order);
 
         $validated = $request->validate([
             'dispatch_video' => 'required|file|mimetypes:video/mp4,video/quicktime,video/webm,video/x-matroska|max:51200',
@@ -70,6 +71,7 @@ class DispatchController extends Controller
         $order->update([
             'payment_status' => 'escrow_locked',
             'merchant_dispatch_video_url' => $videoUrl,
+            'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
         ]);
 
         $pin = $order->delivery?->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
@@ -77,6 +79,12 @@ class DispatchController extends Controller
         Delivery::updateOrCreate([
             'order_id' => $order->id,
         ], [
+            'delivery_type' => 'intercity_bus',
+            'shipping_zone_id' => $order->delivery?->shipping_zone_id,
+            'shipping_hotspot_id' => $order->delivery?->shipping_hotspot_id,
+            'physical_address' => $order->delivery?->physical_address,
+            'latitude' => $order->delivery?->latitude,
+            'longitude' => $order->delivery?->longitude,
             'bus_company' => $busCompany,
             'waybill_photo_url' => $photoUrl,
             'waybill_tracking_number' => $trackingNumber,
@@ -86,8 +94,9 @@ class DispatchController extends Controller
 
         // Trigger buyer SMS
         if (!empty($order->buyer?->phone_number)) {
-            $this->smsService->sendDispatchNotification(
+            $this->smsService->sendIntercityDispatchNotification(
                 $order->buyer->phone_number,
+                (string) ($order->public_id ?: $order->id),
                 $busCompany,
                 $trackingNumber,
                 $pin,
@@ -97,7 +106,7 @@ class DispatchController extends Controller
 
         return response()->json([
             'message' => 'Dispatch imehifadhiwa. Video na risiti ya usafirishaji zimepakiwa.',
-            'delivery' => $order->delivery,
+            'delivery' => $order->fresh('delivery')->delivery,
             'ocr' => $ocr,
         ]);
     }
@@ -110,6 +119,7 @@ class DispatchController extends Controller
     {
         $this->authorizeMerchantOrder($request, $order);
         $this->ensurePhysicalOrder($order);
+        $this->ensurePaidDispatchableOrder($order);
 
         $validated = $request->validate([
             'dispatch_video' => 'required|file|mimetypes:video/mp4,video/quicktime,video/webm,video/x-matroska|max:51200',
@@ -122,6 +132,7 @@ class DispatchController extends Controller
         $order->update([
             'payment_status' => 'escrow_locked',
             'merchant_dispatch_video_url' => $videoUrl,
+            'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
         ]);
 
         $pin = $order->delivery?->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
@@ -129,14 +140,31 @@ class DispatchController extends Controller
         Delivery::updateOrCreate([
             'order_id' => $order->id,
         ], [
-            'delivery_status' => 'awaiting_boda',
+            'delivery_type' => 'local_boda',
+            'shipping_zone_id' => $order->delivery?->shipping_zone_id,
+            'shipping_hotspot_id' => $order->delivery?->shipping_hotspot_id,
+            'physical_address' => $order->delivery?->physical_address,
+            'latitude' => $order->delivery?->latitude,
+            'longitude' => $order->delivery?->longitude,
+            'delivery_status' => 'in_transit',
             'buyer_release_pin' => $pin,
             'boda_phone' => $validated['boda_phone'] ?? null,
         ]);
 
+        if (!empty($order->buyer?->phone_number)) {
+            $this->smsService->sendLocalDispatchNotification(
+                $order->buyer->phone_number,
+                (string) ($order->public_id ?: $order->id),
+                $pin,
+                $validated['boda_phone'] ?? null,
+                $order->buyer_id
+            );
+        }
+
         return response()->json([
             'message' => 'Local dispatch imehifadhiwa.',
             'pin' => $pin, // Returned to display to merchant/boda
+            'delivery' => $order->fresh('delivery')->delivery,
         ]);
     }
 
@@ -150,9 +178,24 @@ class DispatchController extends Controller
     private function ensurePhysicalOrder(Order $order): void
     {
         abort_unless(
-            $order->purchasable_type === 'product' && $order->product && $order->product->type === 'physical',
+            $order->requiresPhysicalFulfillment(),
             422,
             'Dispatch evidence inahitajika kwa physical products pekee.'
+        );
+    }
+
+    private function ensurePaidDispatchableOrder(Order $order): void
+    {
+        abort_unless(
+            in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true),
+            422,
+            'Order must be paid before dispatch.'
+        );
+
+        abort_if(
+            $order->delivery?->delivery_type === 'self_pickup',
+            422,
+            'Self-pickup orders are completed with the pickup PIN, not dispatch.'
         );
     }
 }

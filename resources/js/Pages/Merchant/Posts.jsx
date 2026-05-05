@@ -6,6 +6,8 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import {
     BookOpenText,
+    ChevronLeft,
+    ChevronRight,
     Loader2,
     MessageCircle,
     Plus,
@@ -17,32 +19,43 @@ import { toast } from 'sonner';
 
 export default function MerchantPosts({ merchantUsername = '' }) {
     const [loading, setLoading] = useState(true);
+    const [postsLoading, setPostsLoading] = useState(false);
+    const [reportsLoading, setReportsLoading] = useState(false);
     const [posts, setPosts] = useState([]);
     const [contentReports, setContentReports] = useState([]);
     const [commerceSummary, setCommerceSummary] = useState(null);
     const [postSearch, setPostSearch] = useState('');
     const [postTypeFilter, setPostTypeFilter] = useState('all');
+    const [postPage, setPostPage] = useState(1);
+    const [postsMeta, setPostsMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [reportPage, setReportPage] = useState(1);
+    const [reportsMeta, setReportsMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [savingPostInteraction, setSavingPostInteraction] = useState(null);
     const [resolvingReportId, setResolvingReportId] = useState(null);
+    const [appealMessageById, setAppealMessageById] = useState({});
+    const [appealingReportId, setAppealingReportId] = useState(null);
 
     useEffect(() => {
-        loadPage();
+        loadCommerceSummary();
     }, []);
+
+    useEffect(() => {
+        loadPosts();
+    }, [merchantUsername, postPage, postSearch, postTypeFilter]);
+
+    useEffect(() => {
+        loadReports();
+    }, [merchantUsername, reportPage]);
+
+    useEffect(() => {
+        setPostPage(1);
+    }, [postSearch, postTypeFilter]);
 
     const isImageLikeUrl = (value) => {
         const raw = String(value || '').toLowerCase();
         if (!raw || raw.startsWith('private://')) return false;
         return /\.(png|jpe?g|gif|webp|avif|svg)(\?.*)?$/.test(raw) || raw.includes('/storage/');
     };
-
-    const filteredPosts = useMemo(() => {
-        return posts.filter((entry) => {
-            const hay = `${entry.title || ''} ${entry.caption || ''}`.toLowerCase();
-            const matchesSearch = hay.includes(postSearch.toLowerCase());
-            const matchesType = postTypeFilter === 'all' || entry.post_type === postTypeFilter;
-            return matchesSearch && matchesType;
-        });
-    }, [posts, postSearch, postTypeFilter]);
 
     const sectionSummaryCards = useMemo(() => {
         const postsSummary = commerceSummary?.sections?.posts || {};
@@ -54,21 +67,44 @@ export default function MerchantPosts({ merchantUsername = '' }) {
         ];
     }, [commerceSummary, posts.length]);
 
-    async function loadPage() {
-        setLoading(true);
+    async function loadCommerceSummary() {
         try {
-            const [postsRes, reportsRes, summaryRes] = await Promise.all([
-                axios.get(`/merchant/${merchantUsername}/posts/api`),
-                axios.get(`/merchant/${merchantUsername}/content-reports/api`),
-                axios.get(`/merchant/${merchantUsername}/orders/api/commerce-summary`).catch(() => ({ data: null })),
-            ]);
-
-            setPosts(postsRes.data?.data || []);
-            setContentReports(reportsRes.data?.data || []);
+            const summaryRes = await axios.get(`/merchant/${merchantUsername}/orders/api/commerce-summary`).catch(() => ({ data: null }));
             setCommerceSummary(summaryRes.data || null);
         } catch (error) {
-            toast.error('Imeshindwa kupakia posts manager.');
+            setCommerceSummary(null);
+        }
+    }
+
+    async function loadPosts() {
+        setPostsLoading(true);
+        try {
+            const params = new URLSearchParams({ page: String(postPage) });
+            const search = postSearch.trim();
+            if (search) params.set('q', search);
+            if (postTypeFilter !== 'all') params.set('post_type', postTypeFilter);
+
+            const postsRes = await axios.get(`/merchant/${merchantUsername}/posts/api?${params.toString()}`);
+            setPosts(postsRes.data?.data || []);
+            setPostsMeta(postsRes.data?.meta || { current_page: 1, last_page: 1, total: 0 });
+        } catch (error) {
+            toast.error('Imeshindwa kupakia posts.');
         } finally {
+            setPostsLoading(false);
+            setLoading(false);
+        }
+    }
+
+    async function loadReports() {
+        setReportsLoading(true);
+        try {
+            const reportsRes = await axios.get(`/merchant/${merchantUsername}/content-reports/api?page=${reportPage}`);
+            setContentReports(reportsRes.data?.data || []);
+            setReportsMeta(reportsRes.data?.meta || { current_page: 1, last_page: 1, total: 0 });
+        } catch (error) {
+            toast.error('Imeshindwa kupakia content reports.');
+        } finally {
+            setReportsLoading(false);
             setLoading(false);
         }
     }
@@ -120,6 +156,35 @@ export default function MerchantPosts({ merchantUsername = '' }) {
             toast.error(error.response?.data?.message || 'Imeshindwa kusasisha report.');
         } finally {
             setResolvingReportId(null);
+        }
+    }
+
+    async function submitAppeal(reportId) {
+        const appealMessage = (appealMessageById[reportId] || '').trim();
+        if (appealMessage.length < 20) {
+            toast.error('Andika appeal yenye maelezo angalau herufi 20.');
+            return;
+        }
+
+        setAppealingReportId(reportId);
+        try {
+            const res = await axios.post(`/merchant/${merchantUsername}/content-reports/${reportId}/appeal/api`, {
+                appeal_message: appealMessage,
+            });
+            const updated = res.data?.report;
+            setContentReports((current) => current.map((entry) => entry.id === reportId ? (updated || {
+                ...entry,
+                appeal_status: 'pending',
+                appeal_message: appealMessage,
+                appealed_at: new Date().toISOString(),
+                safety_state: 'appeal_pending',
+            }) : entry));
+            setAppealMessageById((current) => ({ ...current, [reportId]: '' }));
+            toast.success('Appeal imetumwa kwa Takeer.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kutuma appeal.');
+        } finally {
+            setAppealingReportId(null);
         }
     }
 
@@ -191,75 +256,82 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                             </Button>
                         </div>
 
-                        {filteredPosts.length === 0 ? (
+                        {postsLoading ? (
+                            <InlineLoader label="Loading posts..." />
+                        ) : posts.length === 0 ? (
                             <EmptyState icon={MessageCircle} title="Hakuna posts bado" body="Ukichapisha post, utaweza kui-manage hapa." />
-                        ) : filteredPosts.map((entry) => (
-                            <div key={entry.id} className="rounded-2xl border border-border/70 px-4 py-4 space-y-3 overflow-hidden">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex items-start gap-3 min-w-0">
-                                        <div className="h-12 w-12 rounded-xl border border-border/70 bg-muted shrink-0 overflow-hidden flex items-center justify-center">
-                                            {isImageLikeUrl(entry.cover_image) ? (
-                                                <img src={entry.cover_image} alt={entry.title || entry.caption || 'Post'} className="h-full w-full object-cover" />
-                                            ) : (
-                                                <BookOpenText className="h-5 w-5 text-brand-600" />
-                                            )}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-black truncate">{entry.title || entry.caption || `Post #${entry.id}`}</p>
-                                            <div className="mt-1 flex flex-wrap items-center gap-2">
-                                                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${entry.post_type === 'long' ? 'bg-sky-100 text-sky-700' : 'bg-violet-100 text-violet-700'}`}>
-                                                    {entry.post_type === 'long' ? 'Long Form' : 'Short Form'}
-                                                </span>
-                                                {entry.content_visibility && (
-                                                    <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                        {entry.content_visibility}
-                                                    </span>
-                                                )}
+                        ) : (
+                            <>
+                                {posts.map((entry) => (
+                                    <div key={entry.id} className="rounded-2xl border border-border/70 px-4 py-4 space-y-3 overflow-hidden">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex items-start gap-3 min-w-0">
+                                                <div className="h-12 w-12 rounded-xl border border-border/70 bg-muted shrink-0 overflow-hidden flex items-center justify-center">
+                                                    {isImageLikeUrl(entry.cover_image) ? (
+                                                        <img src={entry.cover_image} alt={entry.title || entry.caption || 'Post'} className="h-full w-full object-cover" />
+                                                    ) : (
+                                                        <BookOpenText className="h-5 w-5 text-brand-600" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-black truncate">{entry.title || entry.caption || `Post #${entry.id}`}</p>
+                                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${entry.post_type === 'long' ? 'bg-sky-100 text-sky-700' : 'bg-violet-100 text-violet-700'}`}>
+                                                            {entry.post_type === 'long' ? 'Long Form' : 'Short Form'}
+                                                        </span>
+                                                        {entry.content_visibility && (
+                                                            <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                                {entry.content_visibility}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[11px] text-muted-foreground mt-1">
+                                                        Views {Number(entry.views_count || 0).toLocaleString()} · Likes {Number(entry.likes_count || 0).toLocaleString()} · Comments {Number(entry.comment_count || 0).toLocaleString()}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <p className="text-[11px] text-muted-foreground mt-1">
-                                                Views {Number(entry.views_count || 0).toLocaleString()} · Likes {Number(entry.likes_count || 0).toLocaleString()} · Comments {Number(entry.comment_count || 0).toLocaleString()}
-                                            </p>
+                                        </div>
+
+                                        <div className="grid gap-3 md:grid-cols-2">
+                                            <div className="space-y-1 min-w-0">
+                                                <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Comments Override</label>
+                                                <select
+                                                    className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
+                                                    value={entry.comments_enabled_override === null ? 'inherit' : (entry.comments_enabled_override ? 'on' : 'off')}
+                                                    onChange={(e) => {
+                                                        const next = e.target.value === 'inherit' ? null : e.target.value === 'on';
+                                                        updatePostInteractionOverride(entry.id, 'comments_enabled_override', next);
+                                                    }}
+                                                    disabled={savingPostInteraction === `${entry.id}:comments_enabled_override`}
+                                                >
+                                                    <option value="inherit">Inherit ({entry.global_comments_enabled ? 'ON' : 'OFF'})</option>
+                                                    <option value="on">Force ON</option>
+                                                    <option value="off">Force OFF</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="space-y-1 min-w-0">
+                                                <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Reactions Override</label>
+                                                <select
+                                                    className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
+                                                    value={entry.reactions_enabled_override === null ? 'inherit' : (entry.reactions_enabled_override ? 'on' : 'off')}
+                                                    onChange={(e) => {
+                                                        const next = e.target.value === 'inherit' ? null : e.target.value === 'on';
+                                                        updatePostInteractionOverride(entry.id, 'reactions_enabled_override', next);
+                                                    }}
+                                                    disabled={savingPostInteraction === `${entry.id}:reactions_enabled_override`}
+                                                >
+                                                    <option value="inherit">Inherit ({entry.global_reactions_enabled ? 'ON' : 'OFF'})</option>
+                                                    <option value="on">Force ON</option>
+                                                    <option value="off">Force OFF</option>
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-
-                                <div className="grid gap-3 md:grid-cols-2">
-                                    <div className="space-y-1 min-w-0">
-                                        <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Comments Override</label>
-                                        <select
-                                            className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
-                                            value={entry.comments_enabled_override === null ? 'inherit' : (entry.comments_enabled_override ? 'on' : 'off')}
-                                            onChange={(e) => {
-                                                const next = e.target.value === 'inherit' ? null : e.target.value === 'on';
-                                                updatePostInteractionOverride(entry.id, 'comments_enabled_override', next);
-                                            }}
-                                            disabled={savingPostInteraction === `${entry.id}:comments_enabled_override`}
-                                        >
-                                            <option value="inherit">Inherit ({entry.global_comments_enabled ? 'ON' : 'OFF'})</option>
-                                            <option value="on">Force ON</option>
-                                            <option value="off">Force OFF</option>
-                                        </select>
-                                    </div>
-
-                                    <div className="space-y-1 min-w-0">
-                                        <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Reactions Override</label>
-                                        <select
-                                            className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
-                                            value={entry.reactions_enabled_override === null ? 'inherit' : (entry.reactions_enabled_override ? 'on' : 'off')}
-                                            onChange={(e) => {
-                                                const next = e.target.value === 'inherit' ? null : e.target.value === 'on';
-                                                updatePostInteractionOverride(entry.id, 'reactions_enabled_override', next);
-                                            }}
-                                            disabled={savingPostInteraction === `${entry.id}:reactions_enabled_override`}
-                                        >
-                                            <option value="inherit">Inherit ({entry.global_reactions_enabled ? 'ON' : 'OFF'})</option>
-                                            <option value="on">Force ON</option>
-                                            <option value="off">Force OFF</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                                ))}
+                                <PaginationControls meta={postsMeta} onPageChange={setPostPage} label="posts" />
+                            </>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -271,32 +343,68 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        {contentReports.length === 0 ? (
+                        {reportsLoading ? (
+                            <InlineLoader label="Loading reports..." />
+                        ) : contentReports.length === 0 ? (
                             <EmptyState icon={ShieldCheck} title="Hakuna reports kwa sasa" body="Ripoti mpya zitaonekana hapa." />
-                        ) : contentReports.map((report) => (
-                            <div key={report.id} className="rounded-2xl border border-border/70 px-4 py-4 space-y-3">
-                                <div>
-                                    <p className="text-sm font-black">Report #{report.id} · {report.item_type} #{report.item_id}</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Reason: {report.reason} · Status: <span className="font-bold uppercase">{report.status}</span></p>
-                                </div>
+                        ) : (
+                            <>
+                                {contentReports.map((report) => (
+                                    <div key={report.id} className="rounded-2xl border border-border/70 px-4 py-4 space-y-3">
+                                        <div>
+                                            <p className="text-sm font-black">Report #{report.id} · {report.item_type} #{report.item_id}</p>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Reason: {report.reason_code || report.reason} · Context: {report.report_context || 'marketplace'}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Target: {report.item_summary?.label || '-'} · Status: <span className="font-bold uppercase">{report.status}</span> · Safety: <span className="font-bold uppercase">{report.safety_state || 'reported'}</span>
+                                            </p>
+                                        </div>
 
-                                {report.notes && (
-                                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-xl px-3 py-2">{report.notes}</p>
-                                )}
+                                        {report.notes && (
+                                            <p className="text-xs text-muted-foreground bg-muted/40 rounded-xl px-3 py-2">{report.notes}</p>
+                                        )}
 
-                                <div className="flex flex-wrap gap-2">
-                                    <Button variant="outline" className="rounded-xl" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'under_review', 'none')}>
-                                        Under Review
-                                    </Button>
-                                    <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'resolved', 'warn_content')}>
-                                        Resolve + Warn
-                                    </Button>
-                                    <Button variant="outline" className="rounded-xl" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'dismissed', 'none')}>
-                                        Dismiss
-                                    </Button>
-                                </div>
-                            </div>
-                        ))}
+                                        {report.appeal_status && (
+                                            <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                                                <p className="font-black uppercase tracking-widest">Appeal: {report.appeal_status}</p>
+                                                {report.appeal_message && <p className="mt-1 leading-5">{report.appeal_message}</p>}
+                                            </div>
+                                        )}
+
+                                        {['restricted', 'appeal_rejected'].includes(report.safety_state) && report.appeal_status !== 'pending' && (
+                                            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                                                <p className="text-xs font-black uppercase tracking-widest text-amber-900">Appeal restriction</p>
+                                                <textarea
+                                                    rows={3}
+                                                    value={appealMessageById[report.id] || ''}
+                                                    onChange={(e) => setAppealMessageById((current) => ({ ...current, [report.id]: e.target.value }))}
+                                                    placeholder="Explain why this item should be restored, what was fixed, or why the report is mistaken..."
+                                                    className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm"
+                                                    maxLength={3000}
+                                                />
+                                                <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white" disabled={appealingReportId === report.id} onClick={() => submitAppeal(report.id)}>
+                                                    Submit Appeal
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button variant="outline" className="rounded-xl" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'under_review', 'none')}>
+                                                Under Review
+                                            </Button>
+                                            <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'resolved', 'warn_content')}>
+                                                Resolve + Warn
+                                            </Button>
+                                            <Button variant="outline" className="rounded-xl" disabled={resolvingReportId === report.id} onClick={() => resolveContentReport(report.id, 'dismissed', 'none')}>
+                                                Dismiss
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                                <PaginationControls meta={reportsMeta} onPageChange={setReportPage} label="reports" />
+                            </>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -312,6 +420,55 @@ function EmptyState({ icon: Icon, title, body }) {
             </div>
             <p className="text-sm font-black">{title}</p>
             <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto leading-6">{body}</p>
+        </div>
+    );
+}
+
+function InlineLoader({ label }) {
+    return (
+        <div className="flex items-center justify-center gap-2 rounded-2xl border border-border/70 px-4 py-8 text-sm font-semibold text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {label}
+        </div>
+    );
+}
+
+function PaginationControls({ meta, onPageChange, label }) {
+    const currentPage = Number(meta?.current_page || 1);
+    const lastPage = Number(meta?.last_page || 1);
+    const total = Number(meta?.total || 0);
+
+    if (lastPage <= 1) return null;
+
+    return (
+        <div className="flex flex-col gap-3 rounded-2xl border border-border/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs font-bold text-muted-foreground">
+                Page {currentPage} of {lastPage} · {total.toLocaleString()} {label}
+            </p>
+            <div className="flex items-center gap-2">
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+                    disabled={currentPage <= 1}
+                >
+                    <ChevronLeft className="mr-1 h-4 w-4" />
+                    Previous
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => onPageChange(Math.min(lastPage, currentPage + 1))}
+                    disabled={currentPage >= lastPage}
+                >
+                    Next
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+            </div>
         </div>
     );
 }

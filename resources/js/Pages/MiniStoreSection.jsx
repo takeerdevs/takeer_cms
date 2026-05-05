@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import { ArrowLeft, Store, BookOpenText, Boxes, Crown, Lock } from 'lucide-react';
+import { productPriceLabel } from '@/lib/productUnits';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
@@ -54,21 +55,14 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
     const contentItems = data?.[0]?.content_items || [];
     const bundles = data?.[0]?.bundles || [];
     const subscriptionPlans = data?.[0]?.subscription_plans || [];
+    const allProducts = data?.[0]?.products || [];
 
     const products = useMemo(() => {
-        const items = [];
-        posts.forEach((post) => {
-            const product = (post?.product && Number(post.product.price) > 0)
-                ? post.product
-                : (post?.product_tags?.[0]?.product || post.product || null);
-            if (!product) return;
-            if (sectionType === 'products' && product.type !== 'physical') return;
-            if (sectionType === 'downloads' && product.type !== 'digital') return;
-            if (sectionType === 'services' && product.type !== 'service') return;
-            items.push(product);
-        });
-        return items;
-    }, [posts, sectionType]);
+        if (sectionType === 'products') return allProducts.filter((product) => product.type === 'physical');
+        if (sectionType === 'downloads') return allProducts.filter((product) => product.type === 'digital');
+        if (sectionType === 'services') return allProducts.filter((product) => product.type === 'service');
+        return [];
+    }, [allProducts, sectionType]);
 
     const extraItems = useMemo(() => {
         if (sectionType === 'content') return contentItems;
@@ -213,11 +207,11 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-foreground truncate">{product.title}</p>
                                     <p className="text-xs text-muted-foreground mt-0.5">
-                                        {product.type === 'digital' ? 'Download' : product.type === 'service' ? 'Service' : 'Product'}
+                                        {productLabel(product)}
                                     </p>
                                 </div>
                                 <div className="text-sm font-black text-brand-600">
-                                    TZS {Number(product.price).toLocaleString()}
+                                    {productPriceLabel(product)}
                                 </div>
                             </Link>
                         ))}
@@ -244,4 +238,27 @@ export default function MiniStoreSection({ merchantSlug, sectionType, initialDat
             </div>
         </AppLayout>
     );
+}
+
+function productLabel(product) {
+    if (product?.type === 'service') return 'Service';
+    if (product?.type !== 'digital') return 'Product';
+
+    const map = {
+        video_stream: 'Premium video',
+        audio_stream: 'Premium audio',
+        gallery_pack: 'Gallery pack',
+        live_event: 'Live event',
+        custom_delivery: 'Custom work',
+        external_link: 'External digital access',
+        file: product.digital_content_type === 'software'
+            ? 'Software'
+            : product.digital_content_type === 'document'
+                ? 'Document'
+                : product.digital_content_type === 'ebook'
+                    ? 'E-book'
+                    : 'Digital download',
+    };
+
+    return map[product.digital_delivery_type] || 'Digital download';
 }

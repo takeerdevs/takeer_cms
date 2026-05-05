@@ -49,9 +49,19 @@ class PaymentWebhookController extends Controller
                     ->first();
                 $isPhysical = $order->requiresPhysicalFulfillment();
                 $isHeldService = (bool) $serviceRequest;
+                $isCustomDelivery = $order->product?->isDigital()
+                    && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery';
+
+                if ($isPhysical && $order->is_inquiry) {
+                    $order->markPhysicalAgreement([
+                        'total_paid' => (float) $order->total_paid,
+                        'notes' => 'Buyer accepted the quoted physical order and gateway confirmed payment.',
+                    ]);
+                }
 
                 $order->update([
-                    'payment_status' => ($isPhysical || $isHeldService) ? 'escrow_locked' : 'resolved_merchant_paid'
+                    'payment_status' => $isPhysical ? 'awaiting_merchant_confirmation' : (($isHeldService || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid'),
+                    'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
                 ]);
 
                 // Log TRA-ready transaction
@@ -68,10 +78,26 @@ class PaymentWebhookController extends Controller
                     'reference' => $mpesaReceiptNumber,
                 ]);
 
-                if ($isPhysical || $isHeldService) {
+                if ($isPhysical || $isHeldService || $isCustomDelivery) {
                     // Freeze funds in merchant's wallet until delivery/customer confirmation.
                     $wallet = $order->merchant->user->wallet()->firstOrCreate(['user_id' => $order->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);
                     $wallet->increment('frozen_balance', $order->total_paid);
+                    if ($isCustomDelivery) {
+                        $this->entitlementService->grantForOrder($order->fresh(['product']));
+                    }
+                    if ($isPhysical) {
+                        $order->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                        $publicId = (string) ($order->public_id ?: $order->id);
+                        if ($order->buyer?->phone_number) {
+                            $this->smsService->sendPhysicalPaymentHeldToBuyer($order->buyer->phone_number, $publicId, (float) $order->total_paid, $order->buyer_id);
+                            if ($order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
+                                $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
+                            }
+                        }
+                        if ($order->merchant?->user?->phone_number) {
+                            $this->smsService->sendPhysicalPaymentHeldToMerchant($order->merchant->user->phone_number, $publicId, (float) $order->total_paid, $order->merchant->user_id);
+                        }
+                    }
                 } else {
                     // Instantly release payout for non-physical commerce items.
                     $wallet = $order->merchant->user->wallet()->firstOrCreate(['user_id' => $order->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);

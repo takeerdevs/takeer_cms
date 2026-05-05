@@ -50,7 +50,7 @@ class RetailInventoryController extends Controller
 
         $query = ProductLocationInventory::query()
             ->where('merchant_location_id', $location->id)
-            ->with(['product:id,title,slug,has_variants', 'variant:id,name,sku,product_id,is_active,attributes']);
+            ->with(['product.unitType:id,name,code,symbol,allows_decimal', 'variant:id,name,sku,product_id,is_active,attributes']);
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -71,12 +71,19 @@ class RetailInventoryController extends Controller
                 'row_key' => $row->product_id . ':' . ($row->product_variant_id ?? '0'),
                 'product_id' => $row->product_id,
                 'product_variant_id' => $row->product_variant_id,
-                'quantity' => (int) $row->quantity,
+                'quantity' => $row->quantity_decimal !== null ? (float) $row->quantity_decimal : (float) $row->quantity,
                 'product' => $row->product ? [
                     'id' => $row->product->id,
                     'title' => $row->product->title,
                     'slug' => $row->product->slug,
                     'has_variants' => (bool) $row->product->has_variants,
+                    'unit_type' => $row->product->unitType ? [
+                        'id' => $row->product->unitType->id,
+                        'name' => $row->product->unitType->name,
+                        'code' => $row->product->unitType->code,
+                        'symbol' => $row->product->unitType->symbol,
+                        'allows_decimal' => (bool) $row->product->unitType->allows_decimal,
+                    ] : null,
                 ] : null,
                 'variant' => $row->variant ? [
                     'id' => $row->variant->id,
@@ -149,7 +156,7 @@ class RetailInventoryController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.product_variant_id' => 'nullable|exists:product_variants,id',
-            'items.*.counted_quantity' => 'required|integer|min:0',
+            'items.*.counted_quantity' => 'required|numeric|min:0',
         ]);
 
         $staffRole = strtoupper((string) ($staff?->role ?? ''));
@@ -173,14 +180,14 @@ class RetailInventoryController extends Controller
                     'product_id' => $row['product_id'],
                     'merchant_location_id' => $location->id,
                     'product_variant_id' => $row['product_variant_id'] ?? null,
-                ], ['quantity' => 0]);
+                ], ['quantity' => 0, 'quantity_decimal' => 0]);
 
-                $expected = (int) $inventory->quantity;
-                $counted = (int) $row['counted_quantity'];
+                $expected = (float) ($inventory->quantity_decimal ?? $inventory->quantity);
+                $counted = (float) $row['counted_quantity'];
                 $variance = $counted - $expected;
 
                 if ($variance !== 0) {
-                    $inventory->update(['quantity' => $counted]);
+                    $inventory->update(['quantity' => (int) ceil($counted), 'quantity_decimal' => $counted]);
                     $this->syncGlobalStock($row['product_id']);
                     $updated++;
                     $varianceTotal += $variance;
@@ -216,7 +223,7 @@ class RetailInventoryController extends Controller
             'product_id' => 'required|exists:products,id',
             'merchant_location_id' => 'required|exists:merchant_locations,id',
             'product_variant_id' => 'nullable|exists:product_variants,id',
-            'add_quantity' => 'required|integer|min:1',
+            'add_quantity' => 'required|numeric|min:0.001',
         ]);
 
         // Verify location belongs to merchant
@@ -228,9 +235,14 @@ class RetailInventoryController extends Controller
             'product_id' => $validated['product_id'],
             'merchant_location_id' => $validated['merchant_location_id'],
             'product_variant_id' => $validated['product_variant_id'] ?? null,
-        ], ['quantity' => 0]);
+        ], ['quantity' => 0, 'quantity_decimal' => 0]);
 
-        $inventory->increment('quantity', $validated['add_quantity']);
+        $addQuantity = (float) $validated['add_quantity'];
+        $newQuantity = (float) ($inventory->quantity_decimal ?? $inventory->quantity ?? 0) + $addQuantity;
+        $inventory->update([
+            'quantity' => (int) ceil($newQuantity),
+            'quantity_decimal' => $newQuantity,
+        ]);
 
         // Recalculate global product stock
         $this->syncGlobalStock($validated['product_id']);
@@ -371,7 +383,7 @@ class RetailInventoryController extends Controller
 
     private function syncGlobalStock($productId)
     {
-        $total = ProductLocationInventory::where('product_id', $productId)->sum('quantity');
-        Product::where('id', $productId)->update(['inventory_count' => $total]);
+        $total = (float) ProductLocationInventory::where('product_id', $productId)->sum(DB::raw('COALESCE(quantity_decimal, quantity)'));
+        Product::where('id', $productId)->update(['inventory_count' => (int) ceil($total), 'inventory_quantity' => $total]);
     }
 }

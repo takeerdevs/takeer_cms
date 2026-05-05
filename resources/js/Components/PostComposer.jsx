@@ -719,7 +719,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                 <div className="space-y-4">
                                     {/* Restriction Toggle */}
                                     <div className={cn(
-                                        "bg-card/60 backdrop-blur-md border border-border/50 rounded-3xl p-4 flex items-center justify-between shadow-sm",
+                                        "bg-card/60 backdrop-blur-md border border-border/50 rounded-sm p-4 flex items-center justify-between shadow-sm",
                                         !selectedProfileKycComplete && "opacity-75"
                                     )}>
                                         <div className="flex flex-col">
@@ -838,7 +838,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                             promotables[activePromotionTab === 'plan' ? 'plans' : 'bundles'].map(item => {
                                                                 const mappedType = activePromotionTab === 'plan' ? 'subscription_plan' : activePromotionTab;
                                                                 const isSelected = selectedPromotables.some(p => p.id === item.id && p.type === mappedType);
-                                                                
+
                                                                 return (
                                                                     <button
                                                                         key={item.id}

@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Bundle;
 use App\Models\ContentItem;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,6 +22,10 @@ class SubscriptionPlanResource extends JsonResource
             ->with('items')
             ->get(['id', 'slug', 'title', 'description', 'price', 'status', 'is_course'])
             ->keyBy('id');
+        $productLookup = Product::query()
+            ->whereIn('id', $items->where('item_type', 'product')->pluck('item_id')->filter()->unique()->values())
+            ->get(['id', 'slug', 'title', 'description', 'price', 'type', 'digital_delivery_type', 'digital_content_type'])
+            ->keyBy('id');
 
         return [
             'id' => $this->id,
@@ -35,10 +40,13 @@ class SubscriptionPlanResource extends JsonResource
             'trial_days' => $this->trial_days,
             'tier' => (int) $this->tier,
             'status' => $this->status,
-            'items' => $this->whenLoaded('items', fn () => $items->map(function ($item) use ($contentLookup, $bundleLookup) {
-                $resolved = $item->item_type === 'content_item'
-                    ? $contentLookup->get((int) $item->item_id)
-                    : $bundleLookup->get((int) $item->item_id);
+            'items' => $this->whenLoaded('items', fn () => $items->map(function ($item) use ($contentLookup, $bundleLookup, $productLookup) {
+                $resolved = match ($item->item_type) {
+                    'content_item' => $contentLookup->get((int) $item->item_id),
+                    'bundle' => $bundleLookup->get((int) $item->item_id),
+                    'product' => $productLookup->get((int) $item->item_id),
+                    default => null,
+                };
 
                 return [
                     'id' => $item->id,
@@ -49,7 +57,9 @@ class SubscriptionPlanResource extends JsonResource
                     'slug' => $resolved?->slug,
                     'description' => $resolved?->excerpt ?? $resolved?->description ?? null,
                     'price' => $resolved?->price !== null ? (float) $resolved->price : null,
-                    'status' => $resolved?->visibility ?? $resolved?->status ?? null,
+                    'status' => $resolved?->visibility ?? $resolved?->status ?? $resolved?->type ?? null,
+                    'delivery_type' => $resolved?->digital_delivery_type ?? null,
+                    'content_type' => $resolved?->digital_content_type ?? null,
                     'is_course' => (bool) ($resolved?->is_course ?? false),
                 ];
             })),

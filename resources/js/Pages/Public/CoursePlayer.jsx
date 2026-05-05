@@ -98,10 +98,7 @@ export default function CoursePlayer({ product, course, hasFullAccess }) {
         if (isToggling) return;
         setIsToggling(true);
         try {
-            const endpoint = course?.type === 'bundle'
-                ? `/learn/bundle-lessons/${lessonId}/complete`
-                : `/course/lesson/${lessonId}/complete`;
-            const res = await axios.post(endpoint);
+            const res = await axios.post(`/learn/bundle-lessons/${lessonId}/complete`);
             const isCompleted = res.data.completed;
 
             setLocalCurriculum(prev => prev.map(m => ({

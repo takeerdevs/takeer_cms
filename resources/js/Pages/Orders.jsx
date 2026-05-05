@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/Card';
+import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import {
     BookOpenText,
@@ -22,19 +22,20 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Input } from '@/Components/ui/Input';
+import ContentReportButton from '@/Components/ContentReportButton';
+import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
 
 const tabs = [
+    { key: 'pulse', label: 'Pulse', icon: Store },
     { key: 'library', label: 'Library', icon: Library },
     { key: 'memberships', label: 'Memberships', icon: Crown },
-    { key: 'merchant', label: 'Merchant', icon: Store },
 ];
 
 export default function Orders() {
     const { auth } = usePage().props;
     const isMerchant = !!auth?.user?.is_merchant;
 
-    const [activeTab, setActiveTab] = useState('library');
+    const [activeTab, setActiveTab] = useState('pulse');
     const [loading, setLoading] = useState(true);
     const [entitlements, setEntitlements] = useState([]);
     const [subscriptions, setSubscriptions] = useState([]);
@@ -50,6 +51,8 @@ export default function Orders() {
     const [libraryMeta, setLibraryMeta] = useState({ current_page: 1, last_page: 1, total: 0, unfiltered_total: 0 });
     const [libraryLoading, setLibraryLoading] = useState(false);
     const [subscriptionPerPage, setSubscriptionPerPage] = useState(12);
+    const [pulsePage, setPulsePage] = useState(1);
+    const [pulsePerPage, setPulsePerPage] = useState(12);
 
     useEffect(() => {
         loadData();
@@ -64,6 +67,11 @@ export default function Orders() {
         if (loading || activeTab !== 'memberships') return;
         setSubscriptionPage(1);
     }, [subscriptionPerPage, activeTab]);
+
+    useEffect(() => {
+        if (loading || activeTab !== 'pulse') return;
+        setPulsePage(1);
+    }, [pulsePerPage, activeTab]);
 
     useEffect(() => {
         if (loading || activeTab !== 'library') return;
@@ -212,7 +220,87 @@ export default function Orders() {
         ];
     }, [entitlements, subscriptions]);
 
-    const visibleTabs = isMerchant ? tabs : tabs.filter((tab) => tab.key !== 'merchant');
+    const pulseItems = useMemo(() => {
+        const entitlementItems = entitlements.map((entry) => {
+            const item = entry.item || {};
+            const merchant = entry.merchant || item.merchant || {};
+            const isProduct = entry.item_type === 'product';
+            const isPhysical = isProduct && (item.type === 'physical' || entry.library_type === 'physical_product');
+            const isService = isProduct && (item.type === 'service' || entry.library_type === 'service_booking');
+            const isCustom = isProduct && item.digital_delivery_type === 'custom_delivery';
+            const orderStatus = entry.order_details?.payment_status;
+            const title = item.title || item.name || 'Owned item';
+
+            return {
+                id: `entitlement-${entry.id}`,
+                date: entry.granted_at || entry.starts_at,
+                icon: isService ? CalendarClock : isPhysical ? Truck : isCustom ? Sparkles : isProduct ? ShoppingBag : BookOpenText,
+                tone: isPhysical ? 'amber' : isService ? 'sky' : isCustom ? 'violet' : 'emerald',
+                eyebrow: isPhysical ? 'Physical sale' : isService ? 'Service booking' : isCustom ? 'Custom delivery' : 'Entitled content',
+                title,
+                body: isPhysical
+                    ? orderStatusLabel(entry.order_details)
+                    : isService
+                        ? serviceStatusLabel(entry.order_details)
+                        : `${merchant.name || 'Merchant'} granted access to this item.`,
+                meta: merchant.name || 'Takeer merchant',
+                href: notificationHref(entry),
+                action: isPhysical ? 'Track' : isService ? 'View booking' : 'Open',
+                status: orderStatus || entry.status,
+                sortDate: new Date(entry.granted_at || entry.starts_at || 0).getTime(),
+            };
+        });
+
+        const subscriptionItems = subscriptions.map((subscription) => {
+            const plan = subscription.plan || {};
+            const merchant = subscription.merchant || {};
+
+            return {
+                id: `subscription-${subscription.id}`,
+                date: subscription.started_at || subscription.created_at || subscription.current_period_start,
+                icon: Crown,
+                tone: ['active', 'pending', 'past_due'].includes(subscription.status) ? 'emerald' : 'slate',
+                eyebrow: 'Subscribed access',
+                title: plan.name || 'Membership plan',
+                body: `Membership ${subscription.status || 'active'}${subscription.current_period_end ? ` until ${formatDate(subscription.current_period_end)}` : ''}.`,
+                meta: merchant.display_name || merchant.name || 'Takeer merchant',
+                href: `/plan/${plan.slug || plan.id}`,
+                action: 'View plan',
+                status: subscription.status,
+                sortDate: new Date(subscription.started_at || subscription.created_at || subscription.current_period_start || 0).getTime(),
+            };
+        });
+
+        const liveItems = merchantLive.map((event) => ({
+            id: `live-${event.id}`,
+            date: new Date().toISOString(),
+            icon: ShoppingBag,
+            tone: 'amber',
+            eyebrow: 'Live product sale',
+            title: event.product_title || 'New paid order',
+            body: `Paid TZS ${Number(event.amount || 0).toLocaleString()} and waiting on merchant handling.`,
+            meta: event.buyer_phone || 'Buyer',
+            href: '/merchant/dashboard',
+            action: 'Dashboard',
+            status: event.status,
+            sortDate: Date.now(),
+        }));
+
+        return [...liveItems, ...entitlementItems, ...subscriptionItems]
+            .sort((a, b) => b.sortDate - a.sortDate);
+    }, [entitlements, subscriptions, merchantLive]);
+
+    const pulseLastPage = Math.max(Math.ceil(pulseItems.length / pulsePerPage), 1);
+    const safePulsePage = Math.min(pulsePage, pulseLastPage);
+    const visiblePulseItems = pulseItems.slice((safePulsePage - 1) * pulsePerPage, safePulsePage * pulsePerPage);
+
+    useEffect(() => {
+        if (pulsePage > pulseLastPage) {
+            setPulsePage(pulseLastPage);
+        }
+    }, [pulsePage, pulseLastPage]);
+
+    const visibleTabs = tabs;
 
     const libraryTypeOptions = [
         { key: 'all', label: 'All Types' },
@@ -244,10 +332,6 @@ export default function Orders() {
                     <div className="relative p-6 md:p-8 flex flex-col gap-6">
                         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
                             <div>
-                                <div className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-brand-700 shadow-sm">
-                                    <Sparkles className="h-3.5 w-3.5" />
-                                    Buyer Hub
-                                </div>
                                 <h1 className="mt-4 text-3xl md:text-4xl font-black tracking-tight text-slate-900">
                                     Your purchases, premium access, and memberships in one clean space.
                                 </h1>
@@ -285,6 +369,75 @@ export default function Orders() {
                         </button>
                     ))}
                 </div>
+
+                {activeTab === 'pulse' && (
+                    <section className="space-y-3">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                            <div>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-900">Pulse</h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Subscriptions, entitled content, and physical product sales in one notification stream.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {isMerchant && (
+                                    <span className={`w-fit text-xs font-black px-3 py-1 rounded-full ${window.Echo ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                                        {window.Echo ? 'Live connected' : 'Live offline'}
+                                    </span>
+                                )}
+                                <select
+                                    value={pulsePerPage}
+                                    onChange={(e) => setPulsePerPage(Number(e.target.value))}
+                                    className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
+                                >
+                                    <option value={8}>8 / page</option>
+                                    <option value={12}>12 / page</option>
+                                    <option value={24}>24 / page</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="rounded-[24px] border border-border/70 bg-card overflow-hidden">
+                            {pulseItems.length === 0 ? (
+                                <EmptyPane icon={Library} title="No pulse yet" body="Your subscribed content, entitled items, and product order updates will appear here as a single feed." compact />
+                            ) : (
+                                <div className="divide-y divide-border/70">
+                                    {visiblePulseItems.map((item) => (
+                                        <PulseNotification key={item.id} item={item} />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {pulseItems.length > 0 && (
+                            <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                                <p className="text-sm font-semibold text-muted-foreground">
+                                    Showing {visiblePulseItems.length} of {pulseItems.length} updates · Page {safePulsePage} / {pulseLastPage}
+                                </p>
+                                {pulseLastPage > 1 && (
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            className="rounded-xl"
+                                            onClick={() => setPulsePage((p) => Math.max(1, p - 1))}
+                                            disabled={safePulsePage <= 1}
+                                        >
+                                            Previous
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            className="rounded-xl"
+                                            onClick={() => setPulsePage((p) => Math.min(pulseLastPage, p + 1))}
+                                            disabled={safePulsePage >= pulseLastPage}
+                                        >
+                                            Next
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </section>
+                )}
 
                 {activeTab === 'library' && (
                     <div className="space-y-4">
@@ -338,17 +491,17 @@ export default function Orders() {
                                 <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
                             </div>
                         ) : (
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {libraryMeta.unfiltered_total === 0 ? (
-                            <EmptyPane icon={Library} title="Library yako iko tupu" body="Ukishanunua content, bundles, au bidhaa za kidigitali zitaonekana hapa." />
-                        ) : entitlements.length === 0 ? (
-                            <EmptyPane icon={Library} title="No items match your filters" body="Jaribu kubadilisha search, type, au date filter uone matokeo zaidi." />
-                        ) : (
-                            entitlements.map((entry) => (
-                                <OwnedCard key={entry.id} entry={entry} />
-                            ))
-                        )}
-                        </div>
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                {libraryMeta.unfiltered_total === 0 ? (
+                                    <EmptyPane icon={Library} title="Library yako iko tupu" body="Ukishanunua content, bundles, au bidhaa za kidigitali zitaonekana hapa." />
+                                ) : entitlements.length === 0 ? (
+                                    <EmptyPane icon={Library} title="No items match your filters" body="Jaribu kubadilisha search, type, au date filter uone matokeo zaidi." />
+                                ) : (
+                                    entitlements.map((entry) => (
+                                        <OwnedCard key={entry.id} entry={entry} />
+                                    ))
+                                )}
+                            </div>
                         )}
 
                         {libraryMeta.last_page > 1 && (
@@ -390,97 +543,144 @@ export default function Orders() {
                                 <option value={48}>48 / page</option>
                             </select>
                         </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                        {subscriptionLoading ? (
-                            <div className="md:col-span-2 flex items-center justify-center py-16">
-                                <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
-                            </div>
-                        ) : subscriptions.length === 0 ? (
-                            <EmptyPane icon={Crown} title="Hakuna memberships bado" body="Jiunge na subscription plan ili upate access ya muda mrefu kwa bundles na premium content." />
-                        ) : (
-                            subscriptions.map((subscription) => (
-                                <MembershipCard key={subscription.id} subscription={subscription} onCancel={() => cancelSubscription(subscription.id)} />
-                            ))
-                        )}
-                        {!subscriptionLoading && subscriptionMeta.last_page > 1 && (
-                            <div className="md:col-span-2 flex items-center justify-between gap-3 pt-1">
-                                <Button
-                                    variant="outline"
-                                    className="rounded-xl"
-                                    onClick={() => setSubscriptionPage((p) => Math.max(1, p - 1))}
-                                    disabled={subscriptionMeta.current_page <= 1}
-                                >
-                                    Previous
-                                </Button>
-                                <p className="text-sm font-semibold text-muted-foreground">
-                                    Page {subscriptionMeta.current_page} / {subscriptionMeta.last_page}
-                                </p>
-                                <Button
-                                    variant="outline"
-                                    className="rounded-xl"
-                                    onClick={() => setSubscriptionPage((p) => Math.min(subscriptionMeta.last_page, p + 1))}
-                                    disabled={subscriptionMeta.current_page >= subscriptionMeta.last_page}
-                                >
-                                    Next
-                                </Button>
-                            </div>
-                        )}
-                    </div>
-                    </div>
-                )}
-
-                {activeTab === 'merchant' && isMerchant && (
-                    <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-                        <Card className="rounded-[24px] border-brand-200/70">
-                            <CardHeader>
-                                <CardTitle className="text-xl font-black">Merchant Pulse</CardTitle>
-                                <CardDescription>Quick glance at your live merchant activity.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                <div className="rounded-2xl border bg-background px-4 py-4 flex items-center justify-between">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Live updates</p>
-                                        <p className="text-sm text-muted-foreground mt-1">Listen for new paid orders in real time.</p>
-                                    </div>
-                                    <span className={`text-xs font-black px-3 py-1 rounded-full ${window.Echo ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
-                                        {window.Echo ? 'Connected' : 'Offline'}
-                                    </span>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            {subscriptionLoading ? (
+                                <div className="md:col-span-2 flex items-center justify-center py-16">
+                                    <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
                                 </div>
-
-                                <Button className="w-full rounded-2xl" onClick={() => router.visit('/merchant/dashboard')}>
-                                    <Store className="mr-2 h-4 w-4" />
-                                    Go to merchant dashboard
-                                </Button>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="rounded-[24px]">
-                            <CardHeader>
-                                <CardTitle className="text-xl font-black">Recent live merchant events</CardTitle>
-                                <CardDescription>Fresh paid orders that hit your merchant channel.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                {merchantLive.length === 0 ? (
-                                    <EmptyPane icon={Truck} title="Bado hakuna live events" body="Ukishapata order mpya ya merchant itatokea hapa papo hapo." compact />
-                                ) : merchantLive.map((event) => (
-                                    <div key={event.id} className="rounded-2xl border px-4 py-4 flex items-center justify-between gap-3">
-                                        <div>
-                                            <p className="font-black text-sm">{event.product_title}</p>
-                                            <p className="text-xs text-muted-foreground mt-1">{event.buyer_phone}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-sm font-black text-brand-600">TZS {Number(event.amount || 0).toLocaleString()}</p>
-                                            <p className="text-[11px] text-muted-foreground uppercase tracking-widest mt-1">{event.status}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </CardContent>
-                        </Card>
+                            ) : subscriptions.length === 0 ? (
+                                <EmptyPane icon={Crown} title="Hakuna memberships bado" body="Jiunge na subscription plan ili upate access ya muda mrefu kwa bundles na premium content." />
+                            ) : (
+                                subscriptions.map((subscription) => (
+                                    <MembershipCard key={subscription.id} subscription={subscription} onCancel={() => cancelSubscription(subscription.id)} />
+                                ))
+                            )}
+                            {!subscriptionLoading && subscriptionMeta.last_page > 1 && (
+                                <div className="md:col-span-2 flex items-center justify-between gap-3 pt-1">
+                                    <Button
+                                        variant="outline"
+                                        className="rounded-xl"
+                                        onClick={() => setSubscriptionPage((p) => Math.max(1, p - 1))}
+                                        disabled={subscriptionMeta.current_page <= 1}
+                                    >
+                                        Previous
+                                    </Button>
+                                    <p className="text-sm font-semibold text-muted-foreground">
+                                        Page {subscriptionMeta.current_page} / {subscriptionMeta.last_page}
+                                    </p>
+                                    <Button
+                                        variant="outline"
+                                        className="rounded-xl"
+                                        onClick={() => setSubscriptionPage((p) => Math.min(subscriptionMeta.last_page, p + 1))}
+                                        disabled={subscriptionMeta.current_page >= subscriptionMeta.last_page}
+                                    >
+                                        Next
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
+
             </div>
         </AppLayout>
     );
+}
+
+function PulseNotification({ item }) {
+    const Icon = item.icon || Library;
+    const toneClass = {
+        amber: 'bg-amber-50 text-amber-700 border-amber-100',
+        emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        sky: 'bg-sky-50 text-sky-700 border-sky-100',
+        violet: 'bg-violet-50 text-violet-700 border-violet-100',
+        slate: 'bg-slate-50 text-slate-600 border-slate-100',
+    }[item.tone] || 'bg-slate-50 text-slate-600 border-slate-100';
+
+    return (
+        <div className="grid gap-3 p-4 md:grid-cols-[auto_1fr_auto] md:items-center md:p-5">
+            <div className={`h-11 w-11 rounded-2xl border flex items-center justify-center ${toneClass}`}>
+                <Icon className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-brand-700">{item.eyebrow}</p>
+                    {item.status && (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                            {String(item.status).replaceAll('_', ' ')}
+                        </span>
+                    )}
+                </div>
+                <h3 className="mt-1 truncate text-base font-black text-slate-900">{item.title}</h3>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.body}</p>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                    {[item.meta, formatDate(item.date)].filter(Boolean).join(' · ')}
+                </p>
+            </div>
+
+            {item.href ? (
+                <Button variant="outline" className="h-10 rounded-xl md:w-28" onClick={() => router.visit(item.href)}>
+                    {item.action || 'Open'}
+                </Button>
+            ) : (
+                <Button variant="outline" className="h-10 rounded-xl md:w-28" disabled>
+                    {item.action || 'Open'}
+                </Button>
+            )}
+        </div>
+    );
+}
+
+function notificationHref(entry) {
+    const item = entry.item || {};
+    const orderDetails = entry.order_details || null;
+    const postRouteKey = item.public_id || item.id;
+
+    if (entry.item_type === 'product' && orderDetails?.public_id) {
+        return `/chat/${orderDetails.public_id}`;
+    }
+
+    if (entry.item_type === 'content_item') {
+        return item.slug ? route('content.show', item.slug) : null;
+    }
+
+    if (entry.item_type === 'post') {
+        return postRouteKey ? route('post.show', postRouteKey) : null;
+    }
+
+    if (entry.item_type === 'bundle') {
+        return item.is_course && item.slug ? `/learn/bundles/${item.slug}` : (item.slug ? route('bundle.show', item.slug) : null);
+    }
+
+    if (entry.item_type === 'subscription_plan') {
+        return item.slug || item.id ? `/plan/${item.slug || item.id}` : null;
+    }
+
+    if (entry.item_type === 'product') {
+        return item.slug ? route('product.show', item.slug) : null;
+    }
+
+    return null;
+}
+
+function orderStatusLabel(orderDetails) {
+    if (!orderDetails) return 'Product purchase added to your orders.';
+    if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending') return 'Waiting for the merchant to quote or confirm shipping.';
+    if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted') return 'Shipping quote is ready for payment.';
+    if (orderDetails.payment_status === 'awaiting_merchant_confirmation') return 'Paid order is waiting for merchant confirmation.';
+    if (orderDetails.payment_status === 'escrow_locked') return 'Payment is protected while delivery is in progress.';
+    if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Order completed and merchant has been paid.';
+    if (orderDetails.payment_status === 'disputed') return 'A claim is open for this order.';
+    return String(orderDetails.payment_status || 'Order update').replaceAll('_', ' ');
+}
+
+function serviceStatusLabel(orderDetails) {
+    const serviceRequest = orderDetails?.service_request || null;
+    if (serviceRequest?.scheduled_at) return `Scheduled for ${new Date(serviceRequest.scheduled_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`;
+    if (serviceRequest?.payment_status === 'held') return 'Payment is protected until the service is confirmed.';
+    if (serviceRequest?.payment_status === 'released') return 'Service completed and payment released.';
+    return orderStatusLabel(orderDetails);
 }
 
 function OwnedCard({ entry }) {
@@ -490,9 +690,10 @@ function OwnedCard({ entry }) {
     const postRouteKey = item.public_id || item.id;
     const [isDownloading, setIsDownloading] = useState(false);
     const [showPin, setShowPin] = useState(false);
-    const [pinRevealing, setPinRevealing] = useState(false);
     const [confirmingReceipt, setConfirmingReceipt] = useState(false);
-    
+    const [revisionMessage, setRevisionMessage] = useState('');
+    const [revisionSubmitting, setRevisionSubmitting] = useState(false);
+
     // Dispute state
     const [showDisputeModal, setShowDisputeModal] = useState(false);
     const [disputeReason, setDisputeReason] = useState('');
@@ -501,8 +702,33 @@ function OwnedCard({ entry }) {
     const [payingInquiry, setPayingInquiry] = useState(false);
 
     const isDigitalProduct = entry.item_type === 'product' && item.type === 'digital';
+    const isCustomDeliveryProduct = isDigitalProduct && item.digital_delivery_type === 'custom_delivery';
     const isServiceProduct = entry.item_type === 'product' && item.type === 'service';
+    const disputeAllowsOptionalEvidence = isServiceProduct || isCustomDeliveryProduct;
     const serviceRequest = orderDetails?.service_request || null;
+    const customDelivery = orderDetails?.custom_delivery || null;
+    const refundPolicy = orderDetails?.refund_policy || null;
+    const canOpenRefundClaim = !refundPolicy || refundPolicy.status === 'eligible';
+    const refundPolicyTone = canOpenRefundClaim
+        ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
+        : 'border-amber-100 bg-amber-50 text-amber-900';
+    const reportTarget = orderDetails?.id
+        ? {
+            itemType: 'order',
+            itemId: orderDetails.id,
+            context: isCustomDeliveryProduct ? 'custom_work' : (isDigitalProduct ? 'download_abuse' : 'order'),
+        }
+        : {
+            itemType: entry.item_type,
+            itemId: item.id || entry.item_id,
+            context: entry.item_type === 'subscription_plan'
+                ? 'membership'
+                : entry.item_type === 'post'
+                    ? 'feed_post'
+                    : entry.item_type === 'content_item'
+                        ? 'premium_content'
+                        : entry.item_type,
+        };
 
     const handlePayInquiry = async (orderId) => {
         setPayingInquiry(true);
@@ -538,7 +764,7 @@ function OwnedCard({ entry }) {
 
     const handleFileDispute = async (e) => {
         e.preventDefault();
-        if (!disputeReason || (!isServiceProduct && !unboxingVideo)) return;
+        if (!disputeReason || (!disputeAllowsOptionalEvidence && !unboxingVideo)) return;
         setDisputeSubmitting(true);
         const formData = new FormData();
         if (unboxingVideo) formData.append('unboxing_video', unboxingVideo);
@@ -554,6 +780,22 @@ function OwnedCard({ entry }) {
             toast.error(error.response?.data?.message || 'Imeshindwa kufungua mgogoro.');
         } finally {
             setDisputeSubmitting(false);
+        }
+    };
+
+    const handleRequestRevision = async () => {
+        if (!orderDetails?.id || !revisionMessage.trim()) return;
+        setRevisionSubmitting(true);
+        try {
+            await axios.post(`/api/buyer/orders/${orderDetails.id}/request-revision`, {
+                message: revisionMessage.trim(),
+            });
+            toast.success('Revision request sent.');
+            window.location.reload();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kutuma revision request.');
+        } finally {
+            setRevisionSubmitting(false);
         }
     };
 
@@ -573,6 +815,8 @@ function OwnedCard({ entry }) {
     if (entry.item_type === 'product') {
         if (item.type === 'service') {
             config = { ...config, icon: CalendarClock, label: 'Service/Booking' };
+        } else if (isCustomDeliveryProduct) {
+            config = { ...config, icon: Sparkles, label: 'Custom Work' };
         } else if (isDigitalProduct && !isLinkDigital) {
             config = { ...config, icon: Download, label: 'Digital File' };
         } else if (isLinkDigital) {
@@ -598,6 +842,10 @@ function OwnedCard({ entry }) {
             delete sessionApi.defaults.headers.common.Authorization;
 
             const res = await sessionApi.get(`/orders/${orderId}/download`);
+            if (res.status === 202 || res.data?.type === 'custom_pending') {
+                toast.info(res.data?.message || 'Merchant bado anaandaa custom delivery yako.');
+                return;
+            }
             const targetUrl = res.data?.url;
 
             if (!targetUrl) {
@@ -664,7 +912,63 @@ function OwnedCard({ entry }) {
                 </div>
 
                 <div className="mt-5">
-                    {isDigitalProduct ? (
+                    {isCustomDeliveryProduct ? (
+                        <div className="space-y-3">
+                            <div className={`rounded-2xl border p-3 ${customDelivery?.delivered_at ? 'border-emerald-100 bg-emerald-50' : 'border-amber-100 bg-amber-50'}`}>
+                                <p className={`text-[10px] font-black uppercase tracking-widest ${customDelivery?.delivered_at ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                    {customDelivery?.status === 'revision_requested'
+                                        ? 'Revision requested'
+                                        : customDelivery?.status === 'accepted'
+                                            ? 'Accepted'
+                                            : customDelivery?.delivered_at
+                                                ? 'Delivered for review'
+                                                : 'In production'}
+                                </p>
+                                <p className="mt-1 text-sm font-bold">
+                                    {customDelivery?.file_name || 'Merchant is preparing your custom delivery.'}
+                                </p>
+                                {customDelivery?.message && (
+                                    <p className="mt-2 text-xs leading-5 text-muted-foreground whitespace-pre-line">{customDelivery.message}</p>
+                                )}
+                                {customDelivery?.revision_message && (
+                                    <p className="mt-2 rounded-xl bg-white/80 px-3 py-2 text-xs leading-5 text-amber-900">
+                                        Revision note: {customDelivery.revision_message}
+                                    </p>
+                                )}
+                            </div>
+
+                            {customDelivery?.delivered_at && (
+                                <Button className="w-full rounded-2xl" onClick={handleDownload} disabled={isDownloading}>
+                                    {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                                    Download Delivery
+                                </Button>
+                            )}
+
+                            {orderDetails?.payment_status === 'escrow_locked' && customDelivery?.delivered_at && customDelivery?.status !== 'accepted' && (
+                                <div className="space-y-2">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Button variant="outline" className="rounded-xl text-red-600 border-red-200" onClick={() => setShowDisputeModal(true)} disabled={!canOpenRefundClaim}>
+                                            Dispute
+                                        </Button>
+                                        <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleConfirmReceipt} disabled={confirmingReceipt}>
+                                            {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept Work'}
+                                        </Button>
+                                    </div>
+                                    <textarea
+                                        value={revisionMessage}
+                                        onChange={(e) => setRevisionMessage(e.target.value)}
+                                        rows={3}
+                                        placeholder="Need changes? Tell the creator what to revise..."
+                                        className="w-full rounded-2xl border border-input bg-background p-3 text-sm"
+                                    />
+                                    <Button variant="outline" className="w-full rounded-xl" onClick={handleRequestRevision} disabled={revisionSubmitting || revisionMessage.trim().length < 10}>
+                                        {revisionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
+                                        Request Revision
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    ) : isDigitalProduct ? (
                         <Button className="w-full rounded-2xl" onClick={handleDownload} disabled={isDownloading}>
                             {isDownloading ? (
                                 <>
@@ -688,13 +992,12 @@ function OwnedCard({ entry }) {
                             <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
                                 <div className="flex items-center justify-between gap-3">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">Miadi</p>
-                                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${
-                                        serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'resolved_merchant_paid'
-                                            ? 'bg-emerald-100 text-emerald-700'
-                                            : serviceRequest?.payment_status === 'disputed' || orderDetails?.payment_status === 'disputed'
-                                                ? 'bg-red-100 text-red-700'
+                                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'resolved_merchant_paid'
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : serviceRequest?.payment_status === 'disputed' || orderDetails?.payment_status === 'disputed'
+                                            ? 'bg-red-100 text-red-700'
                                             : 'bg-amber-100 text-amber-700'
-                                    }`}>
+                                        }`}>
                                         {serviceRequest?.payment_status === 'released' || orderDetails?.payment_status === 'resolved_merchant_paid'
                                             ? 'Imekamilika'
                                             : serviceRequest?.payment_status === 'held'
@@ -737,6 +1040,7 @@ function OwnedCard({ entry }) {
                                         variant="outline"
                                         className="rounded-2xl border-red-200 text-red-600 hover:bg-red-50"
                                         onClick={() => setShowDisputeModal(true)}
+                                        disabled={!canOpenRefundClaim}
                                     >
                                         Fungua Mgogoro
                                     </Button>
@@ -771,15 +1075,26 @@ function OwnedCard({ entry }) {
                         </div>
                     ) : orderDetails ? (
                         <div className="space-y-3">
+                            {orderDetails.unit_snapshot && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="rounded-2xl border border-brand-100 bg-brand-50/70 p-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Kiasi</p>
+                                        <p className="mt-1 text-sm font-black text-brand-900">{orderQuantityLabel(orderDetails)}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-brand-100 bg-white p-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Bei</p>
+                                        <p className="mt-1 text-sm font-black text-brand-900">{orderUnitPriceLabel(orderDetails)}</p>
+                                    </div>
+                                </div>
+                            )}
                             {/* Shipping Status Badge */}
                             <div className="flex items-center justify-between p-2 rounded-xl bg-muted/30 border border-muted-foreground/10">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Shipping:</span>
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${
-                                    orderDetails.payment_status === 'resolved_merchant_paid' ? 'text-green-600' :
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${orderDetails.payment_status === 'resolved_merchant_paid' ? 'text-green-600' :
                                     orderDetails.payment_status === 'disputed' ? 'text-red-600' :
-                                    orderDetails.payment_status === 'failed' ? 'text-red-600' :
-                                    'text-amber-600'
-                                }`}>
+                                        orderDetails.payment_status === 'failed' ? 'text-red-600' :
+                                            'text-amber-600'
+                                    }`}>
                                     {(() => {
                                         const delivType = orderDetails.delivery?.delivery_type || orderDetails.delivery?.type;
                                         // Final status takes precedence
@@ -810,7 +1125,7 @@ function OwnedCard({ entry }) {
                                 <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-brand-700 mb-1 leading-tight">Muuzaji bado hajakupa bei ya usafiri.</p>
                                     <p className="text-[10px] text-brand-800 leading-tight mb-3">Tumia chat hapa chini kukubaliana naye bei ya usafiri.</p>
-                                    <Button 
+                                    <Button
                                         variant="outline"
                                         className="w-full text-xs font-bold border-brand-200 text-brand-700 hover:bg-brand-100"
                                         onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
@@ -831,7 +1146,7 @@ function OwnedCard({ entry }) {
                                         <p className="text-[10px] font-black uppercase text-emerald-800">Total to Pay:</p>
                                         <p className="text-lg font-black text-emerald-700">TZS {Number(orderDetails.total_paid || 0).toLocaleString()}</p>
                                     </div>
-                                    <Button 
+                                    <Button
                                         className="w-full rounded-xl h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-600/20"
                                         onClick={() => handlePayInquiry(orderDetails.id)}
                                         disabled={payingInquiry}
@@ -839,7 +1154,7 @@ function OwnedCard({ entry }) {
                                         {payingInquiry ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Zap className="h-4 w-4 mr-2 fill-white" />}
                                         Lipa Sasa (Pay Now)
                                     </Button>
-                                    <Button 
+                                    <Button
                                         variant="ghost"
                                         className="w-full mt-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
                                         onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
@@ -857,8 +1172,8 @@ function OwnedCard({ entry }) {
                                     <p className="text-xl font-mono font-black tracking-widest text-brand-600">
                                         {showPin ? (orderDetails.delivery?.pickup_pin || '0000') : '****'}
                                     </p>
-                                    <button 
-                                        type="button" 
+                                    <button
+                                        type="button"
                                         onClick={() => setShowPin(!showPin)}
                                         className="mt-1 text-[10px] font-bold text-brand-500 underline uppercase tracking-widest"
                                     >
@@ -874,8 +1189,8 @@ function OwnedCard({ entry }) {
                                     <p className="text-xl font-mono font-black tracking-widest text-indigo-600">
                                         {showPin ? (orderDetails.delivery?.buyer_release_pin || '0000') : '****'}
                                     </p>
-                                    <button 
-                                        type="button" 
+                                    <button
+                                        type="button"
                                         onClick={() => setShowPin(!showPin)}
                                         className="mt-1 text-[10px] font-bold text-indigo-500 underline uppercase tracking-widest"
                                     >
@@ -888,14 +1203,15 @@ function OwnedCard({ entry }) {
                             {/* Escrow Actions */}
                             {['escrow_locked', 'shipped'].includes(orderDetails.payment_status) && (
                                 <div className="flex gap-2">
-                                    <Button 
-                                        variant="outline" 
+                                    <Button
+                                        variant="outline"
                                         className="flex-1 rounded-xl h-10 text-xs font-bold border-red-200 text-red-600 hover:bg-red-50"
                                         onClick={() => setShowDisputeModal(true)}
+                                        disabled={!canOpenRefundClaim}
                                     >
                                         File Claim
                                     </Button>
-                                    <Button 
+                                    <Button
                                         className="flex-1 rounded-xl h-10 text-xs font-bold bg-green-600 hover:bg-green-700 text-white"
                                         onClick={handleConfirmReceipt}
                                         disabled={confirmingReceipt}
@@ -932,6 +1248,33 @@ function OwnedCard({ entry }) {
                     )}
                 </div>
 
+                {refundPolicy && (
+                    <div className={`mt-3 rounded-2xl border px-3 py-3 text-xs leading-5 ${refundPolicyTone}`}>
+                        <p className="font-black uppercase tracking-widest">
+                            {canOpenRefundClaim ? 'Refund review available' : 'Refund claim unavailable'}
+                        </p>
+                        <p className="mt-1">{refundPolicy.reason}</p>
+                        {refundPolicy.window_ends_at && (
+                            <p className="mt-1 font-bold">Window ends {new Date(refundPolicy.window_ends_at).toLocaleDateString()}</p>
+                        )}
+                        {Number(refundPolicy.download_count || 0) > 0 && (
+                            <p className="mt-1 font-bold">Access count: {refundPolicy.download_count}</p>
+                        )}
+                    </div>
+                )}
+
+                {reportTarget.itemId && (
+                    <div className="mt-3">
+                        <ContentReportButton
+                            itemType={reportTarget.itemType}
+                            itemId={reportTarget.itemId}
+                            merchantId={merchant.id || item.merchant_id || null}
+                            context={reportTarget.context}
+                            label={isCustomDeliveryProduct ? 'Report Custom Work' : 'Report Issue'}
+                        />
+                    </div>
+                )}
+
                 {/* Dispute Modal */}
                 {showDisputeModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -948,27 +1291,27 @@ function OwnedCard({ entry }) {
                                 <div className="space-y-2">
                                     <h2 className="text-2xl font-black tracking-tight">{isServiceProduct ? 'Fungua Mgogoro' : 'File a Claim'}</h2>
                                     <p className="text-sm text-muted-foreground">
-                                        {isServiceProduct
+                                        {disputeAllowsOptionalEvidence
                                             ? 'Eleza kilichotokea. Unaweza kuongeza picha, video au PDF kama ushahidi.'
                                             : 'Tafadhali pakia video ya unboxing na maelezo ya kwanini unataka kurudisha mzigo au kurudishiwa pesa.'}
                                     </p>
                                 </div>
-                                
+
                                 <form onSubmit={handleFileDispute} className="space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                            {isServiceProduct ? 'Ushahidi (si lazima)' : 'Unboxing Video (Required)'}
+                                            {disputeAllowsOptionalEvidence ? 'Ushahidi (si lazima)' : 'Unboxing Video (Required)'}
                                         </label>
-                                        {isServiceProduct && (
+                                        {disputeAllowsOptionalEvidence && (
                                             <p className="text-xs leading-5 text-muted-foreground">
                                                 Unaweza kuweka picha, video au PDF. Mgogoro ukitumwa, Takeer itaendelea kushikilia malipo hadi ushahidi ukaguliwe.
                                             </p>
                                         )}
-                                        <input 
-                                            type="file" 
-                                            accept={isServiceProduct ? 'image/*,video/*,application/pdf' : 'video/*'}
+                                        <input
+                                            type="file"
+                                            accept={disputeAllowsOptionalEvidence ? 'image/*,video/*,application/pdf' : 'video/*'}
                                             onChange={e => setUnboxingVideo(e.target.files?.[0])}
-                                            required={!isServiceProduct}
+                                            required={!disputeAllowsOptionalEvidence}
                                             className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
                                         />
                                     </div>
@@ -976,11 +1319,11 @@ function OwnedCard({ entry }) {
                                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
                                             {isServiceProduct ? 'Sababu ya mgogoro' : 'Reason for Dispute'}
                                         </label>
-                                        <textarea 
+                                        <textarea
                                             required
                                             value={disputeReason}
                                             onChange={e => setDisputeReason(e.target.value)}
-                                            placeholder={isServiceProduct ? 'Mf. Huduma haikutolewa kama tulivyokubaliana...' : 'Mf. Bidhaa iliyofika imevunjika...'}
+                                            placeholder={isCustomDeliveryProduct ? 'Mf. Naomba ubadilishe sehemu hii, au faili si kama tulivyokubaliana...' : (isServiceProduct ? 'Mf. Huduma haikutolewa kama tulivyokubaliana...' : 'Mf. Bidhaa iliyofika imevunjika...')}
                                             className="w-full min-h-[100px] rounded-2xl border border-input bg-background p-3 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none"
                                         />
                                     </div>
@@ -1042,6 +1385,16 @@ function MembershipCard({ subscription, onCancel }) {
                         </Button>
                     )}
                 </div>
+
+                {plan.id && (
+                    <ContentReportButton
+                        itemType="subscription_plan"
+                        itemId={plan.id}
+                        merchantId={merchant.id || plan.merchant_id || null}
+                        context="membership"
+                        label="Report Membership"
+                    />
+                )}
             </CardContent>
         </Card>
     );

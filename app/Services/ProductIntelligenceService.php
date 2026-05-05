@@ -32,8 +32,20 @@ class ProductIntelligenceService
             \"material\": \"string or null\",
             \"style\": \"string or null\",
             \"detected_gender\": \"male, female, unisex, or null\",
+            \"safety_attributes\": {
+                \"ingredients\": \"string or null\",
+                \"usage_directions\": \"string or null\",
+                \"cautions\": \"string or null\",
+                \"allergens\": [\"string\"],
+                \"skin_type\": [\"string\"],
+                \"hair_type\": [\"string\"],
+                \"expiry_date\": \"YYYY-MM-DD or null\",
+                \"batch_number\": \"string or null\",
+                \"registration_number\": \"string or null\"
+            },
             \"suggested_description_swahili\": \"A catchy, sales-driven 2-sentence description in Swahili\"
         }
+        For beauty, health, supplements, food, cosmetics, or personal care products, extract visible label details into safety_attributes. Use null or [] when not visible; do not invent regulatory numbers or dates.
         Only Output the JSON. No markdown ticks.";
 
         try {

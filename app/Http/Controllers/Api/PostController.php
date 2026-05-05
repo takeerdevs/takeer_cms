@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\PostEngagementUpdated;
+use App\Jobs\ProcessPostMediaVideo;
 use App\Http\Resources\CommentResource;
 use App\Http\Resources\PostResource;
 use App\Models\Bundle;
@@ -14,6 +16,7 @@ use App\Models\PostReaction;
 use App\Models\PostLike;
 use App\Models\SubscriptionPlan;
 use App\Services\EntitlementService;
+use App\Services\LinkPreviewService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -29,6 +32,7 @@ class PostController extends Controller
     {
         $query = Post::withTrashed()->with([
             'merchant.storefrontSetting',
+            'linkPreview',
             'linkedContentItem',
             'media.productImage',
             'linkedProduct.attributes',
@@ -44,6 +48,7 @@ class PostController extends Controller
             'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
+            'latestModerationAction',
         ])->where('public_id', $postPublicId);
 
         if (ctype_digit($postPublicId)) {
@@ -58,7 +63,15 @@ class PostController extends Controller
 
         $viewer = $request->user() ?: auth()->guard('web')->user();
         if ($post->trashed() && !$this->canViewDeletedPost($viewer, $post)) {
-            abort(404);
+            if (!$post->latestModerationAction?->show_public_notice) {
+                abort(404);
+            }
+
+            return Inertia::render('PostDetail', [
+                'post' => PostResource::make($post)->resolve($request),
+                'postId' => $post->id,
+                'initialComments' => [],
+            ]);
         }
 
         // Track traffic
@@ -70,7 +83,7 @@ class PostController extends Controller
             : ($commentsEnabled && $this->canAccessPostComments($viewer, $post));
 
         return Inertia::render('PostDetail', [
-            'post' => PostResource::make($post)->resolve(),
+            'post' => PostResource::make($post)->resolve($request),
             'postId' => $post->id,
             'initialComments' => Inertia::defer(
                 fn() => $canAccessComments
@@ -94,6 +107,7 @@ class PostController extends Controller
         $query = Post::withTrashed()->with([
             'merchant.storefrontSetting',
             'merchant_profile',
+            'linkPreview',
             'linkedContentItem',
             'media.productImage',
             'linkedProduct.attributes',
@@ -109,6 +123,7 @@ class PostController extends Controller
             'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
+            'latestModerationAction',
         ])->where('public_id', $postPublicId);
 
         if (ctype_digit($postPublicId)) {
@@ -119,18 +134,20 @@ class PostController extends Controller
 
         $viewer = $request->user() ?: auth()->guard('web')->user();
         if ($post->trashed() && !$this->canViewDeletedPost($viewer, $post)) {
-            return response()->json(['message' => 'Post not found'], 404);
+            if (!$post->latestModerationAction?->show_public_notice) {
+                return response()->json(['message' => 'Post not found'], 404);
+            }
         }
 
         return response()->json([
-            'post' => PostResource::make($post)->resolve(),
+            'post' => PostResource::make($post)->resolve($request),
         ]);
     }
 
     /**
      * Store a new social post (merchant).
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, LinkPreviewService $linkPreviewService): JsonResponse
     {
         $validated = $request->validate([
             'caption' => 'nullable|string',
@@ -201,10 +218,19 @@ class PostController extends Controller
         $images = $validated['images'] ?? [];
         $mediaType = $validated['media_type'];
         $mediaUrl = $validated['media_url'] ?? null;
+        $previewSourceText = trim(implode("\n", array_filter([
+            $validated['caption'] ?? null,
+            $validated['excerpt'] ?? null,
+            $validated['body'] ?? null,
+        ], fn ($value) => is_string($value) && trim($value) !== '')));
+        $linkPreview = $shouldLockPost
+            ? null
+            : $linkPreviewService->previewForText($previewSourceText);
 
         // 1. Create the Post
         $post = Post::create([
             'merchant_id' => $merchantProfile->id,
+            'link_preview_id' => $linkPreview?->id,
             'source' => 'authored',
             'caption' => $validated['caption'] ?? null,
             'title' => $validated['title'] ?? null,
@@ -254,10 +280,12 @@ class PostController extends Controller
         if ($hasCustomMedia) {
             // Custom Upload
             if ($mediaType === 'video' && $mediaUrl) {
-                $post->media()->create([
+                $postMedia = $post->media()->create([
                     'media_url' => $mediaUrl,
                     'media_type' => 'video',
+                    'processing_status' => 'pending',
                 ]);
+                ProcessPostMediaVideo::dispatch($postMedia->id)->afterCommit();
             } else {
                 foreach ($images as $url) {
                     $post->media()->create([
@@ -290,6 +318,7 @@ class PostController extends Controller
 
         $post->load([
             'merchant.storefrontSetting',
+            'linkPreview',
             'linkedContentItem',
             'media.productImage',
             'linkedProduct.attributes',
@@ -393,6 +422,8 @@ class PostController extends Controller
 
         $post->increment('comment_count');
 
+        broadcast(new PostEngagementUpdated($post, 'comment'));
+
         return response()->json([
             'message' => 'Maoni yamechapishwa!',
             'comment' => CommentResource::make($comment->load('user')),
@@ -447,6 +478,8 @@ class PostController extends Controller
                 'emoji' => $row->emoji,
                 'count' => (int) ($row->total ?? 0),
             ])->values();
+
+        broadcast(new PostEngagementUpdated($post, 'reaction'));
 
         return response()->json([
             'message' => 'Reaction updated.',

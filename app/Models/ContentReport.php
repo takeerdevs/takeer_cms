@@ -13,8 +13,17 @@ class ContentReport extends Model
         'item_type',
         'item_id',
         'reason',
+        'reason_code',
+        'report_context',
         'notes',
+        'evidence_url',
+        'metadata',
         'status',
+        'safety_state',
+        'appeal_status',
+        'appeal_message',
+        'appealed_at',
+        'appeal_reviewed_at',
         'reviewed_by_id',
         'action_taken',
         'resolution_note',
@@ -25,6 +34,9 @@ class ContentReport extends Model
     {
         return [
             'item_id' => 'integer',
+            'metadata' => 'array',
+            'appealed_at' => 'datetime',
+            'appeal_reviewed_at' => 'datetime',
             'resolved_at' => 'datetime',
         ];
     }

@@ -14,6 +14,7 @@ use App\Models\ContentReport;
 use App\Models\Entitlement;
 use App\Models\Post;
 use App\Models\Product;
+use App\Models\ProductLicenseKey;
 use App\Models\ServiceRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\Order;
@@ -233,23 +234,97 @@ class EntitlementController extends Controller
     public function reportContent(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'merchant_id' => 'required|integer|exists:merchants,id',
-            'item_type' => 'required|string|in:post,product,content_item,bundle',
+            'merchant_id' => 'nullable|integer|exists:merchants,id',
+            'item_type' => 'required|string|in:post,product,content_item,bundle,subscription_plan,order,license_key',
             'item_id' => 'required|integer|min:1',
-            'reason' => 'required|string|in:adult_content,political_content,misleading,other',
+            'reason' => 'required|string|in:adult_content,political_content,misleading,copyright,scam,license_abuse,download_abuse,harassment,spam,custom_work_issue,other',
+            'report_context' => 'nullable|string|max:80',
             'notes' => 'nullable|string|max:2000',
+            'evidence_url' => 'nullable|url|max:2048',
+            'metadata' => 'nullable|array',
         ]);
+
+        $target = $this->resolveReportTarget($validated['item_type'], (int) $validated['item_id']);
+        $merchantId = $validated['merchant_id'] ?? $target['merchant_id'] ?? null;
+
+        abort_unless($merchantId, 422, 'Unable to resolve merchant for this report.');
+
+        if ($validated['item_type'] === 'order') {
+            abort_unless(
+                (int) ($target['buyer_id'] ?? 0) === (int) $request->user()->id
+                    || (int) ($target['merchant_user_id'] ?? 0) === (int) $request->user()->id,
+                403,
+                'You can only report orders you are involved in.'
+            );
+        }
+
+        $legacyReason = in_array($validated['reason'], ['adult_content', 'political_content', 'misleading', 'other'], true)
+            ? $validated['reason']
+            : 'other';
 
         $report = ContentReport::create([
             'reporter_id' => $request->user()->id,
-            ...$validated,
+            'merchant_id' => $merchantId,
+            'item_type' => $validated['item_type'],
+            'item_id' => $validated['item_id'],
+            'reason' => $legacyReason,
+            'reason_code' => $validated['reason'],
+            'report_context' => $validated['report_context'] ?? $target['context'] ?? 'marketplace',
+            'notes' => $validated['notes'] ?? null,
+            'evidence_url' => $validated['evidence_url'] ?? null,
+            'metadata' => $validated['metadata'] ?? null,
             'status' => 'open',
+            'safety_state' => 'reported',
         ]);
 
         return response()->json([
             'message' => 'Report submitted.',
             'report' => $report,
         ], 201);
+    }
+
+    private function resolveReportTarget(string $itemType, int $itemId): array
+    {
+        return match ($itemType) {
+            'product' => [
+                'merchant_id' => Product::withTrashed()->find($itemId)?->merchant_id,
+                'context' => 'product',
+            ],
+            'content_item' => [
+                'merchant_id' => ContentItem::withTrashed()->find($itemId)?->merchant_id,
+                'context' => 'premium_content',
+            ],
+            'bundle' => [
+                'merchant_id' => Bundle::withTrashed()->find($itemId)?->merchant_id,
+                'context' => 'bundle',
+            ],
+            'subscription_plan' => [
+                'merchant_id' => SubscriptionPlan::withTrashed()->find($itemId)?->merchant_id,
+                'context' => 'membership',
+            ],
+            'post' => [
+                'merchant_id' => Post::withTrashed()->find($itemId)?->merchant_id,
+                'context' => 'feed_post',
+            ],
+            'order' => $this->resolveReportOrderTarget($itemId),
+            'license_key' => [
+                'merchant_id' => ProductLicenseKey::find($itemId)?->merchant_id,
+                'context' => 'license_abuse',
+            ],
+            default => [],
+        };
+    }
+
+    private function resolveReportOrderTarget(int $orderId): array
+    {
+        $order = Order::with('merchant')->find($orderId);
+
+        return [
+            'merchant_id' => $order?->merchant_id,
+            'buyer_id' => $order?->buyer_id,
+            'merchant_user_id' => $order?->merchant?->user_id,
+            'context' => $order?->custom_delivery_required ? 'custom_work' : 'order',
+        ];
     }
 
     private function resolveEntitledItem(string $itemType, int $itemId): Product|ContentItem|Bundle|SubscriptionPlan|Post|null
@@ -272,6 +347,7 @@ class EntitlementController extends Controller
             return match ($productType) {
                 'physical' => 'physical_product',
                 'service' => 'service_booking',
+                'digital' => ($resolved->digital_delivery_type ?? null) === 'custom_delivery' ? 'custom_work' : 'digital_file',
                 default => 'digital_file',
             };
         }
@@ -294,6 +370,20 @@ class EntitlementController extends Controller
             'total_paid' => $order->total_paid,
             'is_inquiry' => (bool) $order->is_inquiry,
             'inquiry_status' => $order->inquiry_status,
+            'download_count' => (int) $order->download_count,
+            'first_downloaded_at' => $order->first_downloaded_at?->toISOString(),
+            'refund_policy' => $order->refundPolicyContext(),
+            'custom_delivery' => [
+                'file_name' => $order->custom_delivery_file_name,
+                'file_mime' => $order->custom_delivery_file_mime,
+                'file_size' => $order->custom_delivery_file_size !== null ? (int) $order->custom_delivery_file_size : null,
+                'message' => $order->custom_delivery_message,
+                'delivered_at' => $order->custom_delivery_delivered_at?->toISOString(),
+                'status' => $order->custom_delivery_status,
+                'revision_message' => $order->custom_delivery_revision_message,
+                'revision_requested_at' => $order->custom_delivery_revision_requested_at?->toISOString(),
+                'accepted_at' => $order->custom_delivery_accepted_at?->toISOString(),
+            ],
             'delivery' => $order->delivery ? [
                 'status' => $order->delivery->delivery_status,
                 'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,

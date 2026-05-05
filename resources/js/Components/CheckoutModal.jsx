@@ -10,6 +10,7 @@ import AddressPickerModal from './AddressPickerModal';
 import ShopLocationsModal from './ShopLocationsModal';
 import UserAddressManager from './UserAddressManager';
 import axios from 'axios';
+import { checkoutAttributionFields, trackAttributionEvent } from '@/lib/attribution';
 
 const DEFAULT_CENTER = {
     lat: -6.7924, // Dar es Salaam
@@ -30,6 +31,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [resolvedProduct, setResolvedProduct] = useState(product);
     const [selectedVariantId, setSelectedVariantId] = useState('');
     const [variantFilters, setVariantFilters] = useState({});
+    const [physicalQuantity, setPhysicalQuantity] = useState('1');
 
     // Shipping State
     const [addresses, setAddresses] = useState([]);
@@ -52,6 +54,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [step, setStep] = useState(1); // 1: Details/Shipping, 2: Payment
     const [paymentMethod, setPaymentMethod] = useState('mobile'); // 'mobile', 'card'
     const [mobileSubMethod, setMobileSubMethod] = useState('account'); // 'account', 'other'
+    const [couponCode, setCouponCode] = useState('');
+    const [isCouponExpanded, setIsCouponExpanded] = useState(false);
     const [servicePricingInputs, setServicePricingInputs] = useState({
         people: '',
         hours: '',
@@ -61,6 +65,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     });
 
     const autocompleteRef = useRef(null);
+    const checkoutStartKeyRef = useRef('');
 
     const fetchUserAddresses = async () => {
         if (isGuest) return;
@@ -274,11 +279,12 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     }, [isOpen, activeProduct?.id, activeProduct?.shipping_profile_id, activeProduct?.has_physical_items, itemType]);
 
     const itemTitle = activeProduct?.title || activeProduct?.name || 'Inapatikana kwa malipo';
+    const requiresOwnedStock = activeProduct?.type === 'physical' && (activeProduct?.fulfillment_mode || 'own_stock') === 'own_stock';
     const variants = useMemo(() => (
         (activeProduct?.variants || []).filter((variant) => (
-            variant?.is_active !== false && Number(variant?.inventory_count || 0) > 0
+            variant?.is_active !== false && (!requiresOwnedStock || Number(variant?.inventory_count || 0) > 0)
         ))
-    ), [activeProduct?.variants]);
+    ), [activeProduct?.variants, requiresOwnedStock]);
     const variantAttributeKeys = useMemo(() => (
         [...new Set(variants.flatMap((variant) => Object.keys(variant?.attributes || {})))]
     ), [variants]);
@@ -410,12 +416,47 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     ), [checkoutIncludedCharges, servicePricingInputs]);
 
     const rawBasePrice = parseFloat((activeProduct?.checkout_price ?? selectedVariant?.price ?? selectedServiceOption?.price ?? activeProduct?.price) || 0);
+    const unitType = activeProduct?.unit_type || null;
+    const unitSymbol = unitType?.symbol || unitType?.name || 'unit';
+    const sellableQuantity = Math.max(0.001, Number(activeProduct?.sellable_quantity || 1));
+    const minPhysicalQuantity = Math.max(0.001, Number(activeProduct?.min_order_quantity || sellableQuantity || 1));
+    const physicalQuantityStep = Math.max(0.001, Number(activeProduct?.order_increment || (unitType?.allows_decimal ? 0.25 : 1)));
+    const requestedPhysicalQuantity = Math.max(minPhysicalQuantity, Number(physicalQuantity || minPhysicalQuantity));
     const serviceBaseMultiplier = activeProduct?.type === 'service' && !hasExplicitCheckoutPrice
         ? servicePricingMultiplier(selectedServiceOption?.price_display || activeProduct?.service_price_display)
         : 1;
-    const basePrice = (rawBasePrice * serviceBaseMultiplier) + (!hasExplicitCheckoutPrice && activeProduct?.type === 'service' ? checkoutIncludedChargesTotal : 0);
+    const physicalBaseMultiplier = activeProduct?.type === 'physical' ? (requestedPhysicalQuantity / sellableQuantity) : 1;
+    const basePrice = (rawBasePrice * serviceBaseMultiplier * physicalBaseMultiplier) + (!hasExplicitCheckoutPrice && activeProduct?.type === 'service' ? checkoutIncludedChargesTotal : 0);
     const isPhysicalProduct = (itemType === 'product' && activeProduct?.type === 'physical')
         || (itemType === 'bundle' && activeProduct?.has_physical_items);
+    const fulfillmentMode = activeProduct?.fulfillment_mode || 'own_stock';
+    const fulfillmentLeadTimeLabel = fulfillmentMode === 'supplier_sourced' && activeProduct?.availability_lead_time_hours
+        ? `Estimated confirmation: ${activeProduct.availability_lead_time_hours} hour${Number(activeProduct.availability_lead_time_hours) === 1 ? '' : 's'}`
+        : activeProduct?.availability_lead_time_days
+            ? `Estimated preparation: ${activeProduct.availability_lead_time_days} day${Number(activeProduct.availability_lead_time_days) === 1 ? '' : 's'}`
+        : null;
+    const checkoutFulfillmentGuidance = isPhysicalProduct && itemType === 'product' ? ({
+        supplier_sourced: {
+            title: 'Availability confirmation',
+            body: 'The seller will source and confirm this item after your order. Payment stays protected while fulfillment is confirmed.',
+        },
+        made_to_order: {
+            title: 'Made after order',
+            body: 'The seller starts preparing or crafting this item after your order is confirmed. Delivery begins when it is ready.',
+        },
+        farm_harvest: {
+            title: 'Harvest / farm stock',
+            body: 'The seller will fulfill this from harvest or farm stock around the expected availability date.',
+        },
+        preorder: {
+            title: 'Preorder',
+            body: 'This item is ordered before it is ready. Fulfillment starts around the expected availability date.',
+        },
+        group_sale: {
+            title: 'Group sale preorder',
+            body: 'This order follows the group sale target and campaign timing.',
+        },
+    }[fulfillmentMode] || null) : null;
     const activeShippingZone = shippingZones.find(z => String(z.id) === String(selectedShippingZoneId));
     const isPickup = isSelfPickupChoice || activeShippingZone?.delivery_type === 'self_pickup';
     const shippingFee = (activeShippingZone && isPhysicalProduct && !isSelfPickupChoice) ? parseFloat(activeShippingZone.flat_rate_fee || 0) : 0;
@@ -424,6 +465,9 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     // Step management based on product type
     useEffect(() => {
         if (isOpen) {
+            const urlCoupon = typeof window !== 'undefined'
+                ? new URLSearchParams(window.location.search).get('coupon')
+                : '';
             setServicePricingInputs({
                 people: '',
                 hours: '',
@@ -431,13 +475,36 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 start_date: '',
                 end_date: '',
             });
+            setPhysicalQuantity(String(activeProduct?.min_order_quantity || activeProduct?.sellable_quantity || 1));
+            setCouponCode(urlCoupon || '');
+            setIsCouponExpanded(Boolean(urlCoupon));
             if (isPhysicalProduct) {
                 setStep(1); // Physical always stays in one "Details" view
             } else {
                 setStep(2); // Digital always stays in "Payment" view
             }
         }
-    }, [isOpen, isPhysicalProduct]);
+    }, [isOpen, isPhysicalProduct, activeProduct?.min_order_quantity, activeProduct?.sellable_quantity]);
+
+    useEffect(() => {
+        if (!isOpen || !activeProduct?.id) return;
+
+        const key = `${itemType}:${activeProduct.id}:${activeProduct.group_sale_campaign_id || activeProduct.group_sale_offer?.id || 'standard'}`;
+        if (checkoutStartKeyRef.current === key) return;
+        checkoutStartKeyRef.current = key;
+
+        trackAttributionEvent('checkout_started', {
+            entity_type: itemType,
+            entity_id: activeProduct.id,
+            merchant_id: activeProduct?.merchant?.id || null,
+            value: price || null,
+            coupon_code: couponCode.trim() || undefined,
+            metadata: {
+                product_type: activeProduct?.type || null,
+                group_sale_campaign_id: activeProduct.group_sale_campaign_id || activeProduct.group_sale_offer?.id || null,
+            },
+        });
+    }, [isOpen, activeProduct?.id, itemType]);
 
     useEffect(() => {
         if (!activeProduct?.has_variants) return;
@@ -558,6 +625,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             const payload = {
                 purchasable_type: itemType,
                 purchasable_id: activeProduct.id,
+                ...checkoutAttributionFields(),
                 variant_id: selectedVariantId || undefined,
                 account_phone: normalizedAccountPhone,
                 payment_number: isPhysicalProduct ? normalizedAccountPhone : resolvedPaymentPhone,
@@ -565,13 +633,15 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 country_iso2: detectedIso2 || undefined,
                 delivery_type: isPhysicalProduct ? (isSelfPickupChoice ? 'self_pickup' : 'shipping') : undefined,
                 delivery_zone_id: (isPhysicalProduct && !isSelfPickupChoice) ? selectedShippingZoneId : undefined,
-                quantity: 1,
+                quantity: isPhysicalProduct && itemType === 'product' ? requestedPhysicalQuantity : 1,
                 idempotency_key: `q-${itemType}-${activeProduct.id}-${activeProduct.service_request_payment?.id || activeProduct.service_request_id || 'standard'}-${Date.now()}`,
                 buyer_lat: isPhysicalProduct ? customerLat : undefined,
                 buyer_lng: isPhysicalProduct ? customerLng : undefined,
                 physical_address: isPhysicalProduct ? (extraAddressDetails ? `${physicalAddress} (${extraAddressDetails})` : physicalAddress) : undefined,
                 shipping_hotspot_id: (isPhysicalProduct && !isSelfPickupChoice && selectedHotspot) ? selectedHotspot.id : undefined,
                 payment_page_id: activeProduct.payment_page_id || undefined,
+                coupon_code: couponCode.trim() || undefined,
+                group_sale_campaign_id: activeProduct.group_sale_campaign_id || activeProduct.group_sale_offer?.id || undefined,
                 service_request_id: activeProduct.service_request_payment?.id || activeProduct.service_request_id || product?.service_request_payment?.id || product?.service_request_id || undefined,
                 service_request_token: activeProduct.service_request_payment?.token || activeProduct.service_request_token || product?.service_request_payment?.token || product?.service_request_token || undefined,
                 service_pricing_inputs: activeProduct?.type === 'service' ? {
@@ -736,7 +806,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
     return (
         <Drawer open={isOpen} onOpenChange={onOpenChange}>
-            <DrawerContent className="w-full sm:max-w-xl sm:mx-auto p-0 border border-brand-100/70 dark:border-brand-900/60 bg-background dark:bg-slate-950 shadow-2xl shadow-brand-900/10 dark:shadow-black/50 rounded-t-[2.5rem]">
+            <DrawerContent className="w-full sm:max-w-xl sm:mx-auto p-0 border border-brand-100/70 dark:border-brand-900/60 bg-background dark:bg-slate-950 shadow-2xl shadow-brand-900/10 dark:shadow-black/50 rounded-t-[2.5rem] overflow-hidden">
                 {/* Visual Header */}
                 <div className="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-4 sm:px-6 pt-5 pb-4 sm:py-6 text-white relative overflow-hidden">
                     <div className="absolute -top-20 -right-16 h-56 w-56 rounded-full bg-white/10 blur-3xl pointer-events-none" />
@@ -853,6 +923,45 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
                         {isPhysicalProduct ? (
                             <div className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                                {itemType === 'product' && unitType && (
+                                    <div className="rounded-2xl border border-brand-100 bg-white p-3 sm:p-4 space-y-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-xs font-black uppercase tracking-wider text-brand-700/80">Kiasi</p>
+                                                <p className="text-xs text-slate-500">
+                                                    Bei ni kwa {sellableQuantity} {unitSymbol}. Chagua kiasi unachotaka.
+                                                </p>
+                                            </div>
+                                            {(unitType.common_quantities || []).length > 0 && (
+                                                <div className="flex flex-wrap justify-end gap-1.5">
+                                                    {unitType.common_quantities.slice(0, 4).map((entry) => (
+                                                        <button
+                                                            key={`${entry.label}-${entry.value}`}
+                                                            type="button"
+                                                            className="rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-800"
+                                                            onClick={() => setPhysicalQuantity(String(entry.value))}
+                                                        >
+                                                            {entry.label || entry.value}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-[1fr_auto] gap-2">
+                                            <Input
+                                                type="number"
+                                                min={minPhysicalQuantity}
+                                                step={physicalQuantityStep}
+                                                value={physicalQuantity}
+                                                onChange={(e) => setPhysicalQuantity(e.target.value)}
+                                                className="h-12 rounded-xl bg-brand-50/50 font-black text-brand-900"
+                                            />
+                                            <div className="h-12 rounded-xl border border-brand-100 bg-brand-50 px-4 flex items-center text-sm font-black text-brand-800">
+                                                {unitSymbol}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 {/* Physical: Shipping Form */}
                                 <div className="rounded-2xl border border-brand-100 dark:border-slate-700 bg-brand-50/40 dark:bg-slate-900/70 p-3 sm:p-4 space-y-3">
                                     <div className="flex items-center justify-between mb-1">
@@ -1070,6 +1179,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                 <div className="flex flex-col">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">{itemLabel}</span>
                                     <span className="text-sm font-black text-brand-900 truncate max-w-[150px] sm:max-w-[250px]">{itemTitle}</span>
+                                    {isPhysicalProduct && itemType === 'product' && unitType && (
+                                        <span className="text-[11px] font-bold text-slate-500">
+                                            {requestedPhysicalQuantity} {unitSymbol}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="text-right">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla</span>
@@ -1081,6 +1195,69 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                     )}
                                 </div>
                             </div>
+
+                            {!isPhysicalProduct && (
+                                <div className="rounded-2xl border border-brand-100 bg-brand-50/40">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCouponExpanded((expanded) => !expanded)}
+                                        aria-expanded={isCouponExpanded}
+                                        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                                    >
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">
+                                            {couponCode ? 'Promo code added' : 'Have a promo code?'}
+                                        </span>
+                                        <ChevronRight className={`h-4 w-4 text-brand-500 transition-transform ${isCouponExpanded ? 'rotate-90' : ''}`} />
+                                    </button>
+
+                                    {isCouponExpanded && (
+                                        <div className="px-3 pb-3 animate-in fade-in slide-in-from-top-1">
+                                            <Input
+                                                value={couponCode}
+                                                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                                                placeholder="LAUNCH25"
+                                                className="h-11 rounded-xl bg-white font-black tracking-wide"
+                                            />
+                                            <p className="mt-1 text-[10px] font-semibold text-brand-700/70">
+                                                Discount will be verified when payment starts.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {checkoutFulfillmentGuidance && (
+                                <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3">
+                                    <div className="flex items-start gap-2">
+                                        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                                        <div>
+                                            <p className="text-xs font-black text-blue-900">
+                                                {checkoutFulfillmentGuidance.title}
+                                            </p>
+                                            <p className="mt-1 text-[11px] font-semibold leading-5 text-blue-800/80">
+                                                {checkoutFulfillmentGuidance.body}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {(fulfillmentLeadTimeLabel || activeProduct?.available_from) && (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                            {fulfillmentLeadTimeLabel && (
+                                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800">
+                                                    {fulfillmentLeadTimeLabel}
+                                                </span>
+                                            )}
+                                            {activeProduct?.available_from && (
+                                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800">
+                                                    Expected availability: {activeProduct.available_from}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                    <p className="mt-2 text-[10px] font-bold text-blue-700/80">
+                                        Takeer protects payment until fulfillment or receipt confirmation.
+                                    </p>
+                                </div>
+                            )}
 
                             <Button
                                 type="submit"

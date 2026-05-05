@@ -29,7 +29,7 @@ class SmsService
      * @param int|null $userId  FK to users table for logging
      * @return bool           Whether the send was successful
      */
-    public function send(string $phone, string $message, ?int $userId = null): bool
+    public function send(string $phone, string $message, ?int $userId = null, ?string $dedupeKey = null): bool
     {
         try {
             $response = Http::withBasicAuth($this->apiKey, $this->secretKey)
@@ -46,7 +46,7 @@ class SmsService
 
             $success = $response->successful() && ($response->json('successful') ?? false);
 
-            $this->log($phone, $message, $userId, $success ? 'sent' : 'failed', $response->body());
+            $this->log($phone, $message, $userId, $success ? 'sent' : 'failed', $response->body(), $dedupeKey);
 
             return $success;
         } catch (\Throwable $e) {
@@ -54,7 +54,7 @@ class SmsService
                 'phone' => $phone,
                 'error' => $e->getMessage(),
             ]);
-            $this->log($phone, $message, $userId, 'failed', $e->getMessage());
+            $this->log($phone, $message, $userId, 'failed', $e->getMessage(), $dedupeKey);
             return false;
         }
     }
@@ -75,6 +75,27 @@ class SmsService
     {
         $message = "Takeer: Agizo jipya #{$orderId}! Tafadhali tuma na pakia video ya uthibitisho.";
         return $this->send($phone, $message, $userId);
+    }
+
+    public function sendPhysicalQuoteReady(string $phone, string $orderPublicId, float $total, ?int $userId = null): bool
+    {
+        $amount = number_format($total);
+        $message = "Takeer: Muuzaji ameweka offer ya order #{$orderPublicId}. Jumla ni TZS {$amount}. Fungua chat kukubali na kulipia.";
+        return $this->sendOnce("physical-quote-ready:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendPhysicalPaymentHeldToBuyer(string $phone, string $orderPublicId, float $total, ?int $userId = null): bool
+    {
+        $amount = number_format($total);
+        $message = "Takeer: Malipo ya order #{$orderPublicId} TZS {$amount} yameshikiliwa SafePay. Muuzaji sasa atatuma mzigo au kuthibitisha pickup.";
+        return $this->sendOnce("physical-payment-held-buyer:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendPhysicalPaymentHeldToMerchant(string $phone, string $orderPublicId, float $total, ?int $userId = null): bool
+    {
+        $amount = number_format($total);
+        $message = "Takeer: Mteja amelipia order #{$orderPublicId}. TZS {$amount} iko SafePay. Pakia ushahidi wa dispatch au thibitisha Pickup PIN.";
+        return $this->sendOnce("physical-payment-held-merchant:{$orderPublicId}", $phone, $message, $userId);
     }
 
     /**
@@ -102,6 +123,38 @@ class SmsService
         return $this->send($phone, $message, $userId);
     }
 
+    public function sendIntercityDispatchNotification(string $phone, string $orderPublicId, string $busName, string $tracking, string $pin, ?int $userId = null): bool
+    {
+        $message = "Takeer: Order #{$orderPublicId} iko kwenye {$busName}. Tracking: {$tracking}. Tumia PIN {$pin} kupokea mzigo kwenye counter baada ya kukagua.";
+        return $this->sendOnce("physical-intercity-dispatch:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendLocalDispatchNotification(string $phone, string $orderPublicId, string $pin, ?string $bodaPhone = null, ?int $userId = null): bool
+    {
+        $boda = $bodaPhone ? " Rider: {$bodaPhone}." : '';
+        $message = "Takeer: Order #{$orderPublicId} imetumwa kwa local delivery.{$boda} Mpe dereva PIN {$pin} baada ya kukagua mzigo.";
+        return $this->sendOnce("physical-local-dispatch:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendPickupPinToBuyer(string $phone, string $orderPublicId, string $pin, ?int $userId = null): bool
+    {
+        $message = "Takeer: Pickup PIN ya order #{$orderPublicId} ni {$pin}. Mpe muuzaji PIN hii tu baada ya kupokea mzigo.";
+        return $this->sendOnce("physical-pickup-pin:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendOrderCompletedToBuyer(string $phone, string $orderPublicId, ?int $userId = null): bool
+    {
+        $message = "Takeer: Asante! Order #{$orderPublicId} imekamilika. Unaweza kutoa review kwenye app.";
+        return $this->sendOnce("physical-completed-buyer:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendMerchantPayoutReleased(string $phone, string $orderPublicId, float $netAmount, ?int $userId = null): bool
+    {
+        $amount = number_format($netAmount);
+        $message = "Takeer: Malipo ya order #{$orderPublicId} yametolewa. TZS {$amount} imeingia kwenye wallet yako.";
+        return $this->sendOnce("physical-payout-released:{$orderPublicId}", $phone, $message, $userId);
+    }
+
     /**
      * Resend buyer release PIN.
      */
@@ -111,17 +164,45 @@ class SmsService
         return $this->send($phone, $message, $userId);
     }
 
-    private function log(string $phone, string $message, ?int $userId, string $status, ?string $errorMessage = null): void
+    private function sendOnce(string $dedupeKey, string $phone, string $message, ?int $userId = null): bool
+    {
+        $alreadySent = NotificationLog::query()
+            ->where('channel', 'sms')
+            ->where('dedupe_key', $dedupeKey)
+            ->where('status', 'sent')
+            ->exists();
+
+        if ($alreadySent) {
+            return true;
+        }
+
+        return $this->send($phone, $message, $userId, $dedupeKey);
+    }
+
+    private function log(string $phone, string $message, ?int $userId, string $status, ?string $errorMessage = null, ?string $dedupeKey = null): void
     {
         try {
-            NotificationLog::create([
+            $payload = [
                 'user_id' => $userId,
+                'channel' => 'sms',
+                'recipient' => $phone,
                 'phone' => $phone,
                 'message' => $message,
                 'status' => $status,
                 'error_message' => $status === 'failed' ? substr($errorMessage ?? '', 0, 500) : null,
                 'gateway' => 'beem_africa',
-            ]);
+                'dedupe_key' => $dedupeKey,
+            ];
+
+            if ($dedupeKey) {
+                NotificationLog::updateOrCreate(
+                    ['channel' => 'sms', 'dedupe_key' => $dedupeKey],
+                    $payload
+                );
+                return;
+            }
+
+            NotificationLog::create($payload);
         } catch (\Throwable $e) {
             Log::warning('SmsService: Failed to write notification log', ['error' => $e->getMessage()]);
         }

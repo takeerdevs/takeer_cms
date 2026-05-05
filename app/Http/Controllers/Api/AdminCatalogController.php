@@ -7,6 +7,7 @@ use App\Models\ProductBrand;
 use App\Models\ProductBrandModel;
 use App\Models\ProductCategory;
 use App\Models\ProductCategoryAttribute;
+use App\Models\ProductUnitType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -20,8 +21,10 @@ class AdminCatalogController extends Controller
         $categories = ProductCategory::with([
             'attributes',
             'brands.models',
+            'unitTypes',
             'children.attributes',
             'children.brands.models',
+            'children.unitTypes',
         ])
             ->whereNull('parent_id')
             ->orderBy('sort_order')
@@ -49,6 +52,8 @@ class AdminCatalogController extends Controller
             'sort_order' => 'nullable|integer|min:0',
             'brand_ids' => 'nullable|array',
             'brand_ids.*' => 'integer|exists:product_brands,id',
+            'unit_type_ids' => 'nullable|array',
+            'unit_type_ids.*' => 'integer|exists:product_unit_types,id',
         ]);
 
         $baseSlug = Str::slug($validated['name']);
@@ -71,10 +76,13 @@ class AdminCatalogController extends Controller
         if (isset($validated['brand_ids'])) {
             $category->brands()->sync($validated['brand_ids']);
         }
+        if (isset($validated['unit_type_ids'])) {
+            $category->unitTypes()->sync($this->unitSyncPayload($validated['unit_type_ids']));
+        }
 
         return response()->json([
             'message' => 'Category created.',
-            'category' => $category->fresh(['attributes', 'brands.models']),
+            'category' => $category->fresh(['attributes', 'brands.models', 'unitTypes']),
         ], 201);
     }
 
@@ -88,6 +96,8 @@ class AdminCatalogController extends Controller
             'sort_order' => 'nullable|integer|min:0',
             'brand_ids' => 'nullable|array',
             'brand_ids.*' => 'integer|exists:product_brands,id',
+            'unit_type_ids' => 'nullable|array',
+            'unit_type_ids.*' => 'integer|exists:product_unit_types,id',
         ]);
 
         if (array_key_exists('name', $validated)) {
@@ -110,10 +120,13 @@ class AdminCatalogController extends Controller
         if (isset($validated['brand_ids'])) {
             $category->brands()->sync($validated['brand_ids']);
         }
+        if (isset($validated['unit_type_ids'])) {
+            $category->unitTypes()->sync($this->unitSyncPayload($validated['unit_type_ids']));
+        }
 
         return response()->json([
             'message' => 'Category updated.',
-            'category' => $category->fresh(['attributes', 'brands.models']),
+            'category' => $category->fresh(['attributes', 'brands.models', 'unitTypes']),
         ]);
     }
 
@@ -129,7 +142,7 @@ class AdminCatalogController extends Controller
         $validated = $request->validate([
             'key' => 'required|string|max:80',
             'label' => 'required|string|max:120',
-            'input_type' => 'required|string|in:text,number,select,boolean',
+            'input_type' => 'required|string|in:text,textarea,number,select,multiselect,date,boolean',
             'ui_hint' => 'nullable|string|in:number_with_unit',
             'options' => 'nullable|array',
             'options.*' => 'string|max:120',
@@ -148,7 +161,7 @@ class AdminCatalogController extends Controller
             'label' => $validated['label'],
             'input_type' => $validated['input_type'],
             'ui_hint' => $validated['ui_hint'] ?? null,
-            'options' => $validated['input_type'] === 'select' ? ($validated['options'] ?? []) : null,
+            'options' => in_array($validated['input_type'], ['select', 'multiselect'], true) ? ($validated['options'] ?? []) : null,
             'unit_options' => $validated['input_type'] === 'number' ? ($validated['unit_options'] ?? null) : null,
             'is_required' => (bool) ($validated['is_required'] ?? false),
             'is_filterable' => (bool) ($validated['is_filterable'] ?? true),
@@ -168,7 +181,7 @@ class AdminCatalogController extends Controller
         $validated = $request->validate([
             'key' => 'sometimes|required|string|max:80',
             'label' => 'sometimes|required|string|max:120',
-            'input_type' => 'nullable|string|in:text,number,select,boolean',
+            'input_type' => 'nullable|string|in:text,textarea,number,select,multiselect,date,boolean',
             'ui_hint' => 'nullable|string|in:number_with_unit',
             'options' => 'nullable|array',
             'options.*' => 'string|max:120',
@@ -185,8 +198,10 @@ class AdminCatalogController extends Controller
             $validated['key'] = Str::slug($validated['key'], '_');
         }
 
-        if (array_key_exists('input_type', $validated) && $validated['input_type'] !== 'select') {
+        if (array_key_exists('input_type', $validated) && !in_array($validated['input_type'], ['select', 'multiselect'], true)) {
             $validated['options'] = null;
+        }
+        if (array_key_exists('input_type', $validated) && $validated['input_type'] !== 'select') {
             $validated['is_variant_axis'] = false;
         }
         if (array_key_exists('input_type', $validated) && $validated['input_type'] !== 'number') {
@@ -209,9 +224,91 @@ class AdminCatalogController extends Controller
         return response()->json(['message' => 'Attribute deleted.']);
     }
 
+    public function indexUnitTypes(): JsonResponse
+    {
+        $units = ProductUnitType::query()
+            ->orderBy('unit_category')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json(['data' => $units]);
+    }
+
+    public function storeUnitType(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+            'code' => 'required|string|max:40|unique:product_unit_types,code',
+            'symbol' => 'nullable|string|max:24',
+            'unit_category' => 'required|string|in:count,weight,volume,length,area,package',
+            'base_unit_code' => 'nullable|string|max:40',
+            'conversion_factor_to_base' => 'nullable|numeric|min:0.000001',
+            'allows_decimal' => 'nullable|boolean',
+            'localized_labels' => 'nullable|array',
+            'common_quantities' => 'nullable|array',
+            'is_active' => 'nullable|boolean',
+            'sort_order' => 'nullable|integer|min:0',
+        ]);
+
+        $unit = ProductUnitType::create([
+            'name' => $validated['name'],
+            'code' => Str::slug($validated['code'], '_'),
+            'symbol' => $validated['symbol'] ?? null,
+            'unit_category' => $validated['unit_category'],
+            'base_unit_code' => $validated['base_unit_code'] ?? null,
+            'conversion_factor_to_base' => $validated['conversion_factor_to_base'] ?? 1,
+            'allows_decimal' => (bool) ($validated['allows_decimal'] ?? false),
+            'localized_labels' => $validated['localized_labels'] ?? null,
+            'common_quantities' => $validated['common_quantities'] ?? [],
+            'is_active' => (bool) ($validated['is_active'] ?? true),
+            'sort_order' => (int) ($validated['sort_order'] ?? 0),
+        ]);
+
+        return response()->json([
+            'message' => 'Unit type created.',
+            'unit_type' => $unit,
+        ], 201);
+    }
+
+    public function updateUnitType(Request $request, ProductUnitType $unitType): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:120',
+            'code' => 'sometimes|required|string|max:40|unique:product_unit_types,code,'.$unitType->id,
+            'symbol' => 'nullable|string|max:24',
+            'unit_category' => 'sometimes|required|string|in:count,weight,volume,length,area,package',
+            'base_unit_code' => 'nullable|string|max:40',
+            'conversion_factor_to_base' => 'nullable|numeric|min:0.000001',
+            'allows_decimal' => 'nullable|boolean',
+            'localized_labels' => 'nullable|array',
+            'common_quantities' => 'nullable|array',
+            'is_active' => 'nullable|boolean',
+            'sort_order' => 'nullable|integer|min:0',
+        ]);
+
+        if (array_key_exists('code', $validated)) {
+            $validated['code'] = Str::slug($validated['code'], '_');
+        }
+
+        $unitType->update($validated);
+
+        return response()->json([
+            'message' => 'Unit type updated.',
+            'unit_type' => $unitType->fresh(),
+        ]);
+    }
+
+    public function destroyUnitType(ProductUnitType $unitType): JsonResponse
+    {
+        $unitType->delete();
+
+        return response()->json(['message' => 'Unit type deleted.']);
+    }
+
     public function indexBrands(): JsonResponse
     {
-        $brands = ProductBrand::with('models')
+        $brands = ProductBrand::with(['models.categories:id,name,slug,parent_id'])
             ->orderBy('name')
             ->get();
 
@@ -283,6 +380,8 @@ class AdminCatalogController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:120',
             'is_active' => 'nullable|boolean',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'integer|exists:product_categories,id',
         ]);
 
         $baseSlug = Str::slug($validated['name']);
@@ -302,7 +401,7 @@ class AdminCatalogController extends Controller
 
         return response()->json([
             'message' => 'Brand model created.',
-            'model' => $model,
+            'model' => $this->syncBrandModelCategories($model, $validated['category_ids'] ?? [])->fresh('categories'),
         ], 201);
     }
 
@@ -311,6 +410,8 @@ class AdminCatalogController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:120',
             'is_active' => 'nullable|boolean',
+            'category_ids' => 'nullable|array',
+            'category_ids.*' => 'integer|exists:product_categories,id',
         ]);
 
         if (array_key_exists('name', $validated)) {
@@ -324,11 +425,18 @@ class AdminCatalogController extends Controller
             $validated['slug'] = $slug;
         }
 
+        $categoryIds = $validated['category_ids'] ?? null;
+        unset($validated['category_ids']);
+
         $brandModel->update($validated);
+
+        if ($categoryIds !== null) {
+            $this->syncBrandModelCategories($brandModel, $categoryIds);
+        }
 
         return response()->json([
             'message' => 'Brand model updated.',
-            'model' => $brandModel->fresh(),
+            'model' => $brandModel->fresh('categories'),
         ]);
     }
 
@@ -337,5 +445,39 @@ class AdminCatalogController extends Controller
         $brandModel->delete();
 
         return response()->json(['message' => 'Brand model deleted.']);
+    }
+
+    private function unitSyncPayload(array $unitTypeIds): array
+    {
+        $ids = collect($unitTypeIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        return $ids->mapWithKeys(fn ($id, $index) => [
+            $id => [
+                'is_default' => $index === 0,
+                'min_order_quantity' => null,
+                'order_increment' => null,
+            ],
+        ])->all();
+    }
+
+    private function syncBrandModelCategories(ProductBrandModel $brandModel, array $categoryIds): ProductBrandModel
+    {
+        $payload = collect($categoryIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->mapWithKeys(fn ($id) => [
+                $id => ['brand_id' => $brandModel->brand_id],
+            ])
+            ->all();
+
+        $brandModel->categories()->sync($payload);
+
+        return $brandModel;
     }
 }

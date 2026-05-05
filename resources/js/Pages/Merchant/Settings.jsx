@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Textarea } from '@/Components/ui/Textarea';
-import { Globe, User, Save, ArrowLeft, UploadCloud, MessageCircle, Heart, ShoppingBag, LayoutDashboard } from 'lucide-react';
+import { Globe, User, Save, ArrowLeft, UploadCloud, MessageCircle, Heart, ShoppingBag, LayoutDashboard, AlertTriangle } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import ShopLocationsManager from '@/Components/Merchant/ShopLocationsManager';
 
@@ -156,7 +156,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Avatar Upload */}
                     <div className="flex flex-col items-center justify-center gap-2 space-y-6">
-                        <label className="text-sm font-bold text-muted-foreground">Nembo ya Biashara (Logo)</label>
+                        <label className="text-sm font-bold text-muted-foreground">Nembo ya {data.display_name} (Logo)</label>
 
                         <div
                             className="relative h-32 w-32 rounded-full bg-muted flex items-center justify-center overflow-hidden border-4 border-background shadow-md cursor-pointer group hover:border-brand-200 transition-all hover:shadow-lg"
@@ -210,7 +210,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                     id="bio"
                                     value={data.bio}
                                     onChange={e => setData('bio', e.target.value)}
-                                    placeholder="Tueleze kidogo kuhusu biashara yako..."
+                                    placeholder={`Tueleze kidogo kuhusu ${data.display_name}...`}
                                     className="rounded-xl min-h-[100px] mt-1"
                                 />
                                 {errors.bio && <p className="text-xs text-red-500 mt-0.5">{errors.bio}</p>}
@@ -371,7 +371,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                     </Button>
                 </form>
 
-                {merchant?.type !== 'personal' && (
+                {merchant?.type !== 'personal' ? (
                     <ShopLocationsManager
                         locations={locations}
                         onRefresh={fetchLocations}
@@ -379,6 +379,26 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                         profiles={profiles}
                         onRefreshZones={fetchProfiles}
                     />
+                ) : (
+                    <Card className="glass-card border-amber-200 bg-amber-50/40 shadow-sm">
+                        <CardContent className="p-5 flex items-start gap-3">
+                            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+                            <div className="space-y-2">
+                                <p className="text-sm font-black text-amber-900">Maeneo ya biashara yanapatikana kwa merchant accounts</p>
+                                <p className="text-xs leading-relaxed text-amber-800">
+                                    Personal profile inaweza kuuza baadhi ya bidhaa kwa source modes kama supplier sourced, made to order, farm harvest, preorder, au group sale. Kama unataka kusimamia stock ya duka/stoo na locations, fungua au verify merchant account kwenye profile yako.
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-9 rounded-xl border-amber-300 bg-white text-xs font-black text-amber-900 hover:bg-amber-100"
+                                    onClick={() => router.visit('/profile')}
+                                >
+                                    Fungua Profile
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
                 )}
 
             </div>

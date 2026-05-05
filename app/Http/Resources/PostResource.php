@@ -21,7 +21,7 @@ class PostResource extends JsonResource
             $resolvedProduct = $tagProduct ?? $resolvedProduct;
         }
 
-        $this->loadMissing('media.productImage');
+        $this->loadMissing(['media.productImage', 'linkPreview']);
         $mediaItems = $this->media ?? collect();
         $linkedContentItem = $this->relationLoaded('linkedContentItem') ? $this->linkedContentItem : null;
         $fallbackMedia = $mediaItems->first();
@@ -42,6 +42,9 @@ class PostResource extends JsonResource
         $hasAccess = true;
         $isAdminViewer = (bool) ($user?->is_admin ?? false);
         $isOwnerViewer = $user && (int) ($this->merchant?->user_id ?? 0) === (int) $user->id;
+        $latestModeration = $this->relationLoaded('latestModerationAction') ? $this->latestModerationAction : null;
+        $canViewDeletedContent = !$isDeleted || $isAdminViewer || $isOwnerViewer;
+        $showRemovedNotice = $isDeleted && !$canViewDeletedContent && (bool) ($latestModeration?->show_public_notice ?? true);
 
         if ($isRestricted && !$isAdminViewer && !$isOwnerViewer) {
             $hasAccess = false;
@@ -82,14 +85,14 @@ class PostResource extends JsonResource
         $myReaction = ($canInteractWithRestricted && $user) ? $this->myReactionForUser((int) $user->id) : null;
 
         // ── Masking ──────────────────────────────────────────────────────────
-        $displayCaption = $hasAccess ? $this->caption : null;
-        $displayBody = $hasAccess
+        $displayCaption = ($hasAccess && $canViewDeletedContent) ? $this->caption : null;
+        $displayBody = ($hasAccess && $canViewDeletedContent)
             ? ($linkedContentItem?->body ?? $this->body)
             : null;
-        $displayTitle = $linkedContentItem?->title ?: ($this->title ?: $resolvedProduct?->title);
-        $displayExcerpt = $this->excerpt
+        $displayTitle = $canViewDeletedContent ? ($linkedContentItem?->title ?: ($this->title ?: $resolvedProduct?->title)) : null;
+        $displayExcerpt = $canViewDeletedContent ? ($this->excerpt
             ?: $linkedContentItem?->excerpt
-            ?: (is_string($resolvedProduct?->description ?? null) ? trim((string) $resolvedProduct->description) : null);
+            ?: (is_string($resolvedProduct?->description ?? null) ? trim((string) $resolvedProduct->description) : null)) : null;
         $isLongFormPost = !empty($displayBody) || !empty($displayExcerpt);
 
         $rawHotspots = $this->hotspots;
@@ -100,7 +103,7 @@ class PostResource extends JsonResource
             })->toArray();
         }
 
-        $resolvedHotspots = (!$hasAccess && $isRestricted)
+        $resolvedHotspots = (!$canViewDeletedContent || (!$hasAccess && $isRestricted))
             ? []
             : collect($rawHotspots)->map(function ($spots) use ($request) {
                 return collect($spots)->map(function ($spot) use ($request) {
@@ -133,6 +136,24 @@ class PostResource extends JsonResource
             'restricted_price' => $singleUnlockPrice,
             'unlock_item_type' => $unlockItemType,
             'unlock_item_id' => $unlockItemId,
+            'link_preview' => ($hasAccess && $canViewDeletedContent && $this->linkPreview && in_array($this->linkPreview->status, ['success', 'fallback'], true)) ? [
+                'id' => $this->linkPreview->id,
+                'status' => $this->linkPreview->status,
+                'url' => $this->linkPreview->url,
+                'final_url' => $this->linkPreview->final_url,
+                'title' => $this->linkPreview->title,
+                'description' => $this->linkPreview->description,
+                'site_name' => $this->linkPreview->site_name,
+                'favicon_url' => $this->linkPreview->favicon_url,
+                'image_url' => $this->linkPreview->image_url,
+                'remote_image_url' => $this->linkPreview->remote_image_url,
+                'embed' => $this->linkPreview->embed_url ? [
+                    'provider' => $this->linkPreview->embed_provider,
+                    'type' => $this->linkPreview->embed_type,
+                    'url' => $this->linkPreview->embed_url,
+                    'external_id' => $this->linkPreview->external_id,
+                ] : null,
+            ] : null,
             
             'promotables' => $this->when($this->promotables->isNotEmpty(), function() {
                 return $this->promotables->map(function ($promotable) {
@@ -345,17 +366,28 @@ class PostResource extends JsonResource
             'comments_enabled' => $commentsEnabled,
             'reactions_enabled' => $reactionsEnabled,
             'is_deleted' => $isDeleted,
+            'removed_notice' => $showRemovedNotice,
+            'moderation' => $latestModeration ? [
+                'action' => $latestModeration->action,
+                'reason_code' => $latestModeration->reason_code,
+                'public_reason' => $latestModeration->public_reason,
+                'internal_note' => $isAdminViewer ? $latestModeration->internal_note : null,
+                'show_public_notice' => (bool) $latestModeration->show_public_notice,
+                'created_at' => $latestModeration->created_at,
+            ] : null,
             'comments_enabled_override' => $this->comments_enabled_override,
             'reactions_enabled_override' => $this->reactions_enabled_override,
             'reaction_summary' => $reactionSummary,
             'my_reaction' => $myReaction,
+            'deleted_at' => $this->deleted_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             
             // Structured Media (Hide if restricted and no access)
-            'media' => (!$hasAccess && $isRestricted) ? [] : $mediaItems->map(fn($item) => [
+            'media' => (!$canViewDeletedContent || (!$hasAccess && $isRestricted)) ? [] : $mediaItems->map(fn($item) => [
                 'id' => $item->id,
-                'url' => $item->url,
+                'url' => $item->media_type === 'video' ? ($item->processed_url ?: $item->url) : $item->url,
+                'original_url' => $item->url,
                 'type' => $item->media_type,
                 'media_type' => $item->media_type,
                 'thumbnail_url' => $item->thumbnail_url,
@@ -370,16 +402,24 @@ class PostResource extends JsonResource
                 'likes_count' => $item->likes_count,
             ]),
 
-            'images' => (!$hasAccess && $isRestricted) ? [] : $mediaItems->map(fn($item) => [
-                'url' => $item->url,
+            'images' => (!$canViewDeletedContent || (!$hasAccess && $isRestricted)) ? [] : $mediaItems->map(fn($item) => [
+                'id' => $item->id,
+                'url' => $item->media_type === 'video' ? ($item->processed_url ?: $item->url) : $item->url,
+                'original_url' => $item->url,
                 'type' => $item->media_type,
                 'media_type' => $item->media_type,
                 'thumbnail_url' => $item->thumbnail_url,
                 'processed_url' => $item->processed_url,
                 'hls_url' => $item->hls_url,
+                'mime' => $item->mime,
+                'size' => $item->size !== null ? (int) $item->size : null,
+                'duration_seconds' => $item->duration_seconds !== null ? (int) $item->duration_seconds : null,
+                'width' => $item->width !== null ? (int) $item->width : null,
+                'height' => $item->height !== null ? (int) $item->height : null,
+                'processing_status' => $item->processing_status ?: 'ready',
             ])->toArray(),
-            'media_url' => (!$hasAccess && $isRestricted) ? null : ($fallbackMedia ? $fallbackMedia->url : null),
-            'media_type' => (!$hasAccess && $isRestricted) ? 'locked' : ($fallbackMedia ? $fallbackMedia->media_type : 'text'),
+            'media_url' => (!$canViewDeletedContent || (!$hasAccess && $isRestricted)) ? null : ($fallbackMedia ? ($fallbackMedia->media_type === 'video' ? ($fallbackMedia->processed_url ?: $fallbackMedia->url) : $fallbackMedia->url) : null),
+            'media_type' => (!$canViewDeletedContent || (!$hasAccess && $isRestricted)) ? ($showRemovedNotice ? 'removed' : 'locked') : ($fallbackMedia ? $fallbackMedia->media_type : 'text'),
             
             'merchant' => $this->merchant ? [
                 'id' => $this->merchant->id,

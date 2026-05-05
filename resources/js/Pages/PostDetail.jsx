@@ -2,16 +2,17 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { MessageCircle, Send, CornerDownRight, ChevronLeft, Loader2, Share2, MoreHorizontal, ShoppingBag, ShieldCheck, BadgeCheck, Crown, Unlock, X, User, Lock, Boxes } from 'lucide-react';
+import { MessageCircle, Send, CornerDownRight, ChevronLeft, Loader2, Share2, MoreHorizontal, ShoppingBag, ShieldCheck, BadgeCheck, Crown, Unlock, X, User, Lock, Boxes, Trash2, Eye, SmilePlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
-import LikeButton from '@/Components/LikeButton';
 import ShoppablePin from '@/Components/ShoppablePin';
 import PostManagementMenu from '@/Components/PostManagementMenu';
 import EditorJsRenderer from '@/Components/EditorJsRenderer';
 import LinkifiedText from '@/Components/LinkifiedText';
+import LinkPreviewCard from '@/Components/LinkPreviewCard';
 import VideoPlayer from '@/Components/VideoPlayer';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
+import { trackAttributionEvent } from '@/lib/attribution';
 import { toast } from 'sonner';
 
 function CommentItem({ comment, onReply }) {
@@ -147,6 +148,17 @@ function sanitizeHtml(html) {
 }
 
 const reactionPickerEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '👋', '🔥', '👏', '🎉', '💯', '🤝', '👌', '😍', '🤔', '🥹', '💔', '😡', '😴', '🌟', '✅', '💪', '🫶', '🙌'];
+const quickReactionEmojis = ['👍', '❤️', '🔥'];
+const moderationReasons = [
+    { value: 'spam', label: 'Spam or repetitive content' },
+    { value: 'scam', label: 'Misleading or scam activity' },
+    { value: 'misleading', label: 'Misleading content' },
+    { value: 'harassment', label: 'Harassment or abusive content' },
+    { value: 'copyright', label: 'Copyright or stolen content' },
+    { value: 'adult_content', label: 'Adult or explicit content' },
+    { value: 'policy_violation', label: 'Takeer policy violation' },
+    { value: 'other', label: 'Other policy reason' },
+];
 
 function normalizeCommentsPayload(payload) {
     if (Array.isArray(payload)) {
@@ -163,7 +175,7 @@ function normalizeCommentsPayload(payload) {
     return { items: [], next: null };
 }
 
-export default function PostDetail({ post: initialPost, initialComments, readOnly = false, backHref = null }) {
+export default function PostDetail({ post: initialPost, initialComments, readOnly = false, adminMode = false, backHref = null }) {
     const { auth } = usePage().props;
     const LayoutComponent = readOnly ? AdminLayout : AppLayout;
     const layoutProps = readOnly ? { title: 'Post Monitor', hideTopBar: true } : { hideTabBar: true };
@@ -181,6 +193,51 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const [loadingMoreComments, setLoadingMoreComments] = useState(false);
     const commentsLoadMoreRef = useRef(null);
     const [isUnlocking, setIsUnlocking] = useState(false);
+    const [adminAction, setAdminAction] = useState(null);
+    const [showAdminRemoveModal, setShowAdminRemoveModal] = useState(false);
+    const [moderationReason, setModerationReason] = useState('policy_violation');
+    const [moderationPublicReason, setModerationPublicReason] = useState('Takeer policy violation');
+    const [moderationInternalNote, setModerationInternalNote] = useState('');
+    const [showPublicNotice, setShowPublicNotice] = useState(true);
+
+    useEffect(() => {
+        if (!initialPost?.id || readOnly) return;
+
+        trackAttributionEvent('post_view', {
+            entity_type: 'post',
+            entity_id: initialPost.id,
+            merchant_id: initialPost?.merchant?.id || initialPost?.merchant_id || null,
+            value: initialPost?.restricted_price || null,
+            metadata: {
+                public_id: initialPost?.public_id || null,
+                is_restricted: Boolean(initialPost?.is_restricted),
+            },
+        });
+    }, [initialPost?.id, readOnly]);
+
+    useEffect(() => {
+        if (!window.Echo || !post?.id) return;
+
+        const channel = window.Echo.channel('posts');
+        const listener = (event) => {
+            if (String(event.post_id) !== String(post.id)) return;
+
+            setPost((current) => ({
+                ...current,
+                comment_count: event.comment_count ?? current.comment_count,
+            }));
+
+            if (Array.isArray(event.reaction_summary)) {
+                setReactionSummary(event.reaction_summary);
+            }
+        };
+
+        channel.listen('.post.engagement.updated', listener);
+
+        return () => {
+            channel.stopListening('.post.engagement.updated', listener);
+        };
+    }, [post?.id]);
 
     // Listen for unlock events dispatched by CheckoutModal
     useEffect(() => {
@@ -212,7 +269,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         fetchComments({ append: false });
                     }
                 }
-            } catch {}
+            } catch { }
             setIsUnlocking(false);
         };
 
@@ -227,11 +284,11 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const hasAccess = post.has_access ?? true;
     const isRestricted = post.is_restricted ?? false;
     const isLocked = isRestricted && !hasAccess;
-    const isDeleted = post.is_deleted ?? false;
+    const isDeleted = post.is_deleted ?? Boolean(post.deleted_at);
     const commentsEnabled = post.comments_enabled ?? true;
     const reactionsEnabled = post.reactions_enabled ?? true;
-    const canShowComments = commentsEnabled || isDeleted;
-    const canShowReactions = reactionsEnabled || isDeleted;
+    const canShowComments = (commentsEnabled || isDeleted) && !post.removed_notice;
+    const canShowReactions = (reactionsEnabled || isDeleted) && !post.removed_notice;
 
     // Sync state when deferred comments arrive
     useEffect(() => {
@@ -376,11 +433,58 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         setShowReactionPicker(false);
     };
 
-    const mediaItems = post.images?.length
-        ? post.images
-        : post.media?.length
-            ? post.media.map((item) => item?.url).filter(Boolean)
-            : post.media_url ? [post.media_url] : [];
+    const openAdminRemoveModal = () => {
+        const selected = moderationReasons.find((reason) => reason.value === moderationReason);
+        setModerationPublicReason(post.moderation?.public_reason || selected?.label || 'Takeer policy violation');
+        setShowAdminRemoveModal(true);
+    };
+
+    const handleAdminDeletePost = async () => {
+        if (!adminMode || isDeleted || adminAction) return;
+        const selected = moderationReasons.find((reason) => reason.value === moderationReason);
+        const publicReason = moderationPublicReason.trim() || selected?.label || 'Takeer policy violation';
+
+        setAdminAction('delete');
+        try {
+            const res = await axios.delete(`/admin/api/posts/${post.public_id || post.id}`, {
+                data: {
+                    reason_code: moderationReason,
+                    public_reason: publicReason,
+                    internal_note: moderationInternalNote.trim() || null,
+                    show_public_notice: showPublicNotice,
+                },
+            });
+            if (res.data?.post) setPost(res.data.post);
+            toast.success(res.data?.message || 'Post deleted.');
+            setShowAdminRemoveModal(false);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete post.');
+        } finally {
+            setAdminAction(null);
+        }
+    };
+
+    const handleAdminRestorePost = async () => {
+        if (!adminMode || !isDeleted || adminAction) return;
+        if (!window.confirm('Restore this post to public/admin feeds?')) return;
+
+        setAdminAction('restore');
+        try {
+            const res = await axios.post(`/admin/api/posts/${post.public_id || post.id}/restore`);
+            if (res.data?.post) setPost(res.data.post);
+            toast.success(res.data?.message || 'Post restored.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to restore post.');
+        } finally {
+            setAdminAction(null);
+        }
+    };
+
+    const mediaItems = post.media?.length
+        ? post.media.filter(Boolean)
+        : post.images?.length
+            ? post.images
+            : post.media_url ? [{ url: post.media_url, media_type: post.media_type || 'image' }] : [];
     const postHotspots = post.resolved_hotspots || post.hotspots || {};
     const postType = post.post_type || (post.body || post.excerpt ? 'long' : 'short');
     const isLongForm = postType === 'long';
@@ -400,7 +504,16 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const subscriptionCadence = `${promotableItem?.interval_count || 1} ${promotableItem?.billing_interval || 'month'}`;
     const hasSingleUnlockOption = isRestricted && post.restricted_price !== null;
     const hasPromotableOption = isRestricted && promotables.length > 0;
-    
+    const linkPreview = post.link_preview || null;
+    const deletedAtLabel = post.deleted_at
+        ? new Date(post.deleted_at).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        })
+        : null;
+
     // Bundle Items parsing
     const promotableBundleRouteKey = promotableItem?.slug || firstPromotable?.id;
     const isBundlePromotable = promotableType === 'bundle' && Boolean(promotableBundleRouteKey);
@@ -537,10 +650,11 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         ? !attachedProductIsService && Number(attachedProduct.discounted_price) > 0 && Number(attachedProduct.discounted_price) < Number(attachedProduct.price)
         : false;
     const sortedReactions = [...reactionSummary].sort((a, b) => (b.count || 0) - (a.count || 0));
-    const defaultPreviewReactions = ['👍', '❤️', '🔥'];
-    const topReactionChips = sortedReactions.length > 0
-        ? sortedReactions.slice(0, 3)
-        : defaultPreviewReactions.map((emoji) => ({ emoji, count: 0 }));
+    const reactionCounts = Object.fromEntries((reactionSummary || []).map((entry) => [entry.emoji, Number(entry.count || 0)]));
+    const quickReactionChips = quickReactionEmojis.map((emoji) => ({
+        emoji,
+        count: reactionCounts[emoji] || 0,
+    }));
 
     const renderProductAttachmentCard = (className = '') => {
         if (!attachedProduct) return null;
@@ -583,7 +697,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     <button
                         onClick={() => {
                             if (!productRouteKey) return;
-                            
+
                             if (attachedProduct.type === 'digital') {
                                 if (!attachedProduct.has_access) {
                                     window.__openCheckout?.({
@@ -621,10 +735,10 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         <LayoutComponent {...layoutProps}>
             <Head title={`${post.merchant.name} - Chapisho`} />
 
-            <div className="max-w-3xl mx-auto pb-40">
+            <div className="max-w-[600px] mx-auto pb-40">
                 {/* Header Navigation */}
                 <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border transition-all">
-                    <div className="flex items-center gap-3 px-4 h-14">
+                    <div className="flex items-center gap-3 h-14">
                         <button
                             type="button"
                             onClick={() => {
@@ -658,8 +772,90 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     </div>
                 </div>
 
+                {adminMode && (
+                    <div className={`border-b px-5 py-3 ${isDeleted ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                                {isDeleted ? (
+                                    <Trash2 className="h-4 w-4 shrink-0" />
+                                ) : (
+                                    <Eye className="h-4 w-4 shrink-0" />
+                                )}
+                                <span className="text-xs font-black uppercase tracking-widest">
+                                    {isDeleted ? 'Deleted post' : 'Live post'}
+                                </span>
+                                {deletedAtLabel && (
+                                    <span className="text-xs font-semibold text-rose-800/80">
+                                        Deleted {deletedAtLabel}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] font-bold">
+                                {isRestricted && (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-800">
+                                        <Lock className="h-3 w-3" />
+                                        Restricted
+                                    </span>
+                                )}
+                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-slate-700">
+                                    <MessageCircle className="h-3 w-3" />
+                                    {post.comment_count ?? 0}
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-slate-700">
+                                    <SmilePlus className="h-3 w-3" />
+                                    {(reactionSummary || []).reduce((sum, entry) => sum + Number(entry.count || 0), 0)}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {isDeleted ? (
+                                <button
+                                    type="button"
+                                    onClick={handleAdminRestorePost}
+                                    disabled={Boolean(adminAction)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-black uppercase tracking-wider text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+                                >
+                                    {adminAction === 'restore' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                                    Restore Post
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={openAdminRemoveModal}
+                                    disabled={Boolean(adminAction)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-black uppercase tracking-wider text-rose-800 hover:bg-rose-100 disabled:opacity-60"
+                                >
+                                    {adminAction === 'delete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                    Delete Post
+                                </button>
+                            )}
+                            <Link
+                                href={`/admin/merchants/${post.merchant?.id || post.merchant_id}`}
+                                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-100"
+                            >
+                                View Merchant
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {post.removed_notice && !adminMode && (
+                    <div className="mx-5 mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-6 text-center">
+                        <Trash2 className="mx-auto h-8 w-8 text-rose-600" />
+                        <h2 className="mt-3 text-lg font-black text-rose-950">This post was removed</h2>
+                        <p className="mt-2 text-sm leading-6 text-rose-800">
+                            This post is no longer available because it violated Takeer rules.
+                        </p>
+                        {post.moderation?.public_reason && (
+                            <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-sm font-semibold text-rose-900">
+                                Reason: {post.moderation.public_reason}
+                            </p>
+                        )}
+                    </div>
+                )}
+
                 {/* Merchant Section */}
-                <div className="flex items-center gap-3 px-5 py-6">
+                <div className={`flex items-center gap-3 px-5 py-6 ${adminMode && isDeleted ? 'bg-rose-50/35' : ''}`}>
                     <Link
                         href={`/m/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                         className="h-12 w-12 shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-lg border-2 border-background shadow-sm overflow-hidden hover:opacity-90 transition-opacity"
@@ -723,6 +919,12 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 />
                             </div>
                         )}
+                    </div>
+                )}
+
+                {linkPreview && !isLocked && (
+                    <div className="px-5 pb-6">
+                        <LinkPreviewCard preview={linkPreview} playable />
                     </div>
                 )}
 
@@ -1002,61 +1204,79 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     <>
                         <div className="flex flex-col gap-8 scroll-mt-20">
                             {mediaItems.map((img, idx) => {
-                                const mediaUrl = typeof img === 'string' ? img : (img.hls_url || img.processed_url || img.url);
+                                const mediaUrl = typeof img === 'string' ? img : (img.processed_url || img.hls_url || img.url);
                                 const mediaType = typeof img === 'string' ? (/\.(mp4|mov|webm|ogg)(\?|$)/i.test(img) ? 'video' : 'image') : (img.media_type || img.type || 'image');
                                 const isVideo = mediaType === 'video';
+                                const isProcessing = isVideo
+                                    && typeof img !== 'string'
+                                    && ['pending', 'processing'].includes(img.processing_status)
+                                    && !img.processed_url
+                                    && !img.hls_url;
 
                                 return (
-                                <div key={idx} className="flex flex-col gap-2">
-                                    {/* The Media */}
-                                    <div className="relative w-full bg-muted overflow-hidden">
-                                        {isVideo ? (
-                                            <VideoPlayer
-                                                src={typeof img === 'string' ? mediaUrl : img.url}
-                                                processedUrl={typeof img === 'string' ? null : img.processed_url}
-                                                hlsUrl={typeof img === 'string' ? null : img.hls_url}
-                                                poster={typeof img === 'string' ? undefined : img.thumbnail_url || undefined}
-                                                className="w-full h-auto block bg-black"
-                                                controls
-                                                playsInline
-                                                preload="metadata"
-                                            />
-                                        ) : (
-                                            <img
-                                                src={mediaUrl}
-                                                className="w-full h-auto block"
-                                                alt={`Post media ${idx + 1}`}
-                                            />
-                                        )}
+                                    <div key={idx} className="flex flex-col gap-2">
+                                        {/* The Media */}
+                                        <div className="relative w-full bg-muted overflow-hidden">
+                                            {isVideo && isProcessing ? (
+                                                <div className="min-h-[320px] bg-zinc-950 flex flex-col items-center justify-center gap-3 px-6 text-center">
+                                                    <Loader2 className="h-8 w-8 text-white/70 animate-spin" />
+                                                    <div>
+                                                        <p className="text-base font-semibold text-white">Processing video...</p>
+                                                        <p className="mt-1 text-sm text-white/55">Playback will be ready shortly.</p>
+                                                    </div>
+                                                </div>
+                                            ) : isVideo ? (
+                                                <VideoPlayer
+                                                    src={typeof img === 'string' ? mediaUrl : img.url}
+                                                    processedUrl={typeof img === 'string' ? null : img.processed_url}
+                                                    hlsUrl={typeof img === 'string' ? null : img.hls_url}
+                                                    poster={typeof img === 'string' ? undefined : img.thumbnail_url || undefined}
+                                                    className="w-full h-auto block bg-black"
+                                                    preferMp4
+                                                    autoPlay
+                                                    muted
+                                                    loop
+                                                    controls={false}
+                                                    overlayMuteToggle
+                                                    playsInline
+                                                    preload="metadata"
+                                                />
+                                            ) : (
+                                                <img
+                                                    src={mediaUrl}
+                                                    className="w-full h-auto block"
+                                                    alt={`Post media ${idx + 1}`}
+                                                />
+                                            )}
 
-                                        {/* Hotspots Overlay */}
-                                        {!isVideo && <div className="absolute inset-0 pointer-events-none z-10">
-                                            <div className="relative w-full h-full pointer-events-auto">
-                                                {(postHotspots?.[idx] || []).map((tag, tIdx) => (
-                                                    <ShoppablePin
-                                                        key={tIdx}
-                                                        tag={tag}
-                                                        onProductTap={(p) => {
-                                                            if (p.type === 'digital') {
-                                                                window.__openCheckout?.({
-                                                                    id: p.id,
-                                                                    title: p.title,
-                                                                    price: Number(p.discounted_price) > 0 ? Number(p.discounted_price) : Number(p.price),
-                                                                    checkoutType: 'product',
-                                                                    merchant: post.merchant || null,
-                                                                });
-                                                            } else {
-                                                                const key = p?.slug ?? p?.id;
-                                                                if (key) window.location.href = `/product/${key}`;
-                                                            }
-                                                        }}
-                                                        merchant={post.merchant}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>}
+                                            {/* Hotspots Overlay */}
+                                            {!isVideo && <div className="absolute inset-0 pointer-events-none z-10">
+                                                <div className="relative w-full h-full pointer-events-auto">
+                                                    {(postHotspots?.[idx] || []).map((tag, tIdx) => (
+                                                        <ShoppablePin
+                                                            key={tIdx}
+                                                            tag={tag}
+                                                            onProductTap={(p) => {
+                                                                if (p.type === 'digital') {
+                                                                    window.__openCheckout?.({
+                                                                        id: p.id,
+                                                                        title: p.title,
+                                                                        price: Number(p.discounted_price) > 0 ? Number(p.discounted_price) : Number(p.price),
+                                                                        checkoutType: 'product',
+                                                                        merchant: post.merchant || null,
+                                                                    });
+                                                                } else {
+                                                                    const key = p?.slug ?? p?.id;
+                                                                    if (key) window.location.href = `/product/${key}`;
+                                                                }
+                                                            }}
+                                                            merchant={post.merchant}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>}
+                                        </div>
                                     </div>
-                                </div>
                                 );
                             })}
                         </div>
@@ -1091,7 +1311,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             <>
                                 {!isLocked && !isDeleted && !readOnly ? (
                                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                                        {topReactionChips.map((entry) => (
+                                        {quickReactionChips.map((entry) => (
                                             <button
                                                 key={entry.emoji}
                                                 type="button"
@@ -1116,7 +1336,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 ) : (
                                     <div className="relative flex justify-end">
                                         <div className="flex items-center gap-1.5 opacity-45">
-                                            {(sortedReactions.length > 0 ? sortedReactions.slice(0, 3) : defaultPreviewReactions.map((emoji) => ({ emoji, count: 0 }))).map((entry) => (
+                                            {quickReactionChips.map((entry) => (
                                                 <div
                                                     key={`locked-detail-preview-${entry.emoji}`}
                                                     className="inline-flex items-center gap-1 justify-center rounded-full h-8 min-w-8 px-2 border border-border bg-muted/70 text-sm"
@@ -1303,6 +1523,110 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     </div>
                 </div>
             )}
+
+            <AnimatePresence>
+                {showAdminRemoveModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[90] bg-black/45 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+                        onClick={() => !adminAction && setShowAdminRemoveModal(false)}
+                    >
+                        <motion.div
+                            initial={{ y: 24, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: 24, opacity: 0 }}
+                            className="w-full max-w-lg rounded-2xl border border-rose-200 bg-background shadow-2xl overflow-hidden"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-rose-900">Remove Post</h3>
+                                    <p className="mt-1 text-xs text-muted-foreground">Choose the reason the merchant and public notice should show.</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdminRemoveModal(false)}
+                                    disabled={Boolean(adminAction)}
+                                    className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center disabled:opacity-50"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+                            <div className="p-5 space-y-4">
+                                <div className="space-y-2">
+                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Reason</p>
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                        {moderationReasons.map((reason) => (
+                                            <button
+                                                key={reason.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    setModerationReason(reason.value);
+                                                    setModerationPublicReason(reason.label);
+                                                }}
+                                                className={`rounded-xl border px-3 py-2 text-left text-xs font-bold transition-colors ${moderationReason === reason.value ? 'border-rose-300 bg-rose-50 text-rose-900' : 'border-border hover:bg-accent'}`}
+                                            >
+                                                {reason.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground" htmlFor="moderation-public-reason">Public reason</label>
+                                    <input
+                                        id="moderation-public-reason"
+                                        value={moderationPublicReason}
+                                        onChange={(event) => setModerationPublicReason(event.target.value)}
+                                        className="h-11 w-full rounded-xl border border-border px-3 text-sm"
+                                        maxLength={255}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground" htmlFor="moderation-internal-note">Internal note</label>
+                                    <textarea
+                                        id="moderation-internal-note"
+                                        value={moderationInternalNote}
+                                        onChange={(event) => setModerationInternalNote(event.target.value)}
+                                        className="min-h-[90px] w-full rounded-xl border border-border px-3 py-2 text-sm"
+                                        placeholder="Optional admin-only context..."
+                                        maxLength={2000}
+                                    />
+                                </div>
+                                <label className="flex items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm font-semibold">
+                                    <input
+                                        type="checkbox"
+                                        checked={showPublicNotice}
+                                        onChange={(event) => setShowPublicNotice(event.target.checked)}
+                                        className="h-4 w-4"
+                                    />
+                                    Show a removed-post notice on direct public links
+                                </label>
+                            </div>
+                            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdminRemoveModal(false)}
+                                    disabled={Boolean(adminAction)}
+                                    className="h-10 rounded-xl border border-border px-4 text-sm font-bold hover:bg-accent disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleAdminDeletePost}
+                                    disabled={Boolean(adminAction) || !moderationPublicReason.trim()}
+                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-black text-white hover:bg-rose-700 disabled:opacity-60"
+                                >
+                                    {adminAction === 'delete' && <Loader2 className="h-4 w-4 animate-spin" />}
+                                    Remove Post
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </LayoutComponent>
     );
 }

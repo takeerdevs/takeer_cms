@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
 import {
     ChevronLeft, ChevronRight, Store, ShieldCheck, Zap, Info, BadgeCheck,
     AlertTriangle, DownloadCloud, CalendarClock, MapPin, Link as LinkIcon,
-    ShoppingBag, Bell, Star
+    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle
 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
@@ -12,6 +12,8 @@ import { usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import AddressPickerModal from '@/Components/AddressPickerModal';
+import { trackAttributionEvent } from '@/lib/attribution';
+import { productPriceLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
 
 export default function ProductDetail({ product }) {
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -41,9 +43,51 @@ export default function ProductDetail({ product }) {
     const [serviceIntakeAnswers, setServiceIntakeAnswers] = useState({});
     const [intakeLocationPicker, setIntakeLocationPicker] = useState(null);
     const [intakeUploadingField, setIntakeUploadingField] = useState(null);
+    const premiumVideoRef = useRef(null);
+    const documentReaderRef = useRef(null);
+    const trackedContentEventsRef = useRef(new Set());
 
     const { auth } = usePage().props;
     const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    useEffect(() => {
+        if (!product?.id) return;
+
+        trackAttributionEvent('product_view', {
+            entity_type: 'product',
+            entity_id: product.id,
+            merchant_id: product?.merchant?.id || null,
+            value: product?.discounted_price || product?.price || null,
+            metadata: {
+                product_type: product?.type || null,
+                slug: product?.slug || null,
+            },
+        });
+    }, [product?.id]);
+
+    const trackContentInteraction = (eventType, metadata = {}, onceKey = null) => {
+        if (!product?.id) return;
+        if (onceKey) {
+            const key = `${eventType}:${onceKey}`;
+            if (trackedContentEventsRef.current.has(key)) return;
+            trackedContentEventsRef.current.add(key);
+        }
+
+        trackAttributionEvent(eventType, {
+            entity_type: 'product',
+            entity_id: product.id,
+            merchant_id: product?.merchant?.id || merchant?.id || null,
+            value: product?.discounted_price || product?.price || null,
+            source: 'product_detail',
+            metadata: {
+                product_type: product?.type || null,
+                delivery_type: product?.digital_delivery_type || null,
+                digital_content_type: product?.digital_content_type || null,
+                slug: product?.slug || null,
+                ...metadata,
+            },
+        });
+    };
 
     const images = product?.images || [];
     const currentMedia = images[currentImageIndex] || null;
@@ -187,6 +231,7 @@ export default function ProductDetail({ product }) {
     );
     const serviceCharges = Array.isArray(product?.service_charges) ? product.service_charges : [];
     const serviceOptions = Array.isArray(product?.service_options) ? product.service_options : [];
+    const serviceRelatedProducts = Array.isArray(product?.service_related_products) ? product.service_related_products : [];
     const selectedServiceOption = serviceOptions.find((option) => String(option.id) === String(selectedServiceOptionId))
         || serviceOptions[0]
         || null;
@@ -238,6 +283,39 @@ export default function ProductDetail({ product }) {
         ? `https://www.google.com/maps/search/?api=1&query=${providerServiceLocation.lat},${providerServiceLocation.lng}`
         : null;
     const externalContactUrl = serviceBookingLink || serviceContactUrl || whatsappUrl;
+    const isPremiumVideoProduct = product?.type === 'digital' && product?.digital_delivery_type === 'video_stream';
+    const isPremiumAudioProduct = product?.type === 'digital' && product?.digital_delivery_type === 'audio_stream';
+    const isGalleryPackProduct = product?.type === 'digital' && product?.digital_delivery_type === 'gallery_pack';
+    const isLiveEventProduct = product?.type === 'digital' && product?.digital_delivery_type === 'live_event';
+    const premiumVideo = product?.premium_video || null;
+    const premiumAudio = product?.premium_audio || null;
+    const galleryPack = product?.gallery_pack || null;
+    const liveEvent = product?.live_event || null;
+    const documentReader = product?.document_reader || null;
+    const canReadDocumentOnline = product?.type === 'digital' && product?.has_access && !!documentReader?.url;
+    const softwareReleases = Array.isArray(product?.software_releases) ? product.software_releases : [];
+    const hasSoftwareReleases = product?.type === 'digital' && product?.digital_content_type === 'software' && softwareReleases.length > 0;
+    const softwareLicenseKey = product?.software_license_key || null;
+    const hasSoftwareAccessPanel = hasSoftwareReleases || (product?.type === 'digital' && product?.digital_content_type === 'software' && product?.has_access && softwareLicenseKey?.key);
+    const digitalContentLabel = {
+        file: 'Digital file',
+        ebook: 'E-book / PDF',
+        template_asset: 'Template',
+        creative_asset: 'Creative asset',
+        audio: 'Audio',
+        video: 'Video',
+        gallery: 'Gallery',
+        software: 'Software / Code',
+        document: 'Document pack',
+        live_event: 'Live event',
+    }[product?.digital_content_type] || null;
+    const digitalLicenseLabel = {
+        personal: 'Personal use',
+        commercial: 'Commercial use',
+        extended_commercial: 'Extended commercial use',
+        exclusive: 'Exclusive license',
+        custom: 'Custom license',
+    }[product?.digital_usage_license] || null;
     const payableServiceRequest = product?.service_request_payment || null;
     const payableServiceRequestStatus = payableServiceRequest?.payment_status || null;
     const serviceRequestPaymentComplete = ['paid', 'held', 'released', 'disputed'].includes(payableServiceRequestStatus);
@@ -314,8 +392,63 @@ export default function ProductDetail({ product }) {
         || null;
     const isVariantSelectionComplete = !hasProductVariants
         || variantAttributeKeys.every((key) => (variantFilters[key] || '').toString().trim().length > 0);
-    const checkoutPrice = hasProductVariants
-        ? Number(selectedVariant?.price || 0)
+    const groupSaleOffer = product.group_sale_offer || null;
+    const groupSaleCheckoutOpen = Boolean(groupSaleOffer?.is_checkout_open);
+    const physicalFulfillmentMode = product.fulfillment_mode || 'own_stock';
+    const requiresOwnedStock = product.type === 'physical' && physicalFulfillmentMode === 'own_stock';
+    const groupSaleReservationMode = product.type === 'physical' && physicalFulfillmentMode === 'group_sale' && groupSaleOffer && !groupSaleCheckoutOpen;
+    const fulfillmentModeLabels = {
+        own_stock: 'In stock',
+        supplier_sourced: 'Availability confirmed after request',
+        made_to_order: 'Made after order',
+        farm_harvest: 'Harvest / farm stock',
+        preorder: 'Preorder',
+        group_sale: 'Group sale preorder',
+    };
+    const fulfillmentLeadTimeLabel = physicalFulfillmentMode === 'supplier_sourced' && product.availability_lead_time_hours
+        ? `Estimated confirmation: ${product.availability_lead_time_hours} hour${Number(product.availability_lead_time_hours) === 1 ? '' : 's'}`
+        : product.availability_lead_time_days
+            ? `Estimated preparation: ${product.availability_lead_time_days} day${Number(product.availability_lead_time_days) === 1 ? '' : 's'}`
+        : null;
+    const fulfillmentAvailableFromLabel = product.available_from
+        ? `Expected availability: ${product.available_from}`
+        : null;
+    const fulfillmentGuidance = {
+        supplier_sourced: {
+            title: 'Availability will be confirmed',
+            body: 'This seller sources the item after your order. Takeer keeps the payment protected while the seller confirms availability and fulfillment.',
+            steps: ['Place the order', 'Seller confirms source and timing', 'You receive the item and confirm receipt'],
+            accent: 'blue',
+        },
+        made_to_order: {
+            title: 'Made after order',
+            body: 'This item is prepared by the seller after your order is confirmed. It is ideal for handmade, custom, crafted, or freshly prepared products.',
+            steps: ['Place the order', 'Seller prepares or crafts the item', 'Delivery happens when it is ready'],
+            accent: 'purple',
+        },
+        farm_harvest: {
+            title: 'Harvest / farm stock',
+            body: 'This item comes from harvest or farm stock. The seller will fulfill it around the expected availability date.',
+            steps: ['Reserve or order', 'Seller prepares harvest stock', 'Delivery or pickup is completed'],
+            accent: 'emerald',
+        },
+        preorder: {
+            title: 'Preorder',
+            body: 'This item is ordered before it is ready. The seller will fulfill it around the expected availability date.',
+            steps: ['Preorder now', 'Seller prepares availability', 'Delivery happens after release'],
+            accent: 'amber',
+        },
+        group_sale: {
+            title: 'Group sale preorder',
+            body: 'This item depends on a group target. If the target is reached, checkout or fulfillment continues based on the campaign terms.',
+            steps: ['Join the group sale', 'Target quantity is reached', 'Seller fulfills the orders'],
+            accent: 'blue',
+        },
+    }[physicalFulfillmentMode] || null;
+    const checkoutPrice = groupSaleCheckoutOpen
+        ? Number(groupSaleOffer?.campaign_price || product.checkout_price || 0)
+        : hasProductVariants
+            ? Number(selectedVariant?.price || 0)
         : Number(product.type === 'service' && selectedServiceOption?.price !== null && selectedServiceOption?.price !== undefined
             ? selectedServiceOption.price
             : (product.discounted_price > 0 ? product.discounted_price : product.price || 0));
@@ -325,8 +458,10 @@ export default function ProductDetail({ product }) {
     const effectiveCheckoutPrice = product.type === 'service'
         ? checkoutPrice + includedServiceChargesTotal
         : checkoutPrice;
+    const unitPriceText = productPriceLabel(product, checkoutPrice);
+    const unitLabel = productUnitLabel(product);
     const servicePriceText = (() => {
-        if (product.type !== 'service') return `TZS ${parseFloat(effectiveCheckoutPrice || 0).toLocaleString()}`;
+        if (product.type !== 'service') return productPriceLabel(product, effectiveCheckoutPrice);
         if (payableServiceRequest) return `TZS ${Number(payableServiceRequest.quoted_amount || product.checkout_price || 0).toLocaleString()}`;
         const selectedOptionHasPrice = selectedServiceOption?.price !== null && selectedServiceOption?.price !== undefined && selectedServiceOption?.price !== '';
         if (servicePriceDisplay === 'hidden' && !selectedOptionHasPrice) return 'Contact provider';
@@ -338,9 +473,9 @@ export default function ProductDetail({ product }) {
         if (servicePriceUnitLabels[effectiveServicePriceDisplay]) return `${amount} / ${servicePriceUnitLabels[effectiveServicePriceDisplay]}`;
         return amount;
     })();
-    const canCheckout = !serviceTrustBlocksBooking && (hasProductVariants
-        ? Boolean(selectedVariant?.id && isVariantSelectionComplete && Number(selectedVariant?.inventory_count || 0) > 0)
-        : Number(product.available_stock || 0) > 0);
+    const canCheckout = !serviceTrustBlocksBooking && (groupSaleReservationMode || (hasProductVariants
+        ? Boolean(selectedVariant?.id && isVariantSelectionComplete && (!requiresOwnedStock || Number(selectedVariant?.inventory_count || 0) > 0))
+        : (!requiresOwnedStock || Number(product.available_stock || 0) > 0)));
     const timeInputValueFromDate = (value) => {
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return '';
@@ -473,11 +608,26 @@ export default function ProductDetail({ product }) {
     };
 
     const getCheckoutButtonText = () => {
+        if (isPremiumVideoProduct && product.has_access) {
+            return 'Tazama Video';
+        }
+        if (isPremiumAudioProduct && product.has_access) {
+            return 'Sikiliza Audio';
+        }
+        if (isGalleryPackProduct && product.has_access) {
+            return 'Fungua Gallery';
+        }
+        if (canReadDocumentOnline) {
+            return 'Soma Online';
+        }
         if (product.type === 'digital' && product.has_access) {
             return 'Fungua Faili';
         }
         if (payableServiceRequest) {
             return 'Pay Service Quote';
+        }
+        if (groupSaleReservationMode) {
+            return 'Join group sale';
         }
         if (hasProductVariants) {
             if (!isVariantSelectionComplete) {
@@ -485,9 +635,9 @@ export default function ProductDetail({ product }) {
                 return `Chagua ${formatAttributeLabel(missing)}`;
             }
             if (!selectedVariant?.id) return "Chagua Chaguo";
-            if (Number(selectedVariant?.inventory_count || 0) <= 0) return "Bidhaa Imeisha";
+            if (requiresOwnedStock && Number(selectedVariant?.inventory_count || 0) <= 0) return "Bidhaa Imeisha";
         } else {
-            if (Number(product.available_stock || 0) <= 0) return "Bidhaa Imeisha";
+            if (requiresOwnedStock && Number(product.available_stock || 0) <= 0) return "Bidhaa Imeisha";
         }
 
         if (product.type === 'service' && servicePricingModel === 'deposit_required') {
@@ -498,6 +648,9 @@ export default function ProductDetail({ product }) {
         }
         if (product.type === 'service') {
             return 'Pay / Reserve';
+        }
+        if (groupSaleCheckoutOpen) {
+            return 'Buy Group Deal';
         }
         if (product.type === 'digital') {
             return 'Lipa Sasa';
@@ -813,6 +966,11 @@ export default function ProductDetail({ product }) {
                                 controls
                                 playsInline
                                 preload="metadata"
+                                onPlay={() => trackContentInteraction('video_played', {
+                                    context: 'product_media',
+                                    media_id: currentMedia?.id || null,
+                                    media_index: currentImageIndex,
+                                }, `media-${currentMedia?.id || currentImageIndex}`)}
                             />
                         ) : (
                             <img
@@ -917,6 +1075,408 @@ export default function ProductDetail({ product }) {
 
                 </div>
 
+                {isPremiumVideoProduct && (
+                    <section ref={premiumVideoRef} className="px-4 py-5 bg-background max-w-2xl mx-auto">
+                        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border/70">
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
+                                    Premium Video
+                                </p>
+                                <h2 className="text-lg font-black leading-tight mt-1">
+                                    {product.has_access ? 'Full video unlocked' : 'Buy to watch the full video'}
+                                </h2>
+                            </div>
+                            {product.has_access && premiumVideo?.url ? (
+                                <div className="bg-black">
+                                    <div className="aspect-video">
+                                        <VideoPlayer
+                                            src={premiumVideo.url}
+                                            hlsUrl={premiumVideo.hls_url || undefined}
+                                            className="w-full h-full bg-black"
+                                            controls
+                                            playsInline
+                                            preload="metadata"
+                                            onPlay={() => trackContentInteraction('video_played', {
+                                                context: 'premium_video',
+                                                hls: Boolean(premiumVideo.hls_url),
+                                                status: premiumVideo.status || null,
+                                            }, 'premium-video')}
+                                        />
+                                    </div>
+                                    {premiumVideo.status && premiumVideo.status !== 'ready' && (
+                                        <div className="px-4 py-3 bg-amber-50 text-amber-800 text-xs font-bold">
+                                            Video bado inaandaliwa kwa streaming bora. Unaweza kuanza kuitazama, kisha HLS itaonekana ikikamilika.
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-5 text-sm leading-6 text-muted-foreground">
+                                    <p>
+                                        Trailer or preview media is shown above. Complete purchase to watch the full video inside Takeer.
+                                    </p>
+                                    {!product.allow_download && (
+                                        <p className="mt-2 text-xs font-bold text-foreground">
+                                            Downloads are disabled by the creator.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                )}
+
+                {isPremiumAudioProduct && (
+                    <section ref={premiumVideoRef} className="px-4 py-5 bg-background max-w-2xl mx-auto">
+                        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border/70">
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
+                                    Premium Audio
+                                </p>
+                                <h2 className="text-lg font-black leading-tight mt-1">
+                                    {product.has_access ? 'Full audio unlocked' : 'Buy to listen to the full audio'}
+                                </h2>
+                            </div>
+                            {product.has_access && premiumAudio?.url ? (
+                                <div className="p-5 bg-slate-950">
+                                    <audio
+                                        src={premiumAudio.url}
+                                        controls
+                                        preload="metadata"
+                                        className="w-full"
+                                        onPlay={() => trackContentInteraction('audio_played', {
+                                            context: 'premium_audio',
+                                        }, 'premium-audio')}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="p-5 text-sm leading-6 text-muted-foreground">
+                                    <p>
+                                        Preview media is shown above. Complete purchase to listen to the full audio inside Takeer.
+                                    </p>
+                                    {!product.allow_download && (
+                                        <p className="mt-2 text-xs font-bold text-foreground">
+                                            Downloads are disabled by the creator.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                )}
+
+                {isGalleryPackProduct && (
+                    <section ref={premiumVideoRef} className="px-4 py-5 bg-background max-w-2xl mx-auto">
+                        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border/70">
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
+                                    Gallery Pack
+                                </p>
+                                <h2 className="text-lg font-black leading-tight mt-1">
+                                    {product.has_access ? 'Gallery unlocked' : 'Buy to unlock the gallery'}
+                                </h2>
+                            </div>
+                            {product.has_access && galleryPack?.items?.length ? (
+                                <div className="space-y-3 bg-slate-950 p-3">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {galleryPack.items.map((item, index) => (
+                                            <div key={`${item.url}-${index}`} className="overflow-hidden rounded-xl bg-slate-900">
+                                                <a
+                                                    href={item.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => trackContentInteraction('gallery_viewed', {
+                                                        context: 'gallery_pack',
+                                                        gallery_index: index,
+                                                        item_name: item.name || null,
+                                                    })}
+                                                    className="block aspect-square"
+                                                >
+                                                    <img src={item.url} alt={item.name || `Gallery image ${index + 1}`} className="h-full w-full object-cover" />
+                                                </a>
+                                                {item.original_url && (
+                                                    <a
+                                                        href={item.original_url}
+                                                        onClick={() => trackContentInteraction('gallery_original_downloaded', {
+                                                            context: 'gallery_pack',
+                                                            gallery_index: index,
+                                                            item_name: item.name || null,
+                                                        })}
+                                                        className="flex items-center justify-center gap-2 border-t border-white/10 bg-white/10 px-2 py-2 text-[10px] font-black uppercase tracking-wider text-white hover:bg-white/15"
+                                                    >
+                                                        <DownloadCloud className="h-3.5 w-3.5" />
+                                                        Original
+                                                    </a>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {!product.allow_download && (
+                                        <p className="px-1 text-[11px] font-bold text-slate-300">
+                                            These are protected watermarked previews. Original downloads are disabled by the creator.
+                                        </p>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-5 text-sm leading-6 text-muted-foreground">
+                                    <p>
+                                        Preview media is shown above. Complete purchase to unlock protected gallery previews inside Takeer.
+                                    </p>
+                                    {!product.allow_download && (
+                                        <p className="mt-2 text-xs font-bold text-foreground">
+                                            Downloads are disabled by the creator.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                )}
+
+                {isLiveEventProduct && (
+                    <section className="px-4 py-5 bg-background max-w-2xl mx-auto">
+                        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border/70">
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
+                                    Live Event
+                                </p>
+                                <h2 className="text-lg font-black leading-tight mt-1">
+                                    {product.has_access ? 'Event access unlocked' : 'Buy to unlock event access'}
+                                </h2>
+                            </div>
+                            <div className="p-5 space-y-4">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Starts</p>
+                                        <p className="mt-1 text-sm font-black text-slate-900">
+                                            {liveEvent?.starts_at ? new Date(liveEvent.starts_at).toLocaleString() : 'To be announced'}
+                                        </p>
+                                        {liveEvent?.duration_minutes && (
+                                            <p className="mt-1 text-xs font-semibold text-slate-600">{liveEvent.duration_minutes} minutes · {liveEvent.timezone || 'local time'}</p>
+                                        )}
+                                    </div>
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Capacity</p>
+                                        <p className="mt-1 text-sm font-black text-slate-900">
+                                            {liveEvent?.capacity ? `${liveEvent.capacity} seats` : 'Open access'}
+                                        </p>
+                                        {liveEvent?.seats_remaining !== null && liveEvent?.seats_remaining !== undefined && (
+                                            <p className="mt-1 text-xs font-semibold text-slate-600">{liveEvent.seats_remaining} remaining</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {product.has_access ? (
+                                    <div className="space-y-3">
+                                        {liveEvent?.access_url && (
+                                            <a
+                                                href={liveEvent.access_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={() => trackContentInteraction('live_event_joined', {
+                                                    context: 'live_event_access',
+                                                    starts_at: liveEvent?.starts_at || null,
+                                                })}
+                                                className="flex items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 py-3 text-sm font-black text-white"
+                                            >
+                                                <ExternalLink className="h-4 w-4" />
+                                                Join live event
+                                            </a>
+                                        )}
+                                        {liveEvent?.venue && (
+                                            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-600">Venue</p>
+                                                <p className="mt-1 text-sm font-bold text-slate-900 whitespace-pre-line">{liveEvent.venue}</p>
+                                            </div>
+                                        )}
+                                        {liveEvent?.replay_url && (
+                                            <a
+                                                href={liveEvent.replay_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={() => trackContentInteraction('video_played', {
+                                                    context: 'live_event_replay',
+                                                    starts_at: liveEvent?.starts_at || null,
+                                                })}
+                                                className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-800"
+                                            >
+                                                <PlayCircle className="h-4 w-4" />
+                                                Watch replay
+                                            </a>
+                                        )}
+                                        {liveEvent?.instructions && (
+                                            <p className="text-sm font-semibold leading-6 text-slate-700 whitespace-pre-line">
+                                                {liveEvent.instructions}
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm leading-6 text-muted-foreground">
+                                        Event poster or preview media is shown above. Complete purchase to unlock the private join link, venue details, instructions, and replay if the creator provides one.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+                )}
+
+                {product.type === 'digital' && (digitalContentLabel || digitalLicenseLabel || (product.has_access && product.digital_access_instructions)) && (
+                    <section className="px-4 py-4 bg-background max-w-2xl mx-auto">
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+                            <div className="flex items-center gap-2">
+                                <Info className="h-4 w-4 text-blue-700" />
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">Digital Asset</p>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {digitalContentLabel && (
+                                    <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-blue-800 border border-blue-100">{digitalContentLabel}</span>
+                                )}
+                                {digitalLicenseLabel && (
+                                    <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-blue-800 border border-blue-100">{digitalLicenseLabel}</span>
+                                )}
+                            </div>
+                            {product.has_access && product.digital_access_instructions && (
+                                <p className="mt-3 text-sm font-semibold leading-6 text-slate-700 whitespace-pre-line">
+                                    {product.digital_access_instructions}
+                                </p>
+                            )}
+                        </div>
+                    </section>
+                )}
+
+                {canReadDocumentOnline && (
+                    <section ref={documentReaderRef} className="px-4 py-5 bg-background max-w-2xl mx-auto">
+                        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border/70 flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
+                                        Read Online
+                                    </p>
+                                    <h2 className="text-lg font-black leading-tight mt-1">
+                                        {documentReader.name || 'PDF document'}
+                                    </h2>
+                                </div>
+                                <a
+                                    href={documentReader.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => trackContentInteraction('document_read', {
+                                        context: 'document_reader_open',
+                                        document_name: documentReader.name || null,
+                                    })}
+                                    className="h-10 px-3 rounded-xl bg-brand-50 text-brand-700 border border-brand-100 inline-flex items-center gap-2 text-xs font-black"
+                                >
+                                    <BookOpen className="h-4 w-4" />
+                                    Open
+                                </a>
+                            </div>
+                            <div className="h-[70vh] min-h-[480px] bg-slate-100">
+                                <iframe
+                                    src={documentReader.url}
+                                    title={documentReader.name || 'PDF reader'}
+                                    onLoad={() => trackContentInteraction('document_read', {
+                                        context: 'document_reader_iframe',
+                                        document_name: documentReader.name || null,
+                                    }, 'document-reader')}
+                                    className="h-full w-full border-0"
+                                />
+                            </div>
+                        </div>
+                    </section>
+                )}
+
+                {hasSoftwareAccessPanel && (
+                    <section className="px-4 py-5 bg-background max-w-2xl mx-auto">
+                        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border/70">
+                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-600">
+                                    Releases
+                                </p>
+                                <h2 className="text-lg font-black leading-tight mt-1">
+                                    {product.has_access ? 'Software downloads unlocked' : 'Buy to access releases'}
+                                </h2>
+                            </div>
+                            {product.has_access && softwareLicenseKey?.key && (
+                                <div className="m-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">License Key</p>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <code className="min-w-0 flex-1 rounded-xl bg-white px-3 py-2 text-sm font-black text-emerald-900 break-all">
+                                            {softwareLicenseKey.key}
+                                        </code>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                navigator.clipboard?.writeText(softwareLicenseKey.key);
+                                                toast.success('License key copied.');
+                                            }}
+                                            className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white"
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
+                                    {softwareLicenseKey.offline_license_url && (
+                                        <a
+                                            href={softwareLicenseKey.offline_license_url}
+                                            onClick={() => trackContentInteraction('license_file_downloaded', {
+                                                context: 'software_access_panel',
+                                                license_key_id: softwareLicenseKey.id || null,
+                                            })}
+                                            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-800 border border-emerald-100"
+                                        >
+                                            <DownloadCloud className="h-4 w-4" />
+                                            Download offline license file
+                                        </a>
+                                    )}
+                                </div>
+                            )}
+                            {hasSoftwareReleases ? (
+                            <div className="divide-y divide-border">
+                                {softwareReleases.map((release) => (
+                                    <div key={release.id} className="p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="text-sm font-black text-foreground">v{release.version}</p>
+                                                    {release.is_latest && (
+                                                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                                                            Latest
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {release.title && (
+                                                    <p className="mt-1 text-sm font-bold text-slate-700">{release.title}</p>
+                                                )}
+                                                {release.changelog && (
+                                                    <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-line">{release.changelog}</p>
+                                                )}
+                                            </div>
+                                            {product.has_access && release.download_url && (
+                                                <a
+                                                    href={release.download_url}
+                                                    onClick={() => trackContentInteraction('software_release_downloaded', {
+                                                        context: 'software_releases',
+                                                        release_id: release.id,
+                                                        version: release.version,
+                                                        is_latest: Boolean(release.is_latest),
+                                                    })}
+                                                    className="shrink-0 rounded-xl bg-brand-600 px-3 py-2 text-xs font-black text-white inline-flex items-center gap-2"
+                                                >
+                                                    <DownloadCloud className="h-4 w-4" />
+                                                    Download
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            ) : (
+                                <div className="p-4 text-sm font-semibold text-muted-foreground">
+                                    No release downloads have been published yet.
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                )}
+
                 {/* Content Area - Pulls up slightly over the image */}
                 <div className="relative z-10 -mt-6 rounded-t-3xl bg-background px-4 pt-6 pb-20 max-w-2xl mx-auto md:mt-0 md:rounded-none md:pt-10">
                     {/* Product Title & Price */}
@@ -940,6 +1500,8 @@ export default function ProductDetail({ product }) {
                             <div className="text-3xl font-extrabold text-brand-600 leading-none">
                                 {product.type === 'service' ? (
                                     <span>{servicePriceText}</span>
+                                ) : unitLabel ? (
+                                    <span>{unitPriceText}</span>
                                 ) : (
                                     <>
                                         <span className="text-sm font-bold align-text-top mr-1">TZS</span>
@@ -961,6 +1523,11 @@ export default function ProductDetail({ product }) {
                         {product.type === 'service' && servicePricingModel === 'hourly_rate' && (
                             <p className="mt-2 text-xs font-bold uppercase tracking-wider text-purple-700">
                                 Bei kwa saa · Minimum {Number(product?.service_min_hours || 1)}h
+                            </p>
+                        )}
+                        {product.type === 'physical' && unitLabel && (
+                            <p className="mt-2 text-xs font-bold uppercase tracking-wider text-brand-700">
+                                Bei kwa {unitLabel} · {productStockLabel(product)}
                             </p>
                         )}
                         {product.type === 'service' && (
@@ -1037,6 +1604,45 @@ export default function ProductDetail({ product }) {
                                             </button>
                                         );
                                     })}
+                                </div>
+                            </div>
+                        )}
+                        {product.type === 'service' && serviceRelatedProducts.length > 0 && (
+                            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+                                <p className="text-xs font-black uppercase tracking-widest text-slate-900">Products this provider makes or brings</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Related items from the same provider. View or buy them separately from the service.
+                                </p>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    {serviceRelatedProducts.map((item) => (
+                                        <Link
+                                            key={item.id}
+                                            href={item.url || `/product/${item.slug || item.id}`}
+                                            className="rounded-xl border border-slate-200 bg-slate-50/70 p-2 transition-colors hover:border-brand-300 hover:bg-brand-50/40"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                                                    {item.image_url ? (
+                                                        <img src={item.image_url} alt="" className="h-full w-full object-cover" />
+                                                    ) : (
+                                                        <ShoppingBag className="mx-auto mt-4 h-5 w-5 text-slate-300" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-sm font-black text-slate-900">{item.title}</p>
+                                                    <p className="mt-0.5 text-xs font-black text-brand-700">
+                                                        TZS {Number(item.checkout_price ?? item.discounted_price ?? item.price ?? 0).toLocaleString()}
+                                                    </p>
+                                                    {item.fulfillment_mode && item.fulfillment_mode !== 'own_stock' && (
+                                                        <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                            {fulfillmentModeLabels[item.fulfillment_mode] || item.fulfillment_mode}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                                            </div>
+                                        </Link>
+                                    ))}
                                 </div>
                             </div>
                         )}
@@ -1190,8 +1796,8 @@ export default function ProductDetail({ product }) {
                             {/* Dynamic Facets (Entered Attributes) */}
                             {product.category_attribute_values && product.category_attribute_values.length > 0 && (
                                 <div className="space-y-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Sifa za Bidhaa (Specification)</p>
-                                    <div className="flex flex-wrap gap-2">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Sifa na Usalama wa Bidhaa</p>
+                                    <div className="grid gap-2 sm:grid-cols-2">
                                         {product.category_attribute_values.map((val, idx) => {
                                             let displayValue = '';
                                             if (val.value_boolean !== null) {
@@ -1208,9 +1814,9 @@ export default function ProductDetail({ product }) {
                                             if (!displayValue) return null;
 
                                             return (
-                                                <div key={idx} className="bg-brand-50/50 border border-brand-100/50 px-3 py-1.5 rounded-xl flex items-center gap-2 group hover:bg-brand-100/50 transition-colors">
-                                                    <span className="text-[11px] font-bold text-brand-800/70">{val.attribute?.label}:</span>
-                                                    <span className="text-[11px] font-black text-brand-900">{displayValue}</span>
+                                                <div key={idx} className="bg-brand-50/50 border border-brand-100/50 px-3 py-2 rounded-xl group hover:bg-brand-100/50 transition-colors">
+                                                    <span className="text-[11px] font-bold text-brand-800/70 block">{val.attribute?.label}</span>
+                                                    <span className="text-[11px] font-black text-brand-900 whitespace-pre-line">{displayValue}</span>
                                                 </div>
                                             );
                                         })}
@@ -1304,7 +1910,9 @@ export default function ProductDetail({ product }) {
                             {selectedVariant && (
                                 <div className="rounded-xl border border-brand-200 bg-white p-2.5">
                                     <p className="text-sm font-bold text-brand-900">{selectedVariant.name}</p>
-                                    <p className="text-[11px] font-bold text-brand-700">Stock: {Number(selectedVariant.inventory_count || 0)} tu!</p>
+                                    <p className="text-[11px] font-bold text-brand-700">
+                                        {productStockLabel(product, selectedVariant.inventory_quantity ?? selectedVariant.inventory_count)}
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -1450,6 +2058,56 @@ export default function ProductDetail({ product }) {
                             </div>
                         )
                     )}
+                    {product.type === 'physical' && fulfillmentGuidance && (
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/20 dark:bg-blue-900/10">
+                            <div className="flex items-start gap-3">
+                                <Info className="mt-0.5 h-6 w-6 shrink-0 text-blue-600" />
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600">
+                                        Fulfillment flow
+                                    </p>
+                                    <h4 className="mt-1 text-sm font-black text-blue-900 dark:text-blue-400">
+                                        {fulfillmentGuidance.title}
+                                    </h4>
+                                    <p className="mt-1 text-xs leading-5 text-blue-800/80 dark:text-blue-400/80">
+                                        {fulfillmentGuidance.body}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                                {fulfillmentGuidance.steps.map((stepLabel, index) => (
+                                    <div key={stepLabel} className="rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-blue-900 shadow-sm dark:bg-blue-950/40 dark:text-blue-100">
+                                        <span className="mr-1 text-blue-500">{index + 1}.</span>{stepLabel}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {(fulfillmentAvailableFromLabel || fulfillmentLeadTimeLabel || product.group_sale_goal_quantity) && (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {fulfillmentLeadTimeLabel && (
+                                        <span className="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-black text-blue-800">
+                                            {fulfillmentLeadTimeLabel}
+                                        </span>
+                                    )}
+                                    {fulfillmentAvailableFromLabel && (
+                                        <span className="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-black text-blue-800">
+                                            {fulfillmentAvailableFromLabel}
+                                        </span>
+                                    )}
+                                    {product.group_sale_goal_quantity && (
+                                        <span className="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-black text-blue-800">
+                                            Target {product.group_sale_goal_quantity}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            <p className="mt-3 text-[11px] font-semibold leading-5 text-blue-800/80 dark:text-blue-300/80">
+                                Takeer protects the payment until fulfillment or receipt confirmation, so the seller does not receive payout before the order is completed.
+                            </p>
+                        </div>
+                    )}
                     {serviceTrustBlocksBooking && (
                         <div className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-4 flex items-start gap-3 border border-amber-200 dark:border-amber-900/30">
                             <AlertTriangle className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />
@@ -1473,6 +2131,11 @@ export default function ProductDetail({ product }) {
                         {product.type === 'service' && includedServiceChargesTotal > 0 && !payableServiceRequest && (
                             <p className="text-[10px] font-bold text-emerald-700">
                                 Includes TZS {includedServiceChargesTotal.toLocaleString()} extra charges
+                            </p>
+                        )}
+                        {product.type === 'physical' && fulfillmentGuidance && (
+                            <p className="text-[10px] font-bold text-blue-700">
+                                {fulfillmentModeLabels[physicalFulfillmentMode]}{fulfillmentLeadTimeLabel ? ` · ${fulfillmentLeadTimeLabel}` : ''}
                             </p>
                         )}
                     </div>
@@ -1515,10 +2178,10 @@ export default function ProductDetail({ product }) {
                                     {!canCheckout && (
                                         <p className="text-[10px] font-bold text-red-500 text-center">
                                             {hasProductVariants && !isVariantSelectionComplete ? "Tafadhali kamilisha uchaguzi" :
-                                                (Number(selectedVariant?.inventory_count || product.available_stock || 0) <= 0 ? "Samahani, bidhaa hii imeisha" : "")}
+                                                (requiresOwnedStock && Number(selectedVariant?.inventory_count || product.available_stock || 0) <= 0 ? "Samahani, bidhaa hii imeisha" : "")}
                                         </p>
                                     )}
-                                    {!canCheckout && Number(selectedVariant?.inventory_count || product.available_stock || 0) <= 0 && (
+                                    {!canCheckout && requiresOwnedStock && Number(selectedVariant?.inventory_count || product.available_stock || 0) <= 0 && (
                                         <button
                                             onClick={(e) => {
                                                 e.preventDefault();
@@ -1542,6 +2205,22 @@ export default function ProductDetail({ product }) {
                                         disabled={!canCheckout}
                                         onClick={() => {
                                             if (product.type === 'digital' && product.has_access && product.latest_order_id) {
+                                                if (isPremiumVideoProduct && premiumVideo?.url) {
+                                                    premiumVideoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                    return;
+                                                }
+                                                if (isPremiumAudioProduct && premiumAudio?.url) {
+                                                    premiumVideoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                    return;
+                                                }
+                                                if (isGalleryPackProduct && galleryPack?.items?.length) {
+                                                    premiumVideoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                    return;
+                                                }
+                                                if (canReadDocumentOnline) {
+                                                    documentReaderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                    return;
+                                                }
                                                 window.dispatchEvent(new CustomEvent('takeer:digital-ready', {
                                                     detail: {
                                                         itemId: product.id,
@@ -1552,10 +2231,16 @@ export default function ProductDetail({ product }) {
                                                 }));
                                                 return;
                                             }
+                                            if (groupSaleReservationMode) {
+                                                window.location.href = groupSaleOffer.url || `/group-sale/${groupSaleOffer.slug}`;
+                                                return;
+                                            }
                                             if (window.__openCheckout) {
                                                 window.__openCheckout({
                                                     ...product,
-                                                    checkout_price: payableServiceRequest?.quoted_amount || undefined,
+                                                    checkout_price: payableServiceRequest?.quoted_amount || (groupSaleCheckoutOpen ? groupSaleOffer?.campaign_price : undefined),
+                                                    group_sale_campaign_id: groupSaleCheckoutOpen ? groupSaleOffer?.id : undefined,
+                                                    group_sale_offer: groupSaleOffer || undefined,
                                                     service_request_payment: payableServiceRequest || undefined,
                                                     selected_service_option: selectedServiceOption || undefined,
                                                     preselected_variant_id: selectedVariant?.id || null,

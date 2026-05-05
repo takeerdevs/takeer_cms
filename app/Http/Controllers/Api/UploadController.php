@@ -22,23 +22,29 @@ use App\Models\SubscriptionPlan;
 use App\Models\SubscriptionPlanItem;
 use App\Models\PostProductTag;
 use App\Models\ProductImage;
+use App\Models\MerchantGroupSaleCampaign;
+use App\Jobs\ProcessPremiumProductVideo;
 use App\Jobs\ProcessPromotableVideo;
 use App\Http\Resources\ProductResource;
 use App\Services\EntitlementService;
+use App\Services\GalleryImageService;
 use App\Services\MediaUploadService;
 use App\Services\ProductIntelligenceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Exception;
 
 class UploadController extends Controller
 {
-    private const DEFAULT_UPLOAD_EXTENSIONS = 'jpg,jpeg,png,webp,gif,mp4,mov,webm,pdf,zip,doc,docx,xls,xlsx,ppt,pptx,csv,txt';
-    private const DEFAULT_UPLOAD_MIME_TYPES = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,application/zip,application/x-zip-compressed,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/csv,text/plain';
+    private const DEFAULT_UPLOAD_EXTENSIONS = 'jpg,jpeg,png,webp,gif,mp4,mov,webm,mp3,wav,m4a,aac,ogg,flac,pdf,zip,rar,7z,doc,docx,xls,xlsx,ppt,pptx,csv,txt,epub,psd,ai,eps,svg,fig,sketch,xd,indd,ase,abr,pat,atn,xmp,lrtemplate,dng,otf,ttf,woff,woff2,aep,prproj,fcpxml,blend,c4d,obj,fbx,glb,gltf';
+    private const DEFAULT_UPLOAD_MIME_TYPES = 'image/jpeg,image/png,image/webp,image/gif,image/svg+xml,image/vnd.adobe.photoshop,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/flac,application/pdf,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/x-7z-compressed,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/csv,text/plain,application/epub+zip,application/postscript,application/illustrator,application/vnd.ms-fontobject,font/otf,font/ttf,font/woff,font/woff2,application/octet-stream,model/gltf+json,model/gltf-binary';
 
     /**
      * List all products for the logged-in merchant.
@@ -51,7 +57,7 @@ class UploadController extends Controller
 
         $query = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType'])
             ->with(['variants', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
@@ -74,17 +80,18 @@ class UploadController extends Controller
         return ProductResource::collection($products)->response();
     }
 
-    public function show(Request $request, $id): JsonResponse
+    public function show(Request $request, Merchant|string|int|null $merchantOrId = null, string|int|null $id = null): JsonResponse
     {
         $merchantProfile = $this->merchantFromRequest($request);
+        $productId = $id ?? $merchantOrId;
         $product = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'variants.locationInventories.location', 'locationInventories.location', 'postTags.post:id,views_count'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'variants.locationInventories.location', 'locationInventories.location', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
                 'orders as purchases_count' => fn ($orders) => $orders->whereNotIn('payment_status', ['pending', 'failed']),
             ])
-            ->findOrFail($id);
+            ->findOrFail($productId);
 
         return ProductResource::make($product)->response();
     }
@@ -98,30 +105,45 @@ class UploadController extends Controller
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('name')
-            ->get(['id', 'parent_id', 'name', 'slug']);
+            ->get(['id', 'parent_id', 'name', 'localized_labels', 'slug', 'risk_level', 'allowed_fulfillment_modes', 'requires_verified_business', 'requires_manual_review']);
 
         $topLevel = $categories->whereNull('parent_id')->values();
         $childrenByParent = $categories->whereNotNull('parent_id')->groupBy('parent_id');
 
         $selectedCategoryId = (int) $request->input('category_id', 0);
         $selectedCategory = $selectedCategoryId > 0
-            ? ProductCategory::with(['attributes', 'brands.models', 'brandModels'])->find($selectedCategoryId)
+            ? ProductCategory::with(['attributes', 'brands.models', 'brandModels', 'unitTypes'])->find($selectedCategoryId)
             : null;
 
         return response()->json([
             'categories' => $topLevel->map(fn ($category) => [
                 'id' => $category->id,
                 'name' => $category->name,
+                'localized_labels' => $category->localized_labels ?? [],
                 'slug' => $category->slug,
+                'risk_level' => $category->risk_level ?? 'standard',
+                'allowed_fulfillment_modes' => $category->allowed_fulfillment_modes ?? [],
+                'requires_verified_business' => (bool) ($category->requires_verified_business ?? false),
+                'requires_manual_review' => (bool) ($category->requires_manual_review ?? false),
                 'children' => ($childrenByParent[$category->id] ?? collect())->map(fn ($child) => [
                     'id' => $child->id,
                     'name' => $child->name,
+                    'localized_labels' => $child->localized_labels ?? [],
                     'slug' => $child->slug,
+                    'risk_level' => $child->risk_level ?? $category->risk_level ?? 'standard',
+                    'allowed_fulfillment_modes' => $child->allowed_fulfillment_modes ?? $category->allowed_fulfillment_modes ?? [],
+                    'requires_verified_business' => (bool) ($child->requires_verified_business ?? $category->requires_verified_business ?? false),
+                    'requires_manual_review' => (bool) ($child->requires_manual_review ?? $category->requires_manual_review ?? false),
                 ])->values(),
             ])->values(),
             'selected' => $selectedCategory ? [
                 'id' => $selectedCategory->id,
                 'name' => $selectedCategory->name,
+                'localized_labels' => $selectedCategory->localized_labels ?? [],
+                'risk_level' => $selectedCategory->risk_level ?? 'standard',
+                'allowed_fulfillment_modes' => $selectedCategory->allowed_fulfillment_modes ?? [],
+                'requires_verified_business' => (bool) ($selectedCategory->requires_verified_business ?? false),
+                'requires_manual_review' => (bool) ($selectedCategory->requires_manual_review ?? false),
                 'parent_id' => $selectedCategory->parent_id,
                 'attributes' => $selectedCategory->attributes->map(fn ($attr) => [
                     'id' => $attr->id,
@@ -143,19 +165,30 @@ class UploadController extends Controller
                         ->where('is_active', true)
                         ->values();
 
-                    $models = $modelsByBrand->isNotEmpty()
-                        ? $modelsByBrand
-                        : $brand->models->where('is_active', true)->values();
-
                     return [
                         'id' => $brand->id,
                         'name' => $brand->name,
-                        'models' => $models->map(fn ($model) => [
+                        'models' => $modelsByBrand->map(fn ($model) => [
                             'id' => $model->id,
                             'name' => $model->name,
                         ])->values(),
                     ];
                 })->values(),
+                'unit_types' => $selectedCategory->unitTypes->map(fn ($unit) => [
+                    'id' => $unit->id,
+                    'name' => $unit->name,
+                    'code' => $unit->code,
+                    'symbol' => $unit->symbol,
+                    'unit_category' => $unit->unit_category,
+                    'base_unit_code' => $unit->base_unit_code,
+                    'conversion_factor_to_base' => (float) $unit->conversion_factor_to_base,
+                    'allows_decimal' => (bool) $unit->allows_decimal,
+                    'localized_labels' => $unit->localized_labels ?? [],
+                    'common_quantities' => $unit->common_quantities ?? [],
+                    'is_default' => (bool) ($unit->pivot?->is_default ?? false),
+                    'min_order_quantity' => $unit->pivot?->min_order_quantity !== null ? (float) $unit->pivot->min_order_quantity : null,
+                    'order_increment' => $unit->pivot?->order_increment !== null ? (float) $unit->pivot->order_increment : null,
+                ])->values(),
             ] : null,
         ]);
     }
@@ -169,7 +202,15 @@ class UploadController extends Controller
         \App\Services\StorageQuotaService $quotaService
     ): JsonResponse
     {
-        $maxFileMb = max(1, min(500, (int) AdminSetting::get('upload_max_file_mb', 500)));
+        if ($request->has('chunk_index') || $request->has('upload_id')) {
+            return $this->uploadMediaChunk($request, $mediaService, $quotaService);
+        }
+
+        $folder = (string) $request->input('folder', '');
+        $configuredMaxMb = (int) AdminSetting::get('upload_max_file_mb', 500);
+        $maxFileMb = in_array($folder, ['premium-videos', 'premium-audio', 'premium-gallery'], true)
+            ? max(1, min(5120, max($configuredMaxMb, 2048)))
+            : max(1, min(500, $configuredMaxMb));
 
         $request->validate([
             'file' => "required|file|max:" . ($maxFileMb * 1024),
@@ -189,7 +230,7 @@ class UploadController extends Controller
 
         if (! $isFreePostMedia && $merchant && ! $merchant->canSellProducts()) {
             return response()->json([
-                'message' => 'Complete KYC before uploading product, course, or private commerce files.',
+                'message' => 'Complete KYC before uploading product or private commerce files.',
                 'verification_url' => "/merchant/{$merchant->username}/verification",
             ], 403);
         }
@@ -224,6 +265,120 @@ class UploadController extends Controller
             Log::error('Media upload failed: ' . $e->getMessage());
             return response()->json(['message' => 'Imeshindwa kupakia faili.'], 500);
         }
+    }
+
+    private function uploadMediaChunk(Request $request, MediaUploadService $mediaService, \App\Services\StorageQuotaService $quotaService): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|max:65536',
+            'upload_id' => 'required|string|max:80|regex:/^[A-Za-z0-9_-]+$/',
+            'chunk_index' => 'required|integer|min:0',
+            'total_chunks' => 'required|integer|min:1|max:10000',
+            'original_name' => 'required|string|max:255',
+            'mime' => 'nullable|string|max:255',
+            'folder' => 'required|string|in:digital-products,premium-videos,premium-audio,premium-gallery',
+            'type' => 'nullable|string|in:public,private',
+        ]);
+
+        $chunkIndex = (int) $request->input('chunk_index');
+        $totalChunks = (int) $request->input('total_chunks');
+
+        if ($chunkIndex >= $totalChunks) {
+            return response()->json(['message' => 'Chunk index si sahihi.'], 422);
+        }
+
+        $merchant = $this->merchantFromRequest($request);
+        if ($merchant && ! $merchant->canSellProducts()) {
+            return response()->json([
+                'message' => 'Complete KYC before uploading product or private commerce files.',
+                'verification_url' => "/merchant/{$merchant->username}/verification",
+            ], 403);
+        }
+
+        $uploadId = (string) $request->input('upload_id');
+        $chunkDir = storage_path('app/private/upload-chunks/'.$uploadId);
+        File::ensureDirectoryExists($chunkDir, 0755, true);
+
+        $request->file('file')->move($chunkDir, 'chunk.'.$chunkIndex);
+
+        $receivedChunks = 0;
+        for ($i = 0; $i < $totalChunks; $i++) {
+            if (File::exists($chunkDir.'/chunk.'.$i)) {
+                $receivedChunks++;
+            }
+        }
+
+        if ($receivedChunks < $totalChunks) {
+            return response()->json([
+                'complete' => false,
+                'received_chunks' => $receivedChunks,
+                'total_chunks' => $totalChunks,
+            ]);
+        }
+
+        $extension = strtolower(pathinfo((string) $request->input('original_name'), PATHINFO_EXTENSION));
+        $finalName = Str::uuid().($extension ? '.'.$extension : '');
+        $finalPath = $chunkDir.'/'.$finalName;
+        $output = fopen($finalPath, 'wb');
+
+        if (!$output) {
+            File::deleteDirectory($chunkDir);
+            return response()->json(['message' => 'Imeshindwa kuunganisha video chunks.'], 500);
+        }
+
+        try {
+            for ($i = 0; $i < $totalChunks; $i++) {
+                $input = fopen($chunkDir.'/chunk.'.$i, 'rb');
+                if (!$input) {
+                    throw new Exception('Chunk haikupatikana.');
+                }
+                stream_copy_to_stream($input, $output);
+                fclose($input);
+            }
+        } catch (Exception) {
+            fclose($output);
+            File::deleteDirectory($chunkDir);
+            return response()->json(['message' => 'Imeshindwa kuunganisha video chunks.'], 500);
+        }
+
+        fclose($output);
+
+        $assembled = new UploadedFile(
+            $finalPath,
+            (string) $request->input('original_name'),
+            $request->input('mime') ?: (mime_content_type($finalPath) ?: null),
+            null,
+            true
+        );
+        $this->ensureUploadIsAllowed($assembled);
+
+        try {
+            $size = filesize($finalPath) ?: 0;
+            if ($merchant && !$quotaService->canUpload($merchant, $size)) {
+                return response()->json([
+                    'message' => 'Nafasi yako ya kuhifadhi faili imejaa (Storage Full). Tafadhali bofya "Upgrade Storage" ili kuongeza nafasi.',
+                    'quota_exceeded' => true,
+                ], 403);
+            }
+
+            $storedPath = $mediaService->uploadFile($assembled, (string) $request->input('folder'), true);
+            if ($merchant) {
+                $quotaService->recordUpload($merchant, $size);
+            }
+        } finally {
+            File::deleteDirectory($chunkDir);
+        }
+
+        $normalizedUrl = str_starts_with($storedPath, 'private://') ? $storedPath : "private://{$storedPath}";
+
+        return response()->json([
+            'complete' => true,
+            'url' => $normalizedUrl,
+            'mime' => $request->input('mime') ?: $assembled->getMimeType(),
+            'size' => $size,
+            'storage_used_mb' => $merchant ? $merchant->fresh()->storage_used_mb : 0,
+            'storage_percentage' => $merchant ? $merchant->fresh()->storage_percentage : 0,
+        ]);
     }
 
     private function ensureUploadIsAllowed(\Illuminate\Http\UploadedFile $file): void
@@ -447,6 +602,17 @@ class UploadController extends Controller
             'media_items.*.height' => 'nullable|integer|min:0',
             'media_items.*.processing_status' => 'nullable|string|in:pending,processing,ready,failed',
             'type' => 'required|string|in:physical,digital,service',
+            'fulfillment_mode' => 'nullable|string|in:own_stock,made_to_order,supplier_sourced,farm_harvest,preorder,group_sale',
+            'source_details' => 'nullable|array',
+            'source_details.supplier_name' => 'nullable|string|max:160',
+            'source_details.supplier_phone' => 'nullable|string|max:40',
+            'source_details.supplier_location' => 'nullable|string|max:255',
+            'source_details.confirmation_hours' => 'nullable|integer|min:0|max:8760',
+            'source_details.source_note' => 'nullable|string|max:1000',
+            'availability_lead_time_days' => 'nullable|integer|min:0|max:365',
+            'available_from' => 'nullable|date',
+            'group_sale_goal_quantity' => 'nullable|integer|min:2|max:1000000',
+            'group_sale_deadline' => 'nullable|date',
             'price' => 'nullable|numeric|min:0',
             'title' => 'required|string|max:255',
             'category_id' => [Rule::requiredIf($request->input('type') === 'physical'), 'nullable', 'integer', 'exists:product_categories,id'],
@@ -459,7 +625,7 @@ class UploadController extends Controller
             'variants.*.sku' => 'nullable|string|max:80',
             'variants.*.price' => 'nullable|numeric|min:0',
             'variants.*.compare_price' => 'nullable|numeric|min:0',
-            'variants.*.quantity' => 'nullable|integer|min:0',
+            'variants.*.quantity' => 'nullable|numeric|min:0',
             'variants.*.attributes' => 'nullable|array',
             'variants.*.swatch_image_url' => 'nullable|string|max:2048',
             'variants.*.is_active' => 'nullable|boolean',
@@ -471,9 +637,48 @@ class UploadController extends Controller
             'attribute_values.*.value_boolean' => 'nullable|boolean',
             'attribute_values.*.value_json' => 'nullable|array',
             'description' => 'nullable|string',
-            'quantity' => 'nullable|integer',
+            'quantity' => 'nullable|numeric|min:0',
+            'product_unit_type_id' => 'nullable|integer|exists:product_unit_types,id',
+            'sellable_quantity' => 'nullable|numeric|min:0.001',
+            'min_order_quantity' => 'nullable|numeric|min:0.001',
+            'order_increment' => 'nullable|numeric|min:0.001',
             'url' => 'nullable|string',
             'digital_file_url' => 'nullable|string',
+            'digital_delivery_type' => 'nullable|string|in:file,external_link,video_stream,audio_stream,gallery_pack,live_event,custom_delivery',
+            'digital_content_type' => 'nullable|string|in:file,ebook,template_asset,creative_asset,audio,video,gallery,software,document,live_event,custom_commission',
+            'digital_usage_license' => 'nullable|string|in:personal,commercial,extended_commercial,exclusive,custom',
+            'digital_access_instructions' => 'nullable|string|max:5000',
+            'license_key_enabled' => 'nullable|boolean',
+            'license_key_prefix' => 'nullable|string|max:24',
+            'license_activation_limit' => 'nullable|integer|min:1|max:50',
+            'paid_video_url' => 'nullable|string|max:2048',
+            'paid_video_mime' => 'nullable|string|max:255',
+            'paid_video_size' => 'nullable|integer|min:0',
+            'paid_video_duration_seconds' => 'nullable|integer|min:0',
+            'paid_audio_url' => 'nullable|string|max:2048',
+            'paid_audio_mime' => 'nullable|string|max:255',
+            'paid_audio_size' => 'nullable|integer|min:0',
+            'paid_audio_duration_seconds' => 'nullable|integer|min:0',
+            'paid_gallery_items' => 'nullable|array',
+            'paid_gallery_items.*.url' => 'required_with:paid_gallery_items|string|max:2048',
+            'paid_gallery_items.*.preview_url' => 'nullable|string|max:2048',
+            'paid_gallery_items.*.name' => 'nullable|string|max:255',
+            'paid_gallery_items.*.mime' => 'nullable|string|max:255',
+            'paid_gallery_items.*.size' => 'nullable|integer|min:0',
+            'paid_gallery_items.*.preview_mime' => 'nullable|string|max:255',
+            'paid_gallery_items.*.preview_size' => 'nullable|integer|min:0',
+            'allow_download' => 'nullable|boolean',
+            'refund_policy' => 'nullable|string|in:standard,strict,final_sale',
+            'refund_window_days' => 'nullable|integer|min:0|max:30',
+            'refund_policy_note' => 'nullable|string|max:1000',
+            'live_event_starts_at' => 'nullable|date',
+            'live_event_duration_minutes' => 'nullable|integer|min:1|max:10080',
+            'live_event_timezone' => ['nullable', 'timezone'],
+            'live_event_access_url' => 'nullable|string|max:2048',
+            'live_event_venue' => 'nullable|string|max:255',
+            'live_event_capacity' => 'nullable|integer|min:1|max:100000',
+            'live_event_replay_url' => 'nullable|string|max:2048',
+            'live_event_instructions' => 'nullable|string|max:5000',
             'service_pricing_model' => 'nullable|string|in:fixed_price,hourly_rate,contract_quote,deposit_required,showcase_only',
             'service_booking_type' => 'nullable|string|in:instant,request,manual_confirm',
             'service_hourly_rate' => 'nullable|numeric|min:0',
@@ -524,6 +729,8 @@ class UploadController extends Controller
             'service_intake_form.*.placeholder' => 'nullable|string|max:180',
             'service_intake_form.*.options' => 'nullable|array',
             'service_intake_form.*.options.*' => 'nullable|string|max:120',
+            'service_related_product_ids' => 'nullable|array|max:12',
+            'service_related_product_ids.*' => 'integer|exists:products,id',
             'service_booking_provider' => 'nullable|string|in:manual,external,google_calendar',
             'service_booking_mode' => 'nullable|string|in:takeer,internal,external',
             'service_contact_channel' => 'nullable|string|in:whatsapp,phone,email,external_link,in_person',
@@ -533,12 +740,10 @@ class UploadController extends Controller
             'access_group_type' => 'nullable|string|in:bundle,plan',
             'access_group_id' => 'nullable|integer',
             'shipping_profile_id' => 'nullable|integer|exists:shipping_profiles,id',
-            'is_course' => 'nullable|boolean',
-            'curriculum' => 'nullable|array',
-            'curriculum.*.title' => 'required_if:is_course,true|string',
-            'curriculum.*.lessons' => 'required_if:is_course,true|array',
             'location_inventories' => 'nullable|array', // { location_id: quantity }
+            'location_inventories.*' => 'nullable|numeric|min:0',
             'variants.*.location_inventories' => 'nullable|array',
+            'variants.*.location_inventories.*' => 'nullable|numeric|min:0',
         ]);
 
         $merchantProfile = $this->merchantFromRequest($request);
@@ -564,10 +769,90 @@ class UploadController extends Controller
         $accessGroupType = $request->input('access_group_type');
         $accessGroupId = $request->input('access_group_id');
         $hasVariants = $request->input('type') === 'physical' && (bool) $request->boolean('has_variants');
+        $fulfillmentMode = $request->input('type') === 'physical'
+            ? (string) ($request->input('fulfillment_mode') ?: 'own_stock')
+            : 'own_stock';
+        $requiresLocationInventory = $request->input('type') === 'physical' && $fulfillmentMode === 'own_stock';
+        $sourceDetails = collect((array) $request->input('source_details', []))
+            ->map(fn ($value) => is_string($value) ? trim($value) : $value)
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->all();
         $incomingVariants = collect($request->input('variants', []));
+        $merchantLocationIds = $request->input('type') === 'physical'
+            ? $merchantProfile->locations()->pluck('id')->map(fn ($id) => (int) $id)
+            : collect();
+        $sumMerchantLocationStock = function (array $inventories) use ($merchantLocationIds): float {
+            return collect($inventories)
+                ->filter(fn ($quantity, $locationId) => $merchantLocationIds->contains((int) $locationId))
+                ->sum(fn ($quantity) => max(0, (float) $quantity));
+        };
+
+        if ($request->input('type') === 'physical') {
+            if ($requiresLocationInventory && $merchantLocationIds->isEmpty()) {
+                return response()->json(['message' => 'Tafadhali ongeza angalau eneo moja la duka/stoo kwenye Mipangilio kabla ya kuuza bidhaa ya kimwili.'], 422);
+            }
+
+            $inventoryLocationIds = collect(array_keys((array) $request->input('location_inventories', [])));
+            $variantInventoryLocationIds = $incomingVariants
+                ->flatMap(fn ($variant) => array_keys((array) (((array) $variant)['location_inventories'] ?? [])));
+            $invalidLocationIds = $inventoryLocationIds
+                ->merge($variantInventoryLocationIds)
+                ->filter(fn ($locationId) => ! $merchantLocationIds->contains((int) $locationId))
+                ->unique()
+                ->values();
+
+            if ($invalidLocationIds->isNotEmpty()) {
+                return response()->json(['message' => 'Stock inaweza kuwekwa kwenye maeneo yako ya biashara pekee.'], 422);
+            }
+
+            if ($fulfillmentMode === 'supplier_sourced') {
+                if (empty($sourceDetails['supplier_name'] ?? null) || empty($sourceDetails['supplier_phone'] ?? null)) {
+                    return response()->json(['message' => 'Tafadhali weka jina na simu ya supplier. Taarifa hizi ni za Takeer tu.'], 422);
+                }
+                if (! isset($sourceDetails['confirmation_hours']) || $sourceDetails['confirmation_hours'] === '') {
+                    return response()->json(['message' => 'Tafadhali weka masaa ya kuthibitisha/kupata bidhaa kutoka kwa supplier.'], 422);
+                }
+            }
+
+            if ($fulfillmentMode === 'made_to_order' && ! $request->filled('availability_lead_time_days')) {
+                return response()->json(['message' => 'Tafadhali weka muda wa kuandaa bidhaa baada ya oda.'], 422);
+            }
+
+            if (in_array($fulfillmentMode, ['preorder', 'farm_harvest'], true) && ! $request->filled('available_from')) {
+                return response()->json(['message' => 'Tafadhali weka tarehe ambayo bidhaa inatarajiwa kupatikana.'], 422);
+            }
+
+            if ($fulfillmentMode === 'group_sale') {
+                if (! $request->filled('group_sale_goal_quantity') || ! $request->filled('group_sale_deadline')) {
+                    return response()->json(['message' => 'Group sale inahitaji target quantity na deadline.'], 422);
+                }
+                if (Carbon::parse($request->input('group_sale_deadline'))->endOfDay()->isPast()) {
+                    return response()->json(['message' => 'Group sale deadline lazima iwe leo au siku zijazo.'], 422);
+                }
+                if (! $request->filled('available_from')) {
+                    return response()->json(['message' => 'Tafadhali weka tarehe ya matarajio ya fulfillment kwa group sale.'], 422);
+                }
+            }
+        }
         $category = $request->filled('category_id') ? ProductCategory::find((int) $request->input('category_id')) : null;
         $subCategory = $request->filled('sub_category_id') ? ProductCategory::find((int) $request->input('sub_category_id')) : null;
         $effectiveCategory = $subCategory ?: $category;
+        if ($request->input('type') === 'physical' && $effectiveCategory) {
+            $allowedModes = collect($effectiveCategory->allowed_fulfillment_modes ?: [])
+                ->map(fn ($mode) => (string) $mode)
+                ->filter()
+                ->values();
+            if ($allowedModes->isNotEmpty() && ! $allowedModes->contains($fulfillmentMode)) {
+                return response()->json(['message' => 'Fulfillment/source mode hii hairuhusiwi kwa category hii.'], 422);
+            }
+
+            if ((bool) ($effectiveCategory->requires_verified_business ?? false) && ! $merchantProfile->hasVerifiedBusinessKyc()) {
+                return response()->json([
+                    'message' => 'Category hii inahitaji verified merchant/KYB kabla ya kuchapishwa.',
+                    'verification_url' => "/merchant/{$merchantProfile->username}/verification",
+                ], 403);
+            }
+        }
         $variantAxisLabelMap = collect();
         if ($effectiveCategory) {
             $variantAxisLabelMap = ProductCategoryAttribute::query()
@@ -596,13 +881,14 @@ class UploadController extends Controller
                     ->values()
                     ->all();
                 $derivedName = trim($baseTitle . (count($attributePairs) ? ' ' . implode(' ', $attributePairs) : ''));
+                $merchantName = trim((string) ($variant['name'] ?? ''));
 
                 return [
-                    'name' => $derivedName,
+                    'name' => $merchantName !== '' ? $merchantName : $derivedName,
                     'sku' => filled($variant['sku'] ?? null) ? (string) $variant['sku'] : null,
                     'price' => (float) $rawPrice,
                     'compare_price' => array_key_exists('compare_price', $variant) && $variant['compare_price'] !== null && $variant['compare_price'] !== '' ? (float) $variant['compare_price'] : null,
-                    'quantity' => max(0, (int) $rawQuantity),
+                    'quantity' => max(0, (float) $rawQuantity),
                     'attributes' => is_array($variant['attributes'] ?? null) ? $variant['attributes'] : [],
                     'swatch_image_url' => $variant['swatch_image_url'] ?? null,
                     'sort_order' => array_key_exists('sort_order', $variant) ? (int) $variant['sort_order'] : $index,
@@ -611,6 +897,30 @@ class UploadController extends Controller
             })
             ->filter()
             ->values();
+
+        if ($request->input('type') === 'physical' && $effectiveCategory) {
+            $requiredAttributes = ProductCategoryAttribute::query()
+                ->where('category_id', $effectiveCategory->id)
+                ->where('is_required', true)
+                ->orderBy('sort_order')
+                ->get();
+            $incomingAttributeValues = collect($request->input('attribute_values', []))
+                ->keyBy(fn ($item) => (int) ($item['category_attribute_id'] ?? 0));
+
+            foreach ($requiredAttributes as $requiredAttribute) {
+                $row = (array) ($incomingAttributeValues->get($requiredAttribute->id) ?? []);
+                $hasValue = match ($requiredAttribute->input_type) {
+                    'number' => array_key_exists('value_number', $row) && $row['value_number'] !== null && $row['value_number'] !== '',
+                    'boolean' => true,
+                    'multiselect' => !empty($row['value_json']) && is_array($row['value_json']),
+                    default => filled($row['value_text'] ?? null),
+                };
+
+                if (! $hasValue) {
+                    return response()->json(['message' => "Tafadhali jaza {$requiredAttribute->label} kabla ya kuweka bidhaa sokoni."], 422);
+                }
+            }
+        }
         if ($accessGroupType && !$accessGroupId) {
             return response()->json(['message' => 'Access group ID is required when access group type is set.'], 422);
         }
@@ -650,9 +960,58 @@ class UploadController extends Controller
             return response()->json(['message' => 'At least one variant is required when variants are enabled.'], 422);
         }
 
+        if ($request->input('type') === 'physical') {
+            if ($requiresLocationInventory && $hasVariants) {
+                $variantLocationStockTotal = $preparedVariants->sum(fn ($variant) => $sumMerchantLocationStock((array) ($variant['location_inventories'] ?? [])));
+                if ($variantLocationStockTotal <= 0) {
+                    return response()->json(['message' => 'Tafadhali weka stock ya angalau variant moja kwenye eneo la biashara.'], 422);
+                }
+            } elseif ($requiresLocationInventory && $sumMerchantLocationStock((array) $request->input('location_inventories', [])) <= 0) {
+                return response()->json(['message' => 'Tafadhali weka stock kwenye angalau eneo moja la biashara.'], 422);
+            }
+        }
+
         // 2. Capture already uploaded digital file url (direct file takes priority over external URL)
         $productUrl = $request->input('url');
-        if ($request->input('type') === 'digital' && $request->filled('digital_file_url')) {
+        $digitalDeliveryType = $request->input('type') === 'digital'
+            ? ($request->input('digital_delivery_type') ?: ($request->filled('url') ? 'external_link' : 'file'))
+            : null;
+        $paidVideoUrl = null;
+        if ($request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream') {
+            if (!$request->filled('paid_video_url')) {
+                return response()->json(['message' => 'Tafadhali pakia full premium video.'], 422);
+            }
+
+            $paidVideoUrl = $request->input('paid_video_url');
+            if (!str_starts_with($paidVideoUrl, 'private://') && !preg_match('/^https?:\/\//i', $paidVideoUrl)) {
+                $paidVideoUrl = "private://{$paidVideoUrl}";
+            }
+            $productUrl = null;
+        } elseif ($request->input('type') === 'digital' && $digitalDeliveryType === 'audio_stream') {
+            if (!$request->filled('paid_audio_url')) {
+                return response()->json(['message' => 'Tafadhali pakia premium audio.'], 422);
+            }
+
+            $productUrl = $request->input('paid_audio_url');
+            if (!str_starts_with($productUrl, 'private://') && !preg_match('/^https?:\/\//i', $productUrl)) {
+                $productUrl = "private://{$productUrl}";
+            }
+        } elseif ($request->input('type') === 'digital' && $digitalDeliveryType === 'gallery_pack') {
+            if (!is_array($request->input('paid_gallery_items')) || count($request->input('paid_gallery_items')) === 0) {
+                return response()->json(['message' => 'Tafadhali pakia picha za gallery pack.'], 422);
+            }
+            $productUrl = null;
+        } elseif ($request->input('type') === 'digital' && $digitalDeliveryType === 'live_event') {
+            if (!$request->filled('live_event_starts_at')) {
+                return response()->json(['message' => 'Tafadhali weka muda wa live event/webinar.'], 422);
+            }
+            if (!$request->filled('live_event_access_url') && !$request->filled('live_event_venue')) {
+                return response()->json(['message' => 'Weka meeting link au venue ya tukio.'], 422);
+            }
+            $productUrl = null;
+        } elseif ($request->input('type') === 'digital' && $digitalDeliveryType === 'custom_delivery') {
+            $productUrl = null;
+        } elseif ($request->input('type') === 'digital' && $request->filled('digital_file_url')) {
             $productUrl = $request->input('digital_file_url');
 
             // Normalize uploaded private file references so download flow can resolve storage paths.
@@ -753,6 +1112,16 @@ class UploadController extends Controller
             ->filter(fn (array $field) => $field['id'] !== '' && $field['label'] !== '')
             ->values()
             ->all();
+        $serviceRelatedProductIds = $request->input('type') === 'service'
+            ? Product::query()
+                ->where('merchant_id', $merchantProfile->id)
+                ->where('type', 'physical')
+                ->whereIn('id', collect((array) $request->input('service_related_product_ids', []))->map(fn ($id) => (int) $id)->filter()->unique()->take(12)->values())
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all()
+            : [];
         $serviceBookingProvider = $request->input('service_booking_provider', 'manual');
         $serviceBookingMode = $request->input('service_booking_mode');
         $serviceContactChannel = $request->input('service_contact_channel');
@@ -836,21 +1205,115 @@ class UploadController extends Controller
             }
         }
 
+        $paidGalleryItems = null;
+        if ($request->input('type') === 'digital' && $digitalDeliveryType === 'gallery_pack') {
+            $galleryWatermark = 'Takeer • '.($merchantProfile->username ?: $request->input('title'));
+            $galleryService = app(GalleryImageService::class);
+            $paidGalleryItems = collect($request->input('paid_gallery_items', []))
+                ->map(fn ($item) => $galleryService->prepareItem((array) $item, $galleryWatermark))
+                ->filter(fn ($item) => filled($item['url']))
+                ->values()
+                ->all();
+        }
+
         $productData = [
             'merchant_id' => $merchantProfile->id,
             'type' => $request->input('type'),
             'has_variants' => $hasVariants,
             'title' => $request->input('title'),
+            'fulfillment_mode' => $request->input('type') === 'physical' ? $fulfillmentMode : 'own_stock',
+            'source_details' => $request->input('type') === 'physical' ? $sourceDetails : null,
+            'availability_lead_time_days' => $request->input('type') === 'physical' && $request->filled('availability_lead_time_days')
+                ? (int) $request->input('availability_lead_time_days')
+                : null,
+            'available_from' => $request->input('type') === 'physical' && $request->filled('available_from')
+                ? $request->input('available_from')
+                : null,
+            'group_sale_goal_quantity' => $request->input('type') === 'physical' && $request->filled('group_sale_goal_quantity')
+                ? (int) $request->input('group_sale_goal_quantity')
+                : null,
+            'group_sale_deadline' => $request->input('type') === 'physical' && $request->filled('group_sale_deadline')
+                ? $request->input('group_sale_deadline')
+                : null,
             'price' => $computedBasePrice,
             'compare_at_price' => $request->input('compare_price'),
             'discounted_price' => $computedBasePrice,
             'inventory_count' => $request->input('type') === 'physical'
                 ? ($hasVariants
-                    ? (int) $preparedVariants->sum(fn ($variant) => (int) ($variant['quantity'] ?? 0))
-                    : ($request->input('quantity') ?? 0))
+                    ? (int) ceil((float) $preparedVariants->sum(fn ($variant) => (float) ($variant['quantity'] ?? 0)))
+                    : (int) ceil((float) ($requiresLocationInventory ? ($request->input('quantity') ?? 0) : 99999)))
                 : 99999,
+            'inventory_quantity' => $request->input('type') === 'physical'
+                ? ($hasVariants
+                    ? (float) $preparedVariants->sum(fn ($variant) => (float) ($variant['quantity'] ?? 0))
+                    : (float) ($requiresLocationInventory ? ($request->input('quantity') ?? 0) : 99999))
+                : 99999,
+            'product_unit_type_id' => $request->input('type') === 'physical' ? ($request->input('product_unit_type_id') ?: null) : null,
+            'sellable_quantity' => $request->input('type') === 'physical' ? (float) ($request->input('sellable_quantity') ?: 1) : 1,
+            'min_order_quantity' => $request->input('type') === 'physical' && $request->filled('min_order_quantity') ? (float) $request->input('min_order_quantity') : null,
+            'order_increment' => $request->input('type') === 'physical' && $request->filled('order_increment') ? (float) $request->input('order_increment') : null,
             'url' => $productUrl,
             'download_link' => $request->input('type') === 'digital' ? $productUrl : null,
+            'digital_delivery_type' => $request->input('type') === 'digital' ? $digitalDeliveryType : 'file',
+            'digital_content_type' => $request->input('type') === 'digital' ? ($request->input('digital_content_type') ?: null) : null,
+            'digital_usage_license' => $request->input('type') === 'digital' ? ($request->input('digital_usage_license') ?: null) : null,
+            'digital_access_instructions' => $request->input('type') === 'digital' ? ($request->input('digital_access_instructions') ?: null) : null,
+            'license_key_enabled' => $request->input('type') === 'digital' && $request->input('digital_content_type') === 'software'
+                ? (bool) $request->boolean('license_key_enabled')
+                : false,
+            'license_key_prefix' => $request->input('type') === 'digital' && $request->input('digital_content_type') === 'software'
+                ? ($request->input('license_key_prefix') ?: null)
+                : null,
+            'license_activation_limit' => $request->input('type') === 'digital' && $request->input('digital_content_type') === 'software'
+                ? max(1, (int) ($request->input('license_activation_limit') ?: 1))
+                : 1,
+            'paid_video_url' => $paidVideoUrl,
+            'paid_video_mime' => $request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream' ? $request->input('paid_video_mime') : null,
+            'paid_video_size' => $request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream' ? $request->input('paid_video_size') : null,
+            'paid_video_duration_seconds' => $request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream' ? $request->input('paid_video_duration_seconds') : null,
+            'premium_video_status' => $request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream' ? 'queued' : null,
+            'premium_video_hls_path' => null,
+            'premium_video_hls_disk' => null,
+            'premium_video_thumbnail_path' => null,
+            'premium_video_error' => null,
+            'premium_video_processed_at' => null,
+            'paid_audio_url' => $request->input('type') === 'digital' && $digitalDeliveryType === 'audio_stream' ? $productUrl : null,
+            'paid_audio_mime' => $request->input('type') === 'digital' && $digitalDeliveryType === 'audio_stream' ? $request->input('paid_audio_mime') : null,
+            'paid_audio_size' => $request->input('type') === 'digital' && $digitalDeliveryType === 'audio_stream' ? $request->input('paid_audio_size') : null,
+            'paid_audio_duration_seconds' => $request->input('type') === 'digital' && $digitalDeliveryType === 'audio_stream' ? $request->input('paid_audio_duration_seconds') : null,
+            'paid_gallery_items' => $paidGalleryItems,
+            'allow_download' => $request->input('type') === 'digital' && in_array($digitalDeliveryType, ['video_stream', 'audio_stream', 'gallery_pack'], true)
+                ? (bool) $request->boolean('allow_download')
+                : true,
+            'refund_policy' => $request->input('refund_policy') ?: ($request->input('type') === 'digital' ? 'strict' : 'standard'),
+            'refund_window_days' => $request->filled('refund_window_days')
+                ? (int) $request->input('refund_window_days')
+                : ($request->input('type') === 'physical' ? 7 : null),
+            'refund_policy_note' => $request->input('refund_policy_note') ?: null,
+            'live_event_starts_at' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+                ? $request->input('live_event_starts_at')
+                : null,
+            'live_event_duration_minutes' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+                ? ($request->input('live_event_duration_minutes') ?: null)
+                : null,
+            'live_event_timezone' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+                ? ($request->input('live_event_timezone') ?: config('app.timezone'))
+                : null,
+            'live_event_access_url' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+                ? ($request->input('live_event_access_url') ?: null)
+                : null,
+            'live_event_venue' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+                ? ($request->input('live_event_venue') ?: null)
+                : null,
+            'live_event_capacity' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+                ? ($request->input('live_event_capacity') ?: null)
+                : null,
+            'live_event_replay_url' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+                ? ($request->input('live_event_replay_url') ?: null)
+                : null,
+            'live_event_instructions' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+                ? ($request->input('live_event_instructions') ?: null)
+                : null,
             'service_pricing_model' => $servicePricingModel,
             'service_booking_type' => $serviceBookingType,
             'service_hourly_rate' => $serviceHourlyRate !== null && $serviceHourlyRate !== '' ? (float) $serviceHourlyRate : null,
@@ -870,6 +1333,7 @@ class UploadController extends Controller
             'service_area' => $serviceArea,
             'service_client_requirements' => $serviceClientRequirements,
             'service_intake_form' => $serviceIntakeForm,
+            'service_related_product_ids' => $serviceRelatedProductIds,
             'service_booking_provider' => $serviceBookingProvider ?: 'manual',
             'service_contact_channel' => $serviceContactChannel,
             'service_contact_value' => $serviceContactValue,
@@ -889,6 +1353,10 @@ class UploadController extends Controller
             $product = Product::create($productData);
         }
 
+        if ($request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream') {
+            ProcessPremiumProductVideo::dispatch($product->id)->afterCommit();
+        }
+
         if ($request->input('type') === 'physical') {
             if ($hasVariants) {
                 // Delete existing and re-create to keep sync simple
@@ -901,7 +1369,8 @@ class UploadController extends Controller
                         'sku' => $vData['sku'],
                         'price' => $vData['price'],
                         'compare_at_price' => $vData['compare_price'],
-                        'inventory_count' => $vData['quantity'],
+                        'inventory_count' => (int) ceil((float) $vData['quantity']),
+                        'inventory_quantity' => (float) $vData['quantity'],
                         'attributes' => $vData['attributes'],
                         'swatch_image_url' => $vData['swatch_image_url'],
                         'is_active' => true,
@@ -909,95 +1378,48 @@ class UploadController extends Controller
                     ]);
 
                     $variantLocInventories = $vData['location_inventories'] ?? [];
-                    $variantSum = 0;
+                    $variantSum = $requiresLocationInventory ? 0.0 : (float) ($vData['quantity'] ?? 0);
 
-                    if (!empty($variantLocInventories)) {
+                    if ($requiresLocationInventory && !empty($variantLocInventories)) {
                         foreach ($variantLocInventories as $locId => $qty) {
-                            $quantity = max(0, (int) $qty);
+                            $quantity = max(0, (float) $qty);
                             $variant->locationInventories()->updateOrCreate(
                                 ['merchant_location_id' => $locId, 'product_id' => null],
-                                ['quantity' => $quantity]
+                                ['quantity' => (int) ceil($quantity), 'quantity_decimal' => $quantity]
                             );
                             $variantSum += $quantity;
-                        }
-                    } else {
-                        // Fallback to primary location if no inventories provided
-                        $primaryLoc = $merchantProfile->locations()->where('is_primary', true)->first() 
-                            ?? $merchantProfile->locations()->first();
-                        if ($primaryLoc) {
-                            $quantity = max(0, (int) ($vData['quantity'] ?? 0));
-                            $variant->locationInventories()->create([
-                                'merchant_location_id' => $primaryLoc->id,
-                                'quantity' => $quantity,
-                            ]);
-                            $variantSum = $quantity;
                         }
                     }
                     
                     // Update variant's cached count
-                    $variant->update(['inventory_count' => $variantSum]);
+                    $variant->update(['inventory_count' => (int) ceil($variantSum), 'inventory_quantity' => $variantSum]);
                     $totalInventory += $variantSum;
                 }
 
-                $product->update(['inventory_count' => $totalInventory]);
+                $product->update(['inventory_count' => (int) ceil($totalInventory), 'inventory_quantity' => $totalInventory]);
             } else {
                 $product->variants()->delete();
                 $locInventories = $request->input('location_inventories', []);
-                $totalInventory = 0;
+                $totalInventory = $requiresLocationInventory ? 0.0 : (float) ($request->input('quantity') ?? 99999);
 
-                if (!empty($locInventories)) {
+                if ($requiresLocationInventory && !empty($locInventories)) {
                     foreach ($locInventories as $locId => $qty) {
-                        $quantity = max(0, (int) $qty);
+                        $quantity = max(0, (float) $qty);
                         $product->locationInventories()->updateOrCreate(
                             ['merchant_location_id' => $locId, 'product_variant_id' => null],
-                            ['quantity' => $quantity]
+                            ['quantity' => (int) ceil($quantity), 'quantity_decimal' => $quantity]
                         );
                         $totalInventory += $quantity;
                     }
-                } else {
-                    // Fallback to primary location
-                    $primaryLoc = $merchantProfile->locations()->where('is_primary', true)->first() 
-                        ?? $merchantProfile->locations()->first();
-                    if ($primaryLoc) {
-                        $quantity = max(0, (int) ($request->input('quantity') ?? 0));
-                        $product->locationInventories()->updateOrCreate(
-                            ['merchant_location_id' => $primaryLoc->id, 'product_variant_id' => null],
-                            ['quantity' => $quantity]
-                        );
-                        $totalInventory = $quantity;
-                    }
+                } elseif (! $requiresLocationInventory) {
+                    $product->locationInventories()->delete();
                 }
-                
-                $product->update(['inventory_count' => $totalInventory]);
+
+                $product->update(['inventory_count' => (int) ceil($totalInventory), 'inventory_quantity' => $totalInventory]);
             }
         } else {
             $product->variants()->delete();
             $product->locationInventories()->delete();
-        }
-
-        // 3.1 Handle Course Curriculum
-        if ($request->boolean('is_course')) {
-            $course = $product->course()->updateOrCreate([], [
-                'welcome_message' => $request->input('description'),
-            ]);
-
-            // Sync Modules and Lessons
-            $course->modules()->delete(); // Cascades to lessons
-            foreach ($request->input('curriculum', []) as $mIdx => $mInput) {
-                $module = $course->modules()->create([
-                    'title' => $mInput['title'],
-                    'sort_order' => $mIdx,
-                ]);
-                foreach ($mInput['lessons'] as $lIdx => $lInput) {
-                    $module->lessons()->create([
-                        'title' => $lInput['title'],
-                        'type' => $lInput['type'] ?? 'video',
-                        'content_url' => $lInput['content_url'],
-                        'is_preview' => (bool) ($lInput['is_preview'] ?? false),
-                        'sort_order' => $lIdx,
-                    ]);
-                }
-            }
         }
 
         $brand = $request->filled('brand_id') ? ProductBrand::find((int) $request->input('brand_id')) : null;
@@ -1185,9 +1607,9 @@ class UploadController extends Controller
                     $rawValueText = null;
                 }
 
-                // Ensure value_text is populated from value_json for select types if missing
+                // Ensure searchable text is populated from value_json for select/multiselect types if missing.
                 if (empty($rawValueText) && !empty($rawValueJson) && is_array($rawValueJson)) {
-                    $rawValueText = $rawValueJson[0] ?? null;
+                    $rawValueText = implode(', ', array_filter(array_map('strval', $rawValueJson)));
                 }
 
                 return [
@@ -1223,21 +1645,87 @@ class UploadController extends Controller
                 ->delete();
         }
 
+        $groupSaleCampaign = $this->syncFulfillmentGroupSaleCampaign($product, $merchantProfile, $request);
+
         return response()->json([
             'message' => 'Hongera! Bidhaa yako imewekwa sokoni.',
-            'product_id' => $product->id
+            'product_id' => $product->id,
+            'group_sale_campaign' => $groupSaleCampaign ? [
+                'id' => $groupSaleCampaign->id,
+                'slug' => $groupSaleCampaign->slug,
+                'url' => url('/group-sale/'.$groupSaleCampaign->slug),
+            ] : null,
         ]);
+    }
+
+    private function syncFulfillmentGroupSaleCampaign(Product $product, Merchant $merchant, Request $request): ?MerchantGroupSaleCampaign
+    {
+        $autoCampaigns = MerchantGroupSaleCampaign::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('product_id', $product->id)
+            ->get()
+            ->filter(fn (MerchantGroupSaleCampaign $campaign) => ($campaign->metadata['source'] ?? null) === 'product_fulfillment_mode');
+
+        if ($product->type !== 'physical' || ($product->fulfillment_mode ?: 'own_stock') !== 'group_sale') {
+            $autoCampaigns
+                ->filter(fn (MerchantGroupSaleCampaign $campaign) => in_array($campaign->status, ['draft', 'active'], true) && (int) $campaign->reserved_quantity === 0)
+                ->each(fn (MerchantGroupSaleCampaign $campaign) => $campaign->update(['status' => 'cancelled']));
+
+            return null;
+        }
+
+        $deadline = Carbon::parse($request->input('group_sale_deadline'))->endOfDay();
+        $availableFrom = $request->input('available_from');
+        $sourceNote = trim((string) data_get((array) $request->input('source_details', []), 'source_note', ''));
+        $description = trim((string) ($request->input('description') ?: ''));
+        $fulfillmentNote = trim(implode("\n\n", array_filter([
+            $description,
+            $availableFrom ? "Expected fulfillment from {$availableFrom}." : null,
+            $sourceNote ? "Source note: {$sourceNote}" : null,
+        ])));
+
+        $data = [
+            'merchant_id' => $merchant->id,
+            'product_id' => $product->id,
+            'title' => $request->input('title'),
+            'description' => $fulfillmentNote ?: null,
+            'campaign_price' => (float) ($request->input('price') ?? $product->price ?? 0),
+            'regular_price' => $request->filled('compare_price') ? (float) $request->input('compare_price') : null,
+            'goal_quantity' => (int) $request->input('group_sale_goal_quantity'),
+            'starts_at' => now(),
+            'ends_at' => $deadline,
+            'status' => 'active',
+            'allow_sms_updates' => true,
+            'metadata' => [
+                'source' => 'product_fulfillment_mode',
+                'fulfillment_mode' => 'group_sale',
+                'available_from' => $availableFrom,
+            ],
+        ];
+
+        $campaign = $autoCampaigns->sortByDesc('id')->first();
+        if ($campaign) {
+            if ((int) $data['goal_quantity'] < (int) $campaign->reserved_quantity) {
+                $data['goal_quantity'] = (int) $campaign->reserved_quantity;
+            }
+            $campaign->update($data);
+
+            return $campaign->fresh();
+        }
+
+        return MerchantGroupSaleCampaign::query()->create($data);
     }
 
     /**
      * Delete (archive) a product.
      */
-    public function deleteProduct(Request $request, $id): JsonResponse
+    public function deleteProduct(Request $request, Merchant|string|int|null $merchantOrId = null, string|int|null $id = null): JsonResponse
     {
         $merchantProfile = $this->merchantFromRequest($request);
+        $productId = $id ?? $merchantOrId;
         $product = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->findOrFail($id);
+            ->findOrFail($productId);
 
         if ($product->orders()->exists()) {
             return response()->json([
@@ -1301,7 +1789,7 @@ class UploadController extends Controller
     /**
      * Real-time hotspot sync for a specific image index.
      */
-    public function syncHotspots(Request $request, $id): JsonResponse
+    public function syncHotspots(Request $request, Merchant|string|int|null $merchantOrId = null, string|int|null $id = null): JsonResponse
     {
         $request->validate([
             'image_index' => 'required|integer',
@@ -1309,9 +1797,10 @@ class UploadController extends Controller
         ]);
 
         $merchantProfile = $this->merchantFromRequest($request);
+        $productId = $id ?? $merchantOrId;
         $product = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->findOrFail($id);
+            ->findOrFail($productId);
         $index = $request->input('image_index');
         $hotspots = $request->input('hotspots');
 

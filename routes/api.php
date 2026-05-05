@@ -10,17 +10,20 @@ use App\Http\Controllers\Api\CheckoutController;
 use App\Http\Controllers\Api\CommerceCatalogController;
 use App\Http\Controllers\Api\ContentReportModerationController;
 use App\Http\Controllers\Api\DeliveryController;
+use App\Http\Controllers\Api\DiscoveryController;
 use App\Http\Controllers\Api\DispatchController;
 use App\Http\Controllers\Api\EntitlementController;
 use App\Http\Controllers\Api\FeedController;
 use App\Http\Controllers\Api\MerchantBundleController;
 use App\Http\Controllers\Api\MerchantContentController;
+use App\Http\Controllers\Api\MarketingEventController;
 use App\Http\Controllers\Api\MerchantOrderController;
 use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
 use App\Http\Controllers\Api\MiniStoreController;
 use App\Http\Controllers\Api\PaymentWebhookController;
 use App\Http\Controllers\Api\Payments\AzamPayCallbackController;
 use App\Http\Controllers\Api\PlatformNotificationController;
+use App\Http\Controllers\Api\ProductLicenseKeyController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PostController;
@@ -58,6 +61,9 @@ Route::post('/webhooks/mpesa', [PaymentWebhookController::class, 'callback']);
 
 // ─── PUBLIC DISCOVERY ───────────────────────────────────────────────────────
 Route::get('/feed', [FeedController::class, 'index']);
+Route::get('/discovery/rails', [DiscoveryController::class, 'rails'])->middleware('throttle:45,1');
+Route::post('/marketing/events', [MarketingEventController::class, 'store'])->middleware('throttle:120,1');
+Route::post('/analytics/events', [MarketingEventController::class, 'store'])->middleware('throttle:120,1');
 Route::get('/posts/{post}/comments', [PostController::class, 'comments'])->withTrashed();
 Route::get('/pwa/product/{product}', [ProductController::class, 'show']);
 Route::get('/pwa/post/{post}', [PostController::class, 'getPostData']);
@@ -76,6 +82,8 @@ Route::get('/products/{product}/service-slots', [ServiceRequestController::class
     ->middleware('throttle:30,1');
 Route::get('/service-categories', [ServiceCategoryController::class, 'index'])
     ->middleware('throttle:60,1');
+Route::post('/software/licenses/validate', [ProductLicenseKeyController::class, 'validateActivation'])
+    ->middleware('throttle:30,1');
 
 // ─── AI SEARCH ──────────────────────────────────────────────────────────────
 Route::post('/search/text', [AiSearchController::class, 'textSearch'])->middleware('throttle:10,1');
@@ -98,10 +106,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Buyer Checkout & Orders
     Route::post('/orders/{order}/complete', [CheckoutController::class, 'complete']);
     Route::post('/buyer/orders/{order}/confirm-receipt', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'confirmReceipt']);
+    Route::post('/buyer/orders/{order}/request-revision', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestCustomRevision']);
     Route::post('/buyer/orders/{order}/dispute', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'fileDispute']);
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
     Route::post('/orders/{order}/send-download-link', [\App\Http\Controllers\Api\DownloadController::class, 'sendDownloadLink']);
     Route::get('/orders/{order}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadLocal'])->name('api.download.local');
+    Route::get('/orders/{order}/license-file', [ProductLicenseKeyController::class, 'downloadOfflineLicense'])
+        ->name('api.orders.license-file');
     Route::post('/content-items/{contentItem:id}/access-link', [SecureAccessController::class, 'contentAccessLink']);
     Route::get('/content-items/{contentItem:id}/secure-body', [SecureAccessController::class, 'contentBody'])->name('api.content-items.secure-body');
     Route::post('/bundle-items/{bundleItem:id}/materials/{materialIndex}/access-link', [SecureAccessController::class, 'bundleItemMaterialAccessLink']);
@@ -155,6 +166,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'show']);
         Route::put('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'update']);
         Route::delete('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'destroy']);
+        Route::get('/subscription-plans/{subscriptionPlan:id}/community-posts', [MerchantSubscriptionPlanController::class, 'communityPosts']);
+        Route::post('/subscription-plans/{subscriptionPlan:id}/community-posts', [MerchantSubscriptionPlanController::class, 'storeCommunityPost']);
+        Route::delete('/subscription-plans/{subscriptionPlan:id}/community-posts/{post:id}', [MerchantSubscriptionPlanController::class, 'destroyCommunityPost']);
         
         Route::get('/shipping-profiles', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'index']);
         Route::post('/shipping-profiles', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'store']);
@@ -169,6 +183,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/content-reports', [ContentReportModerationController::class, 'merchantIndex']);
         Route::patch('/content-reports/{contentReport:id}/resolve', [ContentReportModerationController::class, 'merchantResolve']);
+        Route::post('/content-reports/{contentReport:id}/appeal', [ContentReportModerationController::class, 'merchantAppeal']);
     });
 
     // Merchant Locations (outside merchant_status to avoid binding issues)
@@ -252,6 +267,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/catalog/categories/{category}/attributes', [AdminCatalogController::class, 'storeAttribute']);
         Route::put('/catalog/attributes/{attribute}', [AdminCatalogController::class, 'updateAttribute']);
         Route::delete('/catalog/attributes/{attribute}', [AdminCatalogController::class, 'destroyAttribute']);
+        Route::get('/catalog/unit-types', [AdminCatalogController::class, 'indexUnitTypes']);
+        Route::post('/catalog/unit-types', [AdminCatalogController::class, 'storeUnitType']);
+        Route::put('/catalog/unit-types/{unitType}', [AdminCatalogController::class, 'updateUnitType']);
+        Route::delete('/catalog/unit-types/{unitType}', [AdminCatalogController::class, 'destroyUnitType']);
         Route::get('/catalog/brands', [AdminCatalogController::class, 'indexBrands']);
         Route::post('/catalog/brands', [AdminCatalogController::class, 'storeBrand']);
         Route::put('/catalog/brands/{brand}', [AdminCatalogController::class, 'updateBrand']);

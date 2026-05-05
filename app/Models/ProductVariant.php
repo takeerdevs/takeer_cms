@@ -15,6 +15,7 @@ class ProductVariant extends Model
         'price',
         'compare_at_price',
         'inventory_count',
+        'inventory_quantity',
         'attributes',
         'swatch_image_url',
         'is_active',
@@ -28,6 +29,7 @@ class ProductVariant extends Model
             'price' => 'decimal:2',
             'compare_at_price' => 'decimal:2',
             'inventory_count' => 'integer',
+            'inventory_quantity' => 'decimal:3',
             'attributes' => 'array',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
@@ -52,4 +54,3 @@ class ProductVariant extends Model
         return $this->hasMany(StockWaitlist::class, 'variant_id');
     }
 }
-

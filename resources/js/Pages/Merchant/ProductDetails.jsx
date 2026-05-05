@@ -4,10 +4,11 @@ import { Head, router } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/Dialog';
-import { ArrowLeft, Eye, ShoppingCart, Pencil, Trash2, Package, Boxes, Loader2, MapPin, Link as LinkIcon, FileText, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Eye, ShoppingCart, Pencil, Trash2, Package, Boxes, Loader2, MapPin, Link as LinkIcon, FileText, PlayCircle, CalendarClock, Users, Send, CheckCircle2, XCircle, Clock, Save } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import VideoPlayer from '@/Components/VideoPlayer';
+import { productPriceLabel, productStockLabel } from '@/lib/productUnits';
 
 export default function ProductDetails({ merchantUsername, productId }) {
     const [loading, setLoading] = useState(true);
@@ -16,6 +17,21 @@ export default function ProductDetails({ merchantUsername, productId }) {
     const [imageModalOpen, setImageModalOpen] = useState(false);
     const [activeImageIndex, setActiveImageIndex] = useState(0);
     const [activeHotspot, setActiveHotspot] = useState(null);
+    const [liveEventDashboard, setLiveEventDashboard] = useState(null);
+    const [liveEventLoading, setLiveEventLoading] = useState(false);
+    const [liveEventSaving, setLiveEventSaving] = useState(false);
+    const [liveEventBusyOrder, setLiveEventBusyOrder] = useState(null);
+    const [now, setNow] = useState(Date.now());
+    const [liveEventForm, setLiveEventForm] = useState({
+        live_event_starts_at: '',
+        live_event_duration_minutes: '',
+        live_event_timezone: '',
+        live_event_access_url: '',
+        live_event_venue: '',
+        live_event_capacity: '',
+        live_event_replay_url: '',
+        live_event_instructions: '',
+    });
 
     const loadProduct = async () => {
         setLoading(true);
@@ -34,16 +50,34 @@ export default function ProductDetails({ merchantUsername, productId }) {
         loadProduct();
     }, [productId]);
 
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 30000);
+        return () => clearInterval(timer);
+    }, []);
+
     const hasVariants = !!product?.has_variants;
     const variants = product?.variants || [];
     const totalVariantStock = useMemo(
-        () => variants.reduce((sum, variant) => sum + Number(variant?.inventory_count || 0), 0),
+        () => variants.reduce((sum, variant) => sum + Number(variant?.inventory_quantity ?? variant?.inventory_count ?? 0), 0),
         [variants]
     );
     const images = product?.images || [];
     const activeImage = images[activeImageIndex] || null;
     const activeImageIsVideo = (activeImage?.media_type || activeImage?.type) === 'video';
     const activeImageHotspots = activeImage?.hotspots || [];
+    const isLiveEvent = product?.type === 'digital' && product?.digital_delivery_type === 'live_event';
+    const eventStartsAt = product?.live_event?.starts_at ? new Date(product.live_event.starts_at) : null;
+    const countdown = useMemo(() => {
+        if (!eventStartsAt || Number.isNaN(eventStartsAt.getTime())) return null;
+        const diff = eventStartsAt.getTime() - now;
+        if (diff <= 0) return 'Started';
+        const days = Math.floor(diff / 86400000);
+        const hours = Math.floor((diff % 86400000) / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        if (days > 0) return `${days}d ${hours}h`;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        return `${Math.max(1, minutes)}m`;
+    }, [eventStartsAt, now]);
     const attributeChips = useMemo(() => {
         return (product?.category_attribute_values || [])
             .map((entry) => {
@@ -82,6 +116,93 @@ export default function ProductDetails({ merchantUsername, productId }) {
         return rows;
     }, [product, hasVariants]);
 
+    const fillLiveEventForm = (event) => {
+        const startsAt = event?.starts_at ? new Date(event.starts_at) : null;
+        const datetimeLocal = startsAt && !Number.isNaN(startsAt.getTime())
+            ? new Date(startsAt.getTime() - startsAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+            : '';
+
+        setLiveEventForm({
+            live_event_starts_at: datetimeLocal,
+            live_event_duration_minutes: event?.duration_minutes ? String(event.duration_minutes) : '',
+            live_event_timezone: event?.timezone || product?.live_event?.timezone || 'Africa/Dar_es_Salaam',
+            live_event_access_url: event?.access_url || product?.live_event?.access_url || '',
+            live_event_venue: event?.venue || product?.live_event?.venue || '',
+            live_event_capacity: event?.capacity ? String(event.capacity) : '',
+            live_event_replay_url: event?.replay_url || product?.live_event?.replay_url || '',
+            live_event_instructions: event?.instructions || product?.live_event?.instructions || '',
+        });
+    };
+
+    const loadLiveEventDashboard = async () => {
+        if (!isLiveEvent) return;
+        setLiveEventLoading(true);
+        try {
+            const res = await axios.get(`/merchant/${merchantUsername}/products/${productId}/live-event`);
+            setLiveEventDashboard(res.data);
+            fillLiveEventForm(res.data?.event);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kupakia event dashboard.');
+        } finally {
+            setLiveEventLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isLiveEvent) {
+            fillLiveEventForm(product?.live_event);
+            loadLiveEventDashboard();
+        } else {
+            setLiveEventDashboard(null);
+        }
+    }, [isLiveEvent, productId, product?.id]);
+
+    const saveLiveEvent = async () => {
+        setLiveEventSaving(true);
+        try {
+            const payload = {
+                ...liveEventForm,
+                live_event_duration_minutes: Number(liveEventForm.live_event_duration_minutes || 0) || null,
+                live_event_capacity: Number(liveEventForm.live_event_capacity || 0) || null,
+            };
+            const res = await axios.put(`/merchant/${merchantUsername}/products/${productId}/live-event`, payload);
+            setLiveEventDashboard(res.data);
+            fillLiveEventForm(res.data?.event);
+            toast.success('Live event details updated.');
+            loadProduct();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi live event.');
+        } finally {
+            setLiveEventSaving(false);
+        }
+    };
+
+    const markAttendance = async (orderId, status) => {
+        setLiveEventBusyOrder(`${orderId}:${status}`);
+        try {
+            await axios.post(`/merchant/${merchantUsername}/products/${productId}/live-event/orders/${orderId}/attendance`, { status });
+            toast.success('Attendance updated.');
+            loadLiveEventDashboard();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi attendance.');
+        } finally {
+            setLiveEventBusyOrder(null);
+        }
+    };
+
+    const resendAccess = async (orderId) => {
+        setLiveEventBusyOrder(`${orderId}:send`);
+        try {
+            await axios.post(`/merchant/${merchantUsername}/products/${productId}/live-event/orders/${orderId}/resend-access`);
+            toast.success('Access details prepared.');
+            loadLiveEventDashboard();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kutuma access details.');
+        } finally {
+            setLiveEventBusyOrder(null);
+        }
+    };
+
     const stockPerLocation = useMemo(() => {
         if (!product) return [];
         const locMap = {};
@@ -91,7 +212,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
             const locId = inv.merchant_location_id;
             const locName = inv.location_name || `Location ${locId}`;
             if (!locMap[locId]) locMap[locId] = { name: locName, quantity: 0 };
-            locMap[locId].quantity += Number(inv.quantity || 0);
+            locMap[locId].quantity += Number(inv.quantity_decimal ?? inv.quantity ?? 0);
         });
 
         // Aggregate from variants
@@ -100,7 +221,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
                 const locId = inv.merchant_location_id;
                 const locName = inv.location_name || `Location ${locId}`;
                 if (!locMap[locId]) locMap[locId] = { name: locName, quantity: 0 };
-                locMap[locId].quantity += Number(inv.quantity || 0);
+                locMap[locId].quantity += Number(inv.quantity_decimal ?? inv.quantity ?? 0);
             });
         });
 
@@ -190,7 +311,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                     <StatCard
                                         icon={Boxes}
                                         label="Available Stock"
-                                        value={stockPerLocation.reduce((sum, loc) => sum + loc.quantity, 0).toLocaleString()}
+                                        value={productStockLabel(product, stockPerLocation.reduce((sum, loc) => sum + loc.quantity, 0))}
                                     />
                                 </div>
 
@@ -205,6 +326,173 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {isLiveEvent && (
+                            <Card>
+                                <CardContent className="p-4 md:p-5 space-y-4">
+                                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-black flex items-center gap-2">
+                                                <CalendarClock className="h-4 w-4 text-brand-600" />
+                                                Live Event Control
+                                            </p>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Manage access, replay, attendees, and check-ins from one place.
+                                            </p>
+                                        </div>
+                                        <div className="rounded-xl border border-brand-100 bg-brand-50 px-3 py-2 text-right">
+                                            <p className="text-[10px] uppercase tracking-wider font-black text-brand-700">Starts in</p>
+                                            <p className="text-lg font-black text-brand-700">{countdown || 'TBA'}</p>
+                                        </div>
+                                    </div>
+
+                                    {liveEventLoading ? (
+                                        <div className="py-8 flex items-center justify-center text-sm text-muted-foreground gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin" /> Loading event details...
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                <StatCard icon={Users} label="Registered" value={Number(liveEventDashboard?.stats?.registered_seats || 0).toLocaleString()} />
+                                                <StatCard icon={CheckCircle2} label="Checked In" value={Number(liveEventDashboard?.stats?.checked_in || 0).toLocaleString()} />
+                                                <StatCard icon={Boxes} label="Remaining" value={liveEventDashboard?.stats?.seats_remaining === null || liveEventDashboard?.stats?.seats_remaining === undefined ? 'Unlimited' : Number(liveEventDashboard.stats.seats_remaining).toLocaleString()} />
+                                                <StatCard icon={ShoppingCart} label="Revenue" value={`TZS ${Number(liveEventDashboard?.stats?.revenue || 0).toLocaleString()}`} />
+                                            </div>
+
+                                            <div className="rounded-xl border border-slate-200 p-3 space-y-3">
+                                                <div className="grid md:grid-cols-2 gap-3">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Start Time</label>
+                                                        <input
+                                                            type="datetime-local"
+                                                            value={liveEventForm.live_event_starts_at}
+                                                            onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_starts_at: e.target.value }))}
+                                                            className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Timezone</label>
+                                                        <input
+                                                            value={liveEventForm.live_event_timezone}
+                                                            onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_timezone: e.target.value }))}
+                                                            className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Duration Minutes</label>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            value={liveEventForm.live_event_duration_minutes}
+                                                            onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_duration_minutes: e.target.value }))}
+                                                            className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Capacity (Attendee Limit)</label>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            value={liveEventForm.live_event_capacity}
+                                                            onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_capacity: e.target.value }))}
+                                                            placeholder="Optional"
+                                                            className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
+                                                        />
+                                                    </div>
+                                                    <div className="md:col-span-2 space-y-1">
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Private Join Link</label>
+                                                        <input
+                                                            value={liveEventForm.live_event_access_url}
+                                                            onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_access_url: e.target.value }))}
+                                                            placeholder="Zoom, Google Meet, livestream, or webinar link"
+                                                            className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
+                                                        />
+                                                    </div>
+                                                    <div className="md:col-span-2 space-y-1">
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Venue / Access Note</label>
+                                                        <input
+                                                            value={liveEventForm.live_event_venue}
+                                                            onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_venue: e.target.value }))}
+                                                            placeholder="Physical location or extra access note"
+                                                            className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
+                                                        />
+                                                    </div>
+                                                    <div className="md:col-span-2 space-y-1">
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Replay Link</label>
+                                                        <input
+                                                            value={liveEventForm.live_event_replay_url}
+                                                            onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_replay_url: e.target.value }))}
+                                                            placeholder="Add after event when replay is ready"
+                                                            className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold"
+                                                        />
+                                                    </div>
+                                                    <div className="md:col-span-2 space-y-1">
+                                                        <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">Buyer Instructions</label>
+                                                        <textarea
+                                                            value={liveEventForm.live_event_instructions}
+                                                            onChange={(e) => setLiveEventForm((prev) => ({ ...prev, live_event_instructions: e.target.value }))}
+                                                            rows={3}
+                                                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-end">
+                                                    <Button onClick={saveLiveEvent} disabled={liveEventSaving} className="rounded-xl bg-brand-600 hover:bg-brand-700 text-white">
+                                                        {liveEventSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                                                        Save Event Details
+                                                    </Button>
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-xl border border-slate-200 overflow-hidden">
+                                                <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
+                                                    <p className="text-sm font-black">Attendees</p>
+                                                    <span className="text-xs text-muted-foreground">{Number(liveEventDashboard?.attendees?.length || 0).toLocaleString()} orders</span>
+                                                </div>
+                                                {(liveEventDashboard?.attendees || []).length === 0 ? (
+                                                    <p className="p-4 text-sm text-muted-foreground">No paid attendees yet.</p>
+                                                ) : (
+                                                    <div className="divide-y divide-slate-100">
+                                                        {liveEventDashboard.attendees.map((attendee) => (
+                                                            <div key={attendee.order_id} className="p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-black truncate">{attendee.buyer_name || 'Buyer'}</p>
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        {attendee.buyer_phone || 'No phone'} · Seats {attendee.quantity} · TZS {Number(attendee.total_paid || 0).toLocaleString()}
+                                                                    </p>
+                                                                    <p className="text-[11px] text-muted-foreground">
+                                                                        Status: <span className="font-bold capitalize">{attendee.status}</span>
+                                                                        {attendee.access_last_sent_at ? ` · Last sent ${new Date(attendee.access_last_sent_at).toLocaleString()}` : ''}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    <Button variant="outline" size="sm" className="rounded-xl" onClick={() => resendAccess(attendee.order_id)} disabled={!!liveEventBusyOrder}>
+                                                                        {liveEventBusyOrder === `${attendee.order_id}:send` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                                                        Send
+                                                                    </Button>
+                                                                    <Button variant="outline" size="sm" className="rounded-xl text-emerald-700" onClick={() => markAttendance(attendee.order_id, 'present')} disabled={!!liveEventBusyOrder}>
+                                                                        {liveEventBusyOrder === `${attendee.order_id}:present` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                                                        Present
+                                                                    </Button>
+                                                                    <Button variant="outline" size="sm" className="rounded-xl text-amber-700" onClick={() => markAttendance(attendee.order_id, 'late')} disabled={!!liveEventBusyOrder}>
+                                                                        {liveEventBusyOrder === `${attendee.order_id}:late` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
+                                                                        Late
+                                                                    </Button>
+                                                                    <Button variant="outline" size="sm" className="rounded-xl text-red-700" onClick={() => markAttendance(attendee.order_id, 'absent')} disabled={!!liveEventBusyOrder}>
+                                                                        {liveEventBusyOrder === `${attendee.order_id}:absent` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+                                                                        Absent
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
 
                         <Card>
                             <CardContent className="p-4 space-y-3">
@@ -251,7 +539,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                                     <span className="text-sm font-medium text-slate-700">{loc.name}</span>
                                                 </div>
                                                 <span className={`text-sm font-black ${loc.quantity > 0 ? 'text-slate-900' : 'text-red-500'}`}>
-                                                    {loc.quantity.toLocaleString()}
+                                                    {productStockLabel(product, loc.quantity)}
                                                 </span>
                                             </div>
                                         ))}
@@ -329,7 +617,7 @@ export default function ProductDetails({ merchantUsername, productId }) {
                                                     ))}
                                                 </div>
                                                 <p className="text-xs text-muted-foreground mt-1">
-                                                    SKU: {variant.sku || '-'} · Bei: TZS {Number(variant.price || 0).toLocaleString()} · Stock: {Number(variant.inventory_count || 0).toLocaleString()}
+                                                    SKU: {variant.sku || '-'} · Bei: {productPriceLabel(product, variant.price || 0)} · Stock: {productStockLabel(product, variant.inventory_quantity ?? variant.inventory_count)}
                                                 </p>
                                                 {variant.swatch_image_url && (
                                                     <div className="mt-2">

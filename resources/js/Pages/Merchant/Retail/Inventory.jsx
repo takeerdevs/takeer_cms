@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Input } from '@/Components/ui/Input';
 import { toast } from 'sonner';
 import { Boxes, Search, Save, ArrowLeftRight, RefreshCw } from 'lucide-react';
+import { formatQuantity, productQuantityLabel } from '@/lib/productUnits';
 
 export default function Inventory({ merchant }) {
     const [locations, setLocations] = useState([]);
@@ -63,6 +64,7 @@ export default function Inventory({ merchant }) {
                         `Product #${item.product_id}`,
                     variant: attrs || cleanVariantName || null,
                     sku: item.variant?.sku || null,
+                    product: item.product,
                     expected_quantity: Number(item.quantity || 0),
                     counted_quantity: Number(item.quantity || 0),
                 };
@@ -208,7 +210,7 @@ export default function Inventory({ merchant }) {
 
                         <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-brand-50/40 border border-brand-100">
                             <p className="text-xs font-bold text-brand-700">
-                                Lines changed: <span className="font-black">{varianceSummary.changed}</span> | Net variance: <span className="font-black">{varianceSummary.net}</span>
+                                Lines changed: <span className="font-black">{varianceSummary.changed}</span> | Net variance: <span className="font-black">{formatQuantity(varianceSummary.net)}</span>
                             </p>
                             <Button onClick={submitDailyCount} disabled={saving || loading || varianceSummary.changed === 0}>
                                 <Save className="h-4 w-4 mr-2" /> {saving ? 'Inahifadhi...' : 'Submit Daily Count'}
@@ -247,18 +249,19 @@ export default function Inventory({ merchant }) {
                                                 <td className="p-3 text-xs text-muted-foreground">
                                                     {row.variant || 'Standard'} {row.sku ? `• ${row.sku}` : ''}
                                                 </td>
-                                                <td className="p-3 text-right font-bold">{row.expected_quantity}</td>
+                                                <td className="p-3 text-right font-bold">{productQuantityLabel(row.product, row.expected_quantity)}</td>
                                                 <td className="p-3 text-right">
                                                     <input
                                                         type="number"
                                                         min="0"
+                                                        step={row.product?.unit_type?.allows_decimal ? '0.001' : '1'}
                                                         value={row.counted_quantity}
                                                         onChange={(e) => updateCount(row.row_key, e.target.value)}
                                                         className="w-24 h-9 rounded-lg border border-input text-right px-2 font-bold"
                                                     />
                                                 </td>
                                                 <td className={`p-3 text-right font-black ${variance === 0 ? 'text-muted-foreground' : variance > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                    {variance > 0 ? `+${variance}` : variance}
+                                                    {variance > 0 ? `+${productQuantityLabel(row.product, variance)}` : productQuantityLabel(row.product, variance)}
                                                 </td>
                                             </tr>
                                         );

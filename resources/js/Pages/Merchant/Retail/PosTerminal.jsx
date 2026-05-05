@@ -41,6 +41,7 @@ import {
 } from '@/Components/ui/Drawer';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { productQuantityLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
 
 export default function PosTerminal({ merchant }) {
     const [hasTerminalSession, setHasTerminalSession] = useState(false);
@@ -107,6 +108,8 @@ export default function PosTerminal({ merchant }) {
     };
 
     const productCardPriceText = (product) => {
+        const unitLabel = productUnitLabel(product);
+        const suffix = unitLabel ? ` / ${unitLabel}` : '';
         const variants = Array.isArray(product?.variants) ? product.variants : [];
         if (product?.has_variants && variants.length > 0) {
             const prices = variants
@@ -116,12 +119,22 @@ export default function PosTerminal({ merchant }) {
             if (prices.length > 0) {
                 const min = Math.min(...prices);
                 const max = Math.max(...prices);
-                return min === max ? formatCurrency(min) : `${formatCurrency(min)} - ${formatCurrency(max)}`;
+                return min === max ? `${formatCurrency(min)}${suffix}` : `${formatCurrency(min)} - ${formatCurrency(max)}${suffix}`;
             }
         }
 
-        return formatCurrency(product?.discounted_price || product?.price || 0);
+        return `${formatCurrency(product?.discounted_price || product?.price || 0)}${suffix}`;
     };
+
+    const quantityStepForProduct = (product) => {
+        if (!product?.unit_type?.allows_decimal) return 1;
+        return Number(product?.order_increment || 0.001);
+    };
+
+    const sellableQuantityForItem = (item) => Math.max(0.001, Number(item?.sellable_quantity || 1));
+    const lineQuantityFactor = (item) => Number(item.quantity || 0) / sellableQuantityForItem(item);
+    const lineTotal = (item) => parseFloat(item.unit_price || 0) * lineQuantityFactor(item);
+    const lineOriginalTotal = (item) => parseFloat(item.original_price || 0) * lineQuantityFactor(item);
 
     const handleStaffLogout = () => {
         localStorage.removeItem('retail_staff_token');
@@ -273,12 +286,16 @@ export default function PosTerminal({ merchant }) {
         const newCart = items.map(item => ({
             product_id: item.product_id,
             title: item.product?.title || 'Unknown Product',
-            unit_price: item.price_at_sale,
+            unit_price: item.unit_price,
             original_price: item.unit_price,
-            quantity: item.quantity,
+            quantity: Number(item.quantity_decimal ?? item.quantity ?? 1),
             variant_id: item.product_variant_id,
-            max_stock: item.variant?.inventory_count || item.product?.inventory_count || 999,
-            image: item.product?.image_url
+            max_stock: item.variant?.inventory_quantity ?? item.variant?.inventory_count ?? item.product?.inventory_quantity ?? item.product?.inventory_count ?? 999,
+            image: item.product?.image_url,
+            product: item.product,
+            unit_type: item.product?.unit_type || null,
+            sellable_quantity: item.product?.sellable_quantity || 1,
+            order_increment: item.product?.order_increment || null,
         }));
 
         setCart(newCart);
@@ -332,8 +349,8 @@ export default function PosTerminal({ merchant }) {
         return () => clearInterval(interval);
     }, [hasTerminalSession]);
 
-    const totalAmount = cart.reduce((sum, item) => sum + (parseFloat(item.unit_price || 0) * item.quantity), 0);
-    const totalDiscount = cart.reduce((sum, item) => sum + ((parseFloat(item.original_price || 0) - parseFloat(item.unit_price || 0)) * item.quantity), 0);
+    const totalAmount = cart.reduce((sum, item) => sum + lineTotal(item), 0);
+    const totalDiscount = cart.reduce((sum, item) => sum + (lineOriginalTotal(item) - lineTotal(item)), 0);
     const paidAmount = parseFloat(amountPaid) || 0;
     const hasTransferRequests = cart.some((item) => {
         const source = Number(item.source_location_id || 0);
@@ -364,8 +381,8 @@ export default function PosTerminal({ merchant }) {
         const settings = merchant.retail_settings || {};
         const maxNoPinDiscount = settings.max_no_pin_discount_percent || 5;
 
-        const totalOriginal = cart.reduce((sum, item) => sum + (parseFloat(item.original_price || 0) * item.quantity), 0);
-        const currentDiscount = cart.reduce((sum, item) => sum + ((parseFloat(item.original_price || 0) - parseFloat(item.unit_price || 0)) * item.quantity), 0);
+        const totalOriginal = cart.reduce((sum, item) => sum + lineOriginalTotal(item), 0);
+        const currentDiscount = cart.reduce((sum, item) => sum + (lineOriginalTotal(item) - lineTotal(item)), 0);
 
         const discountPercent = totalOriginal > 0 ? (currentDiscount / totalOriginal) * 100 : 0;
         const exceedsDiscount = discountPercent > maxNoPinDiscount;
@@ -415,7 +432,11 @@ export default function PosTerminal({ merchant }) {
             ? (mappedRoute?.serving_store_location_id ?? null)
             : null;
 
-        const available = variant ? (variant.inventory_count || 0) : (product.location_inventories?.[0]?.quantity || product.inventory_count || 0);
+        const variantLocationInventory = variant?.location_inventories?.find((row) => Number(row.merchant_location_id) === Number(selectedLocation));
+        const available = variant
+            ? Number(variantLocationInventory?.quantity_decimal ?? variantLocationInventory?.quantity ?? variant.inventory_quantity ?? variant.inventory_count ?? 0)
+            : Number(product.location_inventories?.[0]?.quantity_decimal ?? product.location_inventories?.[0]?.quantity ?? product.inventory_quantity ?? product.inventory_count ?? 0);
+        const initialQuantity = Math.max(0.001, Number(product.min_order_quantity || product.sellable_quantity || 1));
 
         const existing = cart.find(item => item.product_id === product.id && item.variant_id === variantId);
         const currentInCart = existing ? existing.quantity : 0;
@@ -428,7 +449,7 @@ export default function PosTerminal({ merchant }) {
         if (existing) {
             setCart(cart.map(item =>
                 (item.product_id === product.id && item.variant_id === variantId)
-                    ? { ...item, quantity: item.quantity + 1 }
+                    ? { ...item, quantity: Math.min(item.max_stock, Number(item.quantity || 0) + quantityStepForProduct(product)) }
                     : item
             ));
         } else {
@@ -438,11 +459,15 @@ export default function PosTerminal({ merchant }) {
                 title: displayTitle,
                 original_price: effectiveOriginalPrice,
                 unit_price: effectivePrice,
-                quantity: 1,
+                quantity: Math.min(available, initialQuantity),
                 image: product.image_url,
                 max_stock: available,
                 is_overridden: false,
                 source_location_id: defaultSourceLocationId,
+                product,
+                unit_type: product.unit_type || null,
+                sellable_quantity: product.sellable_quantity || 1,
+                order_increment: product.order_increment || null,
             }]);
         }
 
@@ -469,7 +494,7 @@ export default function PosTerminal({ merchant }) {
     const updateQuantity = (productId, variantId, delta) => {
         setCart(cart.map(item => {
             if (item.product_id === productId && (item.variant_id || null) === (variantId || null)) {
-                const newQty = Math.max(0, item.quantity + delta);
+                const newQty = Math.max(0, Number(item.quantity || 0) + delta);
 
                 // Prevent exceeding available stock
                 if (delta > 0 && newQty > item.max_stock) {
@@ -478,6 +503,21 @@ export default function PosTerminal({ merchant }) {
                 }
 
                 return { ...item, quantity: newQty };
+            }
+            return item;
+        }).filter(item => item.quantity > 0));
+    };
+
+    const updateQuantityValue = (productId, variantId, value) => {
+        const parsed = Math.max(0, Number(value || 0));
+        setCart(cart.map(item => {
+            if (item.product_id === productId && (item.variant_id || null) === (variantId || null)) {
+                if (parsed > item.max_stock) {
+                    toast.error(`Cannot exceed available stock (${productQuantityLabel(item.product || item, item.max_stock)})`);
+                    return item;
+                }
+
+                return { ...item, quantity: parsed };
             }
             return item;
         }).filter(item => item.quantity > 0));
@@ -531,6 +571,7 @@ export default function PosTerminal({ merchant }) {
                 customer_phone: customerPhone,
                 items: cart.map(item => ({
                     product_id: item.product_id,
+                    variant_id: item.variant_id,
                     quantity: item.quantity,
                     unit_price: item.unit_price,
                     source_location_id: item.source_location_id,
@@ -677,6 +718,7 @@ export default function PosTerminal({ merchant }) {
                         const t = String(loc.type || '').toLowerCase();
                         return Number(loc.id) === Number(selectedLocation) || t === 'store' || t === 'warehouse';
                     });
+                    const quantityStep = Number(item.order_increment || quantityStepForProduct(item.product || item));
 
                     return (
                     <div key={cartItemKey(item.product_id, item.variant_id)} className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-brand-50/30 border border-brand-50">
@@ -717,18 +759,26 @@ export default function PosTerminal({ merchant }) {
                         <div className="flex items-center gap-2 bg-white rounded-xl border border-brand-100 p-1">
                             <button
                                 className="h-7 w-7 rounded-lg hover:bg-gray-100 flex items-center justify-center text-brand-600"
-                                onClick={() => updateQuantity(item.product_id, item.variant_id, -1)}
+                                onClick={() => updateQuantity(item.product_id, item.variant_id, -quantityStep)}
                             >
                                 <Minus className="h-3 w-3" />
                             </button>
-                            <span className="text-sm font-black w-4 text-center">{item.quantity}</span>
+                            <input
+                                type="number"
+                                min="0"
+                                step={quantityStep}
+                                value={item.quantity}
+                                onChange={(e) => updateQuantityValue(item.product_id, item.variant_id, e.target.value)}
+                                className="h-7 w-16 rounded-lg border-0 bg-transparent text-center text-sm font-black focus:outline-none"
+                            />
                             <button
                                 className="h-7 w-7 rounded-lg hover:bg-gray-100 flex items-center justify-center text-brand-600"
-                                onClick={() => updateQuantity(item.product_id, item.variant_id, 1)}
+                                onClick={() => updateQuantity(item.product_id, item.variant_id, quantityStep)}
                             >
                                 <Plus className="h-3 w-3" />
                             </button>
                         </div>
+                        <p className="text-[10px] font-bold text-slate-500 text-right">{productQuantityLabel(item.product || item, item.quantity)}</p>
                     </div>
                 )})}
                 {cart.length === 0 && (
@@ -920,7 +970,7 @@ export default function PosTerminal({ merchant }) {
                                                     </p>
                                                 )}
                                                 <p className="text-sm font-black text-brand-700">{productCardPriceText(product)}</p>
-                                                <p className="text-[10px] text-muted-foreground">Stock: {product.available_stock ?? product.inventory_count ?? 0}</p>
+                                                <p className="text-[10px] text-muted-foreground">{productStockLabel(product, product.location_inventories?.[0]?.quantity_decimal ?? product.location_inventories?.[0]?.quantity ?? product.available_stock ?? product.inventory_quantity ?? product.inventory_count ?? 0)}</p>
                                             </div>
                                         </button>
                                     </CardContent>
@@ -1071,7 +1121,7 @@ export default function PosTerminal({ merchant }) {
                                         {transferLines.map((line, idx) => (
                                             <div key={`${line.product_id}-${line.variant_id || 'na'}-${idx}`} className="flex items-center justify-between text-[11px]">
                                                 <span className="font-semibold text-slate-700 truncate pr-2">{line.title}</span>
-                                                <span className="font-black text-sky-700">{line.quantity}</span>
+                                                <span className="font-black text-sky-700">{productQuantityLabel(line.product || line, line.quantity)}</span>
                                             </div>
                                         ))}
                                     </div>

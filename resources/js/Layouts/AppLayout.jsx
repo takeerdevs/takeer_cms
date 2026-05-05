@@ -11,9 +11,12 @@ import CheckoutModal from '@/Components/CheckoutModal';
 import DigitalDownloadModal from '@/Components/DigitalDownloadModal';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
 import axios from 'axios';
+import { trackPlatformEvent } from '@/lib/attribution';
 
 export default function AppLayout({ children, hideTabBar = false }) {
-    const { flash, auth } = usePage().props;
+    const page = usePage();
+    const { flash, auth } = page.props;
+    const currentUrl = page.url;
     const [composerOpen, setComposerOpen] = useState(false);
     const [composerInitialMode, setComposerInitialMode] = useState('short');
     const [creatingProfile, setCreatingProfile] = useState(false);
@@ -31,6 +34,22 @@ export default function AppLayout({ children, hideTabBar = false }) {
         if (flash?.success) toast.success(flash.success);
         if (flash?.error) toast.error(flash.error);
     }, [flash]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !currentUrl) return;
+
+        const path = window.location.pathname;
+        trackPlatformEvent(path === '/' || path === '/feed' ? 'feed_view' : 'page_view', {
+            source: 'app',
+            source_url: window.location.href,
+            metadata: {
+                path,
+                title: document.title,
+                authenticated: Boolean(auth?.user),
+                has_merchant_profile: Boolean(auth?.user?.merchant_profiles?.length),
+            },
+        });
+    }, [currentUrl]);
 
     // Expose global openers
     useEffect(() => {

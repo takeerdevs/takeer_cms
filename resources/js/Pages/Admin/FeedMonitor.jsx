@@ -93,6 +93,7 @@ export default function FeedMonitor() {
                                 <PostCard
                                     post={post}
                                     readOnly
+                                    adminMode
                                     detailHref={`/admin/posts/${post.public_id || post.id}`}
                                 />
                             </div>

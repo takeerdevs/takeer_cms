@@ -12,9 +12,19 @@ class Dispute extends Model
         'order_id',
         'buyer_unboxing_video_url',
         'dispute_reason',
+        'refund_eligibility_status',
+        'refund_eligibility_reason',
+        'refund_policy_snapshot',
         'admin_resolution_notes',
         'status',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'refund_policy_snapshot' => 'array',
+        ];
+    }
 
     public function order(): BelongsTo
     {

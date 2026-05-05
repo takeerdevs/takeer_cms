@@ -11,6 +11,7 @@ import {
     Camera,
     CircleAlert,
     Download,
+    FileUp,
     Loader2,
     MapPin,
     MessageSquare,
@@ -27,6 +28,7 @@ import {
     Video,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -45,6 +47,7 @@ function typeMeta(kind) {
         course_bundle: { label: 'Course Bundle', icon: BookOpenText, cls: 'bg-indigo-100 text-indigo-700' },
         post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-100 text-sky-700' },
         digital_file: { label: 'Digital File', icon: Download, cls: 'bg-indigo-100 text-indigo-700' },
+        custom_work: { label: 'Custom Work', icon: FileUp, cls: 'bg-indigo-100 text-indigo-700' },
         service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-100 text-emerald-700' },
     };
 
@@ -90,6 +93,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     // Inquiry Quote State
     const [shippingFeeInput, setShippingFeeInput] = useState('');
     const [quoteSubmitting, setQuoteSubmitting] = useState(false);
+    const [customDeliveryFile, setCustomDeliveryFile] = useState(null);
+    const [customDeliveryMessage, setCustomDeliveryMessage] = useState('');
+    const [customDeliverySubmitting, setCustomDeliverySubmitting] = useState(false);
 
     useEffect(() => {
         loadOrder();
@@ -125,6 +131,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const canDispatchNow = !!order
         && order.is_escrow_order
         && ['awaiting_merchant_confirmation', 'escrow_locked'].includes(order.payment_status);
+    const isCustomDigitalDelivery = order?.product?.type === 'digital'
+        && order?.product?.digital_delivery_type === 'custom_delivery';
 
     async function submitDispatch(e) {
         e.preventDefault();
@@ -163,6 +171,32 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi dispatch evidence.');
         } finally {
             setDispatchSubmitting(false);
+        }
+    }
+
+    async function submitCustomDelivery(e) {
+        e.preventDefault();
+        if (!customDeliveryFile || customDeliverySubmitting) return;
+
+        const formData = new FormData();
+        formData.append('file', customDeliveryFile);
+        if (customDeliveryMessage.trim()) {
+            formData.append('message', customDeliveryMessage.trim());
+        }
+
+        setCustomDeliverySubmitting(true);
+        try {
+            await axios.post(`/merchant/${merchantUsername}/orders/${orderId}/custom-delivery`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            toast.success('Custom delivery imepakiwa.');
+            setCustomDeliveryFile(null);
+            setCustomDeliveryMessage('');
+            await loadOrder();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kupakia custom delivery.');
+        } finally {
+            setCustomDeliverySubmitting(false);
         }
     }
 
@@ -333,8 +367,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </CardHeader>
                                 <CardContent className="space-y-2 text-sm">
                                     <p><span className="text-muted-foreground">Order Ref:</span> <span className="font-semibold">{isPos ? `#POS-${order.public_id}` : (order.transaction_ref || `#${order.id}`)}</span></p>
-                                    <p><span className="text-muted-foreground">Kiasi:</span> <span className="font-semibold">{order.quantity || 1}</span></p>
-                                    <p><span className="text-muted-foreground">Bei moja:</span> <span className="font-semibold">TZS {Number(order.unit_price || 0).toLocaleString()}</span></p>
+                                    <p><span className="text-muted-foreground">Kiasi:</span> <span className="font-semibold">{orderQuantityLabel(order)}</span></p>
+                                    <p><span className="text-muted-foreground">Bei moja:</span> <span className="font-semibold">{orderUnitPriceLabel(order)}</span></p>
                                     <p><span className="text-muted-foreground">Jumla:</span> <span className="font-semibold">TZS {Number(order.total_paid || 0).toLocaleString()}</span></p>
                                     <p><span className="text-muted-foreground">Payment phone:</span> <span className="font-semibold">{order.payment_phone || 'N/A'}</span></p>
                                     <p><span className="text-muted-foreground">Account phone:</span> <span className="font-semibold">{order.account_phone || 'N/A'}</span></p>
@@ -432,6 +466,82 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             </div>
                                         )}
                                         <p className="text-[11px] text-muted-foreground italic font-medium">Ukishatuma gharama, mteja ataiona na atakuwa na chaguo la kulipia ili kukamilisha order.</p>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {isCustomDigitalDelivery && (
+                                <Card className="rounded-2xl md:col-span-2 border-indigo-200 bg-indigo-50/20">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                                            <FileUp className="h-4 w-4 text-indigo-600" />
+                                            Custom Digital Delivery
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="p-5 space-y-4">
+                                        {order.custom_delivery?.delivered_at ? (
+                                            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <p className="text-sm font-black text-emerald-800">
+                                                        {order.custom_delivery.status === 'revision_requested'
+                                                            ? 'Revision requested'
+                                                            : order.custom_delivery.status === 'accepted'
+                                                                ? 'Accepted by buyer'
+                                                                : 'Delivered'}
+                                                    </p>
+                                                    <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+                                                        {order.custom_delivery.status || 'delivered'}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                                                    {order.custom_delivery.file_name || 'Final file'} · {order.custom_delivery.delivered_at ? new Date(order.custom_delivery.delivered_at).toLocaleString() : ''}
+                                                </p>
+                                                {order.custom_delivery.message && (
+                                                    <p className="mt-2 text-sm text-emerald-900 whitespace-pre-line">{order.custom_delivery.message}</p>
+                                                )}
+                                                {order.custom_delivery.revision_message && (
+                                                    <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Buyer revision note</p>
+                                                        <p className="mt-1 text-sm text-amber-950 whitespace-pre-line">{order.custom_delivery.revision_message}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+                                                Buyer has paid. Upload the finished file when the custom work is ready.
+                                            </div>
+                                        )}
+
+                                        <form onSubmit={submitCustomDelivery} className="space-y-3">
+                                            <label className="rounded-xl border border-input bg-background p-3 text-sm block">
+                                                <span className="mb-2 inline-flex items-center gap-2 font-semibold">
+                                                    <FileUp className="h-4 w-4 text-indigo-600" />
+                                                    Final delivery file
+                                                </span>
+                                                <input
+                                                    type="file"
+                                                    onChange={(e) => setCustomDeliveryFile(e.target.files?.[0] || null)}
+                                                    className="mt-2 block w-full text-xs"
+                                                    required
+                                                />
+                                            </label>
+                                            <textarea
+                                                value={customDeliveryMessage}
+                                                onChange={(e) => setCustomDeliveryMessage(e.target.value)}
+                                                rows={3}
+                                                placeholder="Optional delivery note, instructions, revision note, or usage guidance..."
+                                                className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                                            />
+                                            <div className="flex items-center justify-between gap-3">
+                                                <p className="text-xs text-muted-foreground">
+                                                    Uploading a new file replaces the previous final delivery for this order.
+                                                </p>
+                                                <Button type="submit" className="rounded-xl font-bold" disabled={!customDeliveryFile || customDeliverySubmitting}>
+                                                    {customDeliverySubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileUp className="h-4 w-4 mr-2" />}
+                                                    Upload Delivery
+                                                </Button>
+                                            </div>
+                                        </form>
                                     </CardContent>
                                 </Card>
                             )}

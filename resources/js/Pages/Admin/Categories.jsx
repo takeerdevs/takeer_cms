@@ -9,7 +9,7 @@ import { Shapes, Plus, Trash2, Pencil, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 
-const emptyCategory = { name: '', parent_id: '', image_url: '', is_active: true, sort_order: 0, brand_ids: [] };
+const emptyCategory = { name: '', parent_id: '', image_url: '', is_active: true, sort_order: 0, brand_ids: [], unit_type_ids: [] };
 const emptyAttr = {
     key: '',
     label: '',
@@ -23,10 +23,10 @@ const emptyAttr = {
     ai_extractable: false,
     sort_order: 0,
 };
-
 export default function AdminCategories() {
     const [categories, setCategories] = useState([]);
     const [brands, setBrands] = useState([]);
+    const [unitTypes, setUnitTypes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [categoryPage, setCategoryPage] = useState(1);
     const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, per_page: 10, total: 0 });
@@ -35,9 +35,6 @@ export default function AdminCategories() {
     const [editingCategory, setEditingCategory] = useState(null);
     const [editingAttribute, setEditingAttribute] = useState(null);
 
-    const [newBrandName, setNewBrandName] = useState('');
-    const [newModelByBrand, setNewModelByBrand] = useState({});
-
     useEffect(() => {
         loadData(categoryPage);
     }, [categoryPage]);
@@ -45,13 +42,15 @@ export default function AdminCategories() {
     const loadData = async (page = 1) => {
         setLoading(true);
         try {
-            const [categoryRes, brandRes] = await Promise.all([
+            const [categoryRes, brandRes, unitRes] = await Promise.all([
                 axios.get('/admin/api/catalog/categories', { params: { page, per_page: pagination.per_page || 10 } }),
                 axios.get('/admin/api/catalog/brands'),
+                axios.get('/admin/api/catalog/unit-types'),
             ]);
             setCategories(categoryRes.data?.data || []);
             setPagination(categoryRes.data?.pagination || { current_page: 1, last_page: 1, per_page: 10, total: 0 });
             setBrands(brandRes.data?.data || []);
+            setUnitTypes(unitRes.data?.data || []);
         } catch {
             toast.error('Failed to load catalog data.');
         } finally {
@@ -75,6 +74,7 @@ export default function AdminCategories() {
                 parent_id: categoryForm.parent_id ? Number(categoryForm.parent_id) : null,
                 sort_order: Number(categoryForm.sort_order || 0),
                 brand_ids: (categoryForm.brand_ids || []).map(Number),
+                unit_type_ids: (categoryForm.unit_type_ids || []).map(Number),
             });
             toast.success('Category created.');
             setCategoryForm(emptyCategory);
@@ -94,6 +94,7 @@ export default function AdminCategories() {
                 is_active: !!editingCategory.is_active,
                 sort_order: Number(editingCategory.sort_order || 0),
                 brand_ids: (editingCategory.brand_ids || []).map(Number),
+                unit_type_ids: (editingCategory.unit_type_ids || []).map(Number),
             });
             toast.success('Category updated.');
             setEditingCategory(null);
@@ -129,7 +130,7 @@ export default function AdminCategories() {
                 label: current.label,
                 input_type: current.input_type,
                 ui_hint: current.input_type === 'number' ? (current.ui_hint || null) : null,
-                options: current.input_type === 'select'
+                options: ['select', 'multiselect'].includes(current.input_type)
                     ? current.options_csv.split(',').map((x) => x.trim()).filter(Boolean)
                     : [],
                 unit_options: current.input_type === 'number'
@@ -157,7 +158,7 @@ export default function AdminCategories() {
                 label: editingAttribute.label,
                 input_type: editingAttribute.input_type,
                 ui_hint: editingAttribute.input_type === 'number' ? (editingAttribute.ui_hint || null) : null,
-                options: editingAttribute.input_type === 'select'
+                options: ['select', 'multiselect'].includes(editingAttribute.input_type)
                     ? (editingAttribute.options_csv || '').split(',').map((x) => x.trim()).filter(Boolean)
                     : [],
                 unit_options: editingAttribute.input_type === 'number'
@@ -197,6 +198,7 @@ export default function AdminCategories() {
             is_active: !!category.is_active,
             sort_order: category.sort_order || 0,
             brand_ids: (category.brands || []).map((brand) => brand.id),
+            unit_type_ids: (category.unit_types || []).map((unit) => unit.id),
         });
     };
 
@@ -217,59 +219,6 @@ export default function AdminCategories() {
         });
     };
 
-    const createBrand = async () => {
-        if (!newBrandName.trim()) {
-            toast.error('Brand name is required.');
-            return;
-        }
-        try {
-            await axios.post('/admin/api/catalog/brands', { name: newBrandName });
-            setNewBrandName('');
-            toast.success('Brand created.');
-            await loadData(categoryPage);
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to create brand.');
-        }
-    };
-
-    const createBrandModel = async (brandId) => {
-        const name = (newModelByBrand[brandId] || '').trim();
-        if (!name) {
-            toast.error('Model name is required.');
-            return;
-        }
-        try {
-            await axios.post(`/admin/api/catalog/brands/${brandId}/models`, { name });
-            setNewModelByBrand((prev) => ({ ...prev, [brandId]: '' }));
-            toast.success('Brand model created.');
-            await loadData(categoryPage);
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to create model.');
-        }
-    };
-
-    const deleteBrand = async (brandId) => {
-        if (!window.confirm('Delete this brand and all models?')) return;
-        try {
-            await axios.delete(`/admin/api/catalog/brands/${brandId}`);
-            toast.success('Brand deleted.');
-            await loadData(categoryPage);
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to delete brand.');
-        }
-    };
-
-    const deleteBrandModel = async (modelId) => {
-        if (!window.confirm('Delete this brand model?')) return;
-        try {
-            await axios.delete(`/admin/api/catalog/brand-models/${modelId}`);
-            toast.success('Brand model deleted.');
-            await loadData(categoryPage);
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to delete model.');
-        }
-    };
-
     return (
         <AdminLayout title="Categories">
             <Head title="Admin Categories | Takeer" />
@@ -277,48 +226,10 @@ export default function AdminCategories() {
             <div className="space-y-6">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                        <Shapes className="h-6 w-6 text-brand-700" /> Product Categories, Facets & Brands
+                        <Shapes className="h-6 w-6 text-brand-700" /> Product Categories & Facets
                     </h1>
-                    <p className="text-slate-600 mt-1 text-sm">Manage category tree, filter facets, and brand/model catalog.</p>
+                    <p className="text-slate-600 mt-1 text-sm">Manage category tree, product facets, and category-level brand/unit restrictions.</p>
                 </div>
-
-                <Card className="bg-white border-slate-200 p-4 space-y-3">
-                    <p className="font-bold text-slate-900">Brand & Model Library</p>
-                    <div className="flex gap-2">
-                        <Input value={newBrandName} onChange={(e) => setNewBrandName(e.target.value)} placeholder="Brand name e.g Apple" />
-                        <Button className="bg-brand-600 hover:bg-brand-700 text-white" onClick={createBrand}>Create Brand</Button>
-                    </div>
-                    <div className="space-y-2">
-                        {brands.length === 0 ? (
-                            <p className="text-sm text-slate-500">No brands yet.</p>
-                        ) : brands.map((brand) => (
-                            <div key={brand.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                    <p className="font-semibold text-slate-900">{brand.name}</p>
-                                    <Button variant="outline" className="text-red-700 border-red-300" onClick={() => deleteBrand(brand.id)}>
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Input
-                                        value={newModelByBrand[brand.id] || ''}
-                                        onChange={(e) => setNewModelByBrand((prev) => ({ ...prev, [brand.id]: e.target.value }))}
-                                        placeholder={`Add model for ${brand.name}`}
-                                    />
-                                    <Button variant="outline" onClick={() => createBrandModel(brand.id)}>Add Model</Button>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {(brand.models || []).map((model) => (
-                                        <span key={model.id} className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1 text-xs">
-                                            {model.name}
-                                            <button type="button" className="text-red-600" onClick={() => deleteBrandModel(model.id)}>x</button>
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </Card>
 
                 <Card className="bg-white border-slate-200 p-4 space-y-3">
                     <p className="font-bold text-slate-900">Create Category</p>
@@ -348,6 +259,17 @@ export default function AdminCategories() {
                             });
                         }}
                     />
+                    <UnitPicker
+                        label="Allowed sellable units for this category"
+                        units={unitTypes}
+                        selectedIds={categoryForm.unit_type_ids || []}
+                        onToggle={(unitId) => {
+                            setCategoryForm((prev) => {
+                                const exists = (prev.unit_type_ids || []).includes(unitId);
+                                return { ...prev, unit_type_ids: exists ? prev.unit_type_ids.filter((id) => id !== unitId) : [...(prev.unit_type_ids || []), unitId] };
+                            });
+                        }}
+                    />
                 </Card>
 
                 {loading ? (
@@ -359,6 +281,7 @@ export default function AdminCategories() {
                                 <CategoryHeader category={category} onEdit={openEditCategory} onDelete={deleteCategory} />
 
                                 <BrandSummary brands={category.brands || []} />
+                                <UnitSummary units={category.unit_types || []} />
 
                                 <AttributeBlock
                                     title={`${category.name} Attributes`}
@@ -374,6 +297,7 @@ export default function AdminCategories() {
                                     <div key={child.id} className="rounded-xl border border-slate-200 p-3 bg-slate-50 space-y-3">
                                         <CategoryHeader category={child} displayName={`${category.name} / ${child.name}`} onEdit={openEditCategory} onDelete={deleteCategory} />
                                         <BrandSummary brands={child.brands || []} />
+                                        <UnitSummary units={child.unit_types || []} />
                                         <AttributeBlock
                                             title={`${child.name} Attributes`}
                                             attributes={child.attributes || []}
@@ -447,6 +371,17 @@ export default function AdminCategories() {
                                     });
                                 }}
                             />
+                            <UnitPicker
+                                label="Allowed sellable units"
+                                units={unitTypes}
+                                selectedIds={editingCategory.unit_type_ids || []}
+                                onToggle={(unitId) => {
+                                    setEditingCategory((prev) => {
+                                        const exists = (prev.unit_type_ids || []).includes(unitId);
+                                        return { ...prev, unit_type_ids: exists ? prev.unit_type_ids.filter((id) => id !== unitId) : [...(prev.unit_type_ids || []), unitId] };
+                                    });
+                                }}
+                            />
                         </div>
                     )}
                     <DialogFooter>
@@ -478,8 +413,11 @@ export default function AdminCategories() {
                                 <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Input Type</p>
                                 <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={editingAttribute.input_type} onChange={(e) => setEditingAttribute((p) => ({ ...p, input_type: e.target.value }))}>
                                     <option value="text">text</option>
+                                    <option value="textarea">textarea</option>
                                     <option value="number">number</option>
                                     <option value="select">select</option>
+                                    <option value="multiselect">multiselect</option>
+                                    <option value="date">date</option>
                                     <option value="boolean">boolean</option>
                                 </select>
                             </div>
@@ -489,7 +427,7 @@ export default function AdminCategories() {
                                     value={editingAttribute.options_csv}
                                     onChange={(e) => setEditingAttribute((p) => ({ ...p, options_csv: e.target.value }))}
                                     placeholder="e.g SSD, HDD, NVMe"
-                                    disabled={editingAttribute.input_type !== 'select'}
+                                    disabled={!['select', 'multiselect'].includes(editingAttribute.input_type)}
                                 />
                             </div>
                             <div className="space-y-1">
@@ -606,6 +544,59 @@ function BrandSummary({ brands }) {
     );
 }
 
+function UnitPicker({ label, units, selectedIds, onToggle }) {
+    const grouped = units.reduce((acc, unit) => {
+        const key = unit.unit_category || 'other';
+        acc[key] = acc[key] || [];
+        acc[key].push(unit);
+        return acc;
+    }, {});
+
+    return (
+        <div className="space-y-2">
+            <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">{label}</p>
+            {units.length === 0 ? (
+                <p className="text-xs text-slate-500">Create unit types first.</p>
+            ) : (
+                <div className="space-y-2">
+                    {Object.entries(grouped).map(([category, items]) => (
+                        <div key={category} className="space-y-1">
+                            <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">{category}</p>
+                            <div className="grid md:grid-cols-4 gap-2">
+                                {items.map((unit) => (
+                                    <label key={unit.id} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm flex items-center gap-2">
+                                        <input type="checkbox" checked={selectedIds.includes(unit.id)} onChange={() => onToggle(unit.id)} />
+                                        <span className="truncate">{unit.name} ({unit.code})</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function UnitSummary({ units }) {
+    return (
+        <div className="space-y-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Allowed Units</p>
+            {units.length === 0 ? (
+                <p className="text-xs text-slate-500">No unit restriction yet.</p>
+            ) : (
+                <div className="flex flex-wrap gap-2">
+                    {units.map((unit) => (
+                        <span key={unit.id} className="rounded-full border border-slate-300 px-2 py-1 text-xs">
+                            {unit.name} ({unit.code}){unit.pivot?.is_default ? ' · default' : ''}
+                        </span>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function AttributeBlock({ title, attributes, form, setForm, onCreate, onDelete, onEdit }) {
     return (
         <div className="space-y-3">
@@ -614,9 +605,12 @@ function AttributeBlock({ title, attributes, form, setForm, onCreate, onDelete, 
                 <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} placeholder="key e.g ram" />
                 <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Label e.g RAM" />
                 <select className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm" value={form.input_type} onChange={(e) => setForm({ ...form, input_type: e.target.value })}>
-                    <option value="text">text</option>
+                                    <option value="text">text</option>
+                    <option value="textarea">textarea</option>
                     <option value="number">number</option>
                     <option value="select">select</option>
+                    <option value="multiselect">multiselect</option>
+                    <option value="date">date</option>
                     <option value="boolean">boolean</option>
                 </select>
                 <Input value={form.options_csv} onChange={(e) => setForm({ ...form, options_csv: e.target.value })} placeholder="Options CSV" />

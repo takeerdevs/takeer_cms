@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PostResource;
+use App\Http\Resources\ProductResource;
 use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\Merchant;
 use App\Models\Post;
 use App\Models\Product;
 use App\Models\SubscriptionPlan;
+use App\Services\DiscoveryRankingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -18,15 +20,29 @@ use Illuminate\Support\Facades\Schema;
 
 class UnifiedSearchController extends Controller
 {
-    public function posts(Request $request): JsonResponse
+    public function posts(Request $request, DiscoveryRankingService $ranking): JsonResponse
     {
         $validated = $request->validate([
             'q' => 'required|string|min:2|max:220',
+            'type' => 'nullable|string|in:all,physical,digital,service,creator',
+            'country_id' => 'nullable|integer|exists:countries,id',
+            'location' => 'nullable|string|max:120',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            'radius_km' => 'nullable|numeric|min:1|max:300',
             'per_page' => 'nullable|integer|min:1|max:20',
             'page' => 'nullable|integer|min:1',
         ]);
 
         $q = trim((string) $validated['q']);
+        $filters = [
+            'type' => (string) ($validated['type'] ?? 'all'),
+            'country_id' => $validated['country_id'] ?? null,
+            'location' => trim((string) ($validated['location'] ?? '')),
+            'lat' => $validated['lat'] ?? null,
+            'lng' => $validated['lng'] ?? null,
+            'radius_km' => $validated['radius_km'] ?? null,
+        ];
         $perPage = (int) ($validated['per_page'] ?? 10);
         $page = (int) ($validated['page'] ?? 1);
         $tokens = $this->tokenize($q);
@@ -34,30 +50,37 @@ class UnifiedSearchController extends Controller
         $postScores = [];
         $this->addWeightedIds($postScores, $this->directPostMatches($tokens), 120);
 
-        $productIds = $this->matchingProductIds($tokens);
+        $productIds = $this->matchingProductIds($tokens, $filters);
         if ($productIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, $this->postIdsForProducts($productIds), 200);
         }
 
-        $contentIds = $this->matchingContentItemIds($tokens);
+        $contentIds = in_array($filters['type'], ['all', 'digital', 'creator'], true)
+            ? $this->matchingContentItemIds($tokens)
+            : collect();
         if ($contentIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, Post::query()->whereIn('content_item_id', $contentIds)->pluck('id'), 170);
         }
 
-        $bundleIds = $this->matchingBundleIds($tokens);
+        $bundleIds = in_array($filters['type'], ['all', 'digital', 'creator'], true)
+            ? $this->matchingBundleIds($tokens)
+            : collect();
         if ($bundleIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, $this->postIdsForPromotables($bundleIds, Bundle::class), 150);
         }
 
-        $planIds = $this->matchingSubscriptionPlanIds($tokens);
+        $planIds = in_array($filters['type'], ['all', 'creator'], true)
+            ? $this->matchingSubscriptionPlanIds($tokens)
+            : collect();
         if ($planIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, $this->postIdsForPromotables($planIds, SubscriptionPlan::class), 140);
         }
 
-        $postResults = $this->hydratePostResults($postScores, $request);
-        $merchantResults = $this->hydrateMerchantResults($tokens, $q);
+        $postResults = $this->hydratePostResults($postScores, $request, $ranking);
+        $productResults = $this->hydrateProductResults($productIds, $tokens, $q, $request, $ranking, $filters);
+        $merchantResults = $this->hydrateMerchantResults($tokens, $q, $filters);
 
-        $allResults = collect()->concat($postResults)->concat($merchantResults)
+        $allResults = collect()->concat($productResults)->concat($postResults)->concat($merchantResults)
             ->sortByDesc('sort_score')
             ->values();
 
@@ -71,6 +94,7 @@ class UnifiedSearchController extends Controller
             'data' => $pageResults,
             'meta' => [
                 'query' => $q,
+                'filters' => $filters,
                 'total' => $total,
                 'per_page' => $perPage,
                 'current_page' => $safePage,
@@ -79,7 +103,7 @@ class UnifiedSearchController extends Controller
         ]);
     }
 
-    private function hydratePostResults(array $scores, Request $request): Collection
+    private function hydratePostResults(array $scores, Request $request, DiscoveryRankingService $ranking): Collection
     {
         if (empty($scores)) {
             return collect();
@@ -90,7 +114,7 @@ class UnifiedSearchController extends Controller
 
         $posts = Post::query()
             ->with([
-                'merchant:id,display_name,username,avatar_url',
+                'merchant:id,display_name,username,avatar_url,is_verified',
                 'merchant.storefrontSetting',
                 'linkedContentItem',
                 'linkedProduct.attributes',
@@ -104,6 +128,7 @@ class UnifiedSearchController extends Controller
                 'productTags.product.images',
                 'productTags.product.variants',
                 'reactions',
+                'promotableProducts',
                 'promotableBundles',
                 'promotableSubscriptions',
             ])
@@ -114,20 +139,79 @@ class UnifiedSearchController extends Controller
 
         $resolved = PostResource::collection($posts)->resolve($request);
 
-        return collect($resolved)->map(function (array $payload) use ($scores) {
+        return collect($resolved)->map(function (array $payload) use ($scores, $posts, $ranking) {
             $score = (int) ($scores[(int) ($payload['id'] ?? 0)] ?? 0);
+            $post = $posts->firstWhere('id', (int) ($payload['id'] ?? 0));
 
             return [
                 'type' => 'post',
                 'id' => (int) ($payload['id'] ?? 0),
                 'score' => $score,
-                'sort_score' => $score + 30,
+                'sort_score' => $score + 30 + ($post ? $ranking->postSearchBoost($post) : 0),
                 'payload' => $payload,
             ];
         });
     }
 
-    private function hydrateMerchantResults(array $tokens, string $rawQuery): Collection
+    private function hydrateProductResults(Collection $ids, array $tokens, string $rawQuery, Request $request, DiscoveryRankingService $ranking, array $filters): Collection
+    {
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        $queryLower = mb_strtolower(trim($rawQuery));
+
+        $products = Product::query()
+            ->whereIn('id', $ids)
+            ->whereHas('merchant', function ($merchant): void {
+                $merchant->where('is_active', true)
+                    ->where('is_suspended', false);
+            })
+            ->with([
+                'merchant:id,display_name,username,avatar_url,is_verified,kyc_status,successful_sales,unsuccessful_sales,user_id,country_id',
+                'merchant.locations:id,merchant_id,name,address,city,region,latitude,longitude,is_primary,allow_self_pickup',
+                'attributes',
+                'images',
+                'variants',
+                'categoryAttributeValues.categoryAttribute',
+            ])
+            ->limit(40)
+            ->get();
+
+        $resolved = ProductResource::collection($products)->resolve($request);
+
+        return collect($resolved)->map(function (array $payload) use ($products, $queryLower, $tokens, $ranking, $filters) {
+            $product = $products->firstWhere('id', (int) ($payload['id'] ?? 0));
+            if (! $product) {
+                return null;
+            }
+
+            $title = mb_strtolower((string) $product->title);
+            $score = 95 + $ranking->productSearchBoost($product) + $ranking->locationBoost($product, $filters);
+
+            if ($queryLower !== '' && $title === $queryLower) {
+                $score += 180;
+            }
+
+            foreach ($tokens as $token) {
+                if (str_contains($title, $token)) {
+                    $score += 55;
+                }
+            }
+
+            return [
+                'type' => 'product',
+                'id' => (int) $product->id,
+                'score' => $score,
+                'sort_score' => $score + 20,
+                'payload' => array_merge($payload, [
+                    'discovery_location' => $ranking->discoveryLocation($product, $filters),
+                ]),
+            ];
+        })->filter()->values();
+    }
+
+    private function hydrateMerchantResults(array $tokens, string $rawQuery, array $filters): Collection
     {
         if (empty($tokens)) {
             return collect();
@@ -140,6 +224,7 @@ class UnifiedSearchController extends Controller
             ->where('is_active', true)
             ->where('is_suspended', false)
             ->where('is_verified', true)
+            ->when($filters['country_id'] ?? null, fn ($query, $countryId) => $query->where('country_id', $countryId))
             ->where(function ($query) use ($tokens, $operator) {
                 foreach ($tokens as $token) {
                     $like = "%{$token}%";
@@ -154,6 +239,15 @@ class UnifiedSearchController extends Controller
                                 ->orWhere('region', $operator, $like);
                         });
                 }
+            })
+            ->when($filters['location'] ?? '', function ($query, $location) use ($operator) {
+                $like = '%' . trim((string) $location) . '%';
+                $query->whereHas('locations', function ($loc) use ($like, $operator) {
+                    $loc->where('name', $operator, $like)
+                        ->orWhere('address', $operator, $like)
+                        ->orWhere('city', $operator, $like)
+                        ->orWhere('region', $operator, $like);
+                });
             })
             ->with(['locations:id,merchant_id,name,address,city,region,is_primary'])
             ->withCount(['posts', 'products', 'locations'])
@@ -240,10 +334,35 @@ class UnifiedSearchController extends Controller
             ->pluck('id');
     }
 
-    private function matchingProductIds(array $tokens): Collection
+    private function matchingProductIds(array $tokens, array $filters): Collection
     {
         $operator = $this->textMatchOperator();
         return Product::query()
+            ->whereHas('merchant', function ($merchant) use ($filters): void {
+                $merchant->where('is_active', true)
+                    ->where('is_suspended', false)
+                    ->when($filters['country_id'] ?? null, fn ($query, $countryId) => $query->where('country_id', $countryId));
+            })
+            ->when(($filters['type'] ?? 'all') !== 'all', function ($query) use ($filters): void {
+                $type = (string) $filters['type'];
+                if ($type === 'creator') {
+                    $query->where('type', 'digital');
+                    return;
+                }
+                $query->where('type', $type);
+            })
+            ->when(trim((string) ($filters['location'] ?? '')) !== '', function ($query) use ($filters, $operator): void {
+                $like = '%' . trim((string) $filters['location']) . '%';
+                $query->where(function ($locationQuery) use ($like, $operator): void {
+                    $locationQuery->where('type', '!=', 'physical')
+                        ->orWhereHas('merchant.locations', function ($loc) use ($like, $operator): void {
+                            $loc->where('name', $operator, $like)
+                                ->orWhere('address', $operator, $like)
+                                ->orWhere('city', $operator, $like)
+                                ->orWhere('region', $operator, $like);
+                        });
+                });
+            })
             ->where(function ($query) use ($tokens, $operator) {
                 foreach ($tokens as $token) {
                     $like = "%{$token}%";
@@ -266,6 +385,7 @@ class UnifiedSearchController extends Controller
                         ->orWhereHas('categoryAttributeValues', function ($value) use ($like, $operator) {
                             $value->where('value_text', $operator, $like)
                                 ->orWhere('value_number', $operator, $like)
+                                ->orWhere('value_json', $operator, $like)
                                 ->orWhereHas('categoryAttribute', function ($ca) use ($like, $operator) {
                                     $ca->where('key', $operator, $like)
                                         ->orWhere('label', $operator, $like);

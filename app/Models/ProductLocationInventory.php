@@ -12,7 +12,19 @@ class ProductLocationInventory extends Model
         'product_id',
         'product_variant_id',
         'quantity',
+        'quantity_decimal',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'merchant_location_id' => 'integer',
+            'product_id' => 'integer',
+            'product_variant_id' => 'integer',
+            'quantity' => 'integer',
+            'quantity_decimal' => 'decimal:3',
+        ];
+    }
 
     /**
      * Get the merchant location that owns the inventory.

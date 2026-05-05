@@ -1,10 +1,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { MessageCircle, MoreHorizontal, ShoppingBag, Clock, BadgeCheck, Crown, Unlock, Lock, X, Boxes, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { MessageCircle, MoreHorizontal, ShoppingBag, Clock, BadgeCheck, Crown, Unlock, Lock, X, Boxes, Loader2, ShieldCheck, AlertTriangle, Trash2, Eye, MessageSquare, SmilePlus } from 'lucide-react';
 import { Link, router, usePage } from '@inertiajs/react';
 import PostManagementMenu from './PostManagementMenu';
 import MediaGrid from './MediaGrid';
 import LinkifiedText from './LinkifiedText';
+import LinkPreviewCard from './LinkPreviewCard';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
+import { productPriceLabel, productPriceRangeLabel } from '@/lib/productUnits';
+import { trackPlatformEvent } from '@/lib/attribution';
 import { toast } from 'sonner';
 import axios from 'axios';
 
@@ -17,7 +20,7 @@ const timeAgo = (ts) => {
     return `${Math.floor(s / 86400)}d`;
 };
 
-export default function PostCard({ post, readOnly = false, detailHref = null }) {
+export default function PostCard({ post, readOnly = false, detailHref = null, adminMode = false }) {
     const { auth } = usePage().props;
     const [reactionSummary, setReactionSummary] = useState(post.reaction_summary || []);
     const [myReaction, setMyReaction] = useState(post.my_reaction || null);
@@ -64,19 +67,44 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
         };
     }, [localPost.id, localPost.public_id]);
 
+    useEffect(() => {
+        if (!window.Echo || !localPost?.id) return;
+
+        const channel = window.Echo.channel('posts');
+        const listener = (event) => {
+            if (String(event.post_id) !== String(localPost.id)) return;
+
+            setLocalPost((current) => ({
+                ...current,
+                comment_count: event.comment_count ?? current.comment_count,
+            }));
+
+            if (Array.isArray(event.reaction_summary)) {
+                setReactionSummary(event.reaction_summary);
+            }
+        };
+
+        channel.listen('.post.engagement.updated', listener);
+
+        return () => {
+            channel.stopListening('.post.engagement.updated', listener);
+        };
+    }, [localPost?.id]);
+
     // Use localPost (updated after unlock) for rendering
     const postData = localPost;
 
     const postRouteKey = postData.public_id ?? postData.id;
-    const mediaItems = postData.images?.length
-        ? postData.images
-        : postData.media?.length
-            ? postData.media.map((item) => item?.url).filter(Boolean)
-            : postData.media_url ? [postData.media_url] : [];
+    const mediaItems = postData.media?.length
+        ? postData.media.filter(Boolean)
+        : postData.images?.length
+            ? postData.images
+            : postData.media_url ? [{ url: postData.media_url, media_type: postData.media_type || 'image' }] : [];
     const isText = postData.media_type === 'text' && mediaItems.length === 0;
 
     const hasAccess = postData.has_access ?? true;
     const isRestricted = postData.is_restricted ?? false;
+    const isDeleted = postData.is_deleted ?? Boolean(postData.deleted_at);
     const isLocked = isRestricted && !hasAccess;
     const commentsEnabled = postData.comments_enabled ?? true;
     const reactionsEnabled = postData.reactions_enabled ?? true;
@@ -134,6 +162,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     const hasPromotableOption = isRestricted && Boolean(firstPromotable?.id && promotableType);
     const singleUnlockPrice = Number(postData.restricted_price || 0);
     const shouldShowPremiumCtas = isLocked && (hasSingleUnlockOption || hasPromotableOption);
+    const linkPreview = postData.link_preview || null;
 
     const attachedProduct = postData.product || postData.product_tags?.[0]?.product || null;
     const shouldShowOpenCta = !isLocked && isLongForm && !attachedProduct && !isBundlePromotable && !isSubscriptionPromotable;
@@ -148,8 +177,8 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     const minVariantPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : 0;
     const maxVariantPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : 0;
     const variantPriceLabel = minVariantPrice === maxVariantPrice
-        ? `TZS ${minVariantPrice.toLocaleString()}`
-        : `TZS ${minVariantPrice.toLocaleString()} - ${maxVariantPrice.toLocaleString()}`;
+        ? productPriceLabel(attachedProduct, minVariantPrice)
+        : productPriceRangeLabel(attachedProduct, minVariantPrice, maxVariantPrice);
     const attachedProductIsService = attachedProduct?.type === 'service';
     const attachedServiceTrust = attachedProductIsService ? (attachedProduct?.service_trust || {}) : {};
     const attachedServiceTrustReady = Boolean(attachedServiceTrust.trust_ready);
@@ -182,7 +211,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     };
     const attachedProductPrice = Number(attachedProduct?.discounted_price > 0 ? attachedProduct.discounted_price : attachedProduct?.price || 0);
     const attachedProductPriceLabel = (() => {
-        if (!attachedProductIsService) return `TZS ${attachedProductPrice.toLocaleString()}`;
+        if (!attachedProductIsService) return productPriceLabel(attachedProduct, attachedProductPrice);
         if (attachedProductPriceDisplay === 'hidden' || attachedProductServiceMode === 'showcase_only') return 'Contact provider';
         if (attachedProductPriceDisplay === 'quote_only' || attachedProductServiceMode === 'request_quote') return 'Quote after request';
         if (attachedProductPriceDisplay === 'starts_from') return `From TZS ${attachedProductPrice.toLocaleString()}`;
@@ -236,13 +265,36 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     const feedSummaryText = String(((isBundlePromotable || isSubscriptionPromotable) ? (promotableItem?.description || postData.excerpt) : (postData.excerpt || postData.caption)) || '')
         .replace(/\s+/g, ' ')
         .trim();
+    const deletedAtLabel = postData.deleted_at
+        ? new Date(postData.deleted_at).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        })
+        : null;
 
     const goToPostDetails = () => {
+        trackPostCardClick('post');
         if (detailHref) {
             router.visit(detailHref);
             return;
         }
         router.visit(route('post.show', postRouteKey));
+    };
+
+    const trackPostCardClick = (targetType = 'post', target = null) => {
+        trackPlatformEvent(targetType === 'post' ? 'post_click' : 'product_click', {
+            entity_type: targetType,
+            entity_id: target?.id || postData.id,
+            merchant_id: target?.merchant_id || postData.merchant?.id || postData.merchant_profile?.id || null,
+            metadata: {
+                source: 'feed_card',
+                post_id: postData.id,
+                post_public_id: postData.public_id,
+                target_type: targetType,
+            },
+        });
     };
 
     const openCheckout = ({ id, title, price, checkoutType }) => {
@@ -295,14 +347,14 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     };
 
     const reactionPickerEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '👋', '🔥', '👏', '🎉', '💯', '🤝', '👌', '😍', '🤔', '🥹', '💔', '😡', '😴', '🌟', '✅', '💪', '🫶', '🙌'];
-    const defaultPreviewReactions = ['👍', '❤️', '🔥'];
-    const sortedReactions = useMemo(() => (
-        [...reactionSummary].sort((a, b) => (b.count || 0) - (a.count || 0))
-    ), [reactionSummary]);
-    const topReactionChips = useMemo(() => {
-        if (sortedReactions.length > 0) return sortedReactions.slice(0, 3);
-        return defaultPreviewReactions.map((emoji) => ({ emoji, count: 0 }));
-    }, [sortedReactions]);
+    const quickReactionEmojis = ['👍', '❤️', '🔥'];
+    const quickReactionChips = useMemo(() => {
+        const reactionCounts = Object.fromEntries((reactionSummary || []).map((entry) => [entry.emoji, Number(entry.count || 0)]));
+        return quickReactionEmojis.map((emoji) => ({
+            emoji,
+            count: reactionCounts[emoji] || 0,
+        }));
+    }, [reactionSummary]);
 
     const handleReact = async (emoji) => {
         if (readOnly || !canUseReactions) return;
@@ -322,7 +374,44 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
     };
 
     return (
-        <article className="bg-card border-b border-border overflow-hidden">
+        <article className={`relative bg-card border-b overflow-hidden ${adminMode && isDeleted ? 'border-rose-300 bg-rose-50/35' : 'border-border'}`}>
+            {adminMode && (
+                <div className={`px-4 py-2 border-b ${isDeleted ? 'border-rose-200 bg-rose-100/80 text-rose-900' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                            {isDeleted ? (
+                                <Trash2 className="h-4 w-4 shrink-0" />
+                            ) : (
+                                <Eye className="h-4 w-4 shrink-0" />
+                            )}
+                            <span className="text-xs font-black uppercase tracking-widest">
+                                {isDeleted ? 'Deleted post' : 'Live post'}
+                            </span>
+                            {deletedAtLabel && (
+                                <span className="text-xs font-semibold normal-case tracking-normal text-rose-800/80 truncate">
+                                    Deleted {deletedAtLabel}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] font-bold shrink-0">
+                            {isRestricted && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-800">
+                                    <Lock className="h-3 w-3" />
+                                    Restricted
+                                </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-slate-700">
+                                <MessageSquare className="h-3 w-3" />
+                                {postData.comment_count ?? 0}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-slate-700">
+                                <SmilePlus className="h-3 w-3" />
+                                {(reactionSummary || []).reduce((sum, entry) => sum + Number(entry.count || 0), 0)}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="flex items-center gap-3 px-4 pt-4 pb-3">
                 <Link
                     href={`/m/${postData.merchant_profile?.username || postData.merchant?.username || postData.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
@@ -357,6 +446,12 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                     <Clock className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">{timeAgo(post.created_at)}</span>
                 </div>
+                {adminMode && isDeleted && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-rose-700">
+                        <Trash2 className="h-3 w-3" />
+                        Deleted
+                    </span>
+                )}
                 {!readOnly && (
                     <PostManagementMenu
                         post={post}
@@ -387,6 +482,10 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                             linkClassName="text-brand-600 hover:text-brand-700 underline underline-offset-2 break-all"
                         />
                     </div>
+                )}
+
+                {linkPreview && !isLocked && (
+                    <LinkPreviewCard preview={linkPreview} linkMode="none" />
                 )}
 
                 {shouldShowOpenCta && (
@@ -473,6 +572,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                 <div className="my-1 rounded-2xl border border-brand-200/70 bg-gradient-to-br from-white to-brand-50/40 dark:border-brand-900/50 dark:from-slate-900 dark:to-brand-950/40 overflow-hidden">
                     <Link
                         href={route('product.show', productRouteKey)}
+                        onClick={() => trackPostCardClick('product', attachedProduct)}
                         className="flex items-center gap-3 px-3.5 pt-3 pb-2 flex-1 min-w-0"
                     >
                         {attachedProduct.image_url && (
@@ -539,6 +639,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                                 e.preventDefault();
                                 e.stopPropagation();
                                 if (!productRouteKey) return;
+                                trackPostCardClick('product', attachedProduct);
                                 
                                 if (attachedProduct.type === 'digital') {
                                     if (!attachedProduct.has_access) {
@@ -742,17 +843,17 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                                     className="flex items-center gap-1.5 py-2 px-3 rounded-xl hover:bg-accent transition-colors text-muted-foreground w-fit"
                                 >
                                     <MessageCircle className="h-5 w-5" strokeWidth={1.5} />
-                                    <span className="text-sm font-semibold">{post.comment_count ?? 0}</span>
+                                    <span className="text-sm font-semibold">{postData.comment_count ?? 0}</span>
                                 </button>
                             ) : (
                                 <Link
                                     href={route('post.show', postRouteKey)}
                                     prefetch
-                                    state={{ post }}
+                                    state={{ post: postData }}
                                     className="flex items-center gap-1.5 py-2 px-3 rounded-xl hover:bg-accent transition-colors text-muted-foreground w-fit"
                                 >
                                     <MessageCircle className="h-5 w-5" strokeWidth={1.5} />
-                                    <span className="text-sm font-semibold">{post.comment_count ?? 0}</span>
+                                    <span className="text-sm font-semibold">{postData.comment_count ?? 0}</span>
                                 </Link>
                             )
                         )}
@@ -760,7 +861,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
 
                     {canUseReactions && !readOnly && (
                         <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                            {topReactionChips.map((entry) => (
+                            {quickReactionChips.map((entry) => (
                                 <button
                                     key={entry.emoji}
                                     type="button"
@@ -786,7 +887,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
 
                     {canUseReactions && readOnly && (
                         <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                            {topReactionChips.map((entry) => (
+                            {quickReactionChips.map((entry) => (
                                 <div
                                     key={entry.emoji}
                                     className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-sm border bg-background border-border text-muted-foreground"
@@ -809,7 +910,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null }) 
                     {shouldShowLockedReactionPreview && (
                         <div className="relative">
                             <div className="flex items-center gap-1.5 opacity-45">
-                                {defaultPreviewReactions.map((emoji) => (
+                                {quickReactionEmojis.map((emoji) => (
                                     <div
                                         key={`locked-preview-${emoji}`}
                                         className="inline-flex items-center justify-center rounded-full h-8 min-w-8 px-2 border border-border bg-muted/70 text-sm"

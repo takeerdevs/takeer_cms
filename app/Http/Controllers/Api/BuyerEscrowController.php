@@ -30,7 +30,12 @@ class BuyerEscrowController extends Controller
         }
 
         DB::transaction(function () use ($order, $serviceRequest) {
-            $order->update(['payment_status' => 'resolved_merchant_paid']);
+            if ($order->product?->isDigital() && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery') {
+                $order->forceFill([
+                    'custom_delivery_status' => 'accepted',
+                    'custom_delivery_accepted_at' => now(),
+                ])->save();
+            }
             if ($order->delivery) {
                 $order->delivery->update(['delivery_status' => 'delivered', 'delivered_at' => now()]);
             }
@@ -42,25 +47,51 @@ class BuyerEscrowController extends Controller
                     'status' => 'completed',
                 ]);
             }
-            
-            // Logic for wallet credits could be more complex, but using the pattern from DeliveryController
-            $merchantUser = $order->merchant->user;
-            $wallet = $merchantUser->wallet()->firstOrCreate(
-                ['user_id' => $merchantUser->id],
-                ['balance' => 0, 'frozen_balance' => 0]
-            );
-            $netAmount = \App\Models\Transaction::query()
-                ->where('order_id', $order->id)
-                ->where('type', 'order_revenue')
-                ->latest()
-                ->value('net_amount')
-                ?? app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['net_amount'];
-            
-            $wallet->decrement('frozen_balance', $order->total_paid);
-            $wallet->increment('balance', $netAmount);
+
+            app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
         });
 
         return response()->json(['message' => $serviceRequest ? 'Asante! Umethibitisha huduma.' : 'Asante! Malipo yametumwa kwa muuzaji.']);
+    }
+
+    public function requestCustomRevision(Request $request, Order $order): JsonResponse
+    {
+        if ($order->buyer_id !== $request->user()->id) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $order->loadMissing('product');
+        if (! $order->product?->isDigital() || ($order->product?->digital_delivery_type ?? null) !== 'custom_delivery') {
+            return response()->json(['message' => 'This order is not a custom digital delivery.'], 422);
+        }
+
+        if ($order->payment_status !== 'escrow_locked') {
+            return response()->json(['message' => 'Revision requests are only available while payment is held.'], 400);
+        }
+
+        if (! $order->custom_delivery_delivered_at) {
+            return response()->json(['message' => 'The merchant has not delivered a file yet.'], 400);
+        }
+
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'min:10', 'max:3000'],
+        ]);
+
+        $order->update([
+            'custom_delivery_status' => 'revision_requested',
+            'custom_delivery_revision_message' => $validated['message'],
+            'custom_delivery_revision_requested_at' => now(),
+            'custom_delivery_accepted_at' => null,
+        ]);
+
+        return response()->json([
+            'message' => 'Revision request sent to the merchant.',
+            'custom_delivery' => [
+                'status' => $order->custom_delivery_status,
+                'revision_message' => $order->custom_delivery_revision_message,
+                'revision_requested_at' => $order->custom_delivery_revision_requested_at?->toISOString(),
+            ],
+        ]);
     }
 
     /**
@@ -78,6 +109,14 @@ class BuyerEscrowController extends Controller
 
         if (!in_array($order->payment_status, ['escrow_locked', 'shipped'])) {
             return response()->json(['message' => 'Huwezi kufungua file ya mgogoro kwa sasa.'], 400);
+        }
+
+        $refundPolicy = $order->refundPolicyContext();
+        if (($refundPolicy['status'] ?? null) !== 'eligible') {
+            return response()->json([
+                'message' => $refundPolicy['reason'] ?? 'This order is not eligible for a refund claim.',
+                'refund_policy' => $refundPolicy,
+            ], 422);
         }
 
         $validated = $request->validate([
@@ -106,6 +145,9 @@ class BuyerEscrowController extends Controller
                 [
                     'buyer_unboxing_video_url' => $evidenceUrl,
                     'dispute_reason' => $validated['reason'],
+                    'refund_eligibility_status' => $order->refundPolicyContext()['status'] ?? 'eligible',
+                    'refund_eligibility_reason' => $order->refundPolicyContext()['reason'] ?? null,
+                    'refund_policy_snapshot' => $order->refundPolicyContext(),
                     'status' => 'open',
                 ]
             );

@@ -8,6 +8,7 @@ use App\Http\Resources\ProductResource;
 use App\Models\Message;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\SmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -39,6 +40,7 @@ class ChatController extends Controller
 
     public function __construct(
         private readonly \App\Payments\GatewayRegistry $gatewayRegistry,
+        private readonly SmsService $smsService,
     ) {
     }
 
@@ -99,7 +101,9 @@ class ChatController extends Controller
                 $order->total_paid = $this->calculateTotal($order);
                 $order->save();
             } elseif ($actionType === 'quantity') {
-                $order->quantity = $validated['payload']['quantity'] ?? 1;
+                $quantity = max(0.001, (float) ($validated['payload']['quantity'] ?? 1));
+                $order->requested_quantity = $quantity;
+                $order->quantity = (int) ceil($quantity);
                 $order->total_paid = $this->calculateTotal($order);
                 $order->save();
             } elseif ($actionType === 'shipping_cost') {
@@ -183,7 +187,7 @@ class ChatController extends Controller
                     $order->save();
                 }
             } elseif ($actionType === 'remove_item') {
-                if ($order->payment_status !== 'paid') {
+                if ($order->canBeCancelledBeforePayment()) {
                     $itemId = $validated['payload']['id'] ?? null;
                     $variantId = $validated['payload']['variant_id'] ?? null;
                     $isMain = (int) $order->product_id === (int) $itemId && (!$variantId || (int) $order->variant_id === (int) $variantId);
@@ -218,17 +222,16 @@ class ChatController extends Controller
                     }
                 }
             } elseif ($actionType === 'update_item_quantity') {
-                if ($order->payment_status !== 'paid') {
+                if ($order->canBeCancelledBeforePayment()) {
                     $itemId = $validated['payload']['id'] ?? null;
                     $variantId = $validated['payload']['variant_id'] ?? null;
-                    $newQty = (int) ($validated['payload']['quantity'] ?? 1);
-                    if ($newQty < 1)
-                        $newQty = 1;
+                    $newQty = max(0.001, (float) ($validated['payload']['quantity'] ?? 1));
 
                     $isMain = (int) $order->product_id === (int) $itemId && (!$variantId || (int) $order->variant_id === (int) $variantId);
 
                     if ($isMain) {
-                        $order->quantity = $newQty;
+                        $order->requested_quantity = $newQty;
+                        $order->quantity = (int) ceil($newQty);
                     } else {
                         $extra = $order->extra_items ?? [];
                         foreach ($extra as &$e) {
@@ -244,8 +247,14 @@ class ChatController extends Controller
                     $order->save();
                 }
             } elseif ($actionType === 'cancel_order') {
-                if ($order->payment_status !== 'paid') {
-                    $order->delete();
+                if ($order->canBeCancelledBeforePayment()) {
+                    $order->releaseInventory();
+                    $order->update([
+                        'payment_status' => 'failed',
+                        'cancelled_at' => now(),
+                        'cancelled_by' => $validated['acting_as'],
+                        'cancellation_reason' => $validated['payload']['reason'] ?? 'Cancelled from order chat.',
+                    ]);
                     return response()->json(['message' => 'Order cancelled', 'order_deleted' => true], 200);
                 }
             }
@@ -255,7 +264,7 @@ class ChatController extends Controller
                     $order = $this->triggerPaymentPush($request, $order, $paymentPhone);
                     // Continue to return the message object so frontend can update optimistic UI
                 } elseif ($actionType === 'update_delivery') {
-                    if ($order->payment_status !== 'paid') {
+                    if ($order->canBeCancelledBeforePayment()) {
                         $payload = $request->input('payload', []);
                         $deliveryType = $payload['delivery_type'] ?? 'shipping';
                         $zoneId = $payload['delivery_zone_id'] ?? null;
@@ -297,7 +306,7 @@ class ChatController extends Controller
 
         return response()->json([
             'message' => $message,
-            'order' => $order->fresh()->load(['product', 'merchant.locations', 'delivery', 'dispute', 'review'])
+            'order' => $order->fresh()->load(['product.unitType', 'merchant.locations', 'delivery', 'dispute', 'review'])
         ], 201);
     }
 
@@ -305,6 +314,10 @@ class ChatController extends Controller
     {
         if ($order->payment_status !== 'pending') {
             throw new \Exception('Malipo yamekamilishwa.');
+        }
+
+        if ($order->requiresPhysicalFulfillment() && $order->inquiry_status !== 'quoted') {
+            throw new \Exception('Merchant must confirm stock and send the agreed quote before payment.');
         }
 
         // 1. Precise recalculation to avoid discrepancies
@@ -329,7 +342,20 @@ class ChatController extends Controller
             $isPhysical = $order->requiresPhysicalFulfillment();
             $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : 'resolved_merchant_paid';
 
-            $order->update(['payment_status' => $targetStatus]);
+            \Illuminate\Support\Facades\DB::transaction(function () use ($order, $targetStatus, $isPhysical) {
+                if ($isPhysical) {
+                    $this->reservePhysicalOrderInventory($order);
+                    $order->markPhysicalAgreement([
+                        'total_paid' => (float) $order->total_paid,
+                        'notes' => 'Buyer accepted the quoted physical order in chat.',
+                    ]);
+                }
+
+                $order->update([
+                    'payment_status' => $targetStatus,
+                    'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
+                ]);
+            });
 
             if (!$isPhysical) {
                 app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
@@ -360,7 +386,21 @@ class ChatController extends Controller
                 if ($isPhysical) {
                     $wallet->increment('frozen_balance', $order->total_paid);
                 } else {
-                    $wallet->increment('balance', $order->total_paid);
+                    $wallet->increment('balance', $fee['net_amount']);
+                }
+            }
+
+            if ($isPhysical) {
+                $order->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                $publicId = (string) ($order->public_id ?: $order->id);
+                if ($order->buyer?->phone_number) {
+                    $this->smsService->sendPhysicalPaymentHeldToBuyer($order->buyer->phone_number, $publicId, (float) $order->total_paid, $order->buyer_id);
+                    if ($order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
+                        $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
+                    }
+                }
+                if ($merchantUser?->phone_number) {
+                    $this->smsService->sendPhysicalPaymentHeldToMerchant($merchantUser->phone_number, $publicId, (float) $order->total_paid, $merchantUser->id);
                 }
             }
 
@@ -373,6 +413,139 @@ class ChatController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
             throw $e;
+        }
+    }
+
+    private function reservePhysicalOrderInventory(Order $order): void
+    {
+        $order->loadMissing(['product', 'variant']);
+
+        if ($order->inventory_reserved_at) {
+            return;
+        }
+
+        if ($order->purchasable_type === 'bundle') {
+            foreach (($order->bundle_item_selection ?? []) as $lineItem) {
+                if (($lineItem['item_type'] ?? null) !== 'product' || ($lineItem['product_type'] ?? null) !== 'physical') {
+                    continue;
+                }
+
+                $quantity = max(1, (int) ($lineItem['quantity'] ?? 1));
+                $selectedProduct = Product::query()->find((int) ($lineItem['item_id'] ?? 0));
+                if (!$selectedProduct?->isPhysical()) {
+                    continue;
+                }
+
+                $selectedVariantId = (int) ($lineItem['selected_variant_id'] ?? 0);
+                if ($selectedVariantId > 0) {
+                    $variantUpdated = \App\Models\ProductVariant::query()
+                        ->whereKey($selectedVariantId)
+                        ->where('product_id', $selectedProduct->id)
+                        ->where('inventory_count', '>=', $quantity)
+                        ->decrement('inventory_count', $quantity);
+
+                    if ($variantUpdated === 0) {
+                        throw new \RuntimeException("{$selectedProduct->title} variant imeisha au haitoshi kwa quantity uliyochagua.");
+                    }
+                }
+
+                $updated = Product::query()
+                    ->whereKey($selectedProduct->id)
+                    ->where('inventory_count', '>=', $quantity)
+                    ->decrement('inventory_count', $quantity);
+
+                if ($updated === 0) {
+                    throw new \RuntimeException("{$selectedProduct->title} imeisha au haitoshi kwa bundle hii.");
+                }
+
+                $this->decrementLocationInventory($selectedProduct->id, $selectedVariantId > 0 ? $selectedVariantId : null, $quantity, $selectedProduct->merchant_id);
+            }
+
+            $order->forceFill(['inventory_reserved_at' => now()])->saveQuietly();
+            return;
+        }
+
+        $product = $order->product;
+        if (!$product?->isPhysical()) {
+            return;
+        }
+
+        $requestedQuantity = max(0.001, (float) ($order->requested_quantity ?: $order->quantity ?: 1));
+        $quantity = (int) ceil($requestedQuantity);
+        if ($order->variant) {
+            $variantUpdated = \App\Models\ProductVariant::query()
+                ->whereKey($order->variant->id)
+                ->where('product_id', $product->id)
+                ->where('inventory_count', '>=', $quantity)
+                ->decrement('inventory_count', $quantity);
+
+            \App\Models\ProductVariant::query()
+                ->whereKey($order->variant->id)
+                ->where('inventory_quantity', '>=', $requestedQuantity)
+                ->decrement('inventory_quantity', $requestedQuantity);
+
+            if ($variantUpdated === 0) {
+                throw new \RuntimeException('Variant uliyochagua imeisha au haitoshi.');
+            }
+        }
+
+        $updated = Product::query()
+            ->whereKey($product->id)
+            ->where('inventory_count', '>=', $quantity)
+            ->decrement('inventory_count', $quantity);
+
+        Product::query()
+            ->whereKey($product->id)
+            ->where('inventory_quantity', '>=', $requestedQuantity)
+            ->decrement('inventory_quantity', $requestedQuantity);
+
+        if ($updated === 0) {
+            throw new \RuntimeException('Bidhaa hii imeisha.');
+        }
+
+        $this->decrementLocationInventory($product->id, $order->variant_id, $requestedQuantity, $product->merchant_id);
+        $order->forceFill(['inventory_reserved_at' => now()])->saveQuietly();
+    }
+
+    private function decrementLocationInventory(int $productId, ?int $variantId, float $quantity, int $merchantId): void
+    {
+        $integerQuantity = (int) ceil($quantity);
+        $inventory = \App\Models\ProductLocationInventory::query()
+            ->when($variantId, fn ($query) => $query->whereNull('product_id'), fn ($query) => $query->where('product_id', $productId))
+            ->where('product_variant_id', $variantId)
+            ->where('quantity', '>=', $integerQuantity)
+            ->orderByDesc('quantity')
+            ->first();
+
+        if ($inventory) {
+            if ($inventory->quantity_decimal !== null) {
+                $newQuantity = max(0, (float) $inventory->quantity_decimal - $quantity);
+                $inventory->update([
+                    'quantity' => (int) ceil($newQuantity),
+                    'quantity_decimal' => $newQuantity,
+                ]);
+            } else {
+                $inventory->decrement('quantity', $integerQuantity);
+            }
+            return;
+        }
+
+        $primaryLocation = \App\Models\MerchantLocation::where('merchant_id', $merchantId)
+            ->where('is_primary', true)
+            ->first() ?? \App\Models\MerchantLocation::where('merchant_id', $merchantId)->first();
+
+        if ($primaryLocation) {
+            \App\Models\ProductLocationInventory::updateOrCreate(
+                [
+                    'merchant_location_id' => $primaryLocation->id,
+                    'product_id' => $variantId ? null : $productId,
+                    'product_variant_id' => $variantId,
+                ],
+                [
+                    'quantity' => \Illuminate\Support\Facades\DB::raw("GREATEST(0, quantity - {$integerQuantity})"),
+                    'quantity_decimal' => \Illuminate\Support\Facades\DB::raw("GREATEST(0, COALESCE(quantity_decimal, quantity) - {$quantity})"),
+                ]
+            );
         }
     }
 
@@ -408,7 +581,9 @@ class ChatController extends Controller
 
     private function calculateTotal(Order $order): float
     {
-        $baseTotal = ($order->unit_price * $order->quantity);
+        $requestedQuantity = max(0.001, (float) ($order->requested_quantity ?: $order->quantity ?: 1));
+        $sellableQuantity = max(0.001, (float) data_get($order->unit_snapshot, 'sellable_quantity', 1));
+        $baseTotal = ((float) $order->unit_price) * ($requestedQuantity / $sellableQuantity);
         $shipping = $order->shipping_fee ?? 0;
         $discount = $order->discount_amount ?? 0;
 

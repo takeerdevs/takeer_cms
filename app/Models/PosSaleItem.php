@@ -13,6 +13,7 @@ class PosSaleItem extends Model
         'product_variant_id',
         'location_id',
         'quantity',
+        'quantity_decimal',
         'unit_price',
         'price_at_sale',
     ];
@@ -21,6 +22,7 @@ class PosSaleItem extends Model
     {
         return [
             'quantity' => 'integer',
+            'quantity_decimal' => 'decimal:3',
             'unit_price' => 'decimal:2',
             'price_at_sale' => 'decimal:2',
         ];

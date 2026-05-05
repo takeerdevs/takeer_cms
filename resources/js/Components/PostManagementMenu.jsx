@@ -6,9 +6,12 @@ import axios from 'axios';
 import { toast } from 'sonner';
 
 const REPORT_REASONS = [
+    { value: 'misleading', label: 'Misleading or scam' },
+    { value: 'copyright', label: 'Copyright or stolen work' },
+    { value: 'harassment', label: 'Harassment or abuse' },
+    { value: 'spam', label: 'Spam' },
     { value: 'adult_content', label: 'Adult Content' },
     { value: 'political_content', label: 'Political Content' },
-    { value: 'misleading', label: 'Misleading Content' },
     { value: 'other', label: 'Other' },
 ];
 
@@ -88,6 +91,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                 item_type: 'post',
                 item_id: post.id,
                 reason: reportReason,
+                report_context: 'feed_post',
                 notes: reportNotes.trim() || null,
             });
             setShowReportModal(false);

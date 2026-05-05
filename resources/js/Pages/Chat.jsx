@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import ShopLocationsModal from '@/Components/ShopLocationsModal';
 import AddressPickerModal from '@/Components/AddressPickerModal';
+import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
 
 const MediaDisplay = ({ url, className }) => {
     if (!url) return null;
@@ -92,6 +93,27 @@ const findBestShippingZone = (lat, lng, region, zones) => {
         }
     }
     return null;
+};
+
+const statusCopy = (order) => {
+    if (!order) return { label: 'Inaendelea', tone: 'bg-slate-100 text-slate-600 border-slate-200' };
+    if (order.payment_status === 'failed') return { label: 'Imesitishwa', tone: 'bg-red-50 text-red-700 border-red-100' };
+    if (order.payment_status === 'resolved_merchant_paid') return { label: 'Imekamilika', tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
+    if (order.payment_status === 'disputed') return { label: 'Mgogoro', tone: 'bg-red-50 text-red-700 border-red-100' };
+    if (order.payment_status === 'escrow_locked') return { label: 'Escrow', tone: 'bg-indigo-50 text-indigo-700 border-indigo-100' };
+    if (order.payment_status === 'awaiting_merchant_confirmation') return { label: 'Imelipwa', tone: 'bg-sky-50 text-sky-700 border-sky-100' };
+    if (order.is_inquiry && order.inquiry_status === 'quoted') return { label: 'Offer Ready', tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
+    if (order.is_inquiry) return { label: 'Bargaining', tone: 'bg-amber-50 text-amber-700 border-amber-100' };
+    return { label: String(order.payment_status || 'Inaendelea').replaceAll('_', ' '), tone: 'bg-slate-100 text-slate-600 border-slate-200' };
+};
+
+const deliveryCopy = (order) => {
+    const type = order?.delivery?.delivery_type || order?.delivery?.type;
+    if (type === 'self_pickup') return 'Self pickup';
+    if (type === 'local_boda') return 'Local delivery';
+    if (type === 'intercity_bus') return 'Intercity bus';
+    if (type === 'shipping') return 'Shipping';
+    return 'Delivery pending';
 };
 
 export default function Chat({
@@ -807,6 +829,18 @@ export default function Chat({
         return acc;
     }, {});
 
+    const currentStatus = statusCopy(order);
+    const canBuyerPay = actingAs === 'buyer'
+        && order?.payment_status === 'pending'
+        && (order?.delivery?.delivery_type === 'self_pickup' || order?.shipping_fee !== null || order?.delivery?.shipping_zone_id);
+    const canCancelBeforePayment = order?.payment_status === 'pending';
+    const canMerchantQuote = actingAs === 'merchant'
+        && order?.is_inquiry
+        && order?.payment_status === 'pending'
+        && order?.inquiry_status === 'pending'
+        && order?.delivery?.delivery_type !== 'self_pickup';
+    const agreedAt = order?.agreed_at || order?.agreement_snapshot?.agreed_at || order?.agreement_snapshot?.offered_at;
+
     return (
         <AppLayout>
             <Head title={`Chat Oda #${publicId?.substring(0, 8)} | Takeer`} />
@@ -847,6 +881,95 @@ export default function Chat({
                                 )}
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                {/* Current Deal */}
+                <div className="shrink-0 px-4 pt-3">
+                    <div className="max-w-3xl mx-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
+                        <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0 flex items-start gap-3">
+                                <div className="h-10 w-10 shrink-0 rounded-xl bg-brand-50 text-brand-700 border border-brand-100 flex items-center justify-center">
+                                    {order?.payment_status === 'escrow_locked' || order?.payment_status === 'awaiting_merchant_confirmation'
+                                        ? <ShieldCheck className="h-5 w-5" />
+                                        : <ShoppingBag className="h-5 w-5" />
+                                    }
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Deal</p>
+                                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${currentStatus.tone}`}>
+                                            {currentStatus.label}
+                                        </span>
+                                    </div>
+                                    <p className="mt-1 truncate text-sm font-black text-slate-900 dark:text-slate-100">
+                                        {order?.product?.title || order?.display_title || 'Physical order'}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500">
+                                        <span>{orderQuantityLabel(order)}</span>
+                                        <span>{deliveryCopy(order)}</span>
+                                        {agreedAt && <span>{new Date(agreedAt).toLocaleDateString()}</span>}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 sm:w-[330px]">
+                                <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Bidhaa</p>
+                                    <p className="mt-0.5 truncate text-xs font-black text-slate-800 dark:text-slate-100">
+                                        {orderUnitPriceLabel(order).replace('TZS ', '')}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Usafiri</p>
+                                    <p className="mt-0.5 truncate text-xs font-black text-slate-800 dark:text-slate-100">
+                                        {order?.shipping_fee === null || order?.shipping_fee === undefined ? 'TBD' : Number(order.shipping_fee || 0).toLocaleString()}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl bg-brand-50 px-3 py-2 text-brand-800 border border-brand-100">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-brand-500">Total</p>
+                                    <p className="mt-0.5 truncate text-xs font-black">
+                                        {Number(order?.total_paid || 0).toLocaleString()}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {(canBuyerPay || canMerchantQuote || canCancelBeforePayment) && (
+                            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60">
+                                {canBuyerPay && (
+                                    <Button
+                                        onClick={() => setIsPaymentDrawerOpen(true)}
+                                        className="h-9 rounded-xl bg-brand-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-brand-700"
+                                    >
+                                        <Zap className="mr-1.5 h-3.5 w-3.5 fill-white" />
+                                        Accept & Pay
+                                    </Button>
+                                )}
+                                {canMerchantQuote && (
+                                    <Button
+                                        onClick={() => {
+                                            setShippingFeeInput(order?.shipping_fee !== null && order?.shipping_fee !== undefined ? String(order.shipping_fee) : '');
+                                            setActiveAction(null);
+                                        }}
+                                        className="h-9 rounded-xl bg-slate-900 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-slate-800"
+                                    >
+                                        <Save className="mr-1.5 h-3.5 w-3.5" />
+                                        Send Offer
+                                    </Button>
+                                )}
+                                {canCancelBeforePayment && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => submitAction('cancel_order', { title: 'Order cancelled', reason: `${actingAs} cancelled before payment.` })}
+                                        className="h-9 rounded-xl border-red-100 px-4 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
+                                    >
+                                        <X className="mr-1.5 h-3.5 w-3.5" />
+                                        Cancel
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1191,26 +1314,16 @@ export default function Chat({
                 </div>
 
                 {/* Payment Action Button */}
-                {actingAs === 'buyer' && order?.payment_status === 'pending' && (
+                {actingAs === 'buyer' && order?.payment_status === 'pending' && !canBuyerPay && (
                     <div className="px-4 pb-2 animate-in slide-in-from-bottom-4 duration-500">
-                        {(order?.delivery?.delivery_type === 'self_pickup' || order?.shipping_fee !== null || order?.delivery?.shipping_zone_id) ? (
-                            <Button 
-                                onClick={() => setIsPaymentDrawerOpen(true)}
-                                className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-[0.2em] text-sm shadow-2xl shadow-brand-600/40 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3 border-4 border-white dark:border-slate-900"
-                            >
-                                <Zap className="h-5 w-5 fill-white" />
-                                Lipia Oda (TZS {Number(order?.total_paid).toLocaleString()})
-                            </Button>
-                        ) : (
-                            <div className="p-4 rounded-[2rem] bg-amber-50/50 border border-amber-100 flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
-                                    <Clock className="h-5 w-5" />
-                                </div>
-                                <p className="text-[10px] font-bold text-amber-900 uppercase leading-relaxed">
-                                    Subiri muuzaji aweke gharama ya usafiri au chagua pickup ili uweze kulipia.
-                                </p>
+                        <div className="p-4 rounded-[2rem] bg-amber-50/50 border border-amber-100 flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                                <Clock className="h-5 w-5" />
                             </div>
-                        )}
+                            <p className="text-[10px] font-bold text-amber-900 uppercase leading-relaxed">
+                                Subiri muuzaji aweke gharama ya usafiri au chagua pickup ili uweze kulipia.
+                            </p>
+                        </div>
                     </div>
                 )}
 
@@ -1881,7 +1994,7 @@ export default function Chat({
                                                     <div className="space-y-8 px-4 pb-12">
                                                         <div className="flex flex-col gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                                                             {[
-                                                                { id: order.product_id, variant_id: order.variant_id, title: order.product?.title, price: order.unit_price, quantity: order.quantity, image: order.product?.image_url || order.product?.url, isMain: true },
+                                                                { id: order.product_id, variant_id: order.variant_id, title: order.product?.title, price: order.unit_price, quantity: order.quantity, requested_quantity: order.requested_quantity, unit_snapshot: order.unit_snapshot, image: order.product?.image_url || order.product?.url, isMain: true },
                                                                 ...(order.extra_items || [])
                                                             ].map((item, idx) => (
                                                                 <div key={`${item.id}-${item.variant_id || idx}`} className="flex items-center gap-4 p-5 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm group">
@@ -1891,8 +2004,14 @@ export default function Chat({
                                                                     <div className="flex-1 min-w-0">
                                                                         <h4 className="font-black text-brand-900 text-sm truncate uppercase tracking-tighter">{item.title}</h4>
                                                                         <div className="flex items-center justify-between mt-2">
-                                                                            <span className="text-xs font-bold text-brand-600">TZS {Number(item.price).toLocaleString()}</span>
-                                                                            {order.payment_status !== 'paid' ? (
+                                                                            <span className="text-xs font-bold text-brand-600">
+                                                                                {item.isMain ? orderUnitPriceLabel(order) : `TZS ${Number(item.price).toLocaleString()}`}
+                                                                            </span>
+                                                                            {item.isMain && item.unit_snapshot ? (
+                                                                                <span className="rounded-2xl bg-slate-50 border border-slate-100 px-3 py-1.5 text-xs font-black text-brand-900">
+                                                                                    {orderQuantityLabel(order)}
+                                                                                </span>
+                                                                            ) : order.payment_status !== 'paid' ? (
                                                                                 <div className="flex items-center gap-3 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-100">
                                                                                     <button
                                                                                         onClick={() => {
@@ -1906,7 +2025,9 @@ export default function Chat({
                                                                                     >
                                                                                         <X className="h-3.5 w-3.5" />
                                                                                     </button>
-                                                                                    <span className="text-xs font-black text-brand-900">{item.quantity}</span>
+                                                                                    <span className="text-xs font-black text-brand-900">
+                                                                                        {item.isMain ? orderQuantityLabel(order) : item.quantity}
+                                                                                    </span>
                                                                                     <button
                                                                                         onClick={() => submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.quantity + 1, title: `ONGEZA ${item.title.toUpperCase()}` })}
                                                                                         className="text-slate-400 hover:text-brand-600 transition-colors"
@@ -1915,7 +2036,9 @@ export default function Chat({
                                                                                     </button>
                                                                                 </div>
                                                                             ) : (
-                                                                                <span className="text-xs font-black text-slate-400">Qty: {item.quantity}</span>
+                                                                                <span className="text-xs font-black text-slate-400">
+                                                                                    {item.isMain ? orderQuantityLabel(order) : `Qty: ${item.quantity}`}
+                                                                                </span>
                                                                             )}
                                                                         </div>
                                                                     </div>
@@ -2271,8 +2394,8 @@ export default function Chat({
                                         payment_number: paymentPhone, 
                                         title: `Malipo yameanzishwa — TZS ${Number(order?.total_paid).toLocaleString()}` 
                                     });
-                                    // Optimistically mark order as paid in the UI
-                                    setOrder(prev => prev ? { ...prev, payment_status: 'paid' } : prev);
+                                    // Keep the UI aligned with the physical-order lifecycle.
+                                    setOrder(prev => prev ? { ...prev, payment_status: 'awaiting_merchant_confirmation' } : prev);
                                     toast.success(`Malipo ya TZS ${Number(order?.total_paid).toLocaleString()} yamekamilika!`);
                                 } finally {
                                     setIsPaying(false);

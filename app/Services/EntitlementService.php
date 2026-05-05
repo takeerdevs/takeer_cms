@@ -7,8 +7,10 @@ use App\Models\BundleCohortEnrollment;
 use App\Models\BundleItem;
 use App\Models\Entitlement;
 use App\Models\Order;
+use App\Models\ProductLicenseKey;
 use App\Models\SubscriptionPlanItem;
 use App\Models\UserSubscription;
+use Illuminate\Support\Str;
 
 class EntitlementService
 {
@@ -37,6 +39,9 @@ class EntitlementService
                 sourceType: 'order',
                 sourceId: $order->id
             );
+            if ($type === 'product') {
+                $this->issueLicenseKeyForOrder($order);
+            }
         }
 
         if ($type === 'bundle') {
@@ -66,7 +71,7 @@ class EntitlementService
     public function grantForSubscription(UserSubscription $subscription): void
     {
         $items = SubscriptionPlanItem::where('subscription_plan_id', $subscription->subscription_plan_id)
-            ->whereIn('item_type', ['content_item', 'bundle'])
+            ->whereIn('item_type', ['content_item', 'bundle', 'product'])
             ->get();
 
         foreach ($items as $item) {
@@ -97,6 +102,18 @@ class EntitlementService
                 );
             }
         }
+    }
+
+    public function revokeForSubscription(UserSubscription $subscription): void
+    {
+        Entitlement::where('user_id', $subscription->user_id)
+            ->where('source_type', 'subscription')
+            ->where('source_id', $subscription->id)
+            ->where('status', 'active')
+            ->update([
+                'status' => 'revoked',
+                'revoked_at' => now(),
+            ]);
     }
 
     public function hasAccess(int $userId, string $itemType, int $itemId): bool
@@ -211,6 +228,45 @@ class EntitlementService
                 'revoked_at' => null,
             ]
         );
+    }
+
+    private function issueLicenseKeyForOrder(Order $order): void
+    {
+        $product = $order->product;
+        if (!$product || !$product->isDigital() || ($product->digital_content_type ?? null) !== 'software' || !($product->license_key_enabled ?? false)) {
+            return;
+        }
+
+        ProductLicenseKey::query()->firstOrCreate(
+            [
+                'product_id' => $product->id,
+                'order_id' => $order->id,
+                'user_id' => $order->buyer_id,
+            ],
+            [
+                'merchant_id' => $order->merchant_id ?? $product->merchant_id,
+                'license_key' => $key = $this->generateLicenseKey($product->license_key_prefix),
+                'key_hash' => hash('sha256', $key),
+                'status' => 'active',
+                'issued_at' => now(),
+            ]
+        );
+    }
+
+    private function generateLicenseKey(?string $prefix = null): string
+    {
+        $prefix = trim((string) $prefix);
+        $prefix = $prefix !== '' ? strtoupper(preg_replace('/[^A-Z0-9]/i', '', $prefix)) : 'TAKEER';
+        $prefix = substr($prefix, 0, 12);
+
+        do {
+            $key = $prefix.'-'.collect(range(1, 4))
+                ->map(fn () => strtoupper(Str::random(5)))
+                ->implode('-');
+            $hash = hash('sha256', $key);
+        } while (ProductLicenseKey::query()->where('key_hash', $hash)->exists());
+
+        return $key;
     }
 
     private function grantBundleItems(

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\MerchantGroupSaleCampaign;
 use App\Services\EntitlementService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -23,6 +24,31 @@ class ProductResource extends JsonResource
         $merchantRating = $this->relationLoaded('merchant') && $this->merchant
             ? $this->merchantRatingSummary($this->merchant)
             : null;
+        $groupSaleOffer = $this->getAttribute('group_sale_offer');
+        if (! $groupSaleOffer && $this->type === 'physical' && ($this->fulfillment_mode ?: 'own_stock') === 'group_sale') {
+            $autoGroupSale = MerchantGroupSaleCampaign::query()
+                ->where('product_id', $this->id)
+                ->whereIn('status', ['active', 'successful'])
+                ->where('ends_at', '>=', now())
+                ->latest()
+                ->first();
+
+            if ($autoGroupSale) {
+                $groupSaleOffer = [
+                    'id' => $autoGroupSale->id,
+                    'slug' => $autoGroupSale->slug,
+                    'title' => $autoGroupSale->title,
+                    'campaign_price' => (float) $autoGroupSale->campaign_price,
+                    'regular_price' => $autoGroupSale->regular_price !== null ? (float) $autoGroupSale->regular_price : null,
+                    'goal_quantity' => (int) $autoGroupSale->goal_quantity,
+                    'reserved_quantity' => (int) $autoGroupSale->reserved_quantity,
+                    'progress_percent' => $autoGroupSale->progressPercent(),
+                    'status' => $autoGroupSale->status,
+                    'is_checkout_open' => $autoGroupSale->status === 'successful' || $autoGroupSale->reserved_quantity >= $autoGroupSale->goal_quantity,
+                    'url' => url('/group-sale/'.$autoGroupSale->slug),
+                ];
+            }
+        }
 
         $user = $request->user();
         $hasAccess = false;
@@ -47,11 +73,81 @@ class ProductResource extends JsonResource
             }
         }
         $canExposeDigitalDelivery = $this->type !== 'digital' || $hasAccess || $isOwner;
+        $digitalDeliveryType = $this->type === 'digital' ? ($this->digital_delivery_type ?: 'file') : null;
+        $canViewPremiumVideo = $this->type === 'digital'
+            && $digitalDeliveryType === 'video_stream'
+            && $canExposeDigitalDelivery
+            && filled($this->paid_video_url);
+        $canViewPremiumAudio = $this->type === 'digital'
+            && $digitalDeliveryType === 'audio_stream'
+            && $canExposeDigitalDelivery
+            && filled($this->paid_audio_url);
+        $galleryItems = collect($this->paid_gallery_items ?: [])->filter(fn ($item) => filled($item['url'] ?? null))->values();
+        $canViewGalleryPack = $this->type === 'digital'
+            && $digitalDeliveryType === 'gallery_pack'
+            && $canExposeDigitalDelivery
+            && $galleryItems->isNotEmpty();
+        $isLiveEvent = $this->type === 'digital' && $digitalDeliveryType === 'live_event';
+        $canReadDocument = $this->type === 'digital'
+            && $canExposeDigitalDelivery
+            && $digitalDeliveryType === 'file'
+            && strtolower((string) $extension) === 'pdf'
+            && filled($rawDelivery);
+        $softwareReleases = $this->type === 'digital' && $this->digital_content_type === 'software'
+            ? $this->softwareReleases()->where('status', 'published')->get()
+            : collect();
+        $softwareLicenseKey = null;
+        if ($this->type === 'digital' && $this->digital_content_type === 'software' && $canExposeDigitalDelivery && $user) {
+            $licenseQuery = \App\Models\ProductLicenseKey::query()
+                ->where('product_id', $this->id)
+                ->where('user_id', $user->id)
+                ->where('status', 'active');
+            if ($latestOrderId) {
+                $licenseQuery->where('order_id', $latestOrderId);
+            }
+            $softwareLicenseKey = $licenseQuery->latest('issued_at')->latest('id')->first();
+        }
         $firstMedia = $this->images->first();
         $fallbackImageMedia = $this->images->first(fn ($item) => ($item->media_type ?: 'image') === 'image');
         $publicImageUrl = $firstMedia?->thumbnail_url
             ?? $fallbackImageMedia?->image_url
             ?? ($this->type === 'digital' || preg_match('/\.(mp4|mov|webm|ogg)(\?|$)/i', (string) $this->url) ? null : $this->url);
+        $serviceRelatedProductIds = collect($this->service_related_product_ids ?: [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+        $serviceRelatedProducts = $this->type === 'service' && $serviceRelatedProductIds->isNotEmpty()
+            ? \App\Models\Product::query()
+                ->where('merchant_id', $this->merchant_id)
+                ->where('type', 'physical')
+                ->whereIn('id', $serviceRelatedProductIds)
+                ->with(['images', 'unitType'])
+                ->withCount('postTags')
+                ->get()
+                ->filter(fn ($product) => ($product->post_tags_count ?? 0) > 0 || $isOwner)
+                ->sortBy(fn ($product) => $serviceRelatedProductIds->search((int) $product->id))
+                ->map(fn ($product) => [
+                    'id' => $product->id,
+                    'slug' => $product->slug,
+                    'title' => $product->title,
+                    'type' => $product->type,
+                    'price' => $product->price !== null ? (float) $product->price : null,
+                    'discounted_price' => $product->discounted_price !== null ? (float) $product->discounted_price : null,
+                    'checkout_price' => $product->discounted_price > 0 ? (float) $product->discounted_price : (float) $product->price,
+                    'image_url' => $product->image_url,
+                    'fulfillment_mode' => $product->fulfillment_mode ?: 'own_stock',
+                    'available_stock' => $product->available_stock,
+                    'unit_type' => $product->product_unit_type_id ? [
+                        'id' => $product->product_unit_type_id,
+                        'name' => $product->unitType?->name,
+                        'symbol' => $product->unitType?->symbol,
+                    ] : null,
+                    'url' => url('/product/'.($product->slug ?: $product->id)),
+                ])
+                ->values()
+                ->all()
+            : [];
 
         return [
             'id' => $this->id,
@@ -60,16 +156,129 @@ class ProductResource extends JsonResource
             'has_access' => $hasAccess,
             'latest_order_id' => $latestOrderId,
             'has_variants' => (bool) $this->has_variants,
+            'fulfillment_mode' => $this->fulfillment_mode ?: 'own_stock',
+            'source_details' => $isOwner ? ($this->source_details ?: []) : [],
+            'availability_lead_time_days' => $this->availability_lead_time_days !== null ? (int) $this->availability_lead_time_days : null,
+            'availability_lead_time_hours' => ($this->fulfillment_mode ?: 'own_stock') === 'supplier_sourced' && data_get($this->source_details ?: [], 'confirmation_hours') !== null
+                ? (int) data_get($this->source_details ?: [], 'confirmation_hours')
+                : null,
+            'available_from' => $this->available_from?->toDateString(),
+            'group_sale_goal_quantity' => $this->group_sale_goal_quantity !== null ? (int) $this->group_sale_goal_quantity : null,
+            'group_sale_deadline' => $this->group_sale_deadline?->toDateString(),
             'price' => (float) $this->price,
             'checkout_price' => $this->getAttribute('checkout_price') !== null ? (float) $this->getAttribute('checkout_price') : null,
+            'group_sale_offer' => $groupSaleOffer,
             'compare_at_price' => $this->compare_at_price !== null ? (float) $this->compare_at_price : null,
             'discounted_price' => (float) $this->discounted_price,
             'inventory_count' => $this->inventory_count,
+            'inventory_quantity' => $this->inventory_quantity !== null ? (float) $this->inventory_quantity : null,
+            'sellable_quantity' => $this->sellable_quantity !== null ? (float) $this->sellable_quantity : 1,
+            'min_order_quantity' => $this->min_order_quantity !== null ? (float) $this->min_order_quantity : null,
+            'order_increment' => $this->order_increment !== null ? (float) $this->order_increment : null,
+            'unit_type' => $this->product_unit_type_id ? [
+                'id' => $this->product_unit_type_id,
+                'name' => $this->unitType?->name,
+                'code' => $this->unitType?->code,
+                'symbol' => $this->unitType?->symbol,
+                'unit_category' => $this->unitType?->unit_category,
+                'allows_decimal' => (bool) ($this->unitType?->allows_decimal ?? false),
+                'common_quantities' => $this->unitType?->common_quantities ?? [],
+            ] : null,
             'available_stock' => $this->available_stock,
             'in_stock' => $this->isInStock(),
             'image_url' => $publicImageUrl,
             'url' => $canExposeDigitalDelivery ? $this->url : null,
-            'download_link' => $canExposeDigitalDelivery ? $this->download_link : null,
+            'download_link' => $canExposeDigitalDelivery && ($this->allow_download ?? true) ? $this->download_link : null,
+            'digital_delivery_type' => $digitalDeliveryType,
+            'refund_policy' => [
+                'policy' => $this->refund_policy ?: ($this->type === 'digital' ? 'strict' : 'standard'),
+                'window_days' => $this->refund_window_days !== null ? (int) $this->refund_window_days : null,
+                'note' => $this->refund_policy_note,
+            ],
+            'digital_content_type' => $this->type === 'digital' ? $this->digital_content_type : null,
+            'digital_usage_license' => $this->type === 'digital' ? $this->digital_usage_license : null,
+            'digital_access_instructions' => $canExposeDigitalDelivery && $this->type === 'digital'
+                ? $this->digital_access_instructions
+                : null,
+            'license_key_enabled' => (bool) ($this->license_key_enabled ?? false),
+            'license_key_prefix' => $isOwner ? $this->license_key_prefix : null,
+            'license_activation_limit' => $isOwner || $softwareLicenseKey ? (int) ($this->license_activation_limit ?? 1) : null,
+            'software_license_key' => $softwareLicenseKey ? [
+                'id' => $softwareLicenseKey->id,
+                'key' => $softwareLicenseKey->license_key,
+                'status' => $softwareLicenseKey->status,
+                'issued_at' => $softwareLicenseKey->issued_at?->toISOString(),
+                'offline_license_url' => $latestOrderId ? route('api.orders.license-file', ['order' => $latestOrderId]) : null,
+            ] : null,
+            'document_reader' => $canReadDocument ? [
+                'url' => route('product.document.read', ['product' => $this->slug ?: $this->id]),
+                'name' => $basename ? urldecode($basename) : 'Document.pdf',
+                'mime' => 'application/pdf',
+            ] : null,
+            'software_releases' => $softwareReleases->isNotEmpty() ? $softwareReleases->map(fn ($release) => [
+                'id' => $release->id,
+                'version' => $release->version,
+                'title' => $release->title,
+                'changelog' => $release->changelog,
+                'status' => $release->status,
+                'is_latest' => (bool) $release->is_latest,
+                'published_at' => $release->published_at?->toISOString(),
+                'mime' => $release->mime,
+                'size' => $release->size !== null ? (int) $release->size : null,
+                'download_url' => $canExposeDigitalDelivery
+                    ? route('product.releases.download', ['product' => $this->slug ?: $this->id, 'release' => $release->id])
+                    : null,
+            ])->values()->all() : [],
+            'allow_download' => (bool) ($this->allow_download ?? true),
+            'premium_video' => $canViewPremiumVideo ? [
+                'url' => route('product.video.stream', ['product' => $this->slug ?: $this->id]),
+                'hls_url' => $this->premium_video_hls_path
+                    ? route('product.video.hls', [
+                        'product' => $this->slug ?: $this->id,
+                        'path' => basename($this->premium_video_hls_path),
+                    ])
+                    : null,
+                'status' => $this->premium_video_status,
+                'processing_error' => $isOwner ? $this->premium_video_error : null,
+                'mime' => $this->paid_video_mime,
+                'size' => $this->paid_video_size !== null ? (int) $this->paid_video_size : null,
+                'duration_seconds' => $this->paid_video_duration_seconds !== null ? (int) $this->paid_video_duration_seconds : null,
+            ] : null,
+            'premium_audio' => $canViewPremiumAudio ? [
+                'url' => route('product.audio.stream', ['product' => $this->slug ?: $this->id]),
+                'mime' => $this->paid_audio_mime,
+                'size' => $this->paid_audio_size !== null ? (int) $this->paid_audio_size : null,
+                'duration_seconds' => $this->paid_audio_duration_seconds !== null ? (int) $this->paid_audio_duration_seconds : null,
+            ] : null,
+            'gallery_pack' => $canViewGalleryPack ? [
+                'items' => $galleryItems->map(fn ($item, $index) => [
+                    'url' => route('product.gallery.item', ['product' => $this->slug ?: $this->id, 'index' => $index]),
+                    'original_url' => ($this->allow_download ?? false) || $isOwner
+                        ? route('product.gallery.original', ['product' => $this->slug ?: $this->id, 'index' => $index])
+                        : null,
+                    'name' => $item['name'] ?? 'Gallery image',
+                    'mime' => $item['preview_mime'] ?? $item['mime'] ?? null,
+                    'size' => isset($item['preview_size']) ? (int) $item['preview_size'] : (isset($item['size']) ? (int) $item['size'] : null),
+                    'original_mime' => $item['mime'] ?? null,
+                    'original_size' => isset($item['size']) ? (int) $item['size'] : null,
+                ])->all(),
+            ] : null,
+            'live_event' => $isLiveEvent ? [
+                'starts_at' => $this->live_event_starts_at?->toISOString(),
+                'duration_minutes' => $this->live_event_duration_minutes !== null ? (int) $this->live_event_duration_minutes : null,
+                'timezone' => $this->live_event_timezone,
+                'capacity' => $this->live_event_capacity !== null ? (int) $this->live_event_capacity : null,
+                'seats_sold' => $this->live_event_capacity ? $this->liveEventSeatsSold() : null,
+                'seats_remaining' => $this->live_event_capacity ? $this->liveEventSeatsRemaining() : null,
+                'venue' => $canExposeDigitalDelivery ? $this->live_event_venue : null,
+                'access_url' => $canExposeDigitalDelivery ? $this->live_event_access_url : null,
+                'replay_url' => $canExposeDigitalDelivery ? $this->live_event_replay_url : null,
+                'instructions' => $canExposeDigitalDelivery ? $this->live_event_instructions : null,
+                'has_access' => (bool) $canExposeDigitalDelivery,
+            ] : null,
+            'paid_video_url' => $isOwner ? $this->paid_video_url : null,
+            'paid_audio_url' => $isOwner ? $this->paid_audio_url : null,
+            'paid_gallery_items' => $isOwner ? $this->paid_gallery_items : null,
             'service_pricing_model' => $this->service_pricing_model ?: 'fixed_price',
             'service_booking_type' => $this->service_booking_type ?: 'instant',
             'service_hourly_rate' => $this->service_hourly_rate !== null ? (float) $this->service_hourly_rate : null,
@@ -89,13 +298,15 @@ class ProductResource extends JsonResource
             'service_area' => $this->service_area ?? [],
             'service_client_requirements' => $this->service_client_requirements,
             'service_intake_form' => $this->service_intake_form ?? [],
+            'service_related_product_ids' => $serviceRelatedProductIds->all(),
+            'service_related_products' => $serviceRelatedProducts,
             'service_booking_provider' => $this->service_booking_provider ?: 'manual',
             'service_contact_channel' => $this->service_contact_channel,
             'service_contact_value' => $this->service_contact_value,
             'service_trust' => $serviceTrust,
             'service_request_payment' => $this->getAttribute('service_request_payment'),
             'delivery_mode' => $this->type === 'digital'
-                ? ($isExternal ? 'external_link' : 'uploaded_file')
+                ? (in_array($digitalDeliveryType, ['video_stream', 'audio_stream', 'gallery_pack', 'live_event', 'custom_delivery'], true) ? $digitalDeliveryType : ($isExternal ? 'external_link' : 'uploaded_file'))
                 : null,
             'has_uploaded_file' => $this->type === 'digital' ? !$isExternal && filled($rawDelivery) : false,
             'digital_file_name' => $this->type === 'digital' && $basename ? urldecode($basename) : null,
@@ -131,7 +342,10 @@ class ProductResource extends JsonResource
                     'key' => $value->categoryAttribute?->key,
                     'label' => $value->categoryAttribute?->label,
                     'input_type' => $value->categoryAttribute?->input_type,
+                    'ui_hint' => $value->categoryAttribute?->ui_hint,
                     'options' => $value->categoryAttribute?->options ?? [],
+                    'is_required' => (bool) ($value->categoryAttribute?->is_required ?? false),
+                    'is_filterable' => (bool) ($value->categoryAttribute?->is_filterable ?? false),
                 ],
                 'value_text' => $value->value_text,
                 'value_number' => $value->value_number !== null ? (float) $value->value_number : null,
@@ -186,6 +400,7 @@ class ProductResource extends JsonResource
                 'product_variant_id' => $inv->product_variant_id,
                 'location_name' => $inv->location?->name,
                 'quantity' => (int) $inv->quantity,
+                'quantity_decimal' => $inv->quantity_decimal !== null ? (float) $inv->quantity_decimal : (float) $inv->quantity,
             ])),
             'variants' => $this->whenLoaded('variants', fn() => $this->variants->map(fn($variant) => [
                 'id' => $variant->id,
@@ -194,6 +409,7 @@ class ProductResource extends JsonResource
                 'price' => $variant->price !== null ? (float) $variant->price : null,
                 'compare_at_price' => $variant->compare_at_price !== null ? (float) $variant->compare_at_price : null,
                 'inventory_count' => (int) $variant->inventory_count,
+                'inventory_quantity' => $variant->inventory_quantity !== null ? (float) $variant->inventory_quantity : null,
                 'attributes' => $variant->attributes ?? [],
                 'swatch_image_url' => $variant->swatch_image_url,
                 'is_active' => (bool) $variant->is_active,
@@ -204,6 +420,7 @@ class ProductResource extends JsonResource
                         'product_variant_id' => $inv->product_variant_id,
                         'location_name' => $inv->location?->name,
                         'quantity' => (int) $inv->quantity,
+                        'quantity_decimal' => $inv->quantity_decimal !== null ? (float) $inv->quantity_decimal : (float) $inv->quantity,
                     ])->values()
                     : [],
             ])),

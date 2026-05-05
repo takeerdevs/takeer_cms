@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\DispatchController;
 use App\Http\Controllers\Api\MerchantOrderController;
 use App\Http\Controllers\Api\MerchantPlatformSubscriptionController;
 use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
+use App\Http\Controllers\Api\MerchantMarketingController;
+use App\Http\Controllers\Api\MerchantAnalyticsExportController;
 use App\Http\Controllers\Api\ServiceRequestController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\AdminController;
@@ -42,12 +44,11 @@ use Illuminate\Support\Str;
 // ─── PUBLIC PAYMENT PAGES (Commerce Pro) ───────────────────────────────────
 Route::get('/pay/retail-credit/{publicId}', [\App\Http\Controllers\Api\RetailCreditPaymentController::class, 'show'])->name('retail-credit-payment.show');
 Route::get('/pay/{slug}', [\App\Http\Controllers\Api\PublicPaymentPageController::class, 'show'])->name('payment-page.show');
-Route::get('/course/{product:slug}', [\App\Http\Controllers\Api\PublicCourseController::class, 'show'])->name('course.player');
-Route::post('/course/lesson/{lesson}/complete', [\App\Http\Controllers\Api\PublicCourseController::class, 'toggleCompletion'])->name('course.lesson.complete');
 
 Route::get('/', function () {
-    $posts = App\Models\Post::with([
+    $posts = app(\App\Services\DiscoveryRankingService::class)->rankPostQuery(App\Models\Post::with([
         'merchant.storefrontSetting',
+        'linkPreview',
         'linkedContentItem',
         'media.productImage',
         'linkedProduct.attributes',
@@ -62,7 +63,7 @@ Route::get('/', function () {
         'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
-    ])->latest()->take(20)->get();
+    ]))->take(20)->get();
 
     return Inertia::render('Feed', [
         'initialPosts' => PostResource::collection($posts)->resolve(),
@@ -70,6 +71,35 @@ Route::get('/', function () {
 });
 
 Route::get('/p/{postPublicId}', [PostController::class, 'showByPublicId'])->name('post.show');
+Route::get('/sms/t/{code}', [MerchantMarketingController::class, 'followSmsLink'])->name('sms.track');
+Route::get('/r/{code}', [MerchantMarketingController::class, 'followReferral'])->name('referral.follow');
+Route::get('/campaign/{merchant:username}/{code}', [MerchantMarketingController::class, 'showCampaignLanding'])->name('campaign.show');
+Route::get('/group-sale/{slug}', [MerchantMarketingController::class, 'showGroupSale'])->name('group-sale.show');
+Route::post('/group-sale/{slug}/join', [MerchantMarketingController::class, 'joinGroupSale'])->name('group-sale.join');
+Route::get('/product/{product}/video-stream', [\App\Http\Controllers\Api\DownloadController::class, 'streamProductVideo'])
+    ->middleware('auth')
+    ->name('product.video.stream');
+Route::get('/product/{product}/audio-stream', [\App\Http\Controllers\Api\DownloadController::class, 'streamProductAudio'])
+    ->middleware('auth')
+    ->name('product.audio.stream');
+Route::get('/product/{product}/gallery/{index}', [\App\Http\Controllers\Api\DownloadController::class, 'streamProductGalleryItem'])
+    ->whereNumber('index')
+    ->middleware('auth')
+    ->name('product.gallery.item');
+Route::get('/product/{product}/gallery/{index}/original', [\App\Http\Controllers\Api\DownloadController::class, 'downloadProductGalleryOriginal'])
+    ->whereNumber('index')
+    ->middleware('auth')
+    ->name('product.gallery.original');
+Route::get('/product/{product}/document/read', [\App\Http\Controllers\Api\DownloadController::class, 'readProductDocument'])
+    ->middleware('auth')
+    ->name('product.document.read');
+Route::get('/product/{product}/releases/{release}/download', [\App\Http\Controllers\Api\ProductReleaseController::class, 'download'])
+    ->middleware('auth')
+    ->name('product.releases.download');
+Route::get('/product/{product}/video/hls/{path}', [\App\Http\Controllers\Api\DownloadController::class, 'streamProductVideoHls'])
+    ->where('path', '.*')
+    ->middleware('auth')
+    ->name('product.video.hls');
 
 Route::get('/product/{product}', function (Product $product) {
     $product->load([
@@ -77,6 +107,7 @@ Route::get('/product/{product}', function (Product $product) {
         'merchant.storefrontSetting',
         'attributes.brand',
         'attributes.model',
+        'unitType',
         'images',
         'variants',
         'categoryAttributeValues.categoryAttribute'
@@ -86,6 +117,29 @@ Route::get('/product/{product}', function (Product $product) {
     $product->append('available_stock');
     $kycEnforcementMode = (string) AdminSetting::get('kyc_enforcement_mode', 'off');
     $product->setAttribute('verification_required_for_listing', $kycEnforcementMode === 'listings_and_withdrawals');
+    $groupSaleSlug = trim((string) request()->query('group_sale', ''));
+    if ($groupSaleSlug !== '') {
+        $groupSale = \App\Models\MerchantGroupSaleCampaign::query()
+            ->where('slug', $groupSaleSlug)
+            ->where('product_id', $product->id)
+            ->whereIn('status', ['active', 'successful'])
+            ->first();
+
+        if ($groupSale) {
+            $product->setAttribute('group_sale_offer', [
+                'id' => $groupSale->id,
+                'slug' => $groupSale->slug,
+                'title' => $groupSale->title,
+                'campaign_price' => (float) $groupSale->campaign_price,
+                'regular_price' => $groupSale->regular_price !== null ? (float) $groupSale->regular_price : null,
+                'goal_quantity' => (int) $groupSale->goal_quantity,
+                'reserved_quantity' => (int) $groupSale->reserved_quantity,
+                'progress_percent' => $groupSale->progressPercent(),
+                'status' => $groupSale->status,
+                'is_checkout_open' => $groupSale->status === 'successful' || $groupSale->reserved_quantity >= $groupSale->goal_quantity,
+            ]);
+        }
+    }
 
     // Track traffic
     $product->recordImpression(request());
@@ -142,9 +196,26 @@ Route::get('/service-requests/{publicId}/pay/{token}', function (string $publicI
 })->name('service-request.pay');
 
 Route::get('/search', function (Request $request) {
+    $detectedCountryIso = $request->session()->get('user_session_country.iso_alpha2');
+    $detectedCountryId = $detectedCountryIso
+        ? Country::query()->where('iso_alpha2', strtoupper((string) $detectedCountryIso))->value('id')
+        : null;
+
     return Inertia::render('Search', [
         'initialQuery' => trim((string) $request->query('q', '')),
         'initialPage' => max((int) $request->query('page', 1), 1),
+        'initialFilters' => [
+            'type' => (string) $request->query('type', 'all'),
+            'country_id' => $request->query('country_id', $detectedCountryId),
+            'location' => trim((string) $request->query('location', '')),
+            'lat' => $request->query('lat'),
+            'lng' => $request->query('lng'),
+            'radius_km' => $request->query('radius_km', 25),
+        ],
+        'countries' => Country::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'iso_alpha2', 'flag', 'city_name', 'state_name']),
     ]);
 })->name('search.page');
 
@@ -427,6 +498,28 @@ Route::get('/plan/{subscriptionPlan}', function (SubscriptionPlan $subscriptionP
     abort_if($subscriptionPlan->status !== 'active', 404);
 
     $subscriptionPlan->load(['merchant', 'items']);
+    $viewer = request()->user();
+    $isOwner = $viewer && (int) $subscriptionPlan->merchant?->user_id === (int) $viewer->id;
+    $hasPlanAccess = (bool) ($viewer?->is_admin ?? false) || $isOwner;
+
+    if (! $hasPlanAccess && $viewer) {
+        $hasPlanAccess = app(EntitlementService::class)->hasAccess(
+            (int) $viewer->id,
+            'subscription_plan',
+            (int) $subscriptionPlan->id
+        );
+    }
+
+    if (! $hasPlanAccess && $viewer) {
+        $hasPlanAccess = \App\Models\UserSubscription::query()
+            ->where('user_id', $viewer->id)
+            ->where('subscription_plan_id', $subscriptionPlan->id)
+            ->where('status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('current_period_end')->orWhere('current_period_end', '>', now());
+            })
+            ->exists();
+    }
 
     $contentItemIds = $subscriptionPlan->items
         ->where('item_type', 'content_item')
@@ -470,8 +563,68 @@ Route::get('/plan/{subscriptionPlan}', function (SubscriptionPlan $subscriptionP
         ->sortByDesc('created_at')
         ->values();
 
+    $communityPosts = collect();
+    $communityPostBase = Post::query()
+        ->whereHas('promotableSubscriptions', fn ($query) => $query->whereKey($subscriptionPlan->id));
+    $activeMemberBase = \App\Models\UserSubscription::query()
+        ->where('subscription_plan_id', $subscriptionPlan->id)
+        ->where('status', 'active')
+        ->where(function ($query) {
+            $query->whereNull('current_period_end')->orWhere('current_period_end', '>', now());
+        });
+
+    $recentMembers = collect();
+    if ($hasPlanAccess) {
+        $communityPosts = Post::query()
+            ->with([
+                'merchant.storefrontSetting',
+                'linkPreview',
+                'linkedContentItem',
+                'media.productImage',
+                'linkedProduct.attributes',
+                'linkedProduct.images',
+                'linkedProduct.variants',
+                'product.attributes',
+                'product.images',
+                'product.variants',
+                'productTags.product.attributes',
+                'productTags.product.images',
+                'productTags.product.variants',
+                'reactions',
+                'promotableProducts',
+                'promotableBundles',
+                'promotableSubscriptions',
+            ])
+            ->whereHas('promotableSubscriptions', fn ($query) => $query->whereKey($subscriptionPlan->id))
+            ->latest()
+            ->take(20)
+            ->get();
+
+        $recentMembers = (clone $activeMemberBase)
+            ->with('user:id,name')
+            ->latest('started_at')
+            ->take(8)
+            ->get()
+            ->map(fn ($subscription) => [
+                'id' => $subscription->id,
+                'name' => $subscription->user?->name ?: 'Member',
+                'joined_at' => $subscription->started_at?->toISOString() ?: $subscription->created_at?->toISOString(),
+            ]);
+    }
+
     return Inertia::render('SubscriptionPlanDetail', [
         'subscriptionPlan' => SubscriptionPlanResource::make($subscriptionPlan)->resolve(request()),
+        'hasAccess' => $hasPlanAccess,
+        'communityPosts' => PostResource::collection($communityPosts)->resolve(request()),
+        'communityStats' => [
+            'active_members' => (clone $activeMemberBase)->count(),
+            'new_members_30d' => (clone $activeMemberBase)->where('started_at', '>=', now()->subDays(30))->count(),
+            'posts_count' => (clone $communityPostBase)->count(),
+            'posts_30d' => (clone $communityPostBase)->where('posts.created_at', '>=', now()->subDays(30))->count(),
+            'comments_count' => (int) (clone $communityPostBase)->sum('comment_count'),
+            'reactions_count' => (int) (clone $communityPostBase)->sum('likes_count'),
+            'recent_members' => $recentMembers->values()->all(),
+        ],
         'contentPreview' => $allPreviewContent->take(3)->values()->all(),
         'totalLinkedContent' => $allPreviewContent->count(),
     ]);
@@ -500,8 +653,9 @@ Route::get('/{merchantSlug}/terminal', function (string $merchantSlug) {
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::get('/feed', function () {
-    $posts = App\Models\Post::with([
+    $posts = app(\App\Services\DiscoveryRankingService::class)->rankPostQuery(App\Models\Post::with([
         'merchant.storefrontSetting',
+        'linkPreview',
         'linkedContentItem',
         'media.productImage',
         'linkedProduct.attributes',
@@ -513,7 +667,7 @@ Route::get('/feed', function () {
         'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
-    ])->latest()->take(20)->get();
+    ]))->take(20)->get();
 
     return Inertia::render('Feed', [
         'initialPosts' => PostResource::collection($posts)->resolve(),
@@ -578,6 +732,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/orders/data/subscriptions', [SubscriptionController::class, 'mySubscriptions']);
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
     Route::get('/orders/{order}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadLocal'])->name('web.download.local');
+    Route::get('/orders/{order}/download/custom-local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadCustomLocal'])->name('web.download.custom-local');
     Route::get('/learn/bundles/{bundle}', [\App\Http\Controllers\Api\BundleCourseController::class, 'show'])->name('bundle.learn');
     Route::post('/learn/bundle-lessons/{lesson}/complete', [\App\Http\Controllers\Api\BundleCourseController::class, 'toggleCompletion'])->name('bundle.lesson.complete');
     Route::post('/learn/bundle-live-sessions/{session}/check-in', [\App\Http\Controllers\Api\BundleCourseController::class, 'checkIn'])->name('bundle.live-session.check-in');
@@ -672,6 +827,124 @@ Route::middleware('auth')->group(function () {
             ];
         }
 
+        $creatorMonetization = null;
+        if ($activeMerchant) {
+            $paidOrders = $activeMerchant->orders()
+                ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+                ->where('created_at', '>=', now()->subDays(30))
+                ->with('product:id,title,type,digital_delivery_type,digital_content_type')
+                ->get(['id', 'merchant_id', 'product_id', 'purchasable_type', 'purchasable_id', 'payment_status', 'total_paid', 'quantity', 'created_at']);
+            $previousPaidOrders = $activeMerchant->orders()
+                ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+                ->whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])
+                ->get(['id', 'total_paid']);
+
+            $bucketLabels = [
+                'premium_media' => 'Premium media',
+                'digital_downloads' => 'Downloads/assets',
+                'live_events' => 'Live events',
+                'creator_club' => 'Creator Club',
+                'custom_work' => 'Custom work',
+                'paid_writing' => 'Paid writing',
+                'courses_bundles' => 'Courses/bundles',
+                'services' => 'Services',
+                'physical' => 'Physical',
+            ];
+            $buckets = collect($bucketLabels)->map(fn ($label, $key) => [
+                'key' => $key,
+                'label' => $label,
+                'revenue' => 0.0,
+                'released' => 0.0,
+                'pending' => 0.0,
+                'orders' => 0,
+                'units' => 0,
+            ])->all();
+            $topItemRows = [];
+            $resolveBucket = function ($order): string {
+                if ($order->purchasable_type === 'subscription_plan') return 'creator_club';
+                if (in_array($order->purchasable_type, ['post', 'content_item'], true)) return 'paid_writing';
+                if ($order->purchasable_type === 'bundle') return 'courses_bundles';
+                if ($order->product?->type === 'service') return 'services';
+                if ($order->product?->type === 'physical') return 'physical';
+                if (in_array($order->product?->digital_delivery_type, ['video_stream', 'audio_stream', 'gallery_pack'], true)) return 'premium_media';
+                if ($order->product?->digital_delivery_type === 'live_event') return 'live_events';
+                if ($order->product?->digital_delivery_type === 'custom_delivery') return 'custom_work';
+                return 'digital_downloads';
+            };
+
+            foreach ($paidOrders as $order) {
+                $bucket = $resolveBucket($order);
+                $amount = (float) $order->total_paid;
+                $qty = (int) ($order->quantity ?: 1);
+
+                $buckets[$bucket]['revenue'] += $amount;
+                $buckets[$bucket][$order->payment_status === 'resolved_merchant_paid' ? 'released' : 'pending'] += $amount;
+                $buckets[$bucket]['orders'] += 1;
+                $buckets[$bucket]['units'] += $qty;
+
+                $display = $user->resolveOrderDisplay($order);
+                $topKey = $order->purchasable_type . ':' . ($order->product_id ?: $order->purchasable_id ?: $display['title']);
+                $topItemRows[$topKey] ??= [
+                    'title' => $display['title'] ?: ($order->product?->title ?? 'Offer'),
+                    'kind' => $display['kind'],
+                    'icon' => $display['icon'],
+                    'bucket' => $bucket,
+                    'bucket_label' => $bucketLabels[$bucket],
+                    'revenue' => 0.0,
+                    'orders' => 0,
+                    'units' => 0,
+                ];
+                $topItemRows[$topKey]['revenue'] += $amount;
+                $topItemRows[$topKey]['orders'] += 1;
+                $topItemRows[$topKey]['units'] += $qty;
+            }
+
+            $activeMembers = \App\Models\UserSubscription::where('merchant_id', $activeMerchant->id)
+                ->where('status', 'active')
+                ->count();
+            $orderIds = $paidOrders->pluck('id')->all();
+            $transactionTotals = \App\Models\Transaction::query()
+                ->whereIn('order_id', $orderIds)
+                ->where('type', 'order_revenue')
+                ->selectRaw('COALESCE(SUM(gross_amount), 0) as gross, COALESCE(SUM(fee_amount), 0) as fees, COALESCE(SUM(net_amount), 0) as net')
+                ->first();
+            $wallet = \App\Models\Wallet::firstOrCreate(
+                ['user_id' => $user->id],
+                ['balance' => 0, 'frozen_balance' => 0]
+            );
+            $pendingWithdrawals = \App\Models\WithdrawalRequest::query()
+                ->where('user_id', $user->id)
+                ->where('status', 'pending')
+                ->sum('amount');
+            $totalRevenue = (float) $paidOrders->sum(fn ($order) => (float) $order->total_paid);
+            $previousRevenue = (float) $previousPaidOrders->sum(fn ($order) => (float) $order->total_paid);
+            $revenueChange = $previousRevenue > 0
+                ? round((($totalRevenue - $previousRevenue) / $previousRevenue) * 100, 1)
+                : ($totalRevenue > 0 ? 100 : 0);
+
+            $creatorMonetization = [
+                'window' => 'Last 30 days',
+                'total_revenue' => $totalRevenue,
+                'total_orders' => $paidOrders->count(),
+                'active_members' => $activeMembers,
+                'released_revenue' => (float) $paidOrders->where('payment_status', 'resolved_merchant_paid')->sum('total_paid'),
+                'pending_revenue' => (float) $paidOrders->where('payment_status', 'escrow_locked')->sum('total_paid'),
+                'estimated_fees' => (float) ($transactionTotals->fees ?? 0),
+                'estimated_net' => (float) (($transactionTotals->net ?? 0) ?: max($totalRevenue - (float) ($transactionTotals->fees ?? 0), 0)),
+                'revenue_change_percent' => $revenueChange,
+                'payouts' => [
+                    'available_balance' => (float) $wallet->balance,
+                    'held_balance' => (float) $wallet->frozen_balance,
+                    'pending_withdrawals' => (float) $pendingWithdrawals,
+                ],
+                'buckets' => collect($buckets)->map(function ($bucket) use ($totalRevenue) {
+                    $bucket['share'] = $totalRevenue > 0 ? round(((float) $bucket['revenue'] / $totalRevenue) * 100, 1) : 0;
+                    return $bucket;
+                })->values()->all(),
+                'top_items' => collect($topItemRows)->sortByDesc('revenue')->take(5)->values()->all(),
+            ];
+        }
+
         return Inertia::render('Profile', [
             'activeMerchant' => $activeMerchant,
             'thisMonthEarnings' => (float) $thisMonthEarnings,
@@ -705,6 +978,7 @@ Route::middleware('auth')->group(function () {
                 }) : [],
             'salesBreakdown' => $breakdown,
             'commerceHubSummary' => $commerceHubSummary,
+            'creatorMonetization' => $creatorMonetization,
             'countries' => \App\Models\Country::select('id', 'name', 'iso_alpha2 as code', 'default_currency_id')->get(),
             'currencies' => \App\Models\Currency::select('id', 'code', 'symbol', 'name')->get(),
             'merchantKyc' => $activeMerchant ? $activeMerchant->kyc : null,
@@ -854,9 +1128,19 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/upload', function (Merchant $merchant) {
             abort_unless($merchant->canSellProducts(), 403, 'Complete KYC before uploading products.');
+            $merchant->loadMissing('country');
+            $merchantTimezone = $merchant->defaultTimezone();
+            $countryTimezones = $merchant->country?->timezones() ?? [];
+            $timezoneOptions = array_values(array_unique(array_filter([
+                $merchantTimezone,
+                ...$countryTimezones,
+                ...timezone_identifiers_list(),
+            ])));
 
             return Inertia::render('Merchant/Upload', [
                 'merchantUsername' => $merchant->username,
+                'merchantTimezone' => $merchantTimezone,
+                'timezoneOptions' => $timezoneOptions,
             ]);
         });
 
@@ -901,6 +1185,23 @@ Route::middleware('auth')->group(function () {
                 'itemPickerDefaultLimit' => (int) AdminSetting::get('catalog_item_picker_default_limit', 5),
             ]);
         });
+
+        Route::get('/marketing', function (Merchant $merchant) {
+            return Inertia::render('Merchant/Marketing', [
+                'merchantUsername' => $merchant->username,
+                'merchantName' => $merchant->display_name,
+                'section' => 'overview',
+            ]);
+        });
+        Route::get('/marketing/{section}', function (Merchant $merchant, string $section) {
+            abort_unless(in_array($section, ['coupons', 'sms', 'referrals', 'group-sales', 'analytics'], true), 404);
+
+            return Inertia::render('Merchant/Marketing', [
+                'merchantUsername' => $merchant->username,
+                'merchantName' => $merchant->display_name,
+                'section' => $section,
+            ]);
+        })->where('section', 'coupons|sms|referrals|group-sales|analytics');
 
         Route::get('/services', function (Merchant $merchant) {
             $merchant->loadMissing('country');
@@ -954,6 +1255,17 @@ Route::middleware('auth')->group(function () {
         Route::get('/products/{id}/api', [UploadController::class, 'show'])->whereNumber('id');
         Route::delete('/products/{id}', [UploadController::class, 'deleteProduct'])->whereNumber('id');
         Route::post('/products/{product}/hotspots', [UploadController::class, 'syncHotspots'])->whereNumber('product');
+        Route::get('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'index']);
+        Route::post('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'store']);
+        Route::patch('/products/{product:id}/releases/{release:id}', [\App\Http\Controllers\Api\ProductReleaseController::class, 'update']);
+        Route::delete('/products/{product:id}/releases/{release:id}', [\App\Http\Controllers\Api\ProductReleaseController::class, 'destroy']);
+        Route::get('/products/{product:id}/license-keys', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'index']);
+        Route::post('/products/{product:id}/license-keys/{license:id}/revoke', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'revoke']);
+        Route::post('/products/{product:id}/license-keys/{license:id}/regenerate', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'regenerate']);
+        Route::get('/products/{product:id}/live-event', [\App\Http\Controllers\Api\LiveEventController::class, 'dashboard']);
+        Route::put('/products/{product:id}/live-event', [\App\Http\Controllers\Api\LiveEventController::class, 'update']);
+        Route::post('/products/{product:id}/live-event/orders/{order:id}/attendance', [\App\Http\Controllers\Api\LiveEventController::class, 'markAttendance']);
+        Route::post('/products/{product:id}/live-event/orders/{order:id}/resend-access', [\App\Http\Controllers\Api\LiveEventController::class, 'resendAccess']);
         Route::post('/upload/media', [UploadController::class, 'uploadMedia']);
         Route::post('/upload/draft', [UploadController::class, 'draftProduct']);
         Route::post('/upload/manual', [UploadController::class, 'manualDraft']);
@@ -971,6 +1283,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction']);
         Route::get('/content-reports/api', [ContentReportModerationController::class, 'merchantIndex']);
         Route::patch('/content-reports/{contentReport:id}/resolve/api', [ContentReportModerationController::class, 'merchantResolve']);
+        Route::post('/content-reports/{contentReport:id}/appeal/api', [ContentReportModerationController::class, 'merchantAppeal']);
 
         Route::get('/bundles/api', fn (Request $request, Merchant $merchant, MerchantBundleController $controller) => $controller->index($request));
         Route::post('/bundles/api', fn (Request $request, Merchant $merchant, MerchantBundleController $controller, EntitlementService $entitlementService) => $controller->store($request, $entitlementService));
@@ -986,6 +1299,31 @@ Route::middleware('auth')->group(function () {
         Route::get('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'show']);
         Route::put('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'update']);
         Route::delete('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy']);
+        Route::get('/subscription-plans/{subscriptionPlan:id}/members/api', [MerchantSubscriptionPlanController::class, 'members']);
+        Route::patch('/subscription-plans/{subscriptionPlan:id}/members/{userSubscription:id}/api', [MerchantSubscriptionPlanController::class, 'updateMember']);
+        Route::get('/subscription-plans/{subscriptionPlan:id}/community-posts/api', [MerchantSubscriptionPlanController::class, 'communityPosts']);
+        Route::post('/subscription-plans/{subscriptionPlan:id}/community-posts/api', [MerchantSubscriptionPlanController::class, 'storeCommunityPost']);
+        Route::delete('/subscription-plans/{subscriptionPlan:id}/community-posts/{post:id}/api', [MerchantSubscriptionPlanController::class, 'destroyCommunityPost']);
+
+        Route::get('/marketing/api', [MerchantMarketingController::class, 'index']);
+        Route::post('/marketing/coupons/api', [MerchantMarketingController::class, 'store']);
+        Route::put('/marketing/coupons/{coupon:id}/api', [MerchantMarketingController::class, 'update']);
+        Route::delete('/marketing/coupons/{coupon:id}/api', [MerchantMarketingController::class, 'destroy']);
+        Route::post('/marketing/sms/packages/api', [MerchantMarketingController::class, 'buySmsPackage']);
+        Route::post('/marketing/sms/estimate/api', [MerchantMarketingController::class, 'estimateSmsAudience']);
+        Route::post('/marketing/sms/campaigns/api', [MerchantMarketingController::class, 'storeSmsCampaign']);
+        Route::put('/marketing/abandoned-checkout-automation/api', [MerchantMarketingController::class, 'updateAbandonedCheckoutAutomation']);
+        Route::post('/marketing/referrals/api', [MerchantMarketingController::class, 'storeReferral']);
+        Route::put('/marketing/referrals/{referralLink:id}/api', [MerchantMarketingController::class, 'updateReferral']);
+        Route::delete('/marketing/referrals/{referralLink:id}/api', [MerchantMarketingController::class, 'destroyReferral']);
+        Route::post('/marketing/referrals/{referralLink:id}/commissions/api', [MerchantMarketingController::class, 'payReferralCommissions']);
+        Route::post('/marketing/group-sales/api', [MerchantMarketingController::class, 'storeGroupSale']);
+        Route::put('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'updateGroupSale']);
+        Route::delete('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'destroyGroupSale']);
+        Route::get('/exports/orders.csv', [MerchantAnalyticsExportController::class, 'orders']);
+        Route::get('/exports/statement.csv', [MerchantAnalyticsExportController::class, 'statement']);
+        Route::get('/exports/product-performance.csv', [MerchantAnalyticsExportController::class, 'productPerformance']);
+        Route::get('/exports/campaigns.csv', [MerchantAnalyticsExportController::class, 'campaigns']);
 
         Route::get('/orders/api', [MerchantOrderController::class, 'index']);
         Route::get('/orders/api/summary', [MerchantOrderController::class, 'summary']);
@@ -1001,6 +1339,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/service-sessions/api', [ServiceRequestController::class, 'sessions']);
         Route::put('/service-sessions/api', [ServiceRequestController::class, 'updateSessions']);
         Route::get('/orders/{order}/api', [MerchantOrderController::class, 'show']);
+        Route::post('/orders/{order}/custom-delivery', [MerchantOrderController::class, 'uploadCustomDelivery']);
         Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity']);
         Route::post('/dispatch/{order}/local', [DispatchController::class, 'local']);
         Route::get('/orders/{order}', function (Merchant $merchant, \App\Models\Order $order) {
@@ -1118,6 +1457,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/merchant/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction']);
         Route::get('/merchant/content-reports/api', [ContentReportModerationController::class, 'merchantIndex']);
         Route::patch('/merchant/content-reports/{contentReport:id}/resolve/api', [ContentReportModerationController::class, 'merchantResolve']);
+        Route::post('/merchant/content-reports/{contentReport:id}/appeal/api', [ContentReportModerationController::class, 'merchantAppeal']);
 
         Route::get('/merchant/bundles/api', [MerchantBundleController::class, 'index']);
         Route::post('/merchant/bundles/api', [MerchantBundleController::class, 'store']);
@@ -1215,7 +1555,14 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::post('/merchants/{merchant:id}/toggle-suspension', [AdminController::class, 'toggleSuspension']);
         Route::get('/feed', [AdminController::class, 'adminFeed']);
         Route::get('/posts/{postRef}', [AdminController::class, 'adminPostDetail']);
+        Route::delete('/posts/{postRef}', [AdminController::class, 'adminDeletePost']);
+        Route::post('/posts/{postRef}/restore', [AdminController::class, 'adminRestorePost']);
         Route::get('/search', [AdminController::class, 'globalSearch']);
+        Route::get('/analytics', [AdminController::class, 'platformAnalytics']);
+        Route::get('/analytics/events', [AdminController::class, 'platformAnalyticsEvents']);
+        Route::get('/analytics/journey', [AdminController::class, 'platformAnalyticsJourney']);
+        Route::get('/analytics/cohorts', [AdminController::class, 'platformAnalyticsCohorts']);
+        Route::get('/analytics/export/{report}.csv', [AdminController::class, 'platformAnalyticsExport']);
 
         Route::get('/content-reports', [ContentReportModerationController::class, 'adminIndex']);
         Route::patch('/content-reports/{contentReport:id}/resolve', [ContentReportModerationController::class, 'adminResolve']);
@@ -1227,6 +1574,10 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::post('/catalog/categories/{category}/attributes', [AdminCatalogController::class, 'storeAttribute']);
         Route::put('/catalog/attributes/{attribute}', [AdminCatalogController::class, 'updateAttribute']);
         Route::delete('/catalog/attributes/{attribute}', [AdminCatalogController::class, 'destroyAttribute']);
+        Route::get('/catalog/unit-types', [AdminCatalogController::class, 'indexUnitTypes']);
+        Route::post('/catalog/unit-types', [AdminCatalogController::class, 'storeUnitType']);
+        Route::put('/catalog/unit-types/{unitType}', [AdminCatalogController::class, 'updateUnitType']);
+        Route::delete('/catalog/unit-types/{unitType}', [AdminCatalogController::class, 'destroyUnitType']);
         Route::get('/catalog/brands', [AdminCatalogController::class, 'indexBrands']);
         Route::post('/catalog/brands', [AdminCatalogController::class, 'storeBrand']);
         Route::put('/catalog/brands/{brand}', [AdminCatalogController::class, 'updateBrand']);
@@ -1280,6 +1631,9 @@ Route::middleware(['auth', 'admin'])->group(function () {
     Route::get('/admin/feed', function () {
         return Inertia::render('Admin/FeedMonitor');
     });
+    Route::get('/admin/analytics', function () {
+        return Inertia::render('Admin/Analytics');
+    });
     Route::get('/admin/posts/{postRef}', [AdminController::class, 'adminShowPostDetailPage']);
 
     Route::get('/admin/content-reports', function () {
@@ -1288,6 +1642,14 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     Route::get('/admin/categories', function () {
         return Inertia::render('Admin/Categories');
+    });
+
+    Route::get('/admin/brands', function () {
+        return Inertia::render('Admin/Brands');
+    });
+
+    Route::get('/admin/sellable-units', function () {
+        return Inertia::render('Admin/SellableUnits');
     });
 
     Route::get('/admin/service-categories', function () {

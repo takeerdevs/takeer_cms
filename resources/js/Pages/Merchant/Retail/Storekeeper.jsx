@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Package, Truck, Clock3, ArrowRightLeft, MapPin, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { productQuantityLabel, productStockLabel } from '@/lib/productUnits';
 
 export default function Storekeeper({ merchant }) {
     const [hasTerminalSession, setHasTerminalSession] = useState(false);
@@ -109,6 +110,7 @@ export default function Storekeeper({ merchant }) {
 
     const TransferCard = ({ t }) => {
         const label = variantLabel(t);
+        const quantity = Number(t.quantity_decimal ?? t.quantity ?? 0);
 
         return (
         <Card key={t.id} className="border border-brand-100/50 shadow-sm rounded-2xl">
@@ -133,8 +135,8 @@ export default function Storekeeper({ merchant }) {
                                     {label}
                                 </p>
                             )}
-                            <p className="text-xs text-muted-foreground">Qty: {t.quantity}</p>
-                            <p className="text-xs text-slate-500">Available: {Number(t.available_source_quantity ?? 0)}</p>
+                            <p className="text-xs text-muted-foreground">Qty: {productQuantityLabel(t.product, quantity)}</p>
+                            <p className="text-xs text-slate-500">Available: {productStockLabel(t.product, Number(t.available_source_quantity ?? 0))}</p>
                         </div>
                     </div>
                     <span className="text-[10px] font-black px-2 py-1 rounded-full bg-slate-100">{t.status}</span>

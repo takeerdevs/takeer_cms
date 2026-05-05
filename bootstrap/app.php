@@ -18,6 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('currency:update-rates')->dailyAt('03:15')->withoutOverlapping();
         $schedule->command('service-credentials:monitor-expiry')->dailyAt('04:15')->withoutOverlapping();
         $schedule->command('bundle-courses:log-reminders')->everyFifteenMinutes()->withoutOverlapping();
+        $schedule->command('live-events:log-reminders')->everyFifteenMinutes()->withoutOverlapping();
+        $schedule->command('marketing:sms-dispatch-scheduled')->everyMinute()->withoutOverlapping();
+        $schedule->command('marketing:abandoned-checkouts-dispatch')->everyFifteenMinutes()->withoutOverlapping();
+        $schedule->command('analytics:prune')->dailyAt('02:40')->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(prepend: [

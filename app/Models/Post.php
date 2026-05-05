@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -18,6 +19,7 @@ class Post extends Model
         'public_id',
         'merchant_id',
         'content_item_id',
+        'link_preview_id',
         'source',
         'caption',
         'title',
@@ -104,6 +106,16 @@ class Post extends Model
         return $this->hasMany(PostMedia::class);
     }
 
+    public function moderationActions(): HasMany
+    {
+        return $this->hasMany(PostModerationAction::class);
+    }
+
+    public function latestModerationAction(): HasOne
+    {
+        return $this->hasOne(PostModerationAction::class)->latestOfMany();
+    }
+
     public function productTags(): HasMany
     {
         return $this->hasMany(PostProductTag::class);
@@ -120,6 +132,11 @@ class Post extends Model
     public function linkedContentItem(): BelongsTo
     {
         return $this->belongsTo(ContentItem::class, 'content_item_id')->withTrashed();
+    }
+
+    public function linkPreview(): BelongsTo
+    {
+        return $this->belongsTo(LinkPreview::class);
     }
 
     public function comments(): HasMany

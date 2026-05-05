@@ -77,6 +77,11 @@ return [
         'pro_model' => 'gemini-1.5-pro',
     ],
 
+    'flaresolverr' => [
+        'url' => env('FLARESOLVERR_URL'),
+        'timeout' => (int) env('FLARESOLVERR_TIMEOUT', 15000),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | AzamPay — Tanzania Payment Gateway

@@ -1,11 +1,11 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Heart, MessageCircle, Share2, ShoppingBag, Music, Play, Pause, Volume2, VolumeX, DownloadCloud, CalendarClock, CreditCard } from 'lucide-react';
+import { MessageCircle, Share2, ShoppingBag, Music, Play, Volume2, VolumeX, DownloadCloud, CalendarClock, Loader2 } from 'lucide-react';
 import ShoppablePin from './ShoppablePin';
 import { motion, AnimatePresence } from 'framer-motion';
-import LikeButton from './LikeButton';
 import ShareModal from './ShareModal';
 import { resolvePlayableVideoUrl } from './VideoPlayer';
 import { toast } from 'sonner';
+import axios from 'axios';
 
 // ── Text size based on character count ──────────────────────────────────────
 function getTextStyle(text = '') {
@@ -15,6 +15,26 @@ function getTextStyle(text = '') {
     if (len <= 180) return 'text-2xl font-bold leading-snug';
     if (len <= 280) return 'text-xl font-semibold leading-normal';
     return 'text-base font-medium leading-relaxed overflow-y-auto';
+}
+
+const isProcessingVideoMedia = (item) => Boolean(
+    item
+    && typeof item !== 'string'
+    && ['pending', 'processing'].includes(item.processing_status)
+    && !item.processed_url
+    && !item.hls_url
+);
+
+function ProcessingVideoLayer() {
+    return (
+        <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center gap-3 px-6 text-center">
+            <Loader2 className="h-9 w-9 text-white/70 animate-spin" />
+            <div>
+                <p className="text-base font-semibold text-white">Processing video...</p>
+                <p className="mt-1 text-sm text-white/55">Playback will be ready shortly.</p>
+            </div>
+        </div>
+    );
 }
 
 // ── Default background presets ───────────────────────────────────────────────
@@ -27,6 +47,8 @@ const TEXT_BACKGROUNDS = {
     solid_white: '#ffffff',
     solid_brand: '#0284c7',
 };
+
+const QUICK_REACTIONS = ['👍', '❤️', '🔥'];
 
 // ── Floating heart particle after double-tap ─────────────────────────────────
 function FloatingHeart({ x, y, id, onDone }) {
@@ -61,6 +83,30 @@ function ActionBtn({ icon: Icon, label, onClick, iconClass = '' }) {
     );
 }
 
+function ReactionBtn({ emoji, count, active, disabled, onClick }) {
+    return (
+        <motion.button
+            whileTap={{ scale: 0.82 }}
+            onClick={onClick}
+            disabled={disabled}
+            className="flex flex-col items-center gap-1 disabled:opacity-60"
+        >
+            <div className={`w-12 h-12 flex items-center justify-center rounded-full backdrop-blur-lg border text-2xl transition-colors ${active ? 'bg-white text-slate-950 border-white' : 'bg-black/25 border-white/15'}`}>
+                {emoji}
+            </div>
+            <span className="text-xs text-white font-bold drop-shadow-md tabular-nums">
+                {count > 0 ? formatCompactCount(count) : ''}
+            </span>
+        </motion.button>
+    );
+}
+
+function formatCompactCount(value) {
+    const count = Number(value || 0);
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+    return count ? String(count) : '';
+}
+
 // ── Text background post ──────────────────────────────────────────────────────
 function TextPostLayer({ post }) {
     const bg = TEXT_BACKGROUNDS[post.bg_style] || TEXT_BACKGROUNDS.gradient_ocean;
@@ -81,9 +127,11 @@ function TextPostLayer({ post }) {
 
 // ── Image carousel ────────────────────────────────────────────────────────────
 function ImageLayer({ post, currentIdx, setIdx }) {
-    const images = post.images?.length
-        ? post.images
-        : post.media_url ? [{ url: post.media_url, type: post.media_type || 'image' }] : [];
+    const images = post.media?.length
+        ? post.media
+        : post.images?.length
+            ? post.images
+            : post.media_url ? [{ url: post.media_url, type: post.media_type || 'image' }] : [];
     const current = images[currentIdx];
     const currentUrl = typeof current === 'string'
         ? current
@@ -91,6 +139,7 @@ function ImageLayer({ post, currentIdx, setIdx }) {
     const currentType = typeof current === 'string'
         ? (/\.(mp4|mov|webm|ogg)(\?|$)/i.test(current) ? 'video' : 'image')
         : (current?.media_type || current?.type || 'image');
+    const processing = currentType === 'video' && isProcessingVideoMedia(current);
     const startX = useRef(null);
 
     const onTouchStart = (e) => { startX.current = e.touches[0].clientX; };
@@ -106,15 +155,18 @@ function ImageLayer({ post, currentIdx, setIdx }) {
     return (
         <div className="absolute inset-0" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
             <AnimatePresence initial={false} mode="wait">
-                {currentType === 'video' ? (
+                {currentType === 'video' && processing ? (
+                    <ProcessingVideoLayer />
+                ) : currentType === 'video' ? (
                     <motion.video
                         key={currentIdx}
                         src={currentUrl}
                         poster={typeof current === 'string' ? undefined : current?.thumbnail_url || undefined}
                         className="w-full h-full object-cover bg-black"
+                        autoPlay
+                        loop
                         muted
                         playsInline
-                        controls
                         preload="metadata"
                         initial={{ opacity: 0.6, x: 40 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -149,6 +201,7 @@ function ImageLayer({ post, currentIdx, setIdx }) {
 // ── Main PostItem ─────────────────────────────────────────────────────────────
 export default function PostItem({ post, isActive, onProductTap, onComment }) {
     const videoRef = useRef(null);
+    const [livePost, setLivePost] = useState(post);
     const [currentIdx, setCurrentIdx] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [muted, setMuted] = useState(true);
@@ -156,6 +209,34 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
     const lastTap = useRef(0);
     const tapTimer = useRef(null);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [myReaction, setMyReaction] = useState(post.my_reaction || null);
+    const [reactionSyncing, setReactionSyncing] = useState(false);
+
+    useEffect(() => {
+        setLivePost(post);
+        setMyReaction(post.my_reaction || null);
+    }, [post]);
+
+    useEffect(() => {
+        if (!window.Echo || !post?.id) return;
+
+        const channel = window.Echo.channel('posts');
+        const listener = (event) => {
+            if (String(event.post_id) !== String(post.id)) return;
+
+            setLivePost((current) => ({
+                ...current,
+                comment_count: event.comment_count ?? current.comment_count,
+                reaction_summary: Array.isArray(event.reaction_summary) ? event.reaction_summary : current.reaction_summary,
+            }));
+        };
+
+        channel.listen('.post.engagement.updated', listener);
+
+        return () => {
+            channel.stopListening('.post.engagement.updated', listener);
+        };
+    }, [post?.id]);
 
     // Auto-play video
     useEffect(() => {
@@ -189,11 +270,11 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
         } else {
             // Single tap — toggle play after short delay
             tapTimer.current = setTimeout(() => {
-                if (post.media_type === 'video') togglePlay();
+                if (livePost.media_type === 'video') togglePlay();
             }, 200);
         }
         lastTap.current = now;
-    }, [togglePlay, post.media_type]);
+    }, [togglePlay, livePost.media_type]);
 
     const removeHeart = useCallback((id) => {
         setFloatHearts(h => h.filter(fh => fh.id !== id));
@@ -203,11 +284,52 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
         setIsShareModalOpen(true);
     };
 
-    const isVideo = post.media_type === 'video';
-    const isText = post.media_type === 'text';
+    const handleReact = async (emoji) => {
+        if (!livePost.reactions_enabled || reactionSyncing) return;
+        const previousReaction = myReaction;
+        const previousSummary = livePost.reaction_summary || [];
+        const nextReaction = myReaction === emoji ? null : emoji;
+
+        setMyReaction(nextReaction);
+        setLivePost((current) => ({
+            ...current,
+            reaction_summary: applyReactionDelta(current.reaction_summary || [], previousReaction, nextReaction),
+        }));
+
+        setReactionSyncing(true);
+        try {
+            const res = await axios.post(`/api/posts/${livePost.id}/react`, { emoji: nextReaction });
+            setMyReaction(res.data?.my_reaction || null);
+            setLivePost((current) => ({
+                ...current,
+                reaction_summary: res.data?.reaction_summary || current.reaction_summary || [],
+            }));
+        } catch (error) {
+            setMyReaction(previousReaction);
+            setLivePost((current) => ({ ...current, reaction_summary: previousSummary }));
+            toast.error(error.response?.data?.message || 'Imeshindwa kuweka reaction.');
+        } finally {
+            setReactionSyncing(false);
+        }
+    };
+
+    const isVideo = livePost.media_type === 'video';
+    const isText = livePost.media_type === 'text';
+    const primaryVideoMedia = isVideo
+        ? (livePost.media?.find?.((item) => (item?.media_type || item?.type) === 'video') || livePost.images?.find?.((item) => (item?.media_type || item?.type) === 'video') || null)
+        : null;
+    const videoProcessing = isVideo && isProcessingVideoMedia(primaryVideoMedia);
+    const videoSrc = primaryVideoMedia
+        ? resolvePlayableVideoUrl({
+            hlsUrl: primaryVideoMedia.hls_url,
+            processedUrl: primaryVideoMedia.processed_url,
+            url: primaryVideoMedia.url || livePost.media_url,
+        })
+        : livePost.media_url;
 
     // Hotspots for current image
-    const currentHotspots = post.resolved_hotspots?.[currentIdx] || [];
+    const currentHotspots = livePost.resolved_hotspots?.[currentIdx] || [];
+    const reactionCounts = Object.fromEntries((livePost.reaction_summary || []).map((entry) => [entry.emoji, Number(entry.count || 0)]));
 
     return (
         <div
@@ -217,18 +339,23 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
         >
             {/* ── Media Layer ───────────────────────────────────────────────── */}
             {isText ? (
-                <TextPostLayer post={post} />
+                <TextPostLayer post={livePost} />
+            ) : isVideo && videoProcessing ? (
+                <ProcessingVideoLayer />
             ) : isVideo ? (
                 <video
                     ref={videoRef}
-                    src={post.media_url}
+                    src={videoSrc}
+                    poster={primaryVideoMedia?.thumbnail_url || undefined}
                     className="w-full h-full object-cover"
+                    autoPlay
                     loop
                     muted={muted}
                     playsInline
+                    preload="metadata"
                 />
             ) : (
-                <ImageLayer post={post} currentIdx={currentIdx} setIdx={setCurrentIdx} />
+                <ImageLayer post={livePost} currentIdx={currentIdx} setIdx={setCurrentIdx} />
             )}
 
             {/* ── Floating double-tap hearts ────────────────────────────── */}
@@ -246,14 +373,14 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
                 <ShoppablePin 
                     key={spot.id} 
                     tag={spot} 
-                    merchant={post.merchant} 
+                    merchant={livePost.merchant}
                     onProductTap={onProductTap} 
                 />
             ))}
 
             {/* ── Legacy fallback pin if no hotspots but has product_tag ── */}
-            {!isText && !isVideo && currentHotspots.length === 0 && post.product_tags?.[0] && (
-                <ShoppablePin tag={{ ...post.product_tags[0], type: 'product' }} onProductTap={onProductTap} />
+            {!isText && !isVideo && currentHotspots.length === 0 && livePost.product_tags?.[0] && (
+                <ShoppablePin tag={{ ...livePost.product_tags[0], type: 'product' }} onProductTap={onProductTap} />
             )}
 
             {/* ── Video controls (top-right) ────────────────────────────── */}
@@ -296,25 +423,25 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
                     <div className="flex-1 min-w-0 pointer-events-auto space-y-1.5 pr-4">
                         <div className="flex items-center gap-2">
                             <div className="h-8 w-8 rounded-full bg-brand-500 border-2 border-white flex items-center justify-center text-white text-xs font-bold shrink-0">
-                                {(post.merchant?.name || 'M').charAt(0).toUpperCase()}
+                                {(livePost.merchant?.name || 'M').charAt(0).toUpperCase()}
                             </div>
-                            <span className="text-white font-bold text-sm drop-shadow-lg">@{post.merchant?.name || 'muuzaji'}</span>
+                            <span className="text-white font-bold text-sm drop-shadow-lg">@{livePost.merchant?.name || 'muuzaji'}</span>
                         </div>
-                        {!isText && post.caption && (
+                        {!isText && livePost.caption && (
                             <p className="text-white/90 text-sm leading-snug line-clamp-2 drop-shadow-md">
-                                {post.caption}
+                                {livePost.caption}
                             </p>
                         )}
                         
                         {/* ── Product Format Badges ── */}
-                        {post.product_tags?.[0]?.product && (
+                        {livePost.product_tags?.[0]?.product && (
                             <div className="flex items-center gap-2 mt-1">
-                                {post.product_tags[0].product.type === 'digital' && (
+                                {livePost.product_tags[0].product.type === 'digital' && (
                                     <span className="bg-brand-500/80 backdrop-blur-md text-white text-[10px] font-black px-2 py-1 rounded-full flex items-center gap-1 w-max border border-white/20 uppercase shadow-lg">
                                         <DownloadCloud className="h-3 w-3" /> Mtandaoni
                                     </span>
                                 )}
-                                {post.product_tags[0].product.type === 'service' && (
+                                {livePost.product_tags[0].product.type === 'service' && (
                                     <span className="bg-purple-500/80 backdrop-blur-md text-white text-[10px] font-black px-2 py-1 rounded-full flex items-center gap-1 w-max border border-white/20 uppercase shadow-lg">
                                         <CalendarClock className="h-3 w-3" /> Huduma / Booking
                                     </span>
@@ -325,24 +452,31 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
                         {!isText && (
                             <div className="flex items-center gap-2 w-max rounded-full bg-black/40 backdrop-blur-md px-3 py-1.5 mt-2 text-[11px] text-white/90 border border-white/10">
                                 <Music className="h-3 w-3 animate-spin [animation-duration:3s]" />
-                                <span className="truncate max-w-[140px]">Original Audio · {post.merchant?.name || 'Takeer'}</span>
+                                <span className="truncate max-w-[140px]">Original Audio · {livePost.merchant?.name || 'Takeer'}</span>
                             </div>
                         )}
                     </div>
 
                     {/* Right: Action sidebar */}
                     <div className="flex flex-col items-center gap-5 pb-2 pointer-events-auto shrink-0">
-                        <LikeButton 
-                            postId={post.id}
-                            initialCount={post.like_count || post.view_count || 0} 
-                            initialLiked={post.is_liked}
-                            variant="vertical"
-                        />
+                        {livePost.reactions_enabled !== false && QUICK_REACTIONS.map((emoji) => (
+                            <ReactionBtn
+                                key={emoji}
+                                emoji={emoji}
+                                count={reactionCounts[emoji] || 0}
+                                active={myReaction === emoji}
+                                disabled={reactionSyncing}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReact(emoji);
+                                }}
+                            />
+                        ))}
 
                         <ActionBtn
                             icon={MessageCircle}
-                            label={post.comment_count ? String(post.comment_count) : 'Maoni'}
-                            onClick={(e) => { e.stopPropagation(); onComment?.(post); }}
+                            label={livePost.comment_count ? String(livePost.comment_count) : 'Maoni'}
+                            onClick={(e) => { e.stopPropagation(); onComment?.(livePost); }}
                         />
 
                         <ActionBtn
@@ -351,13 +485,13 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
                             onClick={(e) => { e.stopPropagation(); handleShare(); }}
                         />
 
-                        {post.product_tags?.length > 0 && (
+                        {livePost.product_tags?.length > 0 && (
                             <ActionBtn
                                 icon={ShoppingBag}
-                                label={post.product_tags[0]?.product?.has_access ? "Fungua" : "Nunua"}
+                                label={livePost.product_tags[0]?.product?.has_access ? "Fungua" : "Nunua"}
                                 onClick={(e) => { 
                                     e.stopPropagation(); 
-                                    const p = post.product_tags[0]?.product;
+                                    const p = livePost.product_tags[0]?.product;
                                     if (p?.type === 'digital' && p?.has_access) {
                                         window.dispatchEvent(new CustomEvent('takeer:digital-ready', {
                                             detail: {
@@ -371,7 +505,7 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
                                         onProductTap?.(p); 
                                     }
                                 }}
-                                iconClass={post.product_tags[0]?.product?.has_access ? "text-green-400" : "text-brand-300"}
+                                iconClass={livePost.product_tags[0]?.product?.has_access ? "text-green-400" : "text-brand-300"}
                             />
                         )}
                     </div>
@@ -380,10 +514,26 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
             
             {/* Share Modal */}
             <ShareModal 
-                post={post}
+                post={livePost}
                 isOpen={isShareModalOpen}
                 onClose={() => setIsShareModalOpen(false)}
             />
         </div>
     );
+}
+
+function applyReactionDelta(summary, previousReaction, nextReaction) {
+    const counts = new Map((summary || []).map((entry) => [entry.emoji, Number(entry.count || 0)]));
+
+    if (previousReaction) {
+        counts.set(previousReaction, Math.max(0, (counts.get(previousReaction) || 0) - 1));
+    }
+
+    if (nextReaction) {
+        counts.set(nextReaction, (counts.get(nextReaction) || 0) + 1);
+    }
+
+    return Array.from(counts.entries())
+        .filter(([, count]) => count > 0)
+        .map(([emoji, count]) => ({ emoji, count }));
 }

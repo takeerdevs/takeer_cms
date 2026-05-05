@@ -8,10 +8,11 @@ import {
     Package, Plus, Search, Loader2,
     CheckCircle2, Clock, Archive, ShoppingBag,
     Image as ImageIcon, FileText, Calendar, ChevronLeft, ChevronRight, MessageSquare,
-    Phone, Mail, MapPin, X, Copy, CalendarDays, ListChecks, Settings2, ExternalLink
+    Phone, Mail, MapPin, X, Copy, CalendarDays, ListChecks, Settings2, ExternalLink, Trash2
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { productPriceLabel, productStockLabel } from '@/lib/productUnits';
 
 export default function MerchantProducts({ merchantUsername, typeScope = 'all', merchantTimezone = 'Africa/Dar_es_Salaam' }) {
     const [products, setProducts] = useState([]);
@@ -38,6 +39,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const [availabilityTimezone, setAvailabilityTimezone] = useState(merchantTimezone);
     const [availabilityProductId, setAvailabilityProductId] = useState('');
     const [serviceSessions, setServiceSessions] = useState([]);
+    const [deletingProductId, setDeletingProductId] = useState(null);
     const normalizedTypeScope = ['physical', 'digital', 'service'].includes(typeScope) ? typeScope : 'all';
     const weekdayOptions = [
         { value: 1, short: 'Mon', label: 'Monday' },
@@ -97,6 +99,33 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             console.error('Failed to fetch products:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const deleteProduct = async (product) => {
+        if (deletingProductId) return;
+        const confirmed = window.confirm(
+            product.status === 'draft'
+                ? 'Unataka kufuta draft hii kabisa?'
+                : 'Unataka kufuta bidhaa hii? Bidhaa yenye oda haiwezi kufutwa.'
+        );
+        if (!confirmed) return;
+
+        setDeletingProductId(product.id);
+        try {
+            const response = await axios.delete(`/merchant/${merchantUsername}/products/${product.id}`);
+            toast.success(response.data?.message || 'Bidhaa imeondolewa.');
+            setProducts((prev) => prev.filter((item) => item.id !== product.id));
+            setMeta((prev) => ({ ...prev, total: Math.max(0, Number(prev.total || 0) - 1) }));
+            if (products.length === 1 && page > 1) {
+                setPage((prev) => Math.max(1, prev - 1));
+            } else {
+                fetchProducts();
+            }
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kufuta bidhaa.');
+        } finally {
+            setDeletingProductId(null);
         }
     };
 
@@ -502,7 +531,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
         external_booking: 'External link',
     }[product.service_mode] || 'Service');
     const priceLabel = (product) => {
-        if (product.type !== 'service') return `TZS ${parseFloat(product.price).toLocaleString()}`;
+        if (product.type !== 'service') return productPriceLabel(product);
         if (product.service_price_display === 'hidden') return 'No public price';
         if (product.service_price_display === 'quote_only' || product.service_mode === 'request_quote') return 'Quote only';
         if (product.service_price_display === 'starts_from') return `From TZS ${parseFloat(product.price).toLocaleString()}`;
@@ -609,6 +638,11 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
     const filteredProducts = products.filter(p =>
         p.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    const productCardTarget = (product) => (
+        product.status === 'draft'
+            ? `/merchant/${merchantUsername}/upload?edit=${product.id}`
+            : `/merchant/${merchantUsername}/products/${product.id}`
     );
 
     const pageMeta = (() => {
@@ -1196,11 +1230,11 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                     className="overflow-hidden border-border/60 hover:border-brand-500/40 transition-colors group cursor-pointer"
                                     role="button"
                                     tabIndex={0}
-                                    onClick={() => router.visit(`/merchant/${merchantUsername}/products/${product.id}`)}
+                                    onClick={() => router.visit(productCardTarget(product))}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();
-                                            router.visit(`/merchant/${merchantUsername}/products/${product.id}`);
+                                            router.visit(productCardTarget(product));
                                         }
                                     }}
                                 >
@@ -1222,20 +1256,44 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
                                         {/* Info */}
                                         <div className="min-w-0">
-                                            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                                                {statusBadge(product.status)}
-                                                <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                                    {typeIcon(product.type)} {product.type}
-                                                </span>
+                                            <div className="mb-1 flex items-start justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    {statusBadge(product.status)}
+                                                    <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                                        {typeIcon(product.type)} {product.type}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="h-8 w-8 shrink-0 rounded-xl border border-red-100 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    aria-label={product.status === 'draft' ? 'Futa draft' : 'Futa bidhaa'}
+                                                    disabled={deletingProductId === product.id}
+                                                    onClick={(event) => {
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        deleteProduct(product);
+                                                    }}
+                                                >
+                                                    {deletingProductId === product.id ? (
+                                                        <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        <Trash2 className="mx-auto h-4 w-4" />
+                                                    )}
+                                                </button>
                                             </div>
                                             <p className="font-bold text-sm line-clamp-2 text-left hover:text-brand-700">
                                                 {product.title}
                                             </p>
+                                            {product.status === 'draft' && (
+                                                <p className="mt-1 text-[11px] font-semibold text-amber-700">
+                                                    Endelea kuikamilisha kwenye upload editor.
+                                                </p>
+                                            )}
                                             <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground flex-wrap">
                                                 <span className="font-black text-foreground">{priceLabel(product)}</span>
                                                 {product.type === 'physical' && (
                                                     <span className="flex items-center gap-1">
-                                                        <Package className="h-3 w-3" /> {product.inventory_count} kwenye stoo
+                                                        <Package className="h-3 w-3" /> {productStockLabel(product)}
                                                     </span>
                                                 )}
                                                 {product.type === 'service' && (

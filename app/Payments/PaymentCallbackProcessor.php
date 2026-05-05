@@ -54,13 +54,23 @@ class PaymentCallbackProcessor
 
         DB::transaction(function () use ($order, $gatewayRef, $gateway) {
             $isPhysical = $order->requiresPhysicalFulfillment();
+            $isCustomDelivery = $order->product?->isDigital()
+                && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery';
+
+            if ($isPhysical && $order->is_inquiry) {
+                $order->markPhysicalAgreement([
+                    'total_paid' => (float) $order->total_paid,
+                    'notes' => 'Buyer accepted the quoted physical order and gateway confirmed payment.',
+                ]);
+            }
 
             $order->update([
                 'payment_status' => $isPhysical
                     ? 'awaiting_merchant_confirmation'
-                    : 'resolved_merchant_paid',
+                    : ($isCustomDelivery ? 'escrow_locked' : 'resolved_merchant_paid'),
                 'gateway_ref'    => $gatewayRef,
                 'payment_gateway' => $gateway,
+                'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
             ]);
 
             // Log TRA-ready transaction record
@@ -82,9 +92,25 @@ class PaymentCallbackProcessor
                 ['balance' => 0, 'frozen_balance' => 0]
             );
 
-            if ($isPhysical) {
+            if ($isPhysical || $isCustomDelivery) {
                 // Freeze funds in merchant wallet until buyer confirms delivery
                 $wallet->increment('frozen_balance', $order->total_paid);
+                if ($isCustomDelivery) {
+                    $this->entitlementService->grantForOrder($order->fresh(['product']));
+                }
+                if ($isPhysical) {
+                    $order->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                    $publicId = (string) ($order->public_id ?: $order->id);
+                    if ($order->buyer?->phone_number) {
+                        $this->smsService->sendPhysicalPaymentHeldToBuyer($order->buyer->phone_number, $publicId, (float) $order->total_paid, $order->buyer_id);
+                        if ($order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
+                            $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
+                        }
+                    }
+                    if ($order->merchant?->user?->phone_number) {
+                        $this->smsService->sendPhysicalPaymentHeldToMerchant($order->merchant->user->phone_number, $publicId, (float) $order->total_paid, $order->merchant->user_id);
+                    }
+                }
             } else {
                 // Instantly credit merchant for digital goods
                 $wallet->increment('balance', $fee['net_amount']);

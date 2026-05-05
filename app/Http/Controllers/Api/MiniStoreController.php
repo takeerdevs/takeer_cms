@@ -54,8 +54,11 @@ class MiniStoreController extends Controller
 
         $products = Product::where('merchant_id', $merchant->id)
             ->with(['attributes', 'images', 'merchant'])
+            ->withCount([
+                'orders as paid_orders_count' => fn ($query) => $query->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']),
+            ])
             ->latest()
-            ->take(12)
+            ->take(60)
             ->get();
 
         $contentItems = ContentItem::where('merchant_id', $merchant->id)
@@ -79,6 +82,32 @@ class MiniStoreController extends Controller
             ->take(12)
             ->get();
 
+        $paidOrderBase = \App\Models\Order::query()
+            ->where('merchant_id', $merchant->id)
+            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']);
+
+        $digitalRevenue = (clone $paidOrderBase)
+            ->where('purchasable_type', 'product')
+            ->whereHas('product', fn ($query) => $query->where('type', 'digital'))
+            ->sum('total_paid');
+
+        $memberCount = \App\Models\UserSubscription::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('status', 'active')
+            ->count();
+
+        $monetizationSummary = [
+            'paid_offers' => $products->where('type', 'digital')->count() + $contentItems->where('price', '>', 0)->count() + $bundles->count() + $subscriptionPlans->count(),
+            'creator_club_tiers' => $subscriptionPlans->count(),
+            'active_members' => $memberCount,
+            'digital_revenue' => (float) $digitalRevenue,
+            'live_events' => $products->where('digital_delivery_type', 'live_event')->count(),
+            'custom_commissions' => $products->where('digital_delivery_type', 'custom_delivery')->count(),
+        ];
+        $productDiscovery = $products->mapWithKeys(function (Product $product) {
+            return [$product->id => $this->productDiscoverySignals($product)];
+        });
+
         return response()->json([
             'merchant' => [
                 'id' => $merchant->id,
@@ -100,11 +129,75 @@ class MiniStoreController extends Controller
                 'service_locations' => $merchant->storefrontSetting->service_locations ?? [],
             ] : null,
             'products' => ProductResource::collection($products),
+            'product_discovery' => $productDiscovery,
             'content_items' => ContentItemResource::collection($contentItems),
             'bundles' => BundleResource::collection($bundles),
             'subscription_plans' => SubscriptionPlanResource::collection($subscriptionPlans),
+            'monetization_summary' => $monetizationSummary,
             'posts' => PostResource::collection($posts)->response()->getData(true),
         ]);
+    }
+
+    private function productDiscoverySignals(Product $product): array
+    {
+        $ordersCount = (int) ($product->paid_orders_count ?? 0);
+        $viewsCount = (int) ($product->views_count ?? 0);
+        $createdAt = $product->created_at;
+        $isNew = $createdAt ? $createdAt->greaterThanOrEqualTo(now()->subDays(14)) : false;
+        $isPremium = $product->type === 'digital' && in_array($product->digital_delivery_type, [
+            'video_stream',
+            'audio_stream',
+            'gallery_pack',
+            'live_event',
+            'custom_delivery',
+        ], true);
+        $isUpcoming = $product->type === 'digital'
+            && $product->digital_delivery_type === 'live_event'
+            && $product->live_event_starts_at
+            && $product->live_event_starts_at->isFuture();
+        $seatsRemaining = $product->digital_delivery_type === 'live_event' && $product->live_event_capacity
+            ? $product->liveEventSeatsRemaining()
+            : null;
+        $isLimited = $seatsRemaining !== null && $seatsRemaining > 0 && $seatsRemaining <= 10;
+
+        $score = ($ordersCount * 30)
+            + min(80, $viewsCount * 0.5)
+            + ($isPremium ? 35 : 0)
+            + ($isUpcoming ? 35 : 0)
+            + ($isLimited ? 25 : 0)
+            + ($isNew ? 20 : 0)
+            + ((float) $product->price > 0 ? 8 : 0);
+
+        $badges = [];
+        if ($ordersCount > 0 || $viewsCount >= 50) {
+            $badges[] = ['label' => 'Popular', 'tone' => 'amber'];
+        }
+        if ($isNew) {
+            $badges[] = ['label' => 'New', 'tone' => 'sky'];
+        }
+        if ($isUpcoming) {
+            $badges[] = ['label' => 'Upcoming', 'tone' => 'violet'];
+        }
+        if ($isLimited) {
+            $badges[] = ['label' => $seatsRemaining . ' seats left', 'tone' => 'rose'];
+        }
+        if ($isPremium) {
+            $badges[] = ['label' => 'Premium', 'tone' => 'emerald'];
+        } elseif ($product->type === 'digital') {
+            $badges[] = ['label' => 'Digital', 'tone' => 'emerald'];
+        }
+
+        return [
+            'score' => round($score, 2),
+            'badges' => array_slice($badges, 0, 3),
+            'orders_count' => $ordersCount,
+            'views_count' => $viewsCount,
+            'is_new' => $isNew,
+            'is_premium' => $isPremium,
+            'is_upcoming' => $isUpcoming,
+            'is_limited' => $isLimited,
+            'seats_remaining' => $seatsRemaining,
+        ];
     }
 
     /**

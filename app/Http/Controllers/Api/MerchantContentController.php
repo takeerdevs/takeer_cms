@@ -22,6 +22,23 @@ class MerchantContentController extends Controller
 
         $posts = Post::where('merchant_id', $merchant->id)
             ->when($request->filled('source'), fn ($query) => $query->where('source', $request->string('source')->toString()))
+            ->when($request->filled('q'), function ($query) use ($request) {
+                $term = '%' . $request->string('q')->toString() . '%';
+
+                $query->where(function ($inner) use ($term) {
+                    $inner->where('title', 'like', $term)
+                        ->orWhere('caption', 'like', $term);
+                });
+            })
+            ->when($request->string('post_type')->toString() === 'long', function ($query) {
+                $query->whereHas('linkedContentItem', fn ($contentQuery) => $contentQuery->whereIn('format', ['editorjs', 'markdown', 'html']));
+            })
+            ->when($request->string('post_type')->toString() === 'short', function ($query) {
+                $query->where(function ($inner) {
+                    $inner->whereDoesntHave('linkedContentItem')
+                        ->orWhereHas('linkedContentItem', fn ($contentQuery) => $contentQuery->whereNotIn('format', ['editorjs', 'markdown', 'html']));
+                });
+            })
             ->with([
                 'linkedContentItem:id,format,visibility,price',
                 'media:id,post_id,media_url,media_type,product_image_id',

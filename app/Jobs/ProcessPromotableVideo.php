@@ -17,7 +17,7 @@ class ProcessPromotableVideo implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 2;
-    public int $timeout = 600;
+    public int $timeout = 1200;
 
     public function __construct(
         public int $productImageId,

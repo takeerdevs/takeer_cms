@@ -12,8 +12,15 @@ class ProductCategory extends Model
     protected $fillable = [
         'parent_id',
         'name',
+        'localized_labels',
         'slug',
         'image_url',
+        'risk_level',
+        'allowed_fulfillment_modes',
+        'requires_verified_business',
+        'requires_manual_review',
+        'required_documents',
+        'payout_hold_days',
         'is_active',
         'sort_order',
     ];
@@ -22,6 +29,12 @@ class ProductCategory extends Model
     {
         return [
             'parent_id' => 'integer',
+            'localized_labels' => 'array',
+            'allowed_fulfillment_modes' => 'array',
+            'requires_verified_business' => 'boolean',
+            'requires_manual_review' => 'boolean',
+            'required_documents' => 'array',
+            'payout_hold_days' => 'integer',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
         ];
@@ -54,6 +67,16 @@ class ProductCategory extends Model
         return $this->belongsToMany(ProductBrandModel::class, 'product_category_brand_models', 'category_id', 'model_id')
             ->withPivot('brand_id')
             ->withTimestamps()
+            ->orderBy('name');
+    }
+
+    public function unitTypes(): BelongsToMany
+    {
+        return $this->belongsToMany(ProductUnitType::class, 'product_category_unit_type', 'category_id', 'unit_type_id')
+            ->withPivot(['is_default', 'min_order_quantity', 'order_increment'])
+            ->withTimestamps()
+            ->orderBy('unit_category')
+            ->orderBy('sort_order')
             ->orderBy('name');
     }
 }

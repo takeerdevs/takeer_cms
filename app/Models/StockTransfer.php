@@ -15,6 +15,7 @@ class StockTransfer extends Model
         'from_location_id',
         'to_location_id',
         'quantity',
+        'quantity_decimal',
         'requested_by_staff_id',
         'dispatched_by_staff_id',
         'received_by_staff_id',
@@ -30,6 +31,7 @@ class StockTransfer extends Model
             'dispatched_at' => 'datetime',
             'received_at' => 'datetime',
             'quantity' => 'integer',
+            'quantity_decimal' => 'decimal:3',
         ];
     }
 
