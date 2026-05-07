@@ -150,6 +150,50 @@ class MiniStoreController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/merchant/{slug}/catalog
+     * Returns public product offers without feed posts.
+     */
+    public function catalog(Request $request, string $merchantSlug, LinkPreviewService $linkPreviewService): JsonResponse
+    {
+        $merchant = Merchant::where('username', $merchantSlug)->firstOrFail();
+
+        $products = Product::query()
+            ->where('merchant_id', $merchant->id)
+            ->whereHas('postTags.post', function ($post): void {
+                $post->whereNull('posts.deleted_at');
+            })
+            ->with(['attributes.brand', 'attributes.model', 'images', 'merchant', 'unitType', 'variants', 'postTags.post:id,views_count'])
+            ->withCount('postTags')
+            ->withCount([
+                'orders as purchases_count' => fn ($orders) => $orders->whereNotIn('payment_status', ['pending', 'failed']),
+                'orders as paid_orders_count' => fn ($orders) => $orders->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']),
+            ])
+            ->latest()
+            ->paginate(24);
+
+        $productDiscovery = $products->getCollection()->mapWithKeys(function (Product $product) {
+            return [$product->id => $this->productDiscoverySignals($product)];
+        });
+
+        $storefrontSetting = $merchant->storefrontSetting;
+
+        return response()->json([
+            'merchant' => [
+                'id' => $merchant->id,
+                'name' => $merchant->display_name,
+                'slug' => $merchant->username,
+                'avatar_url' => $merchant->avatar_url,
+                'bio' => $merchant->bio,
+            ],
+            'storefront_settings' => $storefrontSetting ? [
+                'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService),
+            ] : null,
+            'products' => ProductResource::collection($products)->response()->getData(true),
+            'product_discovery' => $productDiscovery,
+        ]);
+    }
+
     private function enrichStorefrontLinks(?array $links, LinkPreviewService $linkPreviewService): array
     {
         return collect($links ?: [])

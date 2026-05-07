@@ -321,14 +321,22 @@ export default function ProductDetail({ product }) {
     const payableServiceRequestStatus = payableServiceRequest?.payment_status || null;
     const serviceRequestPaymentComplete = ['paid', 'held', 'released', 'disputed'].includes(payableServiceRequestStatus);
     const serviceRequestPaymentPending = payableServiceRequestStatus === 'payment_initiated';
+    const startsAsServiceInquiry = product?.type === 'service'
+        && !payableServiceRequest
+        && (
+            serviceMode === 'request_quote'
+            || servicePricingModel === 'contract_quote'
+            || servicePriceDisplay === 'quote_only'
+        );
     const shouldOpenServiceRequest = product?.type === 'service'
         && !payableServiceRequest
+        && !startsAsServiceInquiry
         && !serviceTrustBlocksBooking
         && ['showcase_only', 'request_quote', 'book_appointment'].includes(serviceMode);
     const isServiceContactOnly = product?.type === 'service' && !payableServiceRequest && (
-        ['showcase_only', 'request_quote', 'external_booking'].includes(serviceMode)
+        ['showcase_only', 'external_booking'].includes(serviceMode)
         || serviceSchedulingType === 'external'
-        || ['hidden', 'quote_only'].includes(servicePriceDisplay)
+        || servicePriceDisplay === 'hidden'
     );
 
     const hotspots = images[currentImageIndex]?.hotspots || [];
@@ -644,6 +652,9 @@ export default function ProductDetail({ product }) {
         if (product.type === 'service' && servicePricingModel === 'deposit_required') {
             return 'Lipa Deposit';
         }
+        if (startsAsServiceInquiry) {
+            return 'Start Enquiry';
+        }
         if (product.type === 'service' && serviceMode === 'book_appointment') {
             return 'Book Appointment';
         }
@@ -781,7 +792,7 @@ export default function ProductDetail({ product }) {
             toast.error('Tafadhali chagua au weka eneo ambalo huduma hii inapatikana.');
             return;
         }
-        if (product.service_scheduling_type === 'fixed_sessions' && !serviceRequestForm.selected_session_id) {
+        if (serviceRequestType === 'appointment_request' && product.service_scheduling_type === 'fixed_sessions' && !serviceRequestForm.selected_session_id) {
             toast.error('Tafadhali chagua session inayopatikana.');
             return;
         }

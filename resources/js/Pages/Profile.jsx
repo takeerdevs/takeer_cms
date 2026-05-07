@@ -431,7 +431,7 @@ export default function Profile({
                                 )}
 
                                 {creatorMonetization && (
-                                    <Card className="border border-brand-100 rounded-2xl overflow-hidden shadow-sm bg-gradient-to-br from-white to-brand-50/40">
+                                    <Card className="min-w-0 border border-brand-100 rounded-2xl overflow-hidden shadow-sm bg-gradient-to-br from-white to-brand-50/40">
                                         <CardHeader className="pb-2">
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
@@ -448,25 +448,25 @@ export default function Profile({
                                                 </Button>
                                             </div>
                                         </CardHeader>
-                                        <CardContent className="space-y-4">
-                                            <div className="grid grid-cols-3 gap-3">
-                                                <MiniMetric label="Revenue" value={formatMoney(creatorMonetization.total_revenue || 0)} />
-                                                <MiniMetric label="Orders" value={Number(creatorMonetization.total_orders || 0).toLocaleString()} />
-                                                <MiniMetric label="Members" value={Number(creatorMonetization.active_members || 0).toLocaleString()} />
+                                        <CardContent className="min-w-0 space-y-4">
+                                            <div className="grid min-w-0 gap-3 sm:grid-cols-3">
+                                                <MiniMetric label="Revenue" value={formatMoney(creatorMonetization.total_revenue || 0)} icon={BarChart3} tone="brand" />
+                                                <MiniMetric label="Orders" value={Number(creatorMonetization.total_orders || 0).toLocaleString()} icon={ShoppingBag} tone="amber" />
+                                                <MiniMetric label="Members" value={Number(creatorMonetization.active_members || 0).toLocaleString()} icon={User2} tone="sky" />
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                                                <MiniMetric label="Released" value={formatMoney(creatorMonetization.released_revenue || 0)} />
-                                                <MiniMetric label="Pending" value={formatMoney(creatorMonetization.pending_revenue || 0)} />
-                                                <MiniMetric label="Est. net" value={formatMoney(creatorMonetization.estimated_net || 0)} />
-                                                <MiniMetric label="Change" value={`${Number(creatorMonetization.revenue_change_percent || 0).toLocaleString()}%`} />
+                                            <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-4">
+                                                <MiniMetric label="Released" value={formatMoney(creatorMonetization.released_revenue || 0)} icon={FileCheck} tone="emerald" compact />
+                                                <MiniMetric label="Pending" value={formatMoney(creatorMonetization.pending_revenue || 0)} icon={Clock} tone="orange" compact />
+                                                <MiniMetric label="Est. net" value={formatMoney(creatorMonetization.estimated_net || 0)} icon={Wallet} tone="slate" compact />
+                                                <MiniMetric label="Change" value={`${Number(creatorMonetization.revenue_change_percent || 0).toLocaleString()}%`} icon={TrendingUp} tone="blue" compact />
                                             </div>
-                                            <div className="grid gap-3 md:grid-cols-3">
+                                            <div className="grid min-w-0 gap-3 md:grid-cols-3">
                                                 <PayoutMetric label="Available payout" value={formatMoney(creatorMonetization.payouts?.available_balance || 0)} icon={Wallet} tone="emerald" />
                                                 <PayoutMetric label="Held / escrow" value={formatMoney(creatorMonetization.payouts?.held_balance || 0)} icon={ShieldCheck} tone="blue" />
                                                 <PayoutMetric label="Pending withdrawals" value={formatMoney(creatorMonetization.payouts?.pending_withdrawals || 0)} icon={Banknote} tone="amber" />
                                             </div>
-                                            <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                                                <div className="rounded-2xl border border-white bg-white/80 p-3">
+                                            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                                                <div className="min-w-0 rounded-2xl border border-white bg-white/80 p-3">
                                                     <div className="flex items-center justify-between gap-3 mb-3">
                                                         <div>
                                                             <p className="text-xs font-black uppercase tracking-wider text-slate-900">Revenue by content type</p>
@@ -493,7 +493,7 @@ export default function Profile({
                                                             ))}
                                                     </div>
                                                 </div>
-                                                <div className="rounded-2xl border border-white bg-white/80 p-3">
+                                                <div className="min-w-0 rounded-2xl border border-white bg-white/80 p-3">
                                                     <p className="text-xs font-black uppercase tracking-wider text-slate-900">Top earners</p>
                                                     <p className="text-[11px] font-semibold text-slate-500 mb-3">Best selling offers in this window.</p>
                                                     <div className="space-y-2">
@@ -1150,11 +1150,35 @@ function BreakdownRow({ label, count, color, total }) {
     );
 }
 
-function MiniMetric({ label, value }) {
+function MiniMetric({ label, value, icon: Icon, tone = 'slate', compact = false }) {
+    const toneClasses = {
+        brand: 'border-brand-100 bg-brand-50/45 text-brand-700',
+        amber: 'border-amber-100 bg-amber-50/55 text-amber-700',
+        sky: 'border-sky-100 bg-sky-50/55 text-sky-700',
+        emerald: 'border-emerald-100 bg-emerald-50/55 text-emerald-700',
+        orange: 'border-orange-100 bg-orange-50/55 text-orange-700',
+        blue: 'border-blue-100 bg-blue-50/55 text-blue-700',
+        slate: 'border-slate-200 bg-slate-50/70 text-slate-700',
+    }[tone] || 'border-slate-200 bg-slate-50/70 text-slate-700';
+
     return (
-        <div className="rounded-xl border border-white bg-white/80 px-3 py-3">
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
-            <p className="mt-1 text-sm md:text-base font-black text-slate-900 truncate">{value}</p>
+        <div className={cn(
+            "min-w-0 rounded-2xl border bg-white px-3 shadow-sm ring-1 ring-slate-900/[0.02]",
+            compact ? "py-3" : "py-4",
+            toneClasses
+        )}>
+            <div className="flex min-w-0 items-center gap-2">
+                {Icon && (
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white/75 shadow-sm">
+                        <Icon className="h-3.5 w-3.5" />
+                    </span>
+                )}
+                <p className="min-w-0 truncate text-[10px] font-black uppercase tracking-wider">{label}</p>
+            </div>
+            <p className={cn(
+                "mt-2 font-black text-slate-950 truncate",
+                compact ? "text-sm md:text-base" : "text-base md:text-lg"
+            )}>{value}</p>
         </div>
     );
 }
@@ -1181,15 +1205,15 @@ function MonetizationBucketRow({ bucket, total, formatMoney }) {
     const share = Number(bucket.share ?? (total > 0 ? (Number(bucket.revenue || 0) / total) * 100 : 0));
 
     return (
-        <div>
-            <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+            <div className="flex min-w-0 items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm font-black text-slate-900 truncate">{bucket.label}</p>
                     <p className="text-[11px] font-semibold text-slate-500">
                         {Number(bucket.orders || 0).toLocaleString()} orders · {Number(bucket.units || 0).toLocaleString()} units · {share.toFixed(1)}%
                     </p>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="min-w-0 shrink-0 text-right">
                     <p className="text-sm font-black text-slate-900">{formatMoney(bucket.revenue || 0)}</p>
                     <p className="text-[10px] font-semibold text-slate-500">{formatMoney(bucket.pending || 0)} pending</p>
                 </div>
@@ -1205,16 +1229,18 @@ function TopCreatorItem({ item, formatMoney, iconFromKey }) {
     const Icon = iconFromKey(item.icon);
 
     return (
-        <div className="rounded-xl border border-slate-100 bg-white px-3 py-2">
-            <div className="flex items-center gap-3">
+        <div className="min-w-0 rounded-xl border border-slate-100 bg-white px-3 py-2">
+            <div className="flex min-w-0 items-start gap-3">
                 <div className="h-9 w-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
                     <Icon className="h-4 w-4" />
                 </div>
-                <div className="min-w-0 flex-1">
-                    <p className="text-sm font-black text-slate-900 truncate">{item.title}</p>
-                    <p className="text-[11px] font-semibold text-slate-500 truncate">{item.bucket_label} · {Number(item.orders || 0).toLocaleString()} orders</p>
+                <div className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                    <div className="min-w-0">
+                        <p className="text-sm font-black text-slate-900 truncate">{item.title}</p>
+                        <p className="text-[11px] font-semibold text-slate-500 truncate">{item.bucket_label} · {Number(item.orders || 0).toLocaleString()} orders</p>
+                    </div>
+                    <p className="mt-1 text-xs font-black text-brand-600 sm:mt-0 sm:text-sm sm:shrink-0">{formatMoney(item.revenue || 0)}</p>
                 </div>
-                <p className="text-sm font-black text-brand-600 shrink-0">{formatMoney(item.revenue || 0)}</p>
             </div>
         </div>
     );

@@ -265,6 +265,16 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
     const feedSummaryText = String(((isBundlePromotable || isSubscriptionPromotable) ? (promotableItem?.description || postData.excerpt) : (postData.excerpt || postData.caption)) || '')
         .replace(/\s+/g, ' ')
         .trim();
+    const normalizeDisplayText = (value) => String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+    const productDescriptionText = String((postData.product || attachedProduct)?.description || '').trim();
+    const normalizedProductDescription = normalizeDisplayText(productDescriptionText);
+    const shouldShowProductDescription = Boolean(productDescriptionText)
+        && normalizedProductDescription !== normalizeDisplayText(postData.caption)
+        && normalizedProductDescription !== normalizeDisplayText(postData.excerpt)
+        && normalizedProductDescription !== normalizeDisplayText(feedSummaryText);
     const deletedAtLabel = postData.deleted_at
         ? new Date(postData.deleted_at).toLocaleString(undefined, {
             month: 'short',
@@ -557,10 +567,10 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
 
             {!isText && mediaItems.length > 0 && !isLocked && (
                 <div className="px-0 cursor-pointer space-y-3" onClick={goToPostDetails}>
-                    {post.product?.description && (
+                    {shouldShowProductDescription && (
                         <div className="px-4 pb-1">
                             <p className="text-[13px] text-muted-foreground leading-relaxed italic border-l-2 border-brand-500/30 pl-3">
-                                {post.product.description}
+                                {productDescriptionText}
                             </p>
                         </div>
                     )}

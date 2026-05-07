@@ -591,15 +591,23 @@ class MerchantOrderController extends Controller
 
         $validated = $request->validate([
             'unit_price' => 'nullable|numeric|min:0',
-            'shipping_fee' => 'required|numeric|min:0',
+            'shipping_fee' => 'nullable|numeric|min:0',
             'message' => 'nullable|string|max:500',
         ]);
 
+        $isServiceOrder = $order->product?->isService();
+        if ($isServiceOrder && !isset($validated['unit_price']) && isset($validated['shipping_fee'])) {
+            $validated['unit_price'] = $validated['shipping_fee'];
+        }
+        if (!$isServiceOrder && !isset($validated['shipping_fee'])) {
+            return response()->json(['message' => 'Shipping fee is required for this order.'], 422);
+        }
+
         $unitPrice = isset($validated['unit_price']) ? (float) $validated['unit_price'] : (float) $order->unit_price;
-        $shippingFee = (float) $validated['shipping_fee'];
+        $shippingFee = $isServiceOrder ? 0.0 : (float) ($validated['shipping_fee'] ?? 0);
         $requestedQuantity = max(0.001, (float) ($order->requested_quantity ?: $order->quantity ?: 1));
         $sellableQuantity = max(0.001, (float) data_get($order->unit_snapshot, 'sellable_quantity', 1));
-        $itemsTotal = $unitPrice * ($requestedQuantity / $sellableQuantity);
+        $itemsTotal = $isServiceOrder ? $unitPrice : ($unitPrice * ($requestedQuantity / $sellableQuantity));
         $totalPaid = $itemsTotal + $shippingFee;
         
         $order->update([
@@ -628,7 +636,9 @@ class MerchantOrderController extends Controller
         $order->messages()->create([
             'sender_id' => $user->id,
             'receiver_id' => $order->buyer_id,
-            'body' => $validated['message'] ?: "Nimesasisha bei. Bei ya bidhaa: TZS " . number_format($unitPrice) . ", Gharama ya usafiri: TZS " . number_format($shippingFee) . ". Tafadhali fanya malipo kukamilisha agizo.",
+            'body' => $validated['message'] ?: ($isServiceOrder
+                ? "Nimetuma offer ya huduma: TZS " . number_format($totalPaid) . ". Tafadhali fanya malipo kukamilisha booking."
+                : "Nimesasisha bei. Bei ya bidhaa: TZS " . number_format($unitPrice) . ", Gharama ya usafiri: TZS " . number_format($shippingFee) . ". Tafadhali fanya malipo kukamilisha agizo."),
             'is_system' => false, // Send as a real message from merchant
         ]);
 

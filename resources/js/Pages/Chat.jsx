@@ -339,7 +339,7 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma gharama.');
 
-            toast.success('Gharama ya usafiri imetumwa kwa mteja.');
+            toast.success(order?.product?.type === 'service' ? 'Offer ya huduma imetumwa kwa mteja.' : 'Gharama ya usafiri imetumwa kwa mteja.');
             setShippingFeeInput('');
             if (data.order) setOrder(data.order);
             
@@ -348,7 +348,7 @@ export default function Chat({
                 id: Date.now(),
                 sender_id: auth.user.id,
                 type: 'text',
-                body: `Gharama ya usafiri imewekwa: TZS ${Number(shippingFeeInput).toLocaleString()}`,
+                body: `${order?.product?.type === 'service' ? 'Offer ya huduma' : 'Gharama ya usafiri'} imewekwa: TZS ${Number(shippingFeeInput).toLocaleString()}`,
                 payload: { acting_as: actingAs },
                 sender: { role: auth.user.role, name: auth.user.name },
                 created_at: new Date().toISOString()
@@ -865,9 +865,21 @@ export default function Chat({
     }, {});
 
     const currentStatus = statusCopy(order);
+    const isServiceOrder = order?.product?.type === 'service';
     const canBuyerPay = actingAs === 'buyer'
         && order?.payment_status === 'pending'
-        && (order?.delivery?.delivery_type === 'self_pickup' || order?.shipping_fee !== null || order?.delivery?.shipping_zone_id);
+        && (order?.is_inquiry
+            ? order?.inquiry_status === 'quoted' && (
+                isServiceOrder
+                || order?.delivery?.delivery_type === 'self_pickup'
+                || order?.shipping_fee !== null
+                || order?.delivery?.shipping_zone_id
+            )
+            : (
+                order?.delivery?.delivery_type === 'self_pickup'
+                || order?.shipping_fee !== null
+                || order?.delivery?.shipping_zone_id
+            ));
     const canCancelBeforePayment = order?.payment_status === 'pending';
     const canMerchantQuote = actingAs === 'merchant'
         && order?.is_inquiry
@@ -1459,12 +1471,15 @@ export default function Chat({
                 {/* Merchant Action Panels */}
                 {actingAs === 'merchant' && (
                     <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
-                        {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.shipping_fee === null && order?.payment_status === 'pending' && order?.delivery?.delivery_type !== 'self_pickup' && (
+                        {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.payment_status === 'pending' && order?.delivery?.delivery_type !== 'self_pickup' && (isServiceOrder || order?.shipping_fee === null) && (
                             <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
                                 <div className="flex items-center gap-2 mb-3">
                                     <Truck className="h-5 w-5 text-brand-600" />
-                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Shipping Quote Inquiry</h4>
+                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">
+                                        {isServiceOrder ? 'Service Offer Enquiry' : 'Shipping Quote Inquiry'}
+                                    </h4>
                                 </div>
+                                {!isServiceOrder && (
                                 <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">Customer Address:</p>
                                     <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
@@ -1494,8 +1509,9 @@ export default function Chat({
                                         </a>
                                     )}
                                 </div>
+                                )}
                                 <form onSubmit={submitQuote} className="flex gap-2">
-                                    <Input type="number" placeholder="Weka Gharama (TZS)" value={shippingFeeInput} onChange={e => setShippingFeeInput(e.target.value)} className="flex-1 font-bold h-12 rounded-xl" required />
+                                    <Input type="number" placeholder={isServiceOrder ? 'Weka Offer ya Huduma (TZS)' : 'Weka Gharama (TZS)'} value={shippingFeeInput} onChange={e => setShippingFeeInput(e.target.value)} className="flex-1 font-bold h-12 rounded-xl" required />
                                     <Button type="submit" disabled={quoteSubmitting || !shippingFeeInput} className="h-12 rounded-xl px-6 bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
                                         {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} TUMA
                                     </Button>

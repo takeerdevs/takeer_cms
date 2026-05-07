@@ -429,6 +429,29 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const basePrice = (rawBasePrice * serviceBaseMultiplier * physicalBaseMultiplier) + (!hasExplicitCheckoutPrice && activeProduct?.type === 'service' ? checkoutIncludedChargesTotal : 0);
     const isPhysicalProduct = (itemType === 'product' && activeProduct?.type === 'physical')
         || (itemType === 'bundle' && activeProduct?.has_physical_items);
+    const serviceMode = activeProduct?.service_mode || (
+        activeProduct?.service_is_showcase || activeProduct?.service_pricing_model === 'showcase_only'
+            ? 'showcase_only'
+            : activeProduct?.service_pricing_model === 'contract_quote'
+                ? 'request_quote'
+                : 'pay_now'
+    );
+    const servicePriceDisplay = activeProduct?.service_price_display || (
+        activeProduct?.service_pricing_model === 'hourly_rate'
+            ? 'hourly'
+            : activeProduct?.service_pricing_model === 'contract_quote'
+                ? 'quote_only'
+                : 'fixed'
+    );
+    const startsAsServiceInquiry = itemType === 'product'
+        && activeProduct?.type === 'service'
+        && !activeProduct?.service_request_payment
+        && !activeProduct?.service_request_id
+        && (
+            serviceMode === 'request_quote'
+            || activeProduct?.service_pricing_model === 'contract_quote'
+            || servicePriceDisplay === 'quote_only'
+        );
     const fulfillmentMode = activeProduct?.fulfillment_mode || 'own_stock';
     const fulfillmentLeadTimeLabel = fulfillmentMode === 'supplier_sourced' && activeProduct?.availability_lead_time_hours
         ? `Estimated confirmation: ${activeProduct.availability_lead_time_hours} hour${Number(activeProduct.availability_lead_time_hours) === 1 ? '' : 's'}`
@@ -592,7 +615,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             return toast.error("Tafadhali chagua eneo/mtaa wako kwenye ramani ili tuweze kufikisha mzigo wako kwa usahihi.");
         }
 
-        if (activeProduct?.type === 'service') {
+        if (activeProduct?.type === 'service' && !startsAsServiceInquiry) {
             if (needsPeopleInput && Number(servicePricingInputs.people || 0) < 1) {
                 return toast.error("Tafadhali weka idadi ya watu/wageni.");
             }
@@ -655,7 +678,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 selected_bundle_items: itemType === 'bundle' ? (activeProduct.selected_bundle_items || undefined) : undefined,
             };
 
-            const isInquiry = isPhysicalProduct; // Physical is always an inquiry first
+            const isInquiry = isPhysicalProduct || startsAsServiceInquiry;
 
             if (isPhysicalProduct && !isPickup) {
                 if (!physicalAddress || physicalAddress.trim().length < 5) {
@@ -686,14 +709,14 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 await bootstrapSessionFromToken(data.token);
             }
 
-            const successMessage = isPhysicalProduct
+            const successMessage = isInquiry
                 ? (data.message || 'Oda yako imeanzishwa! Sasa mnawasiliana na muuzaji.')
                 : (data.message || 'Malipo yameanzishwa! Kamilisha malipo kwenye simu yako.');
 
             toast.success(successMessage);
             onOpenChange(false);
 
-            if (isPhysicalProduct) {
+            if (isInquiry) {
                 setTimeout(() => {
                     window.location.href = `/chat/${data.order.public_id}`;
                 }, 1000);
@@ -1108,7 +1131,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                             </div>
                         )}
 
-                        {activeProduct?.type === 'service' && activePricingUnits.length > 0 && (
+                        {activeProduct?.type === 'service' && !startsAsServiceInquiry && activePricingUnits.length > 0 && (
                             <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-3 sm:p-4 space-y-3">
                                 <div>
                                     <p className="text-xs font-black uppercase tracking-wider text-brand-700/80">Booking details</p>

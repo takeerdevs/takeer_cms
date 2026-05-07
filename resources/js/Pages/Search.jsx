@@ -343,10 +343,6 @@ export default function SearchPage() {
 
                 {!loading && meta?.total > 0 && (
                     <div className="mt-4 text-sm text-muted-foreground">
-                        <div className="flex items-center justify-between">
-                            <span>{meta.total} matokeo</span>
-                            <span>Showing {results.length}</span>
-                        </div>
                         {hasMore && (
                             <div ref={sentinelRef} className="flex min-h-24 items-center justify-center py-6">
                                 {loadingMore ? (

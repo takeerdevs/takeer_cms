@@ -351,7 +351,7 @@ Route::middleware('auth:sanctum')->group(function () {
 // These routes are at the bottom to avoid catching specific dashboard API segments.
 $reservedMerchantSlugs = 'locations|shipping-profiles|shipping-zones|bundles|content-items|settings|dispatch|orders|posts|subscription-plans|wallet|chat|delivery';
 
-Route::get('/merchant/{slug}', [MiniStoreController::class, 'show'])
+Route::get('/merchant/{slug}/catalog', [MiniStoreController::class, 'catalog'])
     ->where('slug', "^(?!($reservedMerchantSlugs)$).+");
 
 Route::get('/merchant/{slug}/shipping-zones', [MiniStoreController::class, 'shippingZones'])
@@ -359,3 +359,6 @@ Route::get('/merchant/{slug}/shipping-zones', [MiniStoreController::class, 'ship
 
 Route::post('/merchant/{slug}/storefront', [MiniStoreController::class, 'updateStorefront'])
     ->middleware('auth:sanctum');
+
+Route::get('/merchant/{slug}', [MiniStoreController::class, 'show'])
+    ->where('slug', "^(?!($reservedMerchantSlugs)$).+");

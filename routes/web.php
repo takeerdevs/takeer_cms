@@ -1519,6 +1519,9 @@ Route::middleware('auth')->group(function () {
 Route::get('/m/{slug}', function (string $slug) {
     return Inertia::render('MiniStore', ['merchantSlug' => $slug]);
 });
+Route::get('/u/{slug}/catalog', function (string $slug) {
+    return Inertia::render('PublicCatalog', ['merchantSlug' => $slug]);
+});
 Route::get('/u/{slug}', function (string $slug) {
     return Inertia::render('PublicMerchantProfile', ['merchantSlug' => $slug]);
 });

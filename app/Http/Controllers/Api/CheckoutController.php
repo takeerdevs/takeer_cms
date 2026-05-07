@@ -1049,7 +1049,7 @@ class CheckoutController extends Controller
     /**
      * POST /api/v1/checkout/inquire
      * 
-     * Creates a draft order (inquiry) for physical products when no shipping zones match.
+     * Creates a draft order (inquiry) for physical fulfillment or quote-first services.
      * Also handles self-pickup orders via delivery_type=self_pickup.
      */
     public function inquire(Request $request): JsonResponse
@@ -1074,16 +1074,20 @@ class CheckoutController extends Controller
             'shipping_hotspot_id' => 'nullable|integer|exists:shipping_hotspots,id',
             'idempotency_key' => 'required|string|unique:orders,idempotency_key',
             'group_sale_campaign_id' => 'nullable|integer|exists:merchant_group_sale_campaigns,id',
+            'service_pricing_inputs' => 'nullable|array',
+            'service_pricing_inputs.service_option_id' => 'nullable|string|max:80',
+            'service_pricing_inputs.people' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.hours' => 'nullable|numeric|min:0.25|max:100000',
+            'service_pricing_inputs.quantity' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.start_date' => 'nullable|date',
+            'service_pricing_inputs.end_date' => 'nullable|date|after:service_pricing_inputs.start_date',
         ]);
 
         $deliveryType = $validated['delivery_type'] ?? 'shipping';
         $isSelfPickup = $deliveryType === 'self_pickup';
+        $servicePricingInputs = $validated['service_pricing_inputs'] ?? [];
 
-        // Physical address is only required for shipping inquiries
-        if (!$isSelfPickup && empty($validated['physical_address'])) {
-            return response()->json(['message' => 'Anwani ya uwasilishaji inahitajika.'], 422);
-        }
-
+        $isServiceInquiry = false;
         $product = null;
         $bundle = null;
         $selectedBundleItems = [];
@@ -1091,21 +1095,31 @@ class CheckoutController extends Controller
         $requestedQuantity = 1.0;
         if ($validated['purchasable_type'] === 'product') {
             $product = Product::with('unitType')->findOrFail($validated['purchasable_id']);
-            if (!$product->isPhysical()) {
-                return response()->json(['message' => 'Inquiries are only for physical products or bundles with physical items.'], 400);
+            $isServiceInquiry = $product->isService() && (
+                ($product->service_mode ?? null) === 'request_quote'
+                || ($product->service_pricing_model ?? null) === 'contract_quote'
+                || ($product->service_price_display ?? null) === 'quote_only'
+            );
+
+            if (!$product->isPhysical() && !$isServiceInquiry) {
+                return response()->json(['message' => 'Inquiries are only for physical products, physical bundles, or quote-first services.'], 400);
             }
 
-            $requestedQuantity = max(0.001, (float) ($validated['quantity'] ?? 1));
-            $minimumQuantity = max(0.001, (float) ($product->min_order_quantity ?: $product->sellable_quantity ?: 1));
-            if ($requestedQuantity < $minimumQuantity) {
-                return response()->json(['message' => "Kiasi cha chini ni {$minimumQuantity} ".($product->unitType?->symbol ?: $product->unitType?->name ?: 'units').'.'], 422);
-            }
-            if ($product->unitType && ! $product->unitType->allows_decimal && floor($requestedQuantity) != $requestedQuantity) {
-                return response()->json(['message' => 'Bidhaa hii inauzwa kwa idadi kamili tu.'], 422);
-            }
+            if ($product->isPhysical()) {
+                $requestedQuantity = max(0.001, (float) ($validated['quantity'] ?? 1));
+                $minimumQuantity = max(0.001, (float) ($product->min_order_quantity ?: $product->sellable_quantity ?: 1));
+                if ($requestedQuantity < $minimumQuantity) {
+                    return response()->json(['message' => "Kiasi cha chini ni {$minimumQuantity} ".($product->unitType?->symbol ?: $product->unitType?->name ?: 'units').'.'], 422);
+                }
+                if ($product->unitType && ! $product->unitType->allows_decimal && floor($requestedQuantity) != $requestedQuantity) {
+                    return response()->json(['message' => 'Bidhaa hii inauzwa kwa idadi kamili tu.'], 422);
+                }
 
-            if (!empty($validated['variant_id'])) {
-                $selectedVariant = ProductVariant::where('product_id', $product->id)->findOrFail($validated['variant_id']);
+                if (!empty($validated['variant_id'])) {
+                    $selectedVariant = ProductVariant::where('product_id', $product->id)->findOrFail($validated['variant_id']);
+                }
+            } elseif (! empty($servicePricingInputs['service_option_id']) && ! $this->selectedServiceOption($product, $servicePricingInputs)) {
+                return response()->json(['message' => 'Chaguo la huduma halipatikani. Tafadhali chagua tena.'], 422);
             }
         } else {
             $bundle = Bundle::findOrFail($validated['purchasable_id']);
@@ -1125,6 +1139,11 @@ class CheckoutController extends Controller
             }
         }
 
+        // Physical address is only required for shipping inquiries.
+        if (!$isServiceInquiry && !$isSelfPickup && empty($validated['physical_address'])) {
+            return response()->json(['message' => 'Anwani ya uwasilishaji inahitajika.'], 422);
+        }
+
         // Resolve buyer
         $buyer = $request->user();
         if (!$buyer) {
@@ -1137,7 +1156,7 @@ class CheckoutController extends Controller
         $isMenuBundle = $bundle && !empty($validated['selected_bundle_items'] ?? []);
         $unitPrice = $bundle
             ? ($isMenuBundle ? (float) collect($selectedBundleItems)->sum('line_total') : (float) ($bundle->price ?? 0))
-            : $this->resolveBasePrice($product, $selectedVariant);
+            : $this->resolveBasePrice($product, $selectedVariant, $servicePricingInputs);
         $groupSaleCampaign = null;
         if ($product && !empty($validated['group_sale_campaign_id'])) {
             $groupSaleCampaign = $this->resolveGroupSaleCampaign((int) $validated['group_sale_campaign_id'], $product);
@@ -1148,7 +1167,7 @@ class CheckoutController extends Controller
             : $unitPrice;
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
 
-        $order = DB::transaction(function () use ($buyer, $product, $bundle, $selectedVariant, $selectedBundleItems, $unitPrice, $totalPrice, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $deliveryType, $groupSaleCampaign) {
+        $order = DB::transaction(function () use ($buyer, $product, $bundle, $selectedVariant, $selectedBundleItems, $unitPrice, $totalPrice, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $deliveryType, $groupSaleCampaign, $isServiceInquiry) {
             $merchantId = $product?->merchant_id ?? $bundle?->merchant_id;
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
@@ -1178,7 +1197,7 @@ class CheckoutController extends Controller
                 ] : null,
                 'unit_price' => $unitPrice,
                 'total_paid' => $totalPrice, // No shipping fee for pickup
-                'shipping_fee' => $isSelfPickup ? 0 : null,
+                'shipping_fee' => ($isSelfPickup || $isServiceInquiry) ? 0 : null,
                 'payment_status' => 'pending',
                 'is_inquiry' => true,
                 'inquiry_status' => $isSelfPickup ? 'quoted' : 'pending', // Pickup is auto-quoted (no shipping cost needed)
@@ -1190,17 +1209,19 @@ class CheckoutController extends Controller
                 'expires_at' => now()->addMinutes(30),
             ]);
 
-            \App\Models\Delivery::create([
-                'order_id' => $newOrder->id,
-                'shipping_zone_id' => $isSelfPickup ? null : ($validated['delivery_zone_id'] ?? null),
-                'delivery_type' => $deliveryType,
-                'physical_address' => $isSelfPickup ? null : ($validated['physical_address'] ?? null),
-                'shipping_hotspot_id' => $validated['shipping_hotspot_id'] ?? null,
-                'latitude' => $validated['buyer_lat'] ?? null,
-                'longitude' => $validated['buyer_lng'] ?? null,
-                'delivery_status' => $isSelfPickup ? 'awaiting_boda' : 'inquiry',
-                'pickup_pin' => $isSelfPickup ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
-            ]);
+            if (!$isServiceInquiry) {
+                \App\Models\Delivery::create([
+                    'order_id' => $newOrder->id,
+                    'shipping_zone_id' => $isSelfPickup ? null : ($validated['delivery_zone_id'] ?? null),
+                    'delivery_type' => $deliveryType,
+                    'physical_address' => $isSelfPickup ? null : ($validated['physical_address'] ?? null),
+                    'shipping_hotspot_id' => $validated['shipping_hotspot_id'] ?? null,
+                    'latitude' => $validated['buyer_lat'] ?? null,
+                    'longitude' => $validated['buyer_lng'] ?? null,
+                    'delivery_status' => $isSelfPickup ? 'awaiting_boda' : 'inquiry',
+                    'pickup_pin' => $isSelfPickup ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
+                ]);
+            }
 
             $this->initializeOrderChat($newOrder);
 
@@ -1210,7 +1231,7 @@ class CheckoutController extends Controller
         return response()->json([
             'message' => $isSelfPickup
                 ? 'Umechagua kuchukua dukani! Tumia Pickup PIN kulipwa unapokwenda kuchukua.'
-                : 'Inquiry created successfully.',
+                : ($isServiceInquiry ? 'Service enquiry created. Chat with the merchant to agree the final offer.' : 'Inquiry created successfully.'),
             'order' => OrderResource::make($order->loadMissing(['delivery']))->resolve(),
         ], 201);
     }
@@ -1265,14 +1286,17 @@ class CheckoutController extends Controller
 
             // SIMULATION: Auto-approve payment for testing
             $isPhysical = $order->requiresPhysicalFulfillment();
+            $isService = $order->product?->isService();
             $serviceRequest = \App\Models\ServiceRequest::query()
                 ->where('payment_order_id', $order->id)
                 ->first();
-            $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : ($serviceRequest ? 'escrow_locked' : 'resolved_merchant_paid');
+            $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : (($serviceRequest || $isService) ? 'escrow_locked' : 'resolved_merchant_paid');
             
             $order->markPhysicalAgreement([
                 'total_paid' => (float) $order->total_paid,
-                'notes' => 'Buyer accepted the quoted physical order and initiated payment.',
+                'notes' => $isService
+                    ? 'Buyer accepted the quoted service offer and initiated payment.'
+                    : 'Buyer accepted the quoted physical order and initiated payment.',
             ]);
             $order->update([
                 'payment_status' => $targetStatus,
@@ -1354,6 +1378,8 @@ class CheckoutController extends Controller
         if ($deliveryType === 'self_pickup') {
             $pickupPin = $delivery?->pickup_pin ?? '????';
             $body .= "Mteja amechagua KUCHUKUA DUKANI. Pickup PIN ya mteja ni: {$pickupPin}. Mteja atalipa basi atakapokuja na PIN hii kukuchukulia bidhaa.";
+        } elseif ($order->product?->isService() && $order->is_inquiry) {
+            $body .= "Hii ni enquiry ya huduma. Tafadhali ongea na mteja hapa, mkubaliane scope na bei, kisha tuma offer ya mwisho.";
         } elseif ($order->is_inquiry) {
             $body .= "Hii ni inquiry ya usafirishaji. Tafadhali thibitisha gharama ya usafiri kwa mteja.";
         } else {

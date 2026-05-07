@@ -132,7 +132,10 @@ class ServiceRequestController extends Controller
         }
 
         $selectedSession = null;
-        if (($product->service_scheduling_type ?: 'none') === 'fixed_sessions' && empty($validated['selected_session_id'])) {
+        if ($requestType === 'appointment_request'
+            && ($product->service_scheduling_type ?: 'none') === 'fixed_sessions'
+            && empty($validated['selected_session_id'])
+        ) {
             return response()->json(['message' => 'Please choose an available session for this service.'], 422);
         }
 
