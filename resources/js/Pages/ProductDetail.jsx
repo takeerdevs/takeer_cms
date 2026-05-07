@@ -3,7 +3,7 @@ import { Head, Link } from '@inertiajs/react';
 import {
     ChevronLeft, ChevronRight, Store, ShieldCheck, Zap, Info, BadgeCheck,
     AlertTriangle, DownloadCloud, CalendarClock, MapPin, Link as LinkIcon,
-    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle
+    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle, Loader2
 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
@@ -24,6 +24,7 @@ export default function ProductDetail({ product }) {
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
     const [serviceRequestOpen, setServiceRequestOpen] = useState(false);
     const [serviceRequestSubmitting, setServiceRequestSubmitting] = useState(false);
+    const [galleryImageLoaded, setGalleryImageLoaded] = useState({});
     const [serviceRequestForm, setServiceRequestForm] = useState({
         customer_name: '',
         customer_phone: '',
@@ -963,7 +964,11 @@ export default function ProductDetail({ product }) {
                                 hlsUrl={currentMedia?.hls_url}
                                 poster={currentMedia?.thumbnail_url || undefined}
                                 className="w-full h-full object-contain bg-black transition-all duration-500"
-                                controls
+                                autoPlay
+                                muted
+                                loop
+                                controls={false}
+                                overlayMuteToggle
                                 playsInline
                                 preload="metadata"
                                 onPlay={() => trackContentInteraction('video_played', {
@@ -1191,7 +1196,20 @@ export default function ProductDetail({ product }) {
                                                     })}
                                                     className="block aspect-square"
                                                 >
-                                                    <img src={item.url} alt={item.name || `Gallery image ${index + 1}`} className="h-full w-full object-cover" />
+                                                    <div className="relative h-full w-full">
+                                                        {!galleryImageLoaded[index] && (
+                                                            <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+                                                                <Loader2 className="h-7 w-7 animate-spin text-white/70" />
+                                                            </div>
+                                                        )}
+                                                        <img
+                                                            src={item.url}
+                                                            alt={item.name || `Gallery image ${index + 1}`}
+                                                            className="h-full w-full object-cover"
+                                                            onLoad={() => setGalleryImageLoaded((prev) => ({ ...prev, [index]: true }))}
+                                                            onError={() => setGalleryImageLoaded((prev) => ({ ...prev, [index]: true }))}
+                                                        />
+                                                    </div>
                                                 </a>
                                                 {item.original_url && (
                                                     <a

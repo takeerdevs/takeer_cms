@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\MerchantLocation;
 use App\Models\ProductLocationInventory;
@@ -29,7 +29,7 @@ return new class extends Migration {
     private function initializeStock(): void
     {
         // Standalone products
-        Product::where('has_variants', false)->chunk(100, function ($products) {
+        DB::table('products')->where('has_variants', false)->orderBy('id')->chunk(100, function ($products) {
             foreach ($products as $product) {
                 $primaryLocation = MerchantLocation::where('merchant_id', $product->merchant_id)
                     ->where('is_primary', true)
@@ -42,7 +42,7 @@ return new class extends Migration {
                             'product_id' => $product->id,
                             'product_variant_id' => null,
                         ],
-                        ['quantity' => $product->inventory_count]
+                        ['quantity' => $product->inventory_count ?? 0]
                     );
                 }
             }

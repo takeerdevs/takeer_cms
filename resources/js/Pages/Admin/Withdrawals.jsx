@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
-import { ArrowDownToLine, CheckCircle2 } from 'lucide-react';
+import { ArrowDownToLine, CheckCircle2, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -49,11 +49,19 @@ export default function AdminWithdrawals() {
         <AdminLayout title="Withdrawals">
             <Head title="Admin Withdrawals | Takeer" />
             <div className="space-y-6">
-                <div>
-                    <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                        <ArrowDownToLine className="h-6 w-6 text-emerald-700" /> Pending Withdrawals
-                    </h1>
-                    <p className="text-slate-600 mt-1 text-sm">Approve user payout requests.</p>
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                            <ArrowDownToLine className="h-6 w-6 text-emerald-700" /> Pending Withdrawals
+                        </h1>
+                        <p className="text-slate-600 mt-1 text-sm">Approve user payout requests.</p>
+                    </div>
+                    <Link href="/admin/payout-settings">
+                        <Button variant="outline">
+                            <Settings2 className="mr-2 h-4 w-4" />
+                            Payout Settings
+                        </Button>
+                    </Link>
                 </div>
 
                 {loading ? (

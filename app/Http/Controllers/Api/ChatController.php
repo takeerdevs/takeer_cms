@@ -131,13 +131,14 @@ class ChatController extends Controller
                 // Prevent duplicate reviews for the same order
                 $exists = \App\Models\ProductReview::where('order_id', $order->id)->exists();
                 if (!$exists) {
-                    \App\Models\ProductReview::create([
+                    $review = \App\Models\ProductReview::create([
                         'order_id' => $order->id,
                         'product_id' => $order->product_id,
                         'user_id' => $userId,
                         'rating' => $validated['payload']['stars'] ?? 5,
                         'comment' => $validated['payload']['comment'] ?? ''
                     ]);
+                    app(\App\Services\PulseNotificationService::class)->reviewCreated($review);
                 }
             } elseif ($actionType === 'shipping_proof') {
                 $order->merchant_dispatch_video_url = $validated['payload']['mediaUrl'] ?? null;
@@ -401,6 +402,18 @@ class ChatController extends Controller
                 }
                 if ($merchantUser?->phone_number) {
                     $this->smsService->sendPhysicalPaymentHeldToMerchant($merchantUser->phone_number, $publicId, (float) $order->total_paid, $merchantUser->id);
+                }
+            } else {
+                $order->loadMissing(['buyer', 'product']);
+                $phone = $order->buyer?->phone_number ?: $order->account_phone ?: $order->customer_phone;
+                if ($phone && $order->product && ($order->product->isDigital() || $order->product->isService())) {
+                    $this->smsService->sendDigitalDeliveryNotification(
+                        $phone,
+                        (string) $order->product->title,
+                        url('/orders'),
+                        $order->buyer_id,
+                        'digital-delivery:'.($order->public_id ?: $order->id)
+                    );
                 }
             }
 

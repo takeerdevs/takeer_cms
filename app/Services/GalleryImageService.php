@@ -10,6 +10,7 @@ class GalleryImageService
 {
     private const PREVIEW_MAX_EDGE = 1600;
     private const PREVIEW_QUALITY = 82;
+    private const PREVIEW_VERSION = 'v2';
 
     public function prepareItem(array $item, string $watermarkText): array
     {
@@ -24,7 +25,7 @@ class GalleryImageService
             'preview_size' => $item['preview_size'] ?? null,
         ];
 
-        if ($prepared['url'] === '' || $prepared['preview_url'] !== '') {
+        if ($prepared['url'] === '' || ($prepared['preview_url'] !== '' && !$this->shouldRegeneratePreview($prepared['preview_url']))) {
             return $prepared;
         }
 
@@ -41,7 +42,7 @@ class GalleryImageService
                 return $prepared;
             }
 
-            $previewPath = 'premium-gallery/previews/'.md5($path.'|'.$watermarkText).'.webp';
+            $previewPath = 'premium-gallery/previews/'.md5($path.'|'.$watermarkText.'|'.self::PREVIEW_VERSION).'-'.self::PREVIEW_VERSION.'.webp';
             if ($diskName === 's3') {
                 $disk->put($previewPath, $preview, 'private');
             } else {
@@ -69,6 +70,12 @@ class GalleryImageService
         }
 
         return str_starts_with($url, 'private://') ? $url : "private://{$url}";
+    }
+
+    private function shouldRegeneratePreview(string $previewUrl): bool
+    {
+        return str_contains($previewUrl, 'premium-gallery/previews/')
+            && !str_contains($previewUrl, '-'.self::PREVIEW_VERSION.'.webp');
     }
 
     /**
@@ -136,16 +143,45 @@ class GalleryImageService
     {
         $width = imagesx($image);
         $height = imagesy($image);
+        $fontPath = $this->fontPath();
+        $text = preg_replace('/[^\x20-\x7E]/', '/', trim($text)) ?: 'Takeer';
+        $text = Str::limit(preg_replace('/\s+/', ' ', $text), 42, '');
+        $padding = max(14, (int) round(min($width, $height) * 0.025));
+
+        if (function_exists('imagettftext') && $fontPath && is_file($fontPath)) {
+            $fontSize = max(14, min(34, (int) round(min($width, $height) * 0.038)));
+            $bbox = imagettfbbox($fontSize, 0, $fontPath, $text);
+            $textWidth = abs($bbox[2] - $bbox[0]);
+            $textHeight = abs($bbox[7] - $bbox[1]);
+            $badgeWidth = min($width - ($padding * 2), $textWidth + ($padding * 2));
+            $badgeHeight = $textHeight + (int) round($padding * 1.25);
+            $x1 = $width - $badgeWidth - $padding;
+            $y1 = $height - $badgeHeight - $padding;
+
+            $shadow = imagecolorallocatealpha($image, 0, 0, 0, 52);
+            $white = imagecolorallocatealpha($image, 255, 255, 255, 12);
+            imagefilledrectangle($image, $x1, $y1, $x1 + $badgeWidth, $y1 + $badgeHeight, $shadow);
+            imagettftext(
+                $image,
+                $fontSize,
+                0,
+                $x1 + $padding,
+                $y1 + $padding + $textHeight - 2,
+                $white,
+                $fontPath,
+                $text
+            );
+            return;
+        }
+
         $font = 5;
-        $text = Str::limit($text, 48, '');
         $textWidth = imagefontwidth($font) * strlen($text);
         $textHeight = imagefontheight($font);
-        $padding = max(12, (int) round(min($width, $height) * 0.018));
         $x = max($padding, $width - $textWidth - ($padding * 2));
         $y = max($padding, $height - $textHeight - ($padding * 2));
 
-        $shadow = imagecolorallocatealpha($image, 0, 0, 0, 45);
-        $white = imagecolorallocatealpha($image, 255, 255, 255, 18);
+        $shadow = imagecolorallocatealpha($image, 0, 0, 0, 52);
+        $white = imagecolorallocatealpha($image, 255, 255, 255, 12);
         imagefilledrectangle(
             $image,
             $x - $padding,
@@ -155,5 +191,20 @@ class GalleryImageService
             $shadow
         );
         imagestring($image, $font, $x, $y, $text, $white);
+    }
+
+    private function fontPath(): ?string
+    {
+        foreach ([
+            public_path('fonts/Inter-Bold.ttf'),
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+        ] as $path) {
+            if (is_file($path)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 }

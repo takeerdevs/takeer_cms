@@ -487,6 +487,7 @@ class CheckoutController extends Controller
         }
 
         $this->recordCheckoutAttribution($request, $order, $validated, $referralLink);
+        $this->sendDigitalAccessSmsIfPaid($order);
 
         $responsePayload = [
             'message' => $order->is_inquiry 
@@ -745,6 +746,31 @@ class CheckoutController extends Controller
             ->update(['user_id' => $order->buyer_id]);
 
         MarketingEvent::query()->create($basePayload + ['event_type' => 'checkout_completed']);
+    }
+
+    private function sendDigitalAccessSmsIfPaid(Order $order): void
+    {
+        if (!in_array($order->payment_status, ['resolved_merchant_paid', 'escrow_locked'], true)) {
+            return;
+        }
+
+        $order->loadMissing(['buyer', 'product']);
+        if (!$order->product || !($order->product->isDigital() || $order->product->isService())) {
+            return;
+        }
+
+        $phone = $order->buyer?->phone_number ?: $order->account_phone ?: $order->customer_phone;
+        if (!$phone) {
+            return;
+        }
+
+        $this->smsService->sendDigitalDeliveryNotification(
+            $phone,
+            (string) $order->product->title,
+            url('/orders'),
+            $order->buyer_id,
+            'digital-delivery:'.($order->public_id ?: $order->id)
+        );
     }
 
     private function resolveGroupSaleCampaign(int $campaignId, Product $product): MerchantGroupSaleCampaign

@@ -2470,16 +2470,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         {/* ── Title ── */}
                         <div className="text-center space-y-2">
                             <h1 className="text-3xl font-black tracking-tight flex items-center justify-center gap-2">
-                                Unataka kuuza nini leo? <Sparkles className="h-6 w-6 text-brand-600" />
+                                Unataka uuze nini leo? <Sparkles className="h-6 w-6 text-brand-600" />
                             </h1>
-                            <p className="text-muted-foreground">Chagua aina ya bidhaa ili tuanze kuikuza.</p>
+                            <p className="text-muted-foreground">Chagua aina ya bidhaa.</p>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4">
                         <button
                             onClick={() => handleTypeSelect('physical')}
-                            className="group relative flex items-center gap-6 p-6 bg-white border border-border rounded-[2rem] hover:border-brand-500 hover:ring-4 hover:ring-brand-500/10 transition-all text-left shadow-sm"
+                            className="group relative flex items-center gap-6 p-6 bg-white border border-border rounded-[1rem] hover:border-brand-500 hover:ring-4 hover:ring-brand-500/10 transition-all text-left shadow-sm"
                         >
                             <div className="h-16 w-16 bg-brand-50 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                                 <ShoppingBag className="h-8 w-8 text-brand-600" />
@@ -2493,7 +2493,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                         <button
                             onClick={() => handleTypeSelect('digital')}
-                            className="group relative flex items-center gap-6 p-6 bg-white border border-border rounded-[2rem] hover:border-blue-500 hover:ring-4 hover:ring-blue-500/10 transition-all text-left shadow-sm"
+                            className="group relative flex items-center gap-6 p-6 bg-white border border-border rounded-[1rem] hover:border-blue-500 hover:ring-4 hover:ring-blue-500/10 transition-all text-left shadow-sm"
                         >
                             <div className="h-16 w-16 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                                 <Globe className="h-8 w-8 text-blue-600" />
@@ -2507,7 +2507,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                         <button
                             onClick={() => handleTypeSelect('service')}
-                            className="group relative flex items-center gap-6 p-6 bg-white border border-border rounded-[2rem] hover:border-purple-500 hover:ring-4 hover:ring-purple-500/10 transition-all text-left shadow-sm"
+                            className="group relative flex items-center gap-6 p-6 bg-white border border-border rounded-[1rem] hover:border-purple-500 hover:ring-4 hover:ring-purple-500/10 transition-all text-left shadow-sm"
                         >
                             <div className="h-16 w-16 bg-purple-50 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                                 <Calendar className="h-8 w-8 text-purple-600" />

@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Play, Volume2, VolumeX, Heart, MessageCircle, MapPin, Link as LinkIcon, Edit3, ShoppingBag } from 'lucide-react';
+import { X, Heart, MessageCircle, MapPin, Link as LinkIcon, Edit3, ShoppingBag } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import { Card, CardContent } from '@/Components/ui/Card';
-import { resolvePlayableVideoUrl } from '@/Components/VideoPlayer';
+import VideoPlayer, { resolvePlayableVideoUrl } from '@/Components/VideoPlayer';
 
 const isVideo = (item) => {
     const url = typeof item === 'string' ? item : item?.url ?? '';
@@ -13,46 +13,25 @@ const isVideo = (item) => {
 const getUrl = (item) => typeof item === 'string' ? item : item?.url ?? item?.preview ?? '';
 
 function LightboxVideoPlayer({ item }) {
-    const ref = useRef(null);
-    const [playing, setPlaying] = useState(false);
-    const [muted, setMuted] = useState(false);
     const src = typeof item === 'string'
         ? item
         : resolvePlayableVideoUrl({ hlsUrl: item?.hls_url, processedUrl: item?.processed_url, url: item?.url ?? item?.preview });
 
-    const toggle = () => {
-        if (!ref.current) return;
-        if (playing) { ref.current.pause(); setPlaying(false); }
-        else { ref.current.play().then(() => setPlaying(true)).catch(() => { }); }
-    };
-
     return (
-        <div className="relative w-full flex items-center justify-center bg-black min-h-[50vh]" onClick={toggle}>
-            <video
-                ref={ref}
-                src={src}
-                className="w-full h-auto max-h-[90vh] object-contain"
-                muted={muted}
-                playsInline
-                loop
-            />
-            {!playing && (
-                <motion.div
-                    className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                >
-                    <div className="h-16 w-16 rounded-full bg-black/60 flex items-center justify-center">
-                        <Play className="h-8 w-8 text-white fill-white ml-1" />
-                    </div>
-                </motion.div>
-            )}
-            <button
-                className="absolute bottom-4 right-4 h-9 w-9 rounded-full bg-black/60 flex items-center justify-center z-10"
-                onClick={e => { e.stopPropagation(); setMuted(m => !m); }}
-            >
-                {muted ? <VolumeX className="h-4 w-4 text-white" /> : <Volume2 className="h-4 w-4 text-white" />}
-            </button>
-        </div>
+        <VideoPlayer
+            src={src}
+            processedUrl={typeof item === 'string' ? undefined : item?.processed_url}
+            hlsUrl={typeof item === 'string' ? undefined : item?.hls_url}
+            poster={typeof item === 'string' ? undefined : item?.thumbnail_url}
+            className="w-full h-auto max-h-[90vh] object-contain"
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            controls={false}
+            overlayMuteToggle
+        />
     );
 }
 

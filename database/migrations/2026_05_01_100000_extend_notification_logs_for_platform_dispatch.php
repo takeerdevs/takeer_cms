@@ -20,7 +20,9 @@ return new class extends Migration
             $table->index(['channel', 'status']);
         });
 
-        DB::statement('ALTER TABLE notification_logs ALTER COLUMN phone DROP NOT NULL');
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE notification_logs ALTER COLUMN phone DROP NOT NULL');
+        }
     }
 
     public function down(): void
@@ -39,6 +41,8 @@ return new class extends Migration
 
         DB::statement("UPDATE notification_logs SET phone = recipient WHERE phone IS NULL AND recipient IS NOT NULL");
         DB::statement("UPDATE notification_logs SET phone = '' WHERE phone IS NULL");
-        DB::statement('ALTER TABLE notification_logs ALTER COLUMN phone SET NOT NULL');
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE notification_logs ALTER COLUMN phone SET NOT NULL');
+        }
     }
 };

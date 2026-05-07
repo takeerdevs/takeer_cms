@@ -56,6 +56,8 @@ export default function VideoPlayer({
         const fallbackSrc = processedUrl || src || '';
         const attemptAutoplay = () => {
             if (!autoPlay || cancelled || !isVisible || document.hidden) return;
+            // Safari and some mobile browsers are more reliable when both flags are set.
+            video.defaultMuted = mutedRef.current;
             video.muted = mutedRef.current;
             window.dispatchEvent(new CustomEvent(AUTOPLAY_REQUEST_EVENT, { detail: { video } }));
             const playPromise = video.play?.();
@@ -87,6 +89,7 @@ export default function VideoPlayer({
             video.src = playableSrc;
             video.load();
             video.addEventListener('canplay', attemptAutoplay, { once: true });
+            video.addEventListener('loadeddata', attemptAutoplay, { once: true });
         } else if (!preferMp4 && hlsUrl) {
             import('hls.js')
                 .then((module) => {
@@ -96,6 +99,7 @@ export default function VideoPlayer({
                         video.src = fallbackSrc || hlsUrl;
                         video.load();
                         video.addEventListener('canplay', attemptAutoplay, { once: true });
+                        video.addEventListener('loadeddata', attemptAutoplay, { once: true });
                         return;
                     }
 
@@ -113,12 +117,19 @@ export default function VideoPlayer({
                     video.src = fallbackSrc || hlsUrl;
                     video.load();
                     video.addEventListener('canplay', attemptAutoplay, { once: true });
+                    video.addEventListener('loadeddata', attemptAutoplay, { once: true });
                 });
         } else {
             video.src = playableSrc;
             video.load();
             video.addEventListener('canplay', attemptAutoplay, { once: true });
+            video.addEventListener('loadeddata', attemptAutoplay, { once: true });
         }
+
+        // A couple of delayed retries cover race conditions where visibility/readiness
+        // resolves after the first autoplay attempt.
+        const retryOne = window.setTimeout(attemptAutoplay, 180);
+        const retryTwo = window.setTimeout(attemptAutoplay, 700);
 
         return () => {
             cancelled = true;
@@ -126,6 +137,9 @@ export default function VideoPlayer({
             window.removeEventListener(AUTOPLAY_REQUEST_EVENT, pauseForOtherVideo);
             document.removeEventListener('visibilitychange', pauseWhenHidden);
             video.removeEventListener('canplay', attemptAutoplay);
+            video.removeEventListener('loadeddata', attemptAutoplay);
+            window.clearTimeout(retryOne);
+            window.clearTimeout(retryTwo);
             if (hls) hls.destroy();
         };
     }, [autoPlay, hlsUrl, playableSrc, preferMp4, processedUrl, ref, src]);
@@ -163,13 +177,11 @@ export default function VideoPlayer({
 
     if (overlayMuteToggle) {
         return (
-            <div className="relative bg-black">
+            <div
+                className="relative bg-black"
+                onContextMenu={(event) => event.preventDefault()}
+            >
                 {videoElement}
-                <div
-                    aria-hidden="true"
-                    className="absolute inset-0 z-10 bg-transparent"
-                    onContextMenu={(event) => event.preventDefault()}
-                />
                 <button
                     type="button"
                     aria-label={isMuted ? 'Unmute video' : 'Mute video'}

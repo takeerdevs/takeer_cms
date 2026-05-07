@@ -66,6 +66,64 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
     const currentCountry = countries.find(country => String(country.id) === String(data.country_id));
     const currentCountryTimezones = currentCountry?.settings?.timezones || (currentCountry?.timezone ? [currentCountry.timezone] : []);
     const showTimezoneSelect = currentCountryTimezones.length > 1;
+    const isPersonal = merchant?.type === 'personal';
+    const [bioBuilder, setBioBuilder] = useState({
+        roleOrCategory: '',
+        certifications: '',
+        degreeOrTraining: '',
+        yearsExperience: '',
+        businessesOrCustomersHelped: '',
+        outcomeOrStrength: '',
+        founderOrProof: '',
+        productsOrServices: '',
+    });
+
+    const buildTrustBio = () => {
+        const name = data.display_name?.trim() || merchant?.display_name || merchant?.name || 'Creator';
+        const countryName = countries.find((country) => String(country.id) === String(data.country_id))?.name || '';
+        const years = bioBuilder.yearsExperience?.trim();
+        const helped = bioBuilder.businessesOrCustomersHelped?.trim();
+        const category = bioBuilder.roleOrCategory?.trim();
+        const certs = bioBuilder.certifications?.trim();
+        const degree = bioBuilder.degreeOrTraining?.trim();
+        const outcome = bioBuilder.outcomeOrStrength?.trim();
+        const proof = bioBuilder.founderOrProof?.trim();
+        const products = bioBuilder.productsOrServices?.trim();
+
+        if (isPersonal) {
+            const professionalLine = [
+                category || 'Professional',
+                years ? `${years}+ years experience` : '',
+            ].filter(Boolean).join(' • ');
+            const parts = [
+                professionalLine ? `${name} — ${professionalLine}.` : `${name}.`,
+                certs ? `Certified in ${certs}${degree ? `, with ${degree}` : ''}.` : (degree ? `${degree}.` : ''),
+                helped ? `Helped ${helped}${outcome ? ` achieve ${outcome}` : ''}.` : (outcome ? `Focused on delivering ${outcome}.` : ''),
+                proof ? `${proof}.` : '',
+            ].filter(Boolean);
+            return parts.join(' ');
+        }
+
+        const parts = [
+            `${name}${category ? ` is a ${category}` : ''}${years ? ` business with ${years}+ years of experience` : ''}.`,
+            products ? `We provide ${products}.` : '',
+            helped ? `Served ${helped}.` : '',
+            outcome ? `Known for ${outcome}.` : '',
+            proof ? `${proof}.` : '',
+            countryName ? `Based in ${countryName}.` : '',
+        ].filter(Boolean);
+        return parts.join(' ');
+    };
+
+    const applyGeneratedBio = (mode = 'replace') => {
+        const generated = buildTrustBio();
+        if (!generated) return;
+        if (mode === 'append' && data.bio?.trim()) {
+            setData('bio', `${data.bio.trim()}\n\n${generated}`);
+            return;
+        }
+        setData('bio', generated);
+    };
 
     const updateCountry = (countryId) => {
         const country = countries.find(item => String(item.id) === String(countryId));
@@ -213,6 +271,82 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                     placeholder={`Tueleze kidogo kuhusu ${data.display_name}...`}
                                     className="rounded-xl min-h-[100px] mt-1"
                                 />
+                                <div className="mt-2 rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+                                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                                        Bio Helper ({isPersonal ? 'Personal Profile' : 'Merchant Profile'})
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Jaza vipengele vifupi vya kuaminika, kisha tengeneza bio moja ya kitaalamu.
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        <Input
+                                            value={bioBuilder.roleOrCategory}
+                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, roleOrCategory: e.target.value }))}
+                                            placeholder={isPersonal ? 'Mf. Certified AI Professional' : 'Mf. hardware tools'}
+                                            className="h-9 rounded-lg text-xs"
+                                        />
+                                        <Input
+                                            value={bioBuilder.yearsExperience}
+                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, yearsExperience: e.target.value }))}
+                                            placeholder={isPersonal ? 'Years of experience (e.g 7)' : 'Years selling (e.g 10)'}
+                                            className="h-9 rounded-lg text-xs"
+                                        />
+                                        <Input
+                                            value={bioBuilder.certifications}
+                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, certifications: e.target.value }))}
+                                            placeholder={isPersonal ? 'Certifications' : 'Professional standards/certifications (optional)'}
+                                            className="h-9 rounded-lg text-xs"
+                                        />
+                                        <Input
+                                            value={bioBuilder.degreeOrTraining}
+                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, degreeOrTraining: e.target.value }))}
+                                            placeholder={isPersonal ? 'Degree / training' : 'Team expertise / training'}
+                                            className="h-9 rounded-lg text-xs"
+                                        />
+                                        <Input
+                                            value={bioBuilder.businessesOrCustomersHelped}
+                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, businessesOrCustomersHelped: e.target.value }))}
+                                            placeholder={isPersonal ? 'Businesses helped (e.g 100+ businesses)' : 'Customers served (e.g 5,000+ customers)'}
+                                            className="h-9 rounded-lg text-xs"
+                                        />
+                                        <Input
+                                            value={bioBuilder.productsOrServices}
+                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, productsOrServices: e.target.value }))}
+                                            placeholder={isPersonal ? 'Main services/products' : 'Main products/services'}
+                                            className="h-9 rounded-lg text-xs"
+                                        />
+                                        <Input
+                                            value={bioBuilder.outcomeOrStrength}
+                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, outcomeOrStrength: e.target.value }))}
+                                            placeholder={isPersonal ? 'Outcome delivered (e.g growth/profit)' : 'Why customers trust you'}
+                                            className="h-9 rounded-lg text-xs"
+                                        />
+                                        <Input
+                                            value={bioBuilder.founderOrProof}
+                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, founderOrProof: e.target.value }))}
+                                            placeholder={isPersonal ? 'Founder/proof line (e.g Founder of Takeer)' : 'Credibility line (awards, guarantee, etc.)'}
+                                            className="h-9 rounded-lg text-xs"
+                                        />
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="h-8 rounded-lg text-xs font-bold"
+                                            onClick={() => applyGeneratedBio('replace')}
+                                        >
+                                            Generate Bio
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            className="h-8 rounded-lg text-xs font-bold"
+                                            onClick={() => applyGeneratedBio('append')}
+                                        >
+                                            Add to Current Bio
+                                        </Button>
+                                    </div>
+                                </div>
                                 {errors.bio && <p className="text-xs text-red-500 mt-0.5">{errors.bio}</p>}
                             </div>
                         </CardContent>

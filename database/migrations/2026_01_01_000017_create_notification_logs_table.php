@@ -10,7 +10,7 @@ return new class extends Migration {
         Schema::create('notification_logs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->string('phone')->comment('Destination phone number');
+            $table->string('phone')->nullable()->comment('Destination phone number');
             $table->text('message')->comment('Full SMS body sent');
             $table->enum('status', ['sent', 'failed', 'pending'])->default('pending');
             $table->text('error_message')->nullable()->comment('API error response on failure');

@@ -58,6 +58,10 @@ Route::post('/payments/tz/flutterwave', [\App\Http\Controllers\Api\Payments\Flut
 
 // ─── WEBHOOKS (legacy M-Pesa placeholder) ────────────────────────────────────
 Route::post('/webhooks/mpesa', [PaymentWebhookController::class, 'callback']);
+Route::match(['get', 'post'], '/webhooks/social/comments', [\App\Http\Controllers\Api\MerchantMarketingController::class, 'receiveSocialWebhook'])
+    ->middleware('throttle:240,1');
+Route::match(['get', 'post'], '/webhooks/whatsapp', [\App\Http\Controllers\Api\MerchantMarketingController::class, 'receiveWhatsappWebhook'])
+    ->middleware('throttle:240,1');
 
 // ─── PUBLIC DISCOVERY ───────────────────────────────────────────────────────
 Route::get('/feed', [FeedController::class, 'index']);

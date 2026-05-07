@@ -13,6 +13,8 @@ import {
     ExternalLink,
     FileDown,
     Info,
+    Instagram,
+    Link2,
     Megaphone,
     MessageSquareText,
     MousePointerClick,
@@ -90,6 +92,70 @@ const emptyGroupSaleForm = {
     allow_sms_updates: true,
 };
 
+const emptySocialAccountForm = {
+    platform: 'instagram',
+    provider_account_id: '',
+    username: '',
+    display_name: '',
+    account_type: 'creator',
+};
+
+const emptySocialDmForm = {
+    id: null,
+    social_account_id: '',
+    name: '',
+    platform: 'instagram',
+    post_provider_id: '',
+    post_url: '',
+    trigger_keywords: 'link',
+    match_mode: 'contains',
+    destination_type: 'storefront',
+    destination_id: '',
+    destination_url: '',
+    dm_message: 'Here is the link you asked for:\n\n{{link}}',
+    public_reply_message: 'Sent you the link.',
+    starts_at: '',
+    ends_at: '',
+    status: 'active',
+};
+
+const emptySocialDmTest = {
+    account_id: '',
+    post_id: '',
+    comment_text: 'link',
+    commenter_username: 'preview_user',
+};
+
+const emptyWhatsappAccountForm = {
+    phone_number_id: '',
+    business_account_id: '',
+    display_phone_number: '',
+    verified_name: '',
+    access_token: '',
+};
+
+const emptyWhatsappForm = {
+    id: null,
+    whatsapp_account_id: '',
+    name: '',
+    trigger_keywords: 'catalog, products, price',
+    match_mode: 'contains',
+    destination_type: 'storefront',
+    destination_id: '',
+    destination_url: '',
+    response_message: 'Thanks for messaging. Shop securely on Takeer here:\n\n{{link}}',
+    starts_at: '',
+    ends_at: '',
+    status: 'active',
+};
+
+const emptyWhatsappTest = {
+    account_id: '',
+    message_text: 'catalog',
+    from_phone: '255700000000',
+    profile_name: 'Preview Buyer',
+};
+
 const toolCards = [
     {
         key: 'coupons',
@@ -119,6 +185,20 @@ const toolCards = [
         icon: RadioTower,
         status: 'Live',
     },
+    {
+        key: 'social-dms',
+        title: 'Comment-to-DM',
+        description: 'Turn Instagram or Facebook comments into tracked checkout and offer links.',
+        icon: Instagram,
+        status: 'Beta',
+    },
+    {
+        key: 'whatsapp',
+        title: 'WhatsApp-powered store',
+        description: 'Reply to buyer keywords with tracked Takeer links while checkout stays on Takeer.',
+        icon: MessageSquareText,
+        status: 'Beta',
+    },
 ];
 
 const sectionMeta = {
@@ -142,6 +222,14 @@ const sectionMeta = {
         title: 'Group Sales',
         description: 'Validate demand with reservation campaigns before stocking or releasing an offer.',
     },
+    'social-dms': {
+        title: 'Comment-to-DM',
+        description: 'Send tracked Takeer links when followers comment trigger words on social posts.',
+    },
+    whatsapp: {
+        title: 'WhatsApp Store',
+        description: 'Use WhatsApp as the sales conversation layer while Takeer handles checkout and fulfillment.',
+    },
     analytics: {
         title: 'Marketing Analytics',
         description: 'Review campaign performance and export finance, product, campaign, and order reports.',
@@ -154,6 +242,8 @@ const sectionTabs = [
     ['sms', 'SMS'],
     ['referrals', 'Referrals'],
     ['group-sales', 'Group sales'],
+    ['social-dms', 'Social DMs'],
+    ['whatsapp', 'WhatsApp'],
     ['analytics', 'Analytics'],
 ];
 
@@ -174,6 +264,23 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     const [referralForm, setReferralForm] = useState(emptyReferralForm);
     const [groupSales, setGroupSales] = useState([]);
     const [groupSaleForm, setGroupSaleForm] = useState(emptyGroupSaleForm);
+    const [socialAccounts, setSocialAccounts] = useState([]);
+    const [socialAccountForm, setSocialAccountForm] = useState(emptySocialAccountForm);
+    const [socialDmCampaigns, setSocialDmCampaigns] = useState([]);
+    const [socialDmForm, setSocialDmForm] = useState(emptySocialDmForm);
+    const [socialDmTest, setSocialDmTest] = useState(emptySocialDmTest);
+    const [socialDmTestResult, setSocialDmTestResult] = useState(null);
+    const [metaConnector, setMetaConnector] = useState({ configured: false, login_type: 'instagram', webhook_url: '' });
+    const [recentSocialMedia, setRecentSocialMedia] = useState([]);
+    const [mediaBusy, setMediaBusy] = useState(false);
+    const [whatsappConnector, setWhatsappConnector] = useState({ configured: false, webhook_url: '' });
+    const [whatsappAccounts, setWhatsappAccounts] = useState([]);
+    const [whatsappAccountForm, setWhatsappAccountForm] = useState(emptyWhatsappAccountForm);
+    const [whatsappAutomations, setWhatsappAutomations] = useState([]);
+    const [whatsappForm, setWhatsappForm] = useState(emptyWhatsappForm);
+    const [whatsappTest, setWhatsappTest] = useState(emptyWhatsappTest);
+    const [whatsappTestResult, setWhatsappTestResult] = useState(null);
+    const [manualWhatsappSetupOpen, setManualWhatsappSetupOpen] = useState(false);
     const [smsForm, setSmsForm] = useState(emptySmsForm);
     const [smsEstimate, setSmsEstimate] = useState(null);
     const [smsBusy, setSmsBusy] = useState(false);
@@ -201,6 +308,12 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
             setSmsPackages(res.data?.sms_packages || []);
             setReferralLinks(res.data?.referral_links || []);
             setGroupSales(res.data?.group_sales || []);
+            setSocialAccounts(res.data?.social_accounts || []);
+            setSocialDmCampaigns(res.data?.social_dm_campaigns || []);
+            setMetaConnector(res.data?.meta_connector || { configured: false, login_type: 'instagram', webhook_url: '' });
+            setWhatsappConnector(res.data?.whatsapp_connector || { configured: false, webhook_url: '' });
+            setWhatsappAccounts(res.data?.whatsapp_accounts || []);
+            setWhatsappAutomations(res.data?.whatsapp_automations || []);
         } catch (error) {
             toast.error('Imeshindwa kupakia marketing tools.');
         } finally {
@@ -218,6 +331,14 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
 
     function resetGroupSaleForm() {
         setGroupSaleForm(emptyGroupSaleForm);
+    }
+
+    function resetSocialDmForm() {
+        setSocialDmForm(emptySocialDmForm);
+    }
+
+    function resetWhatsappForm() {
+        setWhatsappForm(emptyWhatsappForm);
     }
 
     function editCoupon(coupon) {
@@ -509,6 +630,337 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
         }
     }
 
+    function editSocialDmCampaign(campaign) {
+        setSocialDmForm({
+            ...emptySocialDmForm,
+            ...campaign,
+            social_account_id: campaign.social_account_id ?? '',
+            destination_id: campaign.destination_id ?? '',
+            trigger_keywords: (campaign.trigger_keywords || []).join(', '),
+            starts_at: campaign.starts_at ? campaign.starts_at.slice(0, 16) : '',
+            ends_at: campaign.ends_at ? campaign.ends_at.slice(0, 16) : '',
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function connectSocialAccount() {
+        setSaving(true);
+        try {
+            const payload = {
+                ...socialAccountForm,
+                provider_account_id: socialAccountForm.provider_account_id.trim(),
+                username: socialAccountForm.username.trim() || null,
+                display_name: socialAccountForm.display_name.trim() || null,
+            };
+            const res = await axios.post(`/merchant/${merchantUsername}/marketing/social-accounts/api`, payload);
+            setSocialAccounts((current) => [res.data?.account, ...current.filter((account) => account.id !== res.data?.account?.id)].filter(Boolean));
+            setSocialAccountForm(emptySocialAccountForm);
+            setSocialDmTest((current) => ({ ...current, account_id: res.data?.account?.id || current.account_id }));
+            toast.success('Social account connected.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to connect social account.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    function connectMetaAccount() {
+        window.location.assign(`/merchant/${merchantUsername}/marketing/social-accounts/meta/connect`);
+    }
+
+    async function importRecentSocialMedia(accountId = socialDmForm.social_account_id) {
+        if (!accountId) {
+            toast.error('Choose a connected account first.');
+            return;
+        }
+
+        setMediaBusy(true);
+        try {
+            const res = await axios.get(`/merchant/${merchantUsername}/marketing/social-accounts/${accountId}/media/api`);
+            setRecentSocialMedia(res.data?.media || []);
+            toast.success('Recent posts imported.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to import recent posts.');
+        } finally {
+            setMediaBusy(false);
+        }
+    }
+
+    function selectSocialMedia(media) {
+        setSocialDmForm((prev) => ({
+            ...prev,
+            post_provider_id: media.id || '',
+            post_url: media.permalink || '',
+        }));
+        setSocialDmTest((prev) => ({
+            ...prev,
+            post_id: media.id || prev.post_id,
+        }));
+        toast.success('Post selected for this trigger.');
+    }
+
+    async function saveSocialDmCampaign() {
+        setSaving(true);
+        try {
+            const payload = {
+                ...socialDmForm,
+                social_account_id: socialDmForm.social_account_id ? Number(socialDmForm.social_account_id) : null,
+                trigger_keywords: String(socialDmForm.trigger_keywords || '')
+                    .split(',')
+                    .map((keyword) => keyword.trim())
+                    .filter(Boolean),
+                destination_id: socialDmForm.destination_type === 'storefront' || socialDmForm.destination_type === 'custom_url' || socialDmForm.destination_id === ''
+                    ? null
+                    : Number(socialDmForm.destination_id),
+                destination_url: socialDmForm.destination_type === 'custom_url' ? socialDmForm.destination_url : null,
+                post_provider_id: socialDmForm.post_provider_id || null,
+                post_url: socialDmForm.post_url || null,
+                starts_at: socialDmForm.starts_at || null,
+                ends_at: socialDmForm.ends_at || null,
+            };
+
+            if (payload.trigger_keywords.length === 0 || !payload.name || !payload.dm_message) {
+                toast.error('Add a campaign name, trigger word, and DM message.');
+                return;
+            }
+
+            if (socialDmForm.id) {
+                await axios.put(`/merchant/${merchantUsername}/marketing/social-dms/${socialDmForm.id}/api`, payload);
+                toast.success('Comment-to-DM campaign updated.');
+            } else {
+                await axios.post(`/merchant/${merchantUsername}/marketing/social-dms/api`, payload);
+                toast.success('Comment-to-DM campaign created.');
+            }
+
+            resetSocialDmForm();
+            await loadMarketing();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to save Comment-to-DM campaign.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function deleteSocialDmCampaign(campaignId) {
+        if (!window.confirm('Delete this Comment-to-DM campaign?')) return;
+        try {
+            await axios.delete(`/merchant/${merchantUsername}/marketing/social-dms/${campaignId}/api`);
+            setSocialDmCampaigns((current) => current.filter((campaign) => campaign.id !== campaignId));
+            toast.success('Comment-to-DM campaign deleted.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete Comment-to-DM campaign.');
+        }
+    }
+
+    async function simulateSocialDmComment() {
+        setSaving(true);
+        try {
+            const payload = {
+                ...socialDmTest,
+                account_id: Number(socialDmTest.account_id),
+            };
+            const res = await axios.post(`/merchant/${merchantUsername}/marketing/social-dms/simulate-comment/api`, payload);
+            setSocialDmTestResult(res.data?.event || null);
+            await loadMarketing();
+            toast.success('Comment simulation processed.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to simulate comment.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    function editWhatsappAutomation(automation) {
+        setWhatsappForm({
+            ...emptyWhatsappForm,
+            ...automation,
+            whatsapp_account_id: automation.whatsapp_account_id ?? '',
+            destination_id: automation.destination_id ?? '',
+            trigger_keywords: (automation.trigger_keywords || []).join(', '),
+            starts_at: automation.starts_at ? automation.starts_at.slice(0, 16) : '',
+            ends_at: automation.ends_at ? automation.ends_at.slice(0, 16) : '',
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function connectWhatsappAccount() {
+        setSaving(true);
+        try {
+            const payload = {
+                ...whatsappAccountForm,
+                access_token: whatsappAccountForm.access_token || null,
+                business_account_id: whatsappAccountForm.business_account_id || null,
+                display_phone_number: whatsappAccountForm.display_phone_number || null,
+                verified_name: whatsappAccountForm.verified_name || null,
+            };
+            const res = await axios.post(`/merchant/${merchantUsername}/marketing/whatsapp/accounts/api`, payload);
+            setWhatsappAccounts((current) => [res.data?.account, ...current.filter((account) => account.id !== res.data?.account?.id)].filter(Boolean));
+            setWhatsappAccountForm(emptyWhatsappAccountForm);
+            setWhatsappTest((current) => ({ ...current, account_id: res.data?.account?.id || current.account_id }));
+            toast.success('WhatsApp account connected.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to connect WhatsApp account.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    function ensureFacebookSdk() {
+        return new Promise((resolve, reject) => {
+            if (window.FB) {
+                resolve(window.FB);
+                return;
+            }
+
+            window.fbAsyncInit = function () {
+                window.FB.init({
+                    appId: whatsappConnector.app_id,
+                    cookie: true,
+                    xfbml: false,
+                    version: whatsappConnector.graph_version || 'v24.0',
+                });
+                resolve(window.FB);
+            };
+
+            if (document.getElementById('facebook-jssdk')) return;
+            const script = document.createElement('script');
+            script.id = 'facebook-jssdk';
+            script.src = 'https://connect.facebook.net/en_US/sdk.js';
+            script.async = true;
+            script.defer = true;
+            script.onerror = reject;
+            document.body.appendChild(script);
+        });
+    }
+
+    async function startWhatsappEmbeddedSignup() {
+        if (!whatsappConnector.embedded_signup_configured) {
+            toast.error('Add Meta app ID, secret, and WhatsApp configuration ID first.');
+            return;
+        }
+
+        setSaving(true);
+        let sessionInfo = {};
+        const messageListener = (event) => {
+            if (!String(event.origin || '').endsWith('facebook.com')) return;
+            try {
+                const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                if (data?.type === 'WA_EMBEDDED_SIGNUP') {
+                    sessionInfo = data.data || {};
+                }
+            } catch (_) {
+                // Ignore non-JSON SDK messages.
+            }
+        };
+
+        try {
+            window.addEventListener('message', messageListener);
+            const FB = await ensureFacebookSdk();
+            FB.login(async (response) => {
+                try {
+                    const code = response?.authResponse?.code;
+                    if (!code) {
+                        toast.error('WhatsApp signup was cancelled or did not return an auth code.');
+                        return;
+                    }
+
+                    const res = await axios.post(`/merchant/${merchantUsername}/marketing/whatsapp/embedded-signup/api`, {
+                        code,
+                        phone_number_id: sessionInfo.phone_number_id,
+                        waba_id: sessionInfo.waba_id,
+                        session_info: sessionInfo,
+                    });
+                    setWhatsappAccounts((current) => [res.data?.account, ...current.filter((account) => account.id !== res.data?.account?.id)].filter(Boolean));
+                    setWhatsappTest((current) => ({ ...current, account_id: res.data?.account?.id || current.account_id }));
+                    toast.success('WhatsApp Business connected.');
+                    await loadMarketing();
+                } catch (error) {
+                    toast.error(error.response?.data?.message || 'Failed to complete WhatsApp signup.');
+                } finally {
+                    setSaving(false);
+                    window.removeEventListener('message', messageListener);
+                }
+            }, {
+                config_id: whatsappConnector.configuration_id,
+                response_type: 'code',
+                override_default_response_type: true,
+                extras: {
+                    setup: {},
+                    sessionInfoVersion: '3',
+                },
+            });
+        } catch (error) {
+            setSaving(false);
+            window.removeEventListener('message', messageListener);
+            toast.error('Failed to load Meta signup.');
+        }
+    }
+
+    async function saveWhatsappAutomation() {
+        setSaving(true);
+        try {
+            const payload = {
+                ...whatsappForm,
+                whatsapp_account_id: whatsappForm.whatsapp_account_id ? Number(whatsappForm.whatsapp_account_id) : null,
+                trigger_keywords: String(whatsappForm.trigger_keywords || '').split(',').map((keyword) => keyword.trim()).filter(Boolean),
+                destination_id: whatsappForm.destination_type === 'storefront' || whatsappForm.destination_type === 'custom_url' || whatsappForm.destination_id === ''
+                    ? null
+                    : Number(whatsappForm.destination_id),
+                destination_url: whatsappForm.destination_type === 'custom_url' ? whatsappForm.destination_url : null,
+                starts_at: whatsappForm.starts_at || null,
+                ends_at: whatsappForm.ends_at || null,
+            };
+
+            if (payload.trigger_keywords.length === 0 || !payload.name || !payload.response_message) {
+                toast.error('Add a name, trigger word, and response message.');
+                return;
+            }
+
+            if (whatsappForm.id) {
+                await axios.put(`/merchant/${merchantUsername}/marketing/whatsapp/automations/${whatsappForm.id}/api`, payload);
+                toast.success('WhatsApp automation updated.');
+            } else {
+                await axios.post(`/merchant/${merchantUsername}/marketing/whatsapp/automations/api`, payload);
+                toast.success('WhatsApp automation created.');
+            }
+
+            resetWhatsappForm();
+            await loadMarketing();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to save WhatsApp automation.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function deleteWhatsappAutomation(automationId) {
+        if (!window.confirm('Delete this WhatsApp automation?')) return;
+        try {
+            await axios.delete(`/merchant/${merchantUsername}/marketing/whatsapp/automations/${automationId}/api`);
+            setWhatsappAutomations((current) => current.filter((automation) => automation.id !== automationId));
+            toast.success('WhatsApp automation deleted.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to delete WhatsApp automation.');
+        }
+    }
+
+    async function simulateWhatsappMessage() {
+        setSaving(true);
+        try {
+            const res = await axios.post(`/merchant/${merchantUsername}/marketing/whatsapp/simulate-message/api`, {
+                ...whatsappTest,
+                account_id: Number(whatsappTest.account_id),
+            });
+            setWhatsappTestResult(res.data?.event || null);
+            await loadMarketing();
+            toast.success('WhatsApp simulation processed.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to simulate WhatsApp message.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
     const smsCharacters = smsForm.message.length;
     const smsSegments = Math.max(1, Math.ceil(smsCharacters / 160));
     const selectedAudience = smsAudiences.find((audience) => audience.type === smsForm.audience_type);
@@ -525,6 +977,20 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
         content_item: marketingTargets.content_items || [],
     }[referralForm.target_type] || [];
     const productTargetOptions = marketingTargets.products || [];
+    const socialDmTargetOptions = {
+        product: marketingTargets.products || [],
+        bundle: marketingTargets.bundles || [],
+        subscription_plan: marketingTargets.subscription_plans || [],
+        post: marketingTargets.posts || [],
+        content_item: marketingTargets.content_items || [],
+    }[socialDmForm.destination_type] || [];
+    const whatsappTargetOptions = {
+        product: marketingTargets.products || [],
+        bundle: marketingTargets.bundles || [],
+        subscription_plan: marketingTargets.subscription_plans || [],
+        post: marketingTargets.posts || [],
+        content_item: marketingTargets.content_items || [],
+    }[whatsappForm.destination_type] || [];
     const activeSection = sectionMeta[section] ? section : 'overview';
     const activeMeta = sectionMeta[activeSection];
     const marketingBaseUrl = `/merchant/${merchantUsername}/marketing`;
@@ -1071,6 +1537,551 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                                 <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl text-red-600" onClick={() => deleteReferralLink(link.id)}>
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </CardContent>
+                        </Card>}
+
+                        {activeSection === 'social-dms' && <Card className="rounded-[28px] border-brand-100/70">
+                            <CardHeader>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <CardTitle className="text-base font-black uppercase tracking-wider">Connected accounts</CardTitle>
+                                        <CardDescription>Connect Meta to import posts/reels and send real private replies after permissions are approved.</CardDescription>
+                                    </div>
+                                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${metaConnector.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                        {metaConnector.configured ? 'OAuth ready' : 'Needs credentials'}
+                                    </span>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="rounded-2xl border bg-slate-50/70 p-4">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <p className="text-sm font-black">Meta connection</p>
+                                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                                Webhook URL: <span className="font-bold">{metaConnector.webhook_url || '/api/webhooks/social/comments'}</span>
+                                            </p>
+                                        </div>
+                                        <Button disabled={!metaConnector.configured} onClick={connectMetaAccount} className="h-11 rounded-2xl font-black">
+                                            <Instagram className="mr-2 h-4 w-4" />
+                                            Connect with Meta
+                                        </Button>
+                                    </div>
+                                    {!metaConnector.configured && (
+                                        <p className="mt-3 text-xs font-semibold text-amber-700">
+                                            Add META_CLIENT_ID, META_CLIENT_SECRET, META_REDIRECT_URI, and META_WEBHOOK_VERIFY_TOKEN to enable OAuth.
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-5">
+                                    <Field label="Platform">
+                                        <select value={socialAccountForm.platform} onChange={(e) => setSocialAccountForm((prev) => ({ ...prev, platform: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="instagram">Instagram</option>
+                                            <option value="facebook">Facebook</option>
+                                        </select>
+                                    </Field>
+                                    <Field label="Account ID" hint="Meta IG user ID or Page ID.">
+                                        <Input value={socialAccountForm.provider_account_id} onChange={(e) => setSocialAccountForm((prev) => ({ ...prev, provider_account_id: e.target.value }))} placeholder="1784..." className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Username">
+                                        <Input value={socialAccountForm.username} onChange={(e) => setSocialAccountForm((prev) => ({ ...prev, username: e.target.value }))} placeholder="@creator" className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Display name">
+                                        <Input value={socialAccountForm.display_name} onChange={(e) => setSocialAccountForm((prev) => ({ ...prev, display_name: e.target.value }))} placeholder="Creator brand" className="h-12 rounded-xl" />
+                                    </Field>
+                                    <div className="flex items-end">
+                                        <Button disabled={saving || !socialAccountForm.provider_account_id.trim()} onClick={connectSocialAccount} className="h-12 w-full rounded-2xl font-black">
+                                            <Link2 className="mr-2 h-4 w-4" />
+                                            Connect
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    {socialAccounts.length === 0 ? (
+                                        <div className="rounded-2xl border border-dashed p-5 text-sm font-semibold text-muted-foreground md:col-span-3">
+                                            Connect one Instagram or Facebook professional account to create trigger campaigns.
+                                        </div>
+                                    ) : socialAccounts.map((account) => (
+                                        <div key={account.id} className="rounded-2xl border bg-white p-4">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="font-black">{account.username || account.display_name || account.provider_account_id}</p>
+                                                    <p className="text-xs font-semibold text-muted-foreground">{account.platform} · {account.account_type || 'professional'}</p>
+                                                </div>
+                                                <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${account.has_live_token ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                                    {account.has_live_token ? 'Live' : 'Manual'}
+                                                </span>
+                                            </div>
+                                            <p className="mt-3 break-all text-[11px] font-semibold text-muted-foreground">ID: {account.provider_account_id}</p>
+                                            {account.last_webhook_at && <p className="mt-1 text-[11px] font-semibold text-muted-foreground">Last webhook {new Date(account.last_webhook_at).toLocaleString()}</p>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>}
+
+                        {activeSection === 'social-dms' && <Card className="rounded-[28px] border-brand-100/70">
+                            <CardHeader>
+                                <CardTitle className="text-base font-black uppercase tracking-wider">{socialDmForm.id ? 'Edit trigger campaign' : 'Create trigger campaign'}</CardTitle>
+                                <CardDescription>Tell followers what to comment, then Takeer sends the tracked product, checkout, course, service, or bundle link.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    <Field label="Campaign name">
+                                        <Input value={socialDmForm.name} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Ebook Reel DM" className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Account">
+                                        <select value={socialDmForm.social_account_id || ''} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, social_account_id: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="">Any connected account</option>
+                                            {socialAccounts.map((account) => (
+                                                <option key={account.id} value={account.id}>{account.username || account.provider_account_id} · {account.platform}</option>
+                                            ))}
+                                        </select>
+                                    </Field>
+                                    <Field label="Status">
+                                        <select value={socialDmForm.status} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, status: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="draft">Draft</option>
+                                            <option value="active">Active</option>
+                                            <option value="paused">Paused</option>
+                                            <option value="expired">Expired</option>
+                                        </select>
+                                    </Field>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <Field label="Post/Reel scope" hint="Leave blank for all posts, or import recent posts below and select one.">
+                                        <Input value={socialDmForm.post_provider_id || ''} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, post_provider_id: e.target.value }))} placeholder="Optional Meta media ID" className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Post URL" hint="Optional reference for the creator until recent-post import is connected.">
+                                        <Input value={socialDmForm.post_url || ''} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, post_url: e.target.value }))} placeholder="https://instagram.com/reel/..." className="h-12 rounded-xl" />
+                                    </Field>
+                                </div>
+
+                                <div className="rounded-2xl border bg-slate-50/70 p-4">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <p className="text-sm font-black">Recent posts/reels</p>
+                                            <p className="mt-1 text-xs text-muted-foreground">Import from the selected Meta account and click a post to attach this trigger.</p>
+                                        </div>
+                                        <Button variant="outline" disabled={mediaBusy || !socialDmForm.social_account_id} onClick={() => importRecentSocialMedia()} className="h-10 rounded-xl text-xs font-black">
+                                            {mediaBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="mr-2 h-4 w-4" />}
+                                            Import posts
+                                        </Button>
+                                    </div>
+                                    {recentSocialMedia.length > 0 && (
+                                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                            {recentSocialMedia.slice(0, 9).map((media) => (
+                                                <button
+                                                    type="button"
+                                                    key={media.id}
+                                                    onClick={() => selectSocialMedia(media)}
+                                                    className={`rounded-2xl border bg-white p-3 text-left transition hover:border-brand-300 ${socialDmForm.post_provider_id === media.id ? 'border-brand-500 ring-2 ring-brand-100' : ''}`}
+                                                >
+                                                    {media.thumbnail_url && (
+                                                        <img src={media.thumbnail_url} alt="" className="mb-3 aspect-video w-full rounded-xl object-cover" />
+                                                    )}
+                                                    <p className="text-xs font-black">{media.media_type || 'Media'} · {new Date(media.timestamp || Date.now()).toLocaleDateString()}</p>
+                                                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{media.caption || media.permalink || media.id}</p>
+                                                    <p className="mt-2 text-[10px] font-bold text-slate-500">{Number(media.comments_count || 0).toLocaleString()} comments · {Number(media.like_count || 0).toLocaleString()} likes</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    <Field label="Trigger words" hint="Comma-separated, e.g. link, price, ebook.">
+                                        <Input value={socialDmForm.trigger_keywords} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, trigger_keywords: e.target.value }))} className="h-12 rounded-xl font-black" />
+                                    </Field>
+                                    <Field label="Match mode">
+                                        <select value={socialDmForm.match_mode} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, match_mode: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="contains">Contains word</option>
+                                            <option value="exact">Exact comment</option>
+                                        </select>
+                                    </Field>
+                                    <Field label="Destination">
+                                        <select value={socialDmForm.destination_type} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, destination_type: e.target.value, destination_id: '', destination_url: '' }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="storefront">Storefront</option>
+                                            <option value="product">Product/service/download</option>
+                                            <option value="bundle">Bundle/course</option>
+                                            <option value="subscription_plan">Membership</option>
+                                            <option value="post">Premium post</option>
+                                            <option value="content_item">Content item</option>
+                                            <option value="custom_url">Custom URL</option>
+                                        </select>
+                                    </Field>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <Field label="Target offer" hint={socialDmForm.destination_type === 'storefront' ? 'Not needed for storefront.' : socialDmForm.destination_type === 'custom_url' ? 'Paste a full URL on the right.' : 'Choose the exact Takeer offer.'}>
+                                        {['storefront', 'custom_url'].includes(socialDmForm.destination_type) ? (
+                                            <Input disabled value={socialDmForm.destination_type === 'storefront' ? 'Storefront' : 'Custom URL'} className="h-12 rounded-xl text-muted-foreground" />
+                                        ) : (
+                                            <select value={socialDmForm.destination_id || ''} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, destination_id: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                                <option value="">Choose target...</option>
+                                                {socialDmTargetOptions.map((target) => (
+                                                    <option key={target.id} value={target.id}>{target.label} · {target.meta}</option>
+                                                ))}
+                                            </select>
+                                        )}
+                                    </Field>
+                                    <Field label="Custom URL" hint="Only used when Destination is Custom URL.">
+                                        <Input disabled={socialDmForm.destination_type !== 'custom_url'} value={socialDmForm.destination_url || ''} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, destination_url: e.target.value }))} placeholder="https://..." className="h-12 rounded-xl" />
+                                    </Field>
+                                </div>
+
+                                <Field label="DM message" hint="Use {{link}} where the tracked Takeer link should appear.">
+                                    <Textarea value={socialDmForm.dm_message} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, dm_message: e.target.value }))} className="min-h-28 rounded-xl" maxLength={950} />
+                                </Field>
+
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    <Field label="Public reply">
+                                        <Input value={socialDmForm.public_reply_message || ''} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, public_reply_message: e.target.value }))} placeholder="Sent you the link." className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Starts at">
+                                        <Input type="datetime-local" value={socialDmForm.starts_at || ''} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, starts_at: e.target.value }))} className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Ends at">
+                                        <Input type="datetime-local" value={socialDmForm.ends_at || ''} onChange={(e) => setSocialDmForm((prev) => ({ ...prev, ends_at: e.target.value }))} className="h-12 rounded-xl" />
+                                    </Field>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <Button onClick={saveSocialDmCampaign} disabled={saving} className="h-12 rounded-2xl font-black flex-1">
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                        Save trigger
+                                    </Button>
+                                    {socialDmForm.id && (
+                                        <Button variant="outline" onClick={resetSocialDmForm} className="h-12 rounded-2xl font-black">
+                                            Cancel
+                                        </Button>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>}
+
+                        {activeSection === 'social-dms' && <Card className="rounded-[28px] border-brand-100/70">
+                            <CardHeader>
+                                <CardTitle className="text-base font-black uppercase tracking-wider">Campaigns and test</CardTitle>
+                                <CardDescription>Run a simulated comment to confirm matching, message text, and tracked link behavior.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid gap-3 md:grid-cols-4">
+                                    <InlineStat label="Active triggers" value={Number(summary.active_social_dm_campaigns || 0).toLocaleString()} />
+                                    <InlineStat label="DM attempts" value={Number(summary.social_dm_sent || 0).toLocaleString()} />
+                                    <InlineStat label="Tracked clicks" value={Number(summary.social_dm_clicks || 0).toLocaleString()} />
+                                    <InlineStat label="Connected" value={Number(socialAccounts.length || 0).toLocaleString()} />
+                                </div>
+
+                                <div className="rounded-2xl border bg-slate-50/70 p-4">
+                                    <div className="grid gap-3 md:grid-cols-4">
+                                        <Field label="Account">
+                                            <select value={socialDmTest.account_id || ''} onChange={(e) => setSocialDmTest((prev) => ({ ...prev, account_id: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                                <option value="">Choose account...</option>
+                                                {socialAccounts.map((account) => (
+                                                    <option key={account.id} value={account.id}>{account.username || account.provider_account_id}</option>
+                                                ))}
+                                            </select>
+                                        </Field>
+                                        <Field label="Post ID">
+                                            <Input value={socialDmTest.post_id || ''} onChange={(e) => setSocialDmTest((prev) => ({ ...prev, post_id: e.target.value }))} placeholder="Same as campaign or blank" className="h-12 rounded-xl" />
+                                        </Field>
+                                        <Field label="Comment">
+                                            <Input value={socialDmTest.comment_text} onChange={(e) => setSocialDmTest((prev) => ({ ...prev, comment_text: e.target.value }))} className="h-12 rounded-xl" />
+                                        </Field>
+                                        <div className="flex items-end">
+                                            <Button disabled={saving || !socialDmTest.account_id} onClick={simulateSocialDmComment} className="h-12 w-full rounded-2xl font-black">
+                                                <Send className="mr-2 h-4 w-4" />
+                                                Simulate
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    {socialDmTestResult && (
+                                        <div className="mt-3 rounded-xl border bg-white p-3 text-xs">
+                                            <p className="font-black">Result: {socialDmTestResult.status || 'processed'}</p>
+                                            <p className="mt-1 text-muted-foreground">Keyword: {socialDmTestResult.matched_keyword || 'none'} · Comment: {socialDmTestResult.comment_text || 'none'}</p>
+                                            {socialDmTestResult.destination_url && <p className="mt-1 break-all font-semibold text-brand-700">{socialDmTestResult.destination_url}</p>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {socialDmCampaigns.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed p-8 text-center">
+                                        <Instagram className="mx-auto h-9 w-9 text-brand-600" />
+                                        <p className="mt-3 font-black">No Comment-to-DM campaigns yet</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">Create one trigger for a specific post or all posts.</p>
+                                    </div>
+                                ) : socialDmCampaigns.map((campaign) => (
+                                    <div key={campaign.id} className="rounded-2xl border bg-white p-4">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="font-black">{campaign.name}</p>
+                                                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${campaign.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                        {campaign.status}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                                                    {campaign.social_account_label || campaign.platform} · comments "{(campaign.trigger_keywords || []).join(', ')}" · {campaign.match_mode}
+                                                </p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Post {campaign.post_provider_id || 'any'} · Destination {campaign.destination_type}{campaign.destination_id ? ` #${campaign.destination_id}` : ''}
+                                                </p>
+                                                <p className="mt-2 text-xs text-muted-foreground">
+                                                    {Number(campaign.comments_count || 0).toLocaleString()} comments · {Number(campaign.matched_count || 0).toLocaleString()} matched · {Number(campaign.dm_sent_count || 0).toLocaleString()} sent · {Number(campaign.clicks_count || 0).toLocaleString()} clicks
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {campaign.destination_url && (
+                                                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => copyText(campaign.destination_url, 'Destination copied.')}>
+                                                        <Copy className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                                <Button variant="outline" className="h-9 rounded-xl text-xs font-black" onClick={() => editSocialDmCampaign(campaign)}>
+                                                    Edit
+                                                </Button>
+                                                <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl text-red-600" onClick={() => deleteSocialDmCampaign(campaign.id)}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </CardContent>
+                        </Card>}
+
+                        {activeSection === 'whatsapp' && <Card className="rounded-[28px] border-brand-100/70">
+                            <CardHeader>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <CardTitle className="text-base font-black uppercase tracking-wider">WhatsApp Cloud API</CardTitle>
+                                        <CardDescription>Webhook URL: {whatsappConnector.webhook_url || '/api/webhooks/whatsapp'}</CardDescription>
+                                    </div>
+                                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${whatsappConnector.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                        {whatsappConnector.configured ? 'Configured' : 'Needs credentials'}
+                                    </span>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="rounded-2xl border bg-slate-50/70 p-4">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <p className="text-sm font-black">Merchant onboarding</p>
+                                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                                Opens Meta Embedded Signup so the merchant can select or create a WhatsApp Business account and phone number.
+                                            </p>
+                                        </div>
+                                        <Button disabled={saving || !whatsappConnector.embedded_signup_configured} onClick={startWhatsappEmbeddedSignup} className="h-12 rounded-2xl font-black">
+                                            <MessageSquareText className="mr-2 h-4 w-4" />
+                                            Connect WhatsApp Business
+                                        </Button>
+                                    </div>
+                                    {!whatsappConnector.embedded_signup_configured && (
+                                        <p className="mt-3 text-xs font-semibold text-amber-700">
+                                            Requires META_CLIENT_ID, META_CLIENT_SECRET, and WHATSAPP_CLOUD_CONFIGURATION_ID or META_CONFIGURATION_ID.
+                                        </p>
+                                    )}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setManualWhatsappSetupOpen((open) => !open)}
+                                    className="text-xs font-black uppercase tracking-widest text-brand-700"
+                                >
+                                    {manualWhatsappSetupOpen ? 'Hide manual setup' : 'Manual setup / advanced'}
+                                </button>
+
+                                {manualWhatsappSetupOpen && <div className="grid gap-3 md:grid-cols-5">
+                                    <Field label="Phone number ID">
+                                        <Input value={whatsappAccountForm.phone_number_id} onChange={(e) => setWhatsappAccountForm((prev) => ({ ...prev, phone_number_id: e.target.value }))} placeholder="Meta phone number ID" className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Business ID">
+                                        <Input value={whatsappAccountForm.business_account_id} onChange={(e) => setWhatsappAccountForm((prev) => ({ ...prev, business_account_id: e.target.value }))} placeholder="Optional WABA ID" className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Phone">
+                                        <Input value={whatsappAccountForm.display_phone_number} onChange={(e) => setWhatsappAccountForm((prev) => ({ ...prev, display_phone_number: e.target.value }))} placeholder="+255..." className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Name">
+                                        <Input value={whatsappAccountForm.verified_name} onChange={(e) => setWhatsappAccountForm((prev) => ({ ...prev, verified_name: e.target.value }))} placeholder="Store name" className="h-12 rounded-xl" />
+                                    </Field>
+                                    <div className="flex items-end">
+                                        <Button disabled={saving || !whatsappAccountForm.phone_number_id.trim()} onClick={connectWhatsappAccount} className="h-12 w-full rounded-2xl font-black">
+                                            <Link2 className="mr-2 h-4 w-4" />
+                                            Connect
+                                        </Button>
+                                    </div>
+                                </div>}
+
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    {whatsappAccounts.length === 0 ? (
+                                        <div className="rounded-2xl border border-dashed p-5 text-sm font-semibold text-muted-foreground md:col-span-3">
+                                            Connect a WhatsApp phone number ID, then create keyword automations.
+                                        </div>
+                                    ) : whatsappAccounts.map((account) => (
+                                        <div key={account.id} className="rounded-2xl border bg-white p-4">
+                                            <p className="font-black">{account.verified_name || account.display_phone_number || account.phone_number_id}</p>
+                                            <p className="mt-1 text-xs font-semibold text-muted-foreground">{account.display_phone_number || 'No phone display'} · {account.has_live_token ? 'Cloud API token ready' : 'Simulated'}</p>
+                                            <p className="mt-2 break-all text-[11px] text-muted-foreground">Phone number ID: {account.phone_number_id}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>}
+
+                        {activeSection === 'whatsapp' && <Card className="rounded-[28px] border-brand-100/70">
+                            <CardHeader>
+                                <CardTitle className="text-base font-black uppercase tracking-wider">{whatsappForm.id ? 'Edit WhatsApp automation' : 'Create WhatsApp automation'}</CardTitle>
+                                <CardDescription>Buyer messages a keyword, Takeer replies with a tracked store or checkout link.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    <Field label="Name">
+                                        <Input value={whatsappForm.name} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Catalog responder" className="h-12 rounded-xl" />
+                                    </Field>
+                                    <Field label="Account">
+                                        <select value={whatsappForm.whatsapp_account_id || ''} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, whatsapp_account_id: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="">Any connected WhatsApp account</option>
+                                            {whatsappAccounts.map((account) => (
+                                                <option key={account.id} value={account.id}>{account.verified_name || account.display_phone_number || account.phone_number_id}</option>
+                                            ))}
+                                        </select>
+                                    </Field>
+                                    <Field label="Status">
+                                        <select value={whatsappForm.status} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, status: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="draft">Draft</option>
+                                            <option value="active">Active</option>
+                                            <option value="paused">Paused</option>
+                                            <option value="expired">Expired</option>
+                                        </select>
+                                    </Field>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    <Field label="Trigger words" hint="Comma-separated, e.g. catalog, price, service.">
+                                        <Input value={whatsappForm.trigger_keywords} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, trigger_keywords: e.target.value }))} className="h-12 rounded-xl font-black" />
+                                    </Field>
+                                    <Field label="Match mode">
+                                        <select value={whatsappForm.match_mode} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, match_mode: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="contains">Contains word</option>
+                                            <option value="exact">Exact message</option>
+                                        </select>
+                                    </Field>
+                                    <Field label="Destination">
+                                        <select value={whatsappForm.destination_type} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, destination_type: e.target.value, destination_id: '', destination_url: '' }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="storefront">Storefront</option>
+                                            <option value="product">Product/service/download</option>
+                                            <option value="bundle">Bundle/course</option>
+                                            <option value="subscription_plan">Membership</option>
+                                            <option value="post">Premium post</option>
+                                            <option value="content_item">Content item</option>
+                                            <option value="custom_url">Custom URL</option>
+                                        </select>
+                                    </Field>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <Field label="Target offer">
+                                        {['storefront', 'custom_url'].includes(whatsappForm.destination_type) ? (
+                                            <Input disabled value={whatsappForm.destination_type === 'storefront' ? 'Storefront' : 'Custom URL'} className="h-12 rounded-xl text-muted-foreground" />
+                                        ) : (
+                                            <select value={whatsappForm.destination_id || ''} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, destination_id: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                                <option value="">Choose target...</option>
+                                                {whatsappTargetOptions.map((target) => (
+                                                    <option key={target.id} value={target.id}>{target.label} · {target.meta}</option>
+                                                ))}
+                                            </select>
+                                        )}
+                                    </Field>
+                                    <Field label="Custom URL">
+                                        <Input disabled={whatsappForm.destination_type !== 'custom_url'} value={whatsappForm.destination_url || ''} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, destination_url: e.target.value }))} placeholder="https://..." className="h-12 rounded-xl" />
+                                    </Field>
+                                </div>
+
+                                <Field label="Response message" hint="Use {{link}} where the tracked Takeer link should appear.">
+                                    <Textarea value={whatsappForm.response_message} onChange={(e) => setWhatsappForm((prev) => ({ ...prev, response_message: e.target.value }))} className="min-h-28 rounded-xl" maxLength={1000} />
+                                </Field>
+
+                                <div className="flex gap-2">
+                                    <Button onClick={saveWhatsappAutomation} disabled={saving} className="h-12 rounded-2xl font-black flex-1">
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                        Save automation
+                                    </Button>
+                                    {whatsappForm.id && <Button variant="outline" onClick={resetWhatsappForm} className="h-12 rounded-2xl font-black">Cancel</Button>}
+                                </div>
+                            </CardContent>
+                        </Card>}
+
+                        {activeSection === 'whatsapp' && <Card className="rounded-[28px] border-brand-100/70">
+                            <CardHeader>
+                                <CardTitle className="text-base font-black uppercase tracking-wider">Automations and test</CardTitle>
+                                <CardDescription>Simulate an inbound WhatsApp message before Cloud API credentials are live.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid gap-3 md:grid-cols-4">
+                                    <InlineStat label="Active" value={Number(summary.active_whatsapp_automations || 0).toLocaleString()} />
+                                    <InlineStat label="Sent" value={Number(summary.whatsapp_sent || 0).toLocaleString()} />
+                                    <InlineStat label="Clicks" value={Number(summary.whatsapp_clicks || 0).toLocaleString()} />
+                                    <InlineStat label="Accounts" value={Number(whatsappAccounts.length || 0).toLocaleString()} />
+                                </div>
+
+                                <div className="rounded-2xl border bg-slate-50/70 p-4">
+                                    <div className="grid gap-3 md:grid-cols-4">
+                                        <Field label="Account">
+                                            <select value={whatsappTest.account_id || ''} onChange={(e) => setWhatsappTest((prev) => ({ ...prev, account_id: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                                <option value="">Choose account...</option>
+                                                {whatsappAccounts.map((account) => (
+                                                    <option key={account.id} value={account.id}>{account.verified_name || account.display_phone_number || account.phone_number_id}</option>
+                                                ))}
+                                            </select>
+                                        </Field>
+                                        <Field label="Buyer phone">
+                                            <Input value={whatsappTest.from_phone} onChange={(e) => setWhatsappTest((prev) => ({ ...prev, from_phone: e.target.value }))} className="h-12 rounded-xl" />
+                                        </Field>
+                                        <Field label="Message">
+                                            <Input value={whatsappTest.message_text} onChange={(e) => setWhatsappTest((prev) => ({ ...prev, message_text: e.target.value }))} className="h-12 rounded-xl" />
+                                        </Field>
+                                        <div className="flex items-end">
+                                            <Button disabled={saving || !whatsappTest.account_id} onClick={simulateWhatsappMessage} className="h-12 w-full rounded-2xl font-black">
+                                                <Send className="mr-2 h-4 w-4" />
+                                                Simulate
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    {whatsappTestResult && (
+                                        <div className="mt-3 rounded-xl border bg-white p-3 text-xs">
+                                            <p className="font-black">Result: {whatsappTestResult.status || 'processed'}</p>
+                                            <p className="mt-1 text-muted-foreground">Keyword: {whatsappTestResult.matched_keyword || 'none'} · Message: {whatsappTestResult.message_text || 'none'}</p>
+                                            {whatsappTestResult.destination_url && <p className="mt-1 break-all font-semibold text-brand-700">{whatsappTestResult.destination_url}</p>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {whatsappAutomations.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed p-8 text-center">
+                                        <MessageSquareText className="mx-auto h-9 w-9 text-brand-600" />
+                                        <p className="mt-3 font-black">No WhatsApp automations yet</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">Create a keyword responder for catalog, price, services, or order help.</p>
+                                    </div>
+                                ) : whatsappAutomations.map((automation) => (
+                                    <div key={automation.id} className="rounded-2xl border bg-white p-4">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                            <div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="font-black">{automation.name}</p>
+                                                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-widest ${automation.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{automation.status}</span>
+                                                </div>
+                                                <p className="mt-1 text-xs text-muted-foreground">{automation.whatsapp_account_label || 'Any account'} · {(automation.trigger_keywords || []).join(', ')}</p>
+                                                <p className="mt-2 text-xs text-muted-foreground">{Number(automation.matched_count || 0).toLocaleString()} matched · {Number(automation.sent_count || 0).toLocaleString()} sent · {Number(automation.clicks_count || 0).toLocaleString()} clicks</p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {automation.destination_url && <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => copyText(automation.destination_url, 'Destination copied.')}><Copy className="h-4 w-4" /></Button>}
+                                                <Button variant="outline" className="h-9 rounded-xl text-xs font-black" onClick={() => editWhatsappAutomation(automation)}>Edit</Button>
+                                                <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl text-red-600" onClick={() => deleteWhatsappAutomation(automation.id)}><Trash2 className="h-4 w-4" /></Button>
                                             </div>
                                         </div>
                                     </div>

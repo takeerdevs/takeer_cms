@@ -24,6 +24,7 @@ use App\Models\ServiceRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\WithdrawalRequest;
 use App\Services\PlatformNotificationService;
+use App\Services\PayoutPolicyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -489,13 +490,34 @@ class AdminController extends Controller
     {
         $validated = $request->validate([
             'disable_pos_payment_links' => 'sometimes|boolean',
+            'payout_controls.overrides' => 'sometimes|array',
+            'payout_controls.overrides.*' => 'string|in:platform_default,automatic,manual_withdrawal,escrow_hold,payout_paused',
             'reason_notes' => 'nullable|string|max:2000',
         ]);
 
         $settings = $merchant->retail_settings;
+        $oldPayoutControls = $settings['payout_controls'] ?? ['overrides' => []];
 
         if (array_key_exists('disable_pos_payment_links', $validated)) {
             $settings['disable_pos_payment_links'] = (bool) $validated['disable_pos_payment_links'];
+        }
+
+        if (array_key_exists('payout_controls', $validated)) {
+            $incoming = $validated['payout_controls']['overrides'] ?? [];
+            $settings['payout_controls'] = [
+                'overrides' => collect(PayoutPolicyService::BUCKETS)
+                    ->mapWithKeys(function (string $label, string $bucket) use ($incoming) {
+                        $mode = $incoming[$bucket] ?? PayoutPolicyService::MODE_PLATFORM_DEFAULT;
+
+                        return [$bucket => in_array($mode, PayoutPolicyService::MERCHANT_OVERRIDE_MODES, true)
+                            ? $mode
+                            : PayoutPolicyService::MODE_PLATFORM_DEFAULT];
+                    })
+                    ->all(),
+                'updated_by_admin_id' => $request->user()?->id,
+                'updated_at' => now()->toISOString(),
+                'reason_notes' => $validated['reason_notes'] ?? null,
+            ];
         }
 
         $merchant->update(['retail_settings' => $settings]);
@@ -508,9 +530,25 @@ class AdminController extends Controller
             'description' => 'Admin updated merchant settings.',
             'metadata' => [
                 'disable_pos_payment_links' => $settings['disable_pos_payment_links'] ?? false,
+                'old_payout_controls' => $oldPayoutControls,
+                'new_payout_controls' => $settings['payout_controls'] ?? null,
                 'reason_notes' => $validated['reason_notes'] ?? null,
             ],
         ]);
+
+        if (array_key_exists('payout_controls', $validated) && $merchant->user) {
+            app(PlatformNotificationService::class)->dispatchToUser($merchant->user, [
+                'subject' => 'Your Takeer payout settings changed',
+                'message' => $this->payoutPolicyChangeMessage($merchant, $settings['payout_controls'], $validated['reason_notes'] ?? null),
+                'channels' => ['sms', 'email'],
+                'dedupe_key' => 'merchant-payout-policy-updated:' . $merchant->id . ':' . md5(json_encode($settings['payout_controls'])),
+                'metadata' => [
+                    'event_type' => 'merchant_payout_policy_updated',
+                    'merchant_id' => $merchant->id,
+                    'reason_notes' => $validated['reason_notes'] ?? null,
+                ],
+            ]);
+        }
 
         return response()->json([
             'message' => 'Merchant settings updated successfully.',
@@ -657,6 +695,18 @@ class AdminController extends Controller
             'merchant_strikes' => $merchant->strikes_count,
             'retail_settings' => [
                 'disable_pos_payment_links' => filter_var($merchant->retail_settings['disable_pos_payment_links'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'payout_controls' => $merchant->retail_settings['payout_controls'] ?? [
+                    'overrides' => collect(PayoutPolicyService::BUCKETS)
+                        ->mapWithKeys(fn ($label, $bucket) => [$bucket => PayoutPolicyService::MODE_PLATFORM_DEFAULT])
+                        ->all(),
+                ],
+            ],
+            'payout_policy' => [
+                'buckets' => PayoutPolicyService::BUCKETS,
+                'modes' => app(PayoutPolicyService::class)->labels(),
+                'platform_defaults' => collect(PayoutPolicyService::BUCKETS)
+                    ->mapWithKeys(fn ($label, $bucket) => [$bucket => app(PayoutPolicyService::class)->platformMode($bucket)])
+                    ->all(),
             ],
             'recent_strikes' => $merchant->strikes->map(fn (MerchantStrike $strike) => [
                 'id' => $strike->id,
@@ -680,6 +730,27 @@ class AdminController extends Controller
             'merchant' => $merchant,
             'summary' => $summary,
         ]);
+    }
+
+    private function payoutPolicyChangeMessage(\App\Models\Merchant $merchant, array $controls, ?string $reason): string
+    {
+        $labels = app(PayoutPolicyService::class)->labels();
+        $changed = collect($controls['overrides'] ?? [])
+            ->filter(fn (string $mode) => $mode !== PayoutPolicyService::MODE_PLATFORM_DEFAULT)
+            ->map(fn (string $mode, string $bucket) => (PayoutPolicyService::BUCKETS[$bucket] ?? $bucket) . ': ' . ($labels[$mode] ?? $mode))
+            ->values();
+
+        $summary = $changed->isEmpty()
+            ? 'Your payout controls now follow Takeer platform defaults.'
+            : 'Current payout controls: ' . $changed->implode('; ') . '.';
+
+        $message = "Takeer has updated payout controls for {$merchant->display_name}. {$summary}";
+
+        if ($reason) {
+            $message .= " Reason: {$reason}";
+        }
+
+        return $message;
     }
 
     /**

@@ -155,11 +155,11 @@ function SubscriptionRailCard({ plan, compact = false }) {
 
 function railSearchHref(rail) {
     const map = {
-        nearby: '/search?q=nearby&type=physical',
-        premium_media: '/search?q=premium&type=digital',
-        downloads: '/search?q=templates&type=digital',
-        events: '/search?q=event&type=digital',
-        services: '/search?q=service&type=service',
+        nearby: '/search?q=nearby&type=physical&surface=products',
+        premium_media: '/search?q=premium&type=digital&surface=products',
+        downloads: '/search?q=downloads&type=digital&surface=products',
+        events: '/search?q=event&type=digital&surface=products',
+        services: '/search?q=service&type=service&surface=products',
         memberships: '/search?q=club&type=creator',
     };
 

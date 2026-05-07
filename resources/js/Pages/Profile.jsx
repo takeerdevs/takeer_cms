@@ -521,6 +521,7 @@ export default function Profile({
                                                     <ActionBtn icon={Store} label="Retail Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/retail-operations`} color="bg-amber-50" textColor="text-amber-700" borderColor="border-amber-100" />
                                                 )}
                                                 <ActionBtn icon={HardDrive} label="Storage Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/storage`} color="bg-sky-50" textColor="text-sky-700" borderColor="border-sky-100" />
+                                                <ActionBtn icon={Clock} label="Pulse" href={`/merchant/${merchantSlug}/pulse`} color="bg-blue-50" textColor="text-blue-700" borderColor="border-blue-100" />
                                                 <ActionBtn icon={Megaphone} label="Marketing" href={`/merchant/${merchantSlug}/marketing`} color="bg-violet-50" textColor="text-violet-700" borderColor="border-violet-100" />
                                                 <ActionBtn icon={Wallet} label="Wallet" href={`/merchant/${merchantSlug}/wallet`} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
                                                 {retailActive && (

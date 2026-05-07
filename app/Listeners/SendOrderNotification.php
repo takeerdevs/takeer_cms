@@ -30,14 +30,15 @@ class SendOrderNotification implements ShouldQueue
         $product = $order->product;
 
         if ($product->isDigital() || $product->isService()) {
-            // Instantly send the digital/service link to the buyer
-            $buyerPhone = $order->buyer ? $order->buyer->phone_number : null;
+            // Instantly send the buyer back to their Orders access hub.
+            $buyerPhone = $order->buyer?->phone_number ?: $order->account_phone ?: $order->customer_phone;
             if ($buyerPhone) {
                 $this->smsService->sendDigitalDeliveryNotification(
                     $buyerPhone,
                     $product->title,
-                    $product->url,
-                    $order->buyer_id
+                    url('/orders'),
+                    $order->buyer_id,
+                    'digital-delivery:'.($order->public_id ?: $order->id)
                 );
             }
         } else {

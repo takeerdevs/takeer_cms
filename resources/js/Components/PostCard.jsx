@@ -414,7 +414,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
             )}
             <div className="flex items-center gap-3 px-4 pt-4 pb-3">
                 <Link
-                    href={`/m/${postData.merchant_profile?.username || postData.merchant?.username || postData.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
+                    href={`/u/${postData.merchant_profile?.username || postData.merchant?.username || postData.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                     className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-sm border-2 border-background shadow-sm overflow-hidden hover:opacity-90 transition-opacity"
                 >
                     {postData.merchant_profile?.avatar_url ? (
@@ -427,7 +427,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                     <div className="flex items-center gap-1.5 mb-0.5">
                         <div className="flex items-center gap-1 max-w-full">
                             <Link
-                                href={`/m/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
+                                href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                                 className="font-bold text-sm text-foreground leading-none truncate hover:text-brand-600 transition-colors"
                             >
                                 {post.merchant_profile?.display_name || post.merchant?.name}
@@ -436,7 +436,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                         </div>
                     </div>
                     <Link
-                        href={`/m/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
+                        href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                         className="text-[10px] text-muted-foreground mt-0.5 truncate block hover:text-brand-600 transition-colors"
                     >
                         @{post.merchant_profile?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}

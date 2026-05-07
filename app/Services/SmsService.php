@@ -101,7 +101,7 @@ class SmsService
     /**
      * Send digital/service link to buyer.
      */
-    public function sendDigitalDeliveryNotification(string $phone, string $productTitle, string $url, ?int $userId = null): bool
+    public function sendDigitalDeliveryNotification(string $phone, string $productTitle, string $url, ?int $userId = null, ?string $dedupeKey = null): bool
     {
         $deliveryTarget = $url;
 
@@ -110,7 +110,12 @@ class SmsService
             $deliveryTarget = rtrim((string) config('app.url', ''), '/') . '/orders';
         }
 
-        $message = "Takeer: Asante! Umefanikiwa kulipia {$productTitle}. Hii hapa link yako: {$deliveryTarget}";
+        $message = "Takeer: Asante! Umefanikiwa kulipia {$productTitle}. Fungua Orders zako kuona access/download ya bidhaa zako: {$deliveryTarget}";
+
+        if ($dedupeKey) {
+            return $this->sendOnce($dedupeKey, $phone, $message, $userId);
+        }
+
         return $this->send($phone, $message, $userId);
     }
 

@@ -3,7 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, usePage } from '@inertiajs/react';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { AlertTriangle, MapPin, Send, Image as ImageIcon, Camera, ShieldCheck, Loader2, Workflow, ShoppingBag, Tag, Truck, AlertCircle, CircleAlert, Star, X, CheckCircle2, Info, CreditCard, History, ArrowLeft, Video, Search, Plus, Navigation, Zap, Clock, Store, ChevronRight, Save, Lock } from 'lucide-react';
+import { AlertTriangle, MapPin, Send, Image as ImageIcon, Camera, ShieldCheck, Loader2, Workflow, ShoppingBag, Tag, Truck, AlertCircle, CircleAlert, Star, X, CheckCircle2, Info, CreditCard, History, ArrowLeft, Video, Search, Plus, Navigation, Zap, Clock, Store, ChevronRight, Save, Lock, DownloadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     Drawer,
@@ -108,12 +108,47 @@ const statusCopy = (order) => {
 };
 
 const deliveryCopy = (order) => {
+    if (isDigitalOrder(order)) return digitalAccessCopy(order);
     const type = order?.delivery?.delivery_type || order?.delivery?.type;
     if (type === 'self_pickup') return 'Self pickup';
     if (type === 'local_boda') return 'Local delivery';
     if (type === 'intercity_bus') return 'Intercity bus';
     if (type === 'shipping') return 'Shipping';
     return 'Delivery pending';
+};
+
+const isDigitalOrder = (order) => {
+    const productType = order?.product?.type;
+    return productType === 'digital'
+        || ['content_item', 'subscription_plan'].includes(order?.purchasable_type)
+        || Boolean(order?.product?.digital_delivery_type || order?.product?.download_link);
+};
+
+const isPhysicalOrder = (order) => {
+    if (!order) return false;
+    if (isDigitalOrder(order)) return false;
+    return order?.product?.type === 'physical'
+        || Boolean(order?.delivery?.delivery_type || order?.delivery?.type)
+        || order?.order_flow === 'escrow';
+};
+
+const digitalAccessCopy = (order) => {
+    const type = order?.product?.digital_delivery_type;
+    if (type === 'custom_delivery') return 'Custom delivery';
+    if (type === 'video_stream') return 'Video access';
+    if (type === 'audio_stream') return 'Audio access';
+    if (type === 'gallery_pack') return 'Gallery access';
+    if (type === 'live_event') return 'Event access';
+    return 'Digital access';
+};
+
+const systemBodyForOrder = (body, order) => {
+    if (!isDigitalOrder(order) || !body) return body;
+    if (!body.includes('anza mchakato wa kusafirisha') && !body.includes('usafirishaji')) return body;
+
+    const title = order?.product?.title || order?.display_title || 'digital product';
+    const accessLabel = digitalAccessCopy(order).toLowerCase();
+    return `Habari, order mpya imewekwa kwa ajili ya: ${title}.\nMalipo yamefanikiwa. Hii ni oda ya ${accessLabel}, hakuna gharama ya usafiri inayohitajika. Mteja anaweza kufungua/download content yake kwenye Takeer.`;
 };
 
 export default function Chat({
@@ -1068,7 +1103,7 @@ export default function Chat({
 
                                         return (
                                             <div key={msg.id} className={cn("flex w-full my-6 animate-in zoom-in-95 duration-500", isMe ? "justify-end" : "justify-start")}>
-                                                <div className="flex flex-col w-full max-w-[90%] md:max-w-[75%]">
+                                                <div className="flex flex-col w-full max-w-[94%] md:max-w-[78%]">
                                                     {/* Action Header Label */}
                                                     <div className={cn("flex items-center gap-2 mb-2", isMe ? "justify-end" : "justify-start")}>
                                                         <span className={cn(
@@ -1080,26 +1115,26 @@ export default function Chat({
                                                     </div>
 
                                                     <div className={cn(
-                                                        "bg-white dark:bg-slate-900 border shadow-[0_8px_40px_rgb(0,0,0,0.03)] p-1.5 w-full relative group transition-all hover:shadow-[0_12px_50px_rgb(0,0,0,0.06)] overflow-hidden",
+                                                        "bg-white dark:bg-slate-900 border shadow-[0_8px_40px_rgb(0,0,0,0.03)] p-3 w-full group transition-all hover:shadow-[0_12px_50px_rgb(0,0,0,0.06)] overflow-hidden",
                                                         isMe ? "border-brand-100 rounded-[2.5rem] rounded-tr-xl bg-brand-50/5" : "border-slate-100 dark:border-slate-800 rounded-[2.5rem] rounded-tl-xl"
                                                     )}>
-                                                        <div className={cn("flex items-start gap-4 p-4", isMe ? "flex-row-reverse" : "flex-row")}>
+                                                        <div className={cn("flex items-start gap-3", isMe ? "flex-row-reverse" : "flex-row")}>
                                                             {/* User Avatar Circle */}
                                                             <div className={cn(
-                                                                "h-12 w-12 rounded-[1.5rem] flex items-center justify-center text-sm font-black shadow-inner shrink-0",
+                                                                "h-10 w-10 rounded-2xl flex items-center justify-center text-xs font-black shadow-inner shrink-0",
                                                                 msgActingAs === 'merchant' ? "bg-brand-600 text-white" : "bg-blue-600 text-white"
                                                             )}>
                                                                 {initials}
                                                             </div>
 
-                                                            <div className={cn("flex-1 min-w-0 mt-1", isMe ? "text-right" : "text-left")}>
-                                                                <div className={cn("flex items-center gap-2 mb-1", isMe ? "justify-end" : "justify-start")}>
-                                                                    <h4 className="text-xs font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">{msg.body}</h4>
-                                                                    <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                                                            <div className={cn("flex-1 min-w-0", isMe ? "text-right" : "text-left")}>
+                                                                <div className={cn("flex flex-wrap items-start gap-x-2 gap-y-1", isMe ? "justify-end" : "justify-start")}>
+                                                                    <h4 className="min-w-0 break-words text-xs font-black leading-5 text-brand-900 dark:text-brand-100 uppercase tracking-tight">{msg.body}</h4>
+                                                                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
                                                                 </div>
 
                                                                 {/* Content Renderers */}
-                                                                <div className="mt-3">
+                                                                <div className="mt-3 max-w-full overflow-hidden">
                                                                     {actionType === 'discount' && (
                                                                         <div className="flex items-center justify-between py-3 px-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100/50">
                                                                             <div>
@@ -1261,16 +1296,14 @@ export default function Chat({
                                                                         </div>
                                                                     )}
                                                                 </div>
+                                                                    <div className={cn("mt-3 flex text-[9px] font-black uppercase tracking-widest text-slate-300 dark:text-slate-600", isMe ? "justify-end" : "justify-start")}>
+                                                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                        </div>
-
-                                                        {/* Timestamp Overlay */}
-                                                        <div className="absolute top-4 right-6 text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">
-                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
                                         );
                                     }
 
@@ -1284,14 +1317,14 @@ export default function Chat({
                                                     {msgActingAs === 'merchant' ? 'MZ' : 'MT'}
                                                 </div>
                                             )}
-                                            <div className={cn("max-w-[75%] md:max-w-[65%] flex flex-col gap-1", isMe ? "items-end" : "items-start")}>
+                                            <div className={cn("max-w-[82%] md:max-w-[68%] flex flex-col gap-1 min-w-0", isMe ? "items-end" : "items-start")}>
                                                 <span className="text-[9px] font-semibold text-slate-400 px-1">{renderedName}</span>
                                                 <div className={cn(
                                                     "rounded-2xl px-4 py-3 shadow-sm relative",
                                                     isMe ? "bg-brand-600 text-white rounded-br-sm" : "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-bl-sm border border-slate-100 dark:border-slate-800"
                                                 )}>
                                                     {msg.media_url && <MediaDisplay url={msg.media_url} className="mb-3 aspect-auto max-h-64 rounded-xl overflow-hidden" />}
-                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.body}</p>
+                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
                                                     <div className={cn("flex items-center justify-end gap-1 mt-1", isMe ? "text-white/50" : "text-slate-400")}>
                                                         <span className="text-[9px]">
                                                             {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}

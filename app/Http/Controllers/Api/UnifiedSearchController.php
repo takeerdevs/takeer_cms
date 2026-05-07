@@ -25,6 +25,7 @@ class UnifiedSearchController extends Controller
         $validated = $request->validate([
             'q' => 'required|string|min:2|max:220',
             'type' => 'nullable|string|in:all,physical,digital,service,creator',
+            'surface' => 'nullable|string|in:all,products',
             'country_id' => 'nullable|integer|exists:countries,id',
             'location' => 'nullable|string|max:120',
             'lat' => 'nullable|numeric|between:-90,90',
@@ -37,6 +38,7 @@ class UnifiedSearchController extends Controller
         $q = trim((string) $validated['q']);
         $filters = [
             'type' => (string) ($validated['type'] ?? 'all'),
+            'surface' => (string) ($validated['surface'] ?? 'all'),
             'country_id' => $validated['country_id'] ?? null,
             'location' => trim((string) ($validated['location'] ?? '')),
             'lat' => $validated['lat'] ?? null,
@@ -47,38 +49,42 @@ class UnifiedSearchController extends Controller
         $page = (int) ($validated['page'] ?? 1);
         $tokens = $this->tokenize($q);
 
+        $productOnly = $filters['surface'] === 'products';
         $postScores = [];
-        $this->addWeightedIds($postScores, $this->directPostMatches($tokens), 120);
+
+        if (! $productOnly) {
+            $this->addWeightedIds($postScores, $this->directPostMatches($tokens), 120);
+        }
 
         $productIds = $this->matchingProductIds($tokens, $filters);
-        if ($productIds->isNotEmpty()) {
+        if (! $productOnly && $productIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, $this->postIdsForProducts($productIds), 200);
         }
 
-        $contentIds = in_array($filters['type'], ['all', 'digital', 'creator'], true)
+        $contentIds = ! $productOnly && in_array($filters['type'], ['all', 'digital', 'creator'], true)
             ? $this->matchingContentItemIds($tokens)
             : collect();
         if ($contentIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, Post::query()->whereIn('content_item_id', $contentIds)->pluck('id'), 170);
         }
 
-        $bundleIds = in_array($filters['type'], ['all', 'digital', 'creator'], true)
+        $bundleIds = ! $productOnly && in_array($filters['type'], ['all', 'digital', 'creator'], true)
             ? $this->matchingBundleIds($tokens)
             : collect();
         if ($bundleIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, $this->postIdsForPromotables($bundleIds, Bundle::class), 150);
         }
 
-        $planIds = in_array($filters['type'], ['all', 'creator'], true)
+        $planIds = ! $productOnly && in_array($filters['type'], ['all', 'creator'], true)
             ? $this->matchingSubscriptionPlanIds($tokens)
             : collect();
         if ($planIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, $this->postIdsForPromotables($planIds, SubscriptionPlan::class), 140);
         }
 
-        $postResults = $this->hydratePostResults($postScores, $request, $ranking);
+        $postResults = $productOnly ? collect() : $this->hydratePostResults($postScores, $request, $ranking);
         $productResults = $this->hydrateProductResults($productIds, $tokens, $q, $request, $ranking, $filters);
-        $merchantResults = $this->hydrateMerchantResults($tokens, $q, $filters);
+        $merchantResults = $productOnly ? collect() : $this->hydrateMerchantResults($tokens, $q, $filters);
 
         $allResults = collect()->concat($productResults)->concat($postResults)->concat($merchantResults)
             ->sortByDesc('sort_score')
@@ -337,6 +343,8 @@ class UnifiedSearchController extends Controller
     private function matchingProductIds(array $tokens, array $filters): Collection
     {
         $operator = $this->textMatchOperator();
+        $digitalIntent = $this->digitalDiscoveryIntent($tokens);
+
         return Product::query()
             ->whereHas('merchant', function ($merchant) use ($filters): void {
                 $merchant->where('is_active', true)
@@ -363,10 +371,17 @@ class UnifiedSearchController extends Controller
                         });
                 });
             })
-            ->where(function ($query) use ($tokens, $operator) {
+            ->where(function ($query) use ($tokens, $operator, $digitalIntent) {
                 foreach ($tokens as $token) {
                     $like = "%{$token}%";
                     $query->orWhere('title', $operator, $like)
+                        ->orWhere('digital_content_type', $operator, $like)
+                        ->orWhere('digital_delivery_type', $operator, $like)
+                        ->orWhere('digital_usage_license', $operator, $like)
+                        ->orWhere('digital_access_instructions', $operator, $like)
+                        ->orWhere('service_category', $operator, $like)
+                        ->orWhere('service_subcategory', $operator, $like)
+                        ->orWhere('service_price_display', $operator, $like)
                         ->orWhereHas('attributes', function ($attr) use ($like, $operator) {
                             $attr->where('category', $operator, $like)
                                 ->orWhere('sub_category', $operator, $like)
@@ -391,6 +406,20 @@ class UnifiedSearchController extends Controller
                                         ->orWhere('label', $operator, $like);
                                 });
                         });
+                }
+
+                if ($digitalIntent['content_types'] !== []) {
+                    $query->orWhere(function ($digital) use ($digitalIntent): void {
+                        $digital->where('type', 'digital')
+                            ->whereIn('digital_content_type', $digitalIntent['content_types']);
+                    });
+                }
+
+                if ($digitalIntent['delivery_types'] !== []) {
+                    $query->orWhere(function ($digital) use ($digitalIntent): void {
+                        $digital->where('type', 'digital')
+                            ->whereIn('digital_delivery_type', $digitalIntent['delivery_types']);
+                    });
                 }
             })
             ->limit(400)
@@ -479,6 +508,48 @@ class UnifiedSearchController extends Controller
             $key = (int) $id;
             $scores[$key] = ($scores[$key] ?? 0) + $weight;
         }
+    }
+
+    private function digitalDiscoveryIntent(array $tokens): array
+    {
+        $contentTypes = [];
+        $deliveryTypes = [];
+
+        $matchesAny = fn (array $needles): bool => collect($tokens)
+            ->contains(fn (string $token) => in_array($token, $needles, true));
+
+        if ($matchesAny(['download', 'downloads', 'asset', 'assets', 'file', 'files', 'template', 'templates'])) {
+            $contentTypes = array_merge($contentTypes, ['file', 'ebook', 'template_asset', 'creative_asset', 'document', 'software']);
+            $deliveryTypes[] = 'file';
+        }
+
+        if ($matchesAny(['ebook', 'ebooks', 'book', 'books'])) {
+            $contentTypes[] = 'ebook';
+            $deliveryTypes[] = 'file';
+        }
+
+        if ($matchesAny(['document', 'documents', 'doc', 'docs', 'pdf'])) {
+            $contentTypes[] = 'document';
+            $deliveryTypes[] = 'file';
+        }
+
+        if ($matchesAny(['software', 'code', 'script', 'app'])) {
+            $contentTypes[] = 'software';
+            $deliveryTypes[] = 'file';
+        }
+
+        if ($matchesAny(['premium', 'video', 'videos', 'audio', 'gallery', 'media'])) {
+            $deliveryTypes = array_merge($deliveryTypes, ['video_stream', 'audio_stream', 'gallery_pack']);
+        }
+
+        if ($matchesAny(['event', 'events', 'webinar', 'workshop', 'live'])) {
+            $deliveryTypes[] = 'live_event';
+        }
+
+        return [
+            'content_types' => array_values(array_unique($contentTypes)),
+            'delivery_types' => array_values(array_unique($deliveryTypes)),
+        ];
     }
 
     private function textMatchOperator(): string

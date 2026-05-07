@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Order;
 use App\Models\Entitlement;
+use App\Services\GalleryImageService;
+use App\Services\SmsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -136,6 +138,12 @@ class DownloadController extends Controller
 
         if (($isVideoStream || $isAudioStream) && !($order->product->allow_download ?? false)) {
             $order->markDigitalAccessed($isAudioStream ? 'audio_stream' : 'video_stream');
+            $hlsUrl = (!$isAudioStream && $order->product->premium_video_hls_path)
+                ? route('product.video.hls', [
+                    'product' => $order->product->slug ?: $order->product->id,
+                    'path' => basename($order->product->premium_video_hls_path),
+                ])
+                : null;
 
             return response()->json([
                 'type' => 'stream',
@@ -143,6 +151,8 @@ class DownloadController extends Controller
                 'url' => $isAudioStream
                     ? route('product.audio.stream', ['product' => $order->product->slug ?: $order->product->id])
                     : route('product.video.stream', ['product' => $order->product->slug ?: $order->product->id]),
+                'hls_url' => $hlsUrl,
+                'stream_status' => $isAudioStream ? null : $order->product->premium_video_status,
                 'digital_content_type' => $order->product->digital_content_type,
                 'digital_usage_license' => $order->product->digital_usage_license,
                 'digital_access_instructions' => $order->product->digital_access_instructions,
@@ -451,10 +461,12 @@ class DownloadController extends Controller
             return $authorization;
         }
 
+        $product->loadMissing('merchant');
+        $this->refreshLegacyGalleryPreview($product, $index);
+
         $items = collect($product->paid_gallery_items ?: [])->values();
         $item = $items->get($index);
         $previewUrl = (string) ($item['preview_url'] ?? '');
-        $product->loadMissing('merchant');
         $isOwner = (int) ($product->merchant?->user_id ?? 0) === (int) $request->user()->id;
         if ($previewUrl === '' && !$isOwner && !($product->allow_download ?? false)) {
             return response()->json(['message' => 'Preview bado haijaandaliwa.'], 404);
@@ -464,6 +476,29 @@ class DownloadController extends Controller
         $mime = (string) (($item['preview_mime'] ?? null) ?: ($item['mime'] ?? ''));
 
         return $this->serveGalleryImage($url, $mime, false);
+    }
+
+    private function refreshLegacyGalleryPreview(Product $product, int $index): void
+    {
+        $items = collect($product->paid_gallery_items ?: [])->values();
+        $item = $items->get($index);
+        if (!is_array($item)) {
+            return;
+        }
+
+        $previewUrl = (string) ($item['preview_url'] ?? '');
+        if (!str_contains($previewUrl, 'premium-gallery/previews/') || str_contains($previewUrl, '-v2.webp')) {
+            return;
+        }
+
+        $watermark = 'Takeer / @'.($product->merchant?->username ?: $product->title);
+        $prepared = app(GalleryImageService::class)->prepareItem($item, $watermark);
+        if (($prepared['preview_url'] ?? null) === $previewUrl) {
+            return;
+        }
+
+        $items[$index] = $prepared;
+        $product->forceFill(['paid_gallery_items' => $items->values()->all()])->saveQuietly();
     }
 
     public function downloadProductGalleryOriginal(Request $request, Product $product, int $index)
@@ -584,11 +619,24 @@ class DownloadController extends Controller
             return $authorization;
         }
 
-        // Logic to send SMS would go here
-        // For now, we simulate success
+        $order->loadMissing(['buyer', 'product']);
+        $phone = $order->buyer?->phone_number ?: $order->account_phone ?: $order->customer_phone;
+        if (!$phone) {
+            return response()->json(['message' => 'Namba ya simu haikupatikana kwa oda hii.'], 422);
+        }
+
+        $sent = app(SmsService::class)->sendDigitalDeliveryNotification(
+            $phone,
+            (string) ($order->product->title ?? 'bidhaa yako'),
+            url('/orders'),
+            $order->buyer_id,
+        );
         
         return response()->json([
-            'message' => 'Kiungo cha kupakua kimetumwa kwenye namba yako ya simu.',
+            'message' => $sent
+                ? 'Kiungo kimetumwa kwenye namba yako ya simu.'
+                : 'Tumeandaa notification kwenye outbox, lakini provider hajathibitisha kutuma SMS.',
+            'sent' => $sent,
         ]);
     }
 

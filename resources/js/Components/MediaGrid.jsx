@@ -1,15 +1,29 @@
 import React from 'react';
 import { FileVideo, Loader2, Volume2, VolumeX } from 'lucide-react';
 
-// Determine if a URL is a video
-const isVideo = (url = '') => /\.(mp4|mov|webm|ogg)(\?|$)/i.test(url) || url.includes('video');
+const VIDEO_EXTENSION_RE = /\.(mp4|m4v|mov|webm|ogg)(\?|#|$)/i;
 const AUTOPLAY_REQUEST_EVENT = 'takeer:social-video-autoplay-request';
 const isProcessingVideo = (item) => {
     if (!item || typeof item === 'string') return false;
     return ['pending', 'processing'].includes(item.processing_status) && !item.processed_url && !item.hls_url;
 };
 
-function AutoplayVideoThumb({ src, poster, className, onAspect }) {
+const mediaKind = (item) => {
+    if (!item) return 'image';
+    if (typeof item === 'string') return VIDEO_EXTENSION_RE.test(item) ? 'video' : 'image';
+
+    const declaredType = String(item.media_type || item.type || '').toLowerCase();
+    const mime = String(item.mime || item.mime_type || '').toLowerCase();
+
+    if (declaredType.startsWith('video') || mime.startsWith('video/')) return 'video';
+    if (declaredType.startsWith('image') || mime.startsWith('image/')) return 'image';
+    if (item.hls_url || item.processed_url) return 'video';
+
+    const url = String(item.url || item.preview || '');
+    return VIDEO_EXTENSION_RE.test(url) ? 'video' : 'image';
+};
+
+function AutoplayVideoThumb({ src, poster, className, onAspect, onReady }) {
     const videoRef = React.useRef(null);
     const mutedRef = React.useRef(true);
     const [muted, setMuted] = React.useState(true);
@@ -85,6 +99,8 @@ function AutoplayVideoThumb({ src, poster, className, onAspect }) {
                     const { videoWidth, videoHeight } = e.currentTarget;
                     if (videoWidth && videoHeight) onAspect(videoWidth, videoHeight);
                 }}
+                onLoadedData={() => onReady?.()}
+                onCanPlay={() => onReady?.()}
             />
             <div
                 aria-hidden="true"
@@ -120,12 +136,15 @@ function clamp(value, min, max) {
 
 function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null, fit = 'cover' }) {
     if (!item) return null;
-    const video = typeof item === 'string'
-        ? isVideo(item)
-        : item?.type?.startsWith?.('video') || item?.media_type === 'video';
+    const video = mediaKind(item) === 'video';
     const src = typeof item === 'string' ? item : item?.processed_url ?? item?.url ?? item?.preview;
     const poster = typeof item === 'string' ? null : item?.thumbnail_url ?? item?.poster ?? null;
     const processing = video && isProcessingVideo(item);
+    const [loaded, setLoaded] = React.useState(false);
+
+    React.useEffect(() => {
+        setLoaded(false);
+    }, [src, video]);
 
     return (
         <div
@@ -148,10 +167,16 @@ function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspe
                                     poster={poster}
                                     className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} group-active:brightness-90 transition-all`}
                                     onAspect={(width, height) => onAspect?.(index, width, height)}
+                                    onReady={() => setLoaded(true)}
                                 />
                             ) : (
                                 <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
                                     <FileVideo className="h-9 w-9 text-white/55" />
+                                </div>
+                            )}
+                            {src && !loaded && (
+                                <div className="absolute inset-0 z-30 flex items-center justify-center bg-zinc-900/70">
+                                    <Loader2 className="h-7 w-7 animate-spin text-white/70" />
                                 </div>
                             )}
                             {!src && (

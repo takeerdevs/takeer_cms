@@ -15,6 +15,7 @@ use App\Models\Post;
 use App\Models\MerchantStorefrontSetting;
 use App\Models\Product;
 use App\Models\SubscriptionPlan;
+use App\Services\LinkPreviewService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,7 +25,7 @@ class MiniStoreController extends Controller
      * GET /api/merchant/{slug}
      * Returns a specific merchant's PWA Link-in-Bio mini store.
      */
-    public function show(string $merchantSlug): JsonResponse
+    public function show(Request $request, string $merchantSlug, LinkPreviewService $linkPreviewService): JsonResponse
     {
         // Find merchant by username slug
         $merchant = Merchant::where('username', $merchantSlug)->firstOrFail();
@@ -53,8 +54,12 @@ class MiniStoreController extends Controller
             ->paginate(15);
 
         $products = Product::where('merchant_id', $merchant->id)
-            ->with(['attributes', 'images', 'merchant'])
+            ->whereHas('postTags.post', function ($post): void {
+                $post->whereNull('posts.deleted_at');
+            })
+            ->with(['attributes', 'images', 'merchant', 'postTags.post'])
             ->withCount([
+                'postTags',
                 'orders as paid_orders_count' => fn ($query) => $query->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid']),
             ])
             ->latest()
@@ -108,25 +113,32 @@ class MiniStoreController extends Controller
             return [$product->id => $this->productDiscoverySignals($product)];
         });
 
+        $storefrontSetting = $merchant->storefrontSetting;
+
         return response()->json([
             'merchant' => [
                 'id' => $merchant->id,
                 'name' => $merchant->display_name,
                 'slug' => $merchant->username,
                 'avatar_url' => $merchant->avatar_url,
+                'bio' => $merchant->bio,
+                'is_owner' => (bool) ($request->user() && (int) $request->user()->id === (int) $merchant->user_id),
             ],
-            'storefront_settings' => $merchant->storefrontSetting ? [
-                'section_order' => $merchant->storefrontSetting->section_order,
-                'links' => $merchant->storefrontSetting->links,
-                'custom_sections' => $merchant->storefrontSetting->custom_sections,
-                'hidden_sections' => $merchant->storefrontSetting->hidden_sections,
-                'featured_product_id' => $merchant->storefrontSetting->featured_product_id,
-                'allow_post_comments' => (bool) ($merchant->storefrontSetting->allow_post_comments ?? true),
-                'allow_post_reactions' => (bool) ($merchant->storefrontSetting->allow_post_reactions ?? true),
-                'service_hours' => $merchant->storefrontSetting->service_hours ?? [],
-                'service_timezone' => $merchant->storefrontSetting->service_timezone,
-                'service_area_type' => $merchant->storefrontSetting->service_area_type,
-                'service_locations' => $merchant->storefrontSetting->service_locations ?? [],
+            'storefront_settings' => $storefrontSetting ? [
+                'section_order' => $storefrontSetting->section_order,
+                'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService),
+                'custom_sections' => $this->enrichCustomSections($storefrontSetting->custom_sections, $linkPreviewService),
+                'hidden_sections' => $storefrontSetting->hidden_sections,
+                'featured_product_id' => $storefrontSetting->featured_product_id,
+                'item_layouts' => $storefrontSetting->item_layouts ?? [],
+                'section_items' => $storefrontSetting->section_items ?? [],
+                'hidden_item_keys' => $storefrontSetting->hidden_item_keys ?? [],
+                'allow_post_comments' => (bool) ($storefrontSetting->allow_post_comments ?? true),
+                'allow_post_reactions' => (bool) ($storefrontSetting->allow_post_reactions ?? true),
+                'service_hours' => $storefrontSetting->service_hours ?? [],
+                'service_timezone' => $storefrontSetting->service_timezone,
+                'service_area_type' => $storefrontSetting->service_area_type,
+                'service_locations' => $storefrontSetting->service_locations ?? [],
             ] : null,
             'products' => ProductResource::collection($products),
             'product_discovery' => $productDiscovery,
@@ -136,6 +148,121 @@ class MiniStoreController extends Controller
             'monetization_summary' => $monetizationSummary,
             'posts' => PostResource::collection($posts)->response()->getData(true),
         ]);
+    }
+
+    private function enrichStorefrontLinks(?array $links, LinkPreviewService $linkPreviewService): array
+    {
+        return collect($links ?: [])
+            ->map(function ($link) use ($linkPreviewService) {
+                if (! is_array($link)) {
+                    return null;
+                }
+
+                $url = $this->normalizeStorefrontUrl((string) ($link['url'] ?? ''));
+                $preview = $url && ! $this->isSocialUrl($url)
+                    ? $linkPreviewService->previewForUrl($url)
+                    : null;
+
+                return [
+                    ...$link,
+                    'url' => $url ?: ($link['url'] ?? ''),
+                    'preview' => $preview && $preview->status === 'success' ? [
+                        'title' => $preview->title,
+                        'description' => $preview->description,
+                        'site_name' => $preview->site_name,
+                        'image_url' => $preview->image_url ?: $preview->remote_image_url,
+                        'favicon_url' => $preview->favicon_url,
+                        'final_url' => $preview->final_url ?: $preview->url,
+                    ] : null,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function enrichCustomSections(?array $sections, LinkPreviewService $linkPreviewService): array
+    {
+        return collect($sections ?: [])
+            ->map(function ($section) use ($linkPreviewService) {
+                if (! is_array($section)) {
+                    return null;
+                }
+
+                $items = collect($section['items'] ?? $section['links'] ?? [])
+                    ->map(function ($item) use ($linkPreviewService) {
+                        if (! is_array($item)) {
+                            return null;
+                        }
+
+                        $kind = $item['kind'] ?? 'link';
+                        if ($kind !== 'link') {
+                            return $item;
+                        }
+
+                        $enriched = $this->enrichStorefrontLinks([$item], $linkPreviewService);
+
+                        return $enriched[0] ?? $item;
+                    })
+                    ->filter()
+                    ->values()
+                    ->all();
+
+                return [
+                    ...$section,
+                    'items' => $items,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeStorefrontUrl(string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+
+        if (preg_match('/^(https?:\/\/|mailto:|tel:)/i', $url) !== 1) {
+            $url = 'https://' . $url;
+        }
+
+        return $url;
+    }
+
+    private function isSocialUrl(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $host = preg_replace('/^www\./', '', $host);
+
+        foreach ([
+            'instagram.com',
+            'tiktok.com',
+            'youtube.com',
+            'youtu.be',
+            'facebook.com',
+            'x.com',
+            'twitter.com',
+            'threads.net',
+            'linkedin.com',
+            'wa.me',
+            'whatsapp.com',
+            't.me',
+            'telegram.me',
+            'snapchat.com',
+            'pinterest.com',
+            'spotify.com',
+            'podcasts.apple.com',
+            'soundcloud.com',
+        ] as $socialHost) {
+            if ($host === $socialHost || str_ends_with($host, '.' . $socialHost)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function productDiscoverySignals(Product $product): array
@@ -217,6 +344,9 @@ class MiniStoreController extends Controller
             'custom_sections' => 'nullable|array',
             'hidden_sections' => 'nullable|array',
             'featured_product_id' => 'nullable|integer',
+            'item_layouts' => 'nullable|array',
+            'section_items' => 'nullable|array',
+            'hidden_item_keys' => 'nullable|array',
             'service_hours' => 'nullable|array',
             'service_timezone' => 'nullable|string|max:64',
             'service_area_type' => 'nullable|string|in:onsite,remote,hybrid',
@@ -231,6 +361,9 @@ class MiniStoreController extends Controller
                 'custom_sections' => $validated['custom_sections'] ?? null,
                 'hidden_sections' => $validated['hidden_sections'] ?? null,
                 'featured_product_id' => $validated['featured_product_id'] ?? null,
+                'item_layouts' => $validated['item_layouts'] ?? null,
+                'section_items' => $validated['section_items'] ?? null,
+                'hidden_item_keys' => $validated['hidden_item_keys'] ?? null,
                 'service_hours' => $validated['service_hours'] ?? null,
                 'service_timezone' => $validated['service_timezone'] ?? null,
                 'service_area_type' => $validated['service_area_type'] ?? null,

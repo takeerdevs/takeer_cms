@@ -68,7 +68,7 @@ class EntitlementService
         }
     }
 
-    public function grantForSubscription(UserSubscription $subscription): void
+    public function grantForSubscription(UserSubscription $subscription, bool $notifyNewItems = false): void
     {
         $items = SubscriptionPlanItem::where('subscription_plan_id', $subscription->subscription_plan_id)
             ->whereIn('item_type', ['content_item', 'bundle', 'product'])
@@ -79,7 +79,7 @@ class EntitlementService
                 continue;
             }
 
-            $this->grantSingle(
+            $entitlement = $this->grantSingle(
                 userId: $subscription->user_id,
                 merchantId: $subscription->merchant_id,
                 itemType: $item->item_type,
@@ -89,6 +89,9 @@ class EntitlementService
                 startsAt: now()->addDays($item->unlock_after_days),
                 expiresAt: $subscription->current_period_end
             );
+            if ($notifyNewItems && $entitlement?->wasRecentlyCreated) {
+                app(PulseNotificationService::class)->subscriptionContentAdded($entitlement);
+            }
 
             if ($item->item_type === 'bundle') {
                 $this->grantBundleItems(
@@ -145,7 +148,7 @@ class EntitlementService
             ->get();
 
         foreach ($activeSubscriptions as $subscription) {
-            $this->grantForSubscription($subscription);
+            $this->grantForSubscription($subscription, true);
         }
     }
 
@@ -207,12 +210,12 @@ class EntitlementService
         ?int $sourceId,
         $startsAt = null,
         $expiresAt = null
-    ): void {
+    ): ?Entitlement {
         if (!$merchantId) {
-            return;
+            return null;
         }
 
-        Entitlement::updateOrCreate(
+        return Entitlement::updateOrCreate(
             [
                 'user_id' => $userId,
                 'item_type' => $itemType,

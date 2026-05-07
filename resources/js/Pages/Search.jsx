@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Filter, LocateFixed, Search as SearchIcon, Loader2 } from 'lucide-react';
@@ -10,9 +10,12 @@ import { trackPlatformEvent } from '@/lib/attribution';
 
 export default function SearchPage() {
     const { initialQuery = '', initialPage = 1, initialFilters = {}, countries = [] } = usePage().props;
+    const sentinelRef = useRef(null);
+    const autoSearchReadyRef = useRef(false);
     const [query, setQuery] = useState(initialQuery || '');
     const [filters, setFilters] = useState({
         type: initialFilters.type || 'all',
+        surface: initialFilters.surface || 'all',
         country_id: initialFilters.country_id || '',
         location: initialFilters.location || '',
         lat: initialFilters.lat || '',
@@ -22,6 +25,7 @@ export default function SearchPage() {
     const [results, setResults] = useState([]);
     const [meta, setMeta] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [locating, setLocating] = useState(false);
     const [locationError, setLocationError] = useState('');
 
@@ -29,13 +33,46 @@ export default function SearchPage() {
         setQuery(initialQuery || '');
         setFilters({
             type: initialFilters.type || 'all',
+            surface: initialFilters.surface || 'all',
             country_id: initialFilters.country_id || '',
             location: initialFilters.location || '',
             lat: initialFilters.lat || '',
             lng: initialFilters.lng || '',
             radius_km: initialFilters.radius_km || 25,
         });
+        autoSearchReadyRef.current = false;
     }, [initialQuery, JSON.stringify(initialFilters)]);
+
+    useEffect(() => {
+        if (!autoSearchReadyRef.current) {
+            autoSearchReadyRef.current = true;
+            return undefined;
+        }
+
+        const q = query.trim();
+        if (q.length < 2) {
+            return undefined;
+        }
+
+        const nextFilters = compactFilters(filters);
+        const currentFilters = compactFilters(initialFilters);
+        const sameQuery = q === (initialQuery || '').trim();
+        const sameFilters = JSON.stringify(nextFilters) === JSON.stringify(currentFilters);
+
+        if (sameQuery && sameFilters) {
+            return undefined;
+        }
+
+        const timeout = window.setTimeout(() => {
+            router.get('/search', { q, page: 1, ...nextFilters }, {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            });
+        }, 450);
+
+        return () => window.clearTimeout(timeout);
+    }, [query, JSON.stringify(filters)]);
 
     useEffect(() => {
         const q = (initialQuery || '').trim();
@@ -63,6 +100,7 @@ export default function SearchPage() {
                 const nextMeta = res.data?.meta || null;
                 setResults(data);
                 setMeta(nextMeta);
+                setLoadingMore(false);
                 trackPlatformEvent('search_performed', {
                     source: 'search',
                     metadata: {
@@ -77,6 +115,7 @@ export default function SearchPage() {
                 if (cancelled) return;
                 setResults([]);
                 setMeta(null);
+                setLoadingMore(false);
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -86,6 +125,48 @@ export default function SearchPage() {
             cancelled = true;
         };
     }, [initialQuery, initialPage, JSON.stringify(initialFilters)]);
+
+    const hasMore = Boolean(meta?.query && meta.current_page < meta.last_page);
+
+    const loadMore = useCallback(() => {
+        if (!hasMore || loading || loadingMore) return;
+
+        const nextPage = Number(meta.current_page || 1) + 1;
+        setLoadingMore(true);
+
+        axios.get('/api/search/unified/posts', {
+            params: {
+                q: meta.query,
+                page: nextPage,
+                per_page: meta.per_page || 10,
+                ...compactFilters(filters),
+            },
+        })
+            .then((res) => {
+                const data = res.data?.data || [];
+                const nextMeta = res.data?.meta || null;
+                setResults((current) => {
+                    const seen = new Set(current.map((item) => `${item.type}-${item.id}`));
+                    const fresh = data.filter((item) => !seen.has(`${item.type}-${item.id}`));
+                    return [...current, ...fresh];
+                });
+                setMeta(nextMeta);
+            })
+            .finally(() => setLoadingMore(false));
+    }, [filters, hasMore, loading, loadingMore, meta]);
+
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel || !hasMore) return undefined;
+
+        const observer = new IntersectionObserver(([entry]) => {
+            if (!entry.isIntersecting) return;
+            loadMore();
+        }, { rootMargin: '900px 0px 1200px' });
+
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasMore, loadMore]);
 
     const submit = (e) => {
         e.preventDefault();
@@ -247,7 +328,7 @@ export default function SearchPage() {
                     <div className="divide-y divide-border rounded-2xl border border-border/60 bg-background/80 overflow-hidden">
                         {results.map((item) => {
                             if (item.type === 'post') {
-                                return <PostCard key={`post-${item.id}`} post={item.payload} />;
+                                return <LazyPostCard key={`post-${item.id}`} post={item.payload} />;
                             }
                             if (item.type === 'merchant') {
                                 return <MerchantSearchCard key={`merchant-${item.id}`} merchant={item.payload} />;
@@ -261,30 +342,57 @@ export default function SearchPage() {
                 )}
 
                 {!loading && meta?.total > 0 && (
-                    <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-                        <span>{meta.total} matokeo</span>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                disabled={meta.current_page <= 1}
-                                onClick={() => goToPage(meta.current_page - 1)}
-                                className="px-3 py-1 rounded-lg border border-border disabled:opacity-40"
-                            >
-                                Prev
-                            </button>
-                            <button
-                                type="button"
-                                disabled={meta.current_page >= meta.last_page}
-                                onClick={() => goToPage(meta.current_page + 1)}
-                                className="px-3 py-1 rounded-lg border border-border disabled:opacity-40"
-                            >
-                                Next
-                            </button>
+                    <div className="mt-4 text-sm text-muted-foreground">
+                        <div className="flex items-center justify-between">
+                            <span>{meta.total} matokeo</span>
+                            <span>Showing {results.length}</span>
                         </div>
+                        {hasMore && (
+                            <div ref={sentinelRef} className="flex min-h-24 items-center justify-center py-6">
+                                {loadingMore ? (
+                                    <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
+                                ) : (
+                                    <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Inapakia zaidi...</span>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
         </AppLayout>
+    );
+}
+
+function LazyPostCard({ post }) {
+    const ref = useRef(null);
+    const [shouldRender, setShouldRender] = useState(false);
+
+    useEffect(() => {
+        if (shouldRender) return undefined;
+        const node = ref.current;
+        if (!node || typeof IntersectionObserver === 'undefined') {
+            setShouldRender(true);
+            return undefined;
+        }
+
+        const observer = new IntersectionObserver(([entry]) => {
+            if (!entry.isIntersecting) return;
+            setShouldRender(true);
+            observer.disconnect();
+        }, { rootMargin: '900px 0px' });
+
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [shouldRender]);
+
+    return (
+        <div ref={ref} style={{ contentVisibility: 'auto', containIntrinsicSize: '720px' }}>
+            {shouldRender ? (
+                <PostCard post={post} />
+            ) : (
+                <div className="min-h-[520px] bg-background" aria-hidden="true" />
+            )}
+        </div>
     );
 }
 

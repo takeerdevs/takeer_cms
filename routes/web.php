@@ -63,15 +63,19 @@ Route::get('/', function () {
         'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
-    ]))->take(20)->get();
+    ]))->paginate(10);
 
+    $initialFeed = PostResource::collection($posts)->response()->getData(true);
     return Inertia::render('Feed', [
-        'initialPosts' => PostResource::collection($posts)->resolve(),
+        'initialPosts' => $initialFeed['data'] ?? [],
+        'initialFeed' => $initialFeed,
     ]);
 });
 
 Route::get('/p/{postPublicId}', [PostController::class, 'showByPublicId'])->name('post.show');
 Route::get('/sms/t/{code}', [MerchantMarketingController::class, 'followSmsLink'])->name('sms.track');
+Route::get('/dm/t/{event}', [MerchantMarketingController::class, 'followSocialDmLink'])->name('social-dm.track');
+Route::get('/wa/t/{event}', [MerchantMarketingController::class, 'followWhatsappLink'])->name('whatsapp.track');
 Route::get('/r/{code}', [MerchantMarketingController::class, 'followReferral'])->name('referral.follow');
 Route::get('/campaign/{merchant:username}/{code}', [MerchantMarketingController::class, 'showCampaignLanding'])->name('campaign.show');
 Route::get('/group-sale/{slug}', [MerchantMarketingController::class, 'showGroupSale'])->name('group-sale.show');
@@ -206,6 +210,7 @@ Route::get('/search', function (Request $request) {
         'initialPage' => max((int) $request->query('page', 1), 1),
         'initialFilters' => [
             'type' => (string) $request->query('type', 'all'),
+            'surface' => (string) $request->query('surface', 'all'),
             'country_id' => $request->query('country_id', $detectedCountryId),
             'location' => trim((string) $request->query('location', '')),
             'lat' => $request->query('lat'),
@@ -667,10 +672,12 @@ Route::get('/feed', function () {
         'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
-    ]))->take(20)->get();
+    ]))->paginate(10);
 
+    $initialFeed = PostResource::collection($posts)->response()->getData(true);
     return Inertia::render('Feed', [
-        'initialPosts' => PostResource::collection($posts)->resolve(),
+        'initialPosts' => $initialFeed['data'] ?? [],
+        'initialFeed' => $initialFeed,
     ]);
 });
 
@@ -728,6 +735,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // Buyer Hub data endpoints using web session auth (more reliable than Sanctum for Inertia pages)
+    Route::get('/orders/data/pulse', [EntitlementController::class, 'myPulse']);
     Route::get('/orders/data/entitlements', [EntitlementController::class, 'myLibrary']);
     Route::get('/orders/data/subscriptions', [SubscriptionController::class, 'mySubscriptions']);
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
@@ -739,6 +747,7 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/merchant/switch/{username}', [\App\Http\Controllers\Api\MerchantSwitchController::class, 'switch'])->name('merchant.switch');
     Route::post('/merchant/add-business', [\App\Http\Controllers\Api\MerchantAuthController::class, 'addBusinessProfile'])->name('merchant.add-business');
+    Route::get('/merchant/social/meta/callback', [MerchantMarketingController::class, 'handleMetaCallback'])->name('merchant.social.meta.callback');
 
     Route::get('/profile', function (\Illuminate\Http\Request $request) {
         $user = $request->user();
@@ -1123,6 +1132,17 @@ Route::middleware('auth')->group(function () {
             return redirect('/profile');
         });
 
+        Route::get('/pulse', function (Merchant $merchant) {
+            return Inertia::render('Merchant/Pulse', [
+                'merchant' => [
+                    'id' => $merchant->id,
+                    'username' => $merchant->username,
+                    'display_name' => $merchant->display_name,
+                ],
+            ]);
+        })->name('merchant.pulse');
+        Route::get('/pulse/api', [EntitlementController::class, 'merchantPulse']);
+
         Route::get('/settings', [MerchantProfileController::class, 'edit'])->name('merchant.settings.edit');
         Route::post('/settings', [MerchantProfileController::class, 'update'])->name('merchant.settings.update');
 
@@ -1194,14 +1214,14 @@ Route::middleware('auth')->group(function () {
             ]);
         });
         Route::get('/marketing/{section}', function (Merchant $merchant, string $section) {
-            abort_unless(in_array($section, ['coupons', 'sms', 'referrals', 'group-sales', 'analytics'], true), 404);
+            abort_unless(in_array($section, ['coupons', 'sms', 'referrals', 'group-sales', 'social-dms', 'whatsapp', 'analytics'], true), 404);
 
             return Inertia::render('Merchant/Marketing', [
                 'merchantUsername' => $merchant->username,
                 'merchantName' => $merchant->display_name,
                 'section' => $section,
             ]);
-        })->where('section', 'coupons|sms|referrals|group-sales|analytics');
+        })->where('section', 'coupons|sms|referrals|group-sales|social-dms|whatsapp|analytics');
 
         Route::get('/services', function (Merchant $merchant) {
             $merchant->loadMissing('country');
@@ -1317,6 +1337,19 @@ Route::middleware('auth')->group(function () {
         Route::put('/marketing/referrals/{referralLink:id}/api', [MerchantMarketingController::class, 'updateReferral']);
         Route::delete('/marketing/referrals/{referralLink:id}/api', [MerchantMarketingController::class, 'destroyReferral']);
         Route::post('/marketing/referrals/{referralLink:id}/commissions/api', [MerchantMarketingController::class, 'payReferralCommissions']);
+        Route::get('/marketing/social-accounts/meta/connect', [MerchantMarketingController::class, 'startMetaConnection']);
+        Route::post('/marketing/social-accounts/api', [MerchantMarketingController::class, 'connectSocialAccount']);
+        Route::get('/marketing/social-accounts/{socialAccount:id}/media/api', [MerchantMarketingController::class, 'importSocialMedia']);
+        Route::post('/marketing/social-dms/api', [MerchantMarketingController::class, 'storeSocialDmCampaign']);
+        Route::put('/marketing/social-dms/{socialDmCampaign:id}/api', [MerchantMarketingController::class, 'updateSocialDmCampaign']);
+        Route::delete('/marketing/social-dms/{socialDmCampaign:id}/api', [MerchantMarketingController::class, 'destroySocialDmCampaign']);
+        Route::post('/marketing/social-dms/simulate-comment/api', [MerchantMarketingController::class, 'simulateSocialDmComment']);
+        Route::post('/marketing/whatsapp/accounts/api', [MerchantMarketingController::class, 'connectWhatsappAccount']);
+        Route::post('/marketing/whatsapp/embedded-signup/api', [MerchantMarketingController::class, 'completeWhatsappEmbeddedSignup']);
+        Route::post('/marketing/whatsapp/automations/api', [MerchantMarketingController::class, 'storeWhatsappAutomation']);
+        Route::put('/marketing/whatsapp/automations/{whatsappAutomation:id}/api', [MerchantMarketingController::class, 'updateWhatsappAutomation']);
+        Route::delete('/marketing/whatsapp/automations/{whatsappAutomation:id}/api', [MerchantMarketingController::class, 'destroyWhatsappAutomation']);
+        Route::post('/marketing/whatsapp/simulate-message/api', [MerchantMarketingController::class, 'simulateWhatsappMessage']);
         Route::post('/marketing/group-sales/api', [MerchantMarketingController::class, 'storeGroupSale']);
         Route::put('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'updateGroupSale']);
         Route::delete('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'destroyGroupSale']);
@@ -1485,6 +1518,9 @@ Route::middleware('auth')->group(function () {
 
 Route::get('/m/{slug}', function (string $slug) {
     return Inertia::render('MiniStore', ['merchantSlug' => $slug]);
+});
+Route::get('/u/{slug}', function (string $slug) {
+    return Inertia::render('PublicMerchantProfile', ['merchantSlug' => $slug]);
 });
 Route::get('/m/{slug}/feed', function (string $slug) {
     return Inertia::render('MiniStoreFeed', ['merchantSlug' => $slug]);
@@ -1662,6 +1698,14 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     Route::get('/admin/withdrawals', function () {
         return Inertia::render('Admin/Withdrawals');
+    });
+
+    Route::get('/admin/payout-settings', function () {
+        return Inertia::render('Admin/PayoutSettings');
+    });
+
+    Route::get('/admin/ai-settings', function () {
+        return Inertia::render('Admin/AiSettings');
     });
 
     Route::get('/admin/platform-wallet', function () {

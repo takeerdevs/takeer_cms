@@ -8,8 +8,10 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        DB::statement('ALTER TABLE fee_policies DROP CONSTRAINT IF EXISTS fee_policies_scope_check');
-        DB::statement("ALTER TABLE fee_policies ADD CONSTRAINT fee_policies_scope_check CHECK (scope in ('global', 'country', 'currency', 'merchant', 'payment_channel'))");
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE fee_policies DROP CONSTRAINT IF EXISTS fee_policies_scope_check');
+            DB::statement("ALTER TABLE fee_policies ADD CONSTRAINT fee_policies_scope_check CHECK (scope in ('global', 'country', 'currency', 'merchant', 'payment_channel'))");
+        }
 
         Schema::table('fee_policies', function (Blueprint $table) {
             $table->string('payment_channel')->nullable()->after('merchant_id');
@@ -32,7 +34,9 @@ return new class extends Migration {
             $table->dropColumn('payment_channel');
         });
 
-        DB::statement('ALTER TABLE fee_policies DROP CONSTRAINT IF EXISTS fee_policies_scope_check');
-        DB::statement("ALTER TABLE fee_policies ADD CONSTRAINT fee_policies_scope_check CHECK (scope in ('global', 'country', 'currency', 'merchant'))");
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            DB::statement('ALTER TABLE fee_policies DROP CONSTRAINT IF EXISTS fee_policies_scope_check');
+            DB::statement("ALTER TABLE fee_policies ADD CONSTRAINT fee_policies_scope_check CHECK (scope in ('global', 'country', 'currency', 'merchant'))");
+        }
     }
 };

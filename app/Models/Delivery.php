@@ -26,6 +26,13 @@ class Delivery extends Model
         'buyer_unboxing_video_url',
     ];
 
+    protected static function booted(): void
+    {
+        static::updated(function (Delivery $delivery): void {
+            app(\App\Services\PulseNotificationService::class)->deliveryUpdated($delivery);
+        });
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);

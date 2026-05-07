@@ -25,6 +25,22 @@ const isProcessingVideoMedia = (item) => Boolean(
     && !item.hls_url
 );
 
+const VIDEO_EXTENSION_RE = /\.(mp4|m4v|mov|webm|ogg)(\?|#|$)/i;
+
+const mediaKind = (item) => {
+    if (!item) return 'image';
+    if (typeof item === 'string') return VIDEO_EXTENSION_RE.test(item) ? 'video' : 'image';
+
+    const declaredType = String(item.media_type || item.type || '').toLowerCase();
+    const mime = String(item.mime || item.mime_type || '').toLowerCase();
+
+    if (declaredType.startsWith('video') || mime.startsWith('video/')) return 'video';
+    if (declaredType.startsWith('image') || mime.startsWith('image/')) return 'image';
+    if (item.hls_url || item.processed_url) return 'video';
+
+    return VIDEO_EXTENSION_RE.test(String(item.url || item.preview || '')) ? 'video' : 'image';
+};
+
 function ProcessingVideoLayer() {
     return (
         <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center gap-3 px-6 text-center">
@@ -136,11 +152,14 @@ function ImageLayer({ post, currentIdx, setIdx }) {
     const currentUrl = typeof current === 'string'
         ? current
         : resolvePlayableVideoUrl({ hlsUrl: current?.hls_url, processedUrl: current?.processed_url, url: current?.url });
-    const currentType = typeof current === 'string'
-        ? (/\.(mp4|mov|webm|ogg)(\?|$)/i.test(current) ? 'video' : 'image')
-        : (current?.media_type || current?.type || 'image');
+    const currentType = mediaKind(current);
     const processing = currentType === 'video' && isProcessingVideoMedia(current);
     const startX = useRef(null);
+    const [mediaLoaded, setMediaLoaded] = useState(false);
+
+    useEffect(() => {
+        setMediaLoaded(false);
+    }, [currentIdx, currentUrl, currentType]);
 
     const onTouchStart = (e) => { startX.current = e.touches[0].clientX; };
     const onTouchEnd = (e) => {
@@ -172,6 +191,8 @@ function ImageLayer({ post, currentIdx, setIdx }) {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -40 }}
                         transition={{ duration: 0.22 }}
+                        onLoadedData={() => setMediaLoaded(true)}
+                        onCanPlay={() => setMediaLoaded(true)}
                     />
                 ) : (
                     <motion.img
@@ -183,9 +204,16 @@ function ImageLayer({ post, currentIdx, setIdx }) {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -40 }}
                         transition={{ duration: 0.22 }}
+                        onLoad={() => setMediaLoaded(true)}
+                        onError={() => setMediaLoaded(true)}
                     />
                 )}
             </AnimatePresence>
+            {currentType === 'video' && !processing && !mediaLoaded && (
+                <div className="absolute inset-0 z-20 bg-zinc-900 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-white/70" />
+                </div>
+            )}
             {/* Dot indicator */}
             {images.length > 1 && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
@@ -211,6 +239,7 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [myReaction, setMyReaction] = useState(post.my_reaction || null);
     const [reactionSyncing, setReactionSyncing] = useState(false);
+    const [videoReady, setVideoReady] = useState(false);
 
     useEffect(() => {
         setLivePost(post);
@@ -237,6 +266,10 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
             channel.stopListening('.post.engagement.updated', listener);
         };
     }, [post?.id]);
+
+    useEffect(() => {
+        setVideoReady(false);
+    }, [livePost.media_type, livePost.media_url, livePost.media, livePost.images]);
 
     // Auto-play video
     useEffect(() => {
@@ -343,17 +376,26 @@ export default function PostItem({ post, isActive, onProductTap, onComment }) {
             ) : isVideo && videoProcessing ? (
                 <ProcessingVideoLayer />
             ) : isVideo ? (
-                <video
-                    ref={videoRef}
-                    src={videoSrc}
-                    poster={primaryVideoMedia?.thumbnail_url || undefined}
-                    className="w-full h-full object-cover"
-                    autoPlay
-                    loop
-                    muted={muted}
-                    playsInline
-                    preload="metadata"
-                />
+                <>
+                    <video
+                        ref={videoRef}
+                        src={videoSrc}
+                        poster={primaryVideoMedia?.thumbnail_url || undefined}
+                        className="w-full h-full object-cover"
+                        autoPlay
+                        loop
+                        muted={muted}
+                        playsInline
+                        preload="metadata"
+                        onLoadedData={() => setVideoReady(true)}
+                        onCanPlay={() => setVideoReady(true)}
+                    />
+                    {!videoProcessing && !videoReady && (
+                        <div className="absolute inset-0 z-20 bg-zinc-900 flex items-center justify-center">
+                            <Loader2 className="h-9 w-9 animate-spin text-white/70" />
+                        </div>
+                    )}
+                </>
             ) : (
                 <ImageLayer post={livePost} currentIdx={currentIdx} setIdx={setCurrentIdx} />
             )}

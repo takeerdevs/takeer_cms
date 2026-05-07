@@ -13,18 +13,28 @@ use App\Models\MerchantCustomer;
 use App\Models\MerchantGroupSaleCampaign;
 use App\Models\MerchantGroupSaleParticipant;
 use App\Models\MerchantReferralLink;
+use App\Models\MerchantSocialAccount;
+use App\Models\MerchantSocialDmCampaign;
+use App\Models\MerchantSocialDmEvent;
 use App\Models\MerchantSmsBalance;
 use App\Models\MerchantSmsCampaign;
 use App\Models\MerchantSmsCampaignRecipient;
+use App\Models\MerchantWhatsappAccount;
+use App\Models\MerchantWhatsappAutomation;
+use App\Models\MerchantWhatsappEvent;
 use App\Models\NotificationLog;
 use App\Models\Order;
 use App\Models\Post;
 use App\Models\Product;
 use App\Models\SubscriptionPlan;
 use App\Models\UserSubscription;
+use App\Services\MetaSocialConnectorService;
+use App\Services\SocialDmAutomationService;
+use App\Services\WhatsappCommerceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -87,11 +97,39 @@ class MerchantMarketingController extends Controller
                 'sms_sent' => MerchantSmsCampaign::where('merchant_id', $merchant->id)->sum('sent_count'),
                 'active_group_sales' => $groupSales->where('status', 'active')->count(),
                 'group_sale_reservations' => $groupSales->sum('reserved_quantity'),
+                'active_social_dm_campaigns' => MerchantSocialDmCampaign::where('merchant_id', $merchant->id)->where('status', 'active')->count(),
+                'social_dm_sent' => MerchantSocialDmCampaign::where('merchant_id', $merchant->id)->sum('dm_sent_count') + MerchantSocialDmCampaign::where('merchant_id', $merchant->id)->sum('dm_failed_count'),
+                'social_dm_clicks' => MerchantSocialDmCampaign::where('merchant_id', $merchant->id)->sum('clicks_count'),
+                'active_whatsapp_automations' => MerchantWhatsappAutomation::where('merchant_id', $merchant->id)->where('status', 'active')->count(),
+                'whatsapp_sent' => MerchantWhatsappAutomation::where('merchant_id', $merchant->id)->sum('sent_count'),
+                'whatsapp_clicks' => MerchantWhatsappAutomation::where('merchant_id', $merchant->id)->sum('clicks_count'),
             ],
             'analytics' => $this->marketingAnalytics($merchant),
             'coupons' => $coupons->values(),
             'referral_links' => $referralLinks->values(),
             'group_sales' => $groupSales->values(),
+            'social_accounts' => MerchantSocialAccount::query()
+                ->where('merchant_id', $merchant->id)
+                ->latest()
+                ->get()
+                ->map(fn (MerchantSocialAccount $account) => $this->serializeSocialAccount($account)),
+            'social_dm_campaigns' => MerchantSocialDmCampaign::query()
+                ->where('merchant_id', $merchant->id)
+                ->with('socialAccount:id,username,provider_account_id,platform')
+                ->latest()
+                ->get()
+                ->map(fn (MerchantSocialDmCampaign $campaign) => $this->serializeSocialDmCampaign($campaign)),
+            'whatsapp_accounts' => MerchantWhatsappAccount::query()
+                ->where('merchant_id', $merchant->id)
+                ->latest()
+                ->get()
+                ->map(fn (MerchantWhatsappAccount $account) => $this->serializeWhatsappAccount($account)),
+            'whatsapp_automations' => MerchantWhatsappAutomation::query()
+                ->where('merchant_id', $merchant->id)
+                ->with('whatsappAccount:id,display_phone_number,phone_number_id')
+                ->latest()
+                ->get()
+                ->map(fn (MerchantWhatsappAutomation $automation) => $this->serializeWhatsappAutomation($automation)),
             'sms_balance' => $this->serializeSmsBalance($this->smsBalance($merchant)),
             'abandoned_checkout_automation' => $this->serializeAbandonedAutomation($this->abandonedAutomation($merchant)),
             'sms_campaigns' => MerchantSmsCampaign::query()
@@ -103,6 +141,19 @@ class MerchantMarketingController extends Controller
             'sms_audiences' => $this->smsAudiences($merchant),
             'sms_targets' => $this->smsTargets($merchant),
             'marketing_targets' => $this->marketingTargets($merchant),
+            'meta_connector' => [
+                'configured' => app(MetaSocialConnectorService::class)->configured(),
+                'login_type' => config('services.meta.login_type', 'instagram'),
+                'webhook_url' => url('/api/webhooks/social/comments'),
+            ],
+            'whatsapp_connector' => [
+                'configured' => app(WhatsappCommerceService::class)->configured(),
+                'embedded_signup_configured' => app(WhatsappCommerceService::class)->embeddedSignupConfigured(),
+                'app_id' => config('services.meta.client_id'),
+                'configuration_id' => config('services.whatsapp_cloud.configuration_id'),
+                'graph_version' => config('services.whatsapp_cloud.graph_version', 'v24.0'),
+                'webhook_url' => url('/api/webhooks/whatsapp'),
+            ],
             'sms_packages' => [
                 ['id' => 'starter', 'name' => 'Starter SMS', 'credits' => 500, 'price' => 15000],
                 ['id' => 'growth', 'name' => 'Growth SMS', 'credits' => 2500, 'price' => 65000],
@@ -303,6 +354,157 @@ class MerchantMarketingController extends Controller
             'sms_campaign' => $campaign->id,
             'sms_recipient' => $recipient->id,
         ]))->withCookie(cookie('takeer_attribution_session', $sessionId, 60 * 24 * 30, null, null, false, false, false, 'Lax'));
+    }
+
+    public function followSocialDmLink(Request $request, MerchantSocialDmEvent $event)
+    {
+        $campaign = $event->campaign;
+        abort_unless($campaign, 404);
+
+        $to = trim((string) $request->query('to', ''));
+        $landingUrl = $to !== '' ? $to : ($event->destination_url ?: '/m/'.$campaign->merchant->username);
+        $event->forceFill(['clicked_at' => $event->clicked_at ?: now()])->save();
+        $campaign->increment('clicks_count');
+
+        MarketingEvent::query()->create([
+            'merchant_id' => $event->merchant_id,
+            'session_id' => $request->cookie('takeer_attribution_session') ?: 'atk_'.Str::random(32),
+            'event_type' => 'social_dm_click',
+            'entity_type' => 'merchant_social_dm_campaign',
+            'entity_id' => $campaign->id,
+            'source' => 'social_dm',
+            'source_url' => url('/dm/t/'.$event->id),
+            'landing_url' => $landingUrl,
+            'referrer_url' => $request->headers->get('referer'),
+            'utm_source' => $event->platform,
+            'utm_medium' => 'dm',
+            'utm_campaign' => 'social_dm_'.$campaign->id,
+            'utm_content' => 'comment_'.$event->id,
+            'ip_address' => $request->ip(),
+            'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+            'metadata' => [
+                'social_dm_campaign_id' => $campaign->id,
+                'social_dm_event_id' => $event->id,
+                'matched_keyword' => $event->matched_keyword,
+            ],
+        ]);
+
+        $separator = str_contains($landingUrl, '?') ? '&' : '?';
+
+        return redirect($landingUrl.$separator.http_build_query([
+            'source' => 'social_dm',
+            'utm_source' => $event->platform,
+            'utm_medium' => 'dm',
+            'utm_campaign' => 'social_dm_'.$campaign->id,
+        ]));
+    }
+
+    public function followWhatsappLink(Request $request, MerchantWhatsappEvent $event)
+    {
+        $automation = $event->automation;
+        abort_unless($automation, 404);
+
+        $to = trim((string) $request->query('to', ''));
+        $landingUrl = $to !== '' ? $to : ($event->destination_url ?: '/m/'.$automation->merchant->username);
+        $event->forceFill(['clicked_at' => $event->clicked_at ?: now()])->save();
+        $automation->increment('clicks_count');
+
+        MarketingEvent::query()->create([
+            'merchant_id' => $event->merchant_id,
+            'session_id' => $request->cookie('takeer_attribution_session') ?: 'atk_'.Str::random(32),
+            'event_type' => 'whatsapp_click',
+            'entity_type' => 'merchant_whatsapp_automation',
+            'entity_id' => $automation->id,
+            'source' => 'whatsapp',
+            'source_url' => url('/wa/t/'.$event->id),
+            'landing_url' => $landingUrl,
+            'referrer_url' => $request->headers->get('referer'),
+            'utm_source' => 'whatsapp',
+            'utm_medium' => 'chat',
+            'utm_campaign' => 'whatsapp_'.$automation->id,
+            'utm_content' => 'message_'.$event->id,
+            'ip_address' => $request->ip(),
+            'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+            'metadata' => [
+                'whatsapp_automation_id' => $automation->id,
+                'whatsapp_event_id' => $event->id,
+                'matched_keyword' => $event->matched_keyword,
+            ],
+        ]);
+
+        return redirect($landingUrl.(str_contains($landingUrl, '?') ? '&' : '?').http_build_query([
+            'source' => 'whatsapp',
+            'utm_source' => 'whatsapp',
+            'utm_medium' => 'chat',
+            'utm_campaign' => 'whatsapp_'.$automation->id,
+        ]));
+    }
+
+    public function receiveSocialWebhook(Request $request, SocialDmAutomationService $automationService)
+    {
+        if ($request->isMethod('get')) {
+            $verifyToken = (string) config('services.meta.webhook_verify_token');
+            $mode = (string) $request->query('hub_mode', $request->query('hub.mode'));
+            $token = (string) $request->query('hub_verify_token', $request->query('hub.verify_token'));
+            $challenge = (string) $request->query('hub_challenge', $request->query('hub.challenge'));
+
+            if ($mode === 'subscribe' && $verifyToken !== '' && hash_equals($verifyToken, $token)) {
+                return response($challenge, 200)->header('Content-Type', 'text/plain');
+            }
+
+            return response()->json(['message' => 'Webhook verification failed.'], 403);
+        }
+
+        $metaConnector = app(MetaSocialConnectorService::class);
+        if (! $metaConnector->validSignature($request)) {
+            return response()->json(['message' => 'Invalid Meta signature.'], 403);
+        }
+
+        $events = $metaConnector->normalizeCommentWebhook($request->all())
+            ->map(fn (array $payload) => $automationService->handleComment($payload))
+            ->filter()
+            ->values();
+
+        return response()->json([
+            'received' => true,
+            'events' => $events->map(fn (MerchantSocialDmEvent $event) => [
+                'event_id' => $event->id,
+                'status' => $event->status,
+            ])->values(),
+        ]);
+    }
+
+    public function receiveWhatsappWebhook(Request $request, WhatsappCommerceService $whatsappService)
+    {
+        if ($request->isMethod('get')) {
+            $verifyToken = (string) config('services.whatsapp_cloud.webhook_verify_token');
+            $mode = (string) $request->query('hub_mode', $request->query('hub.mode'));
+            $token = (string) $request->query('hub_verify_token', $request->query('hub.verify_token'));
+            $challenge = (string) $request->query('hub_challenge', $request->query('hub.challenge'));
+
+            if ($mode === 'subscribe' && $verifyToken !== '' && hash_equals($verifyToken, $token)) {
+                return response($challenge, 200)->header('Content-Type', 'text/plain');
+            }
+
+            return response()->json(['message' => 'Webhook verification failed.'], 403);
+        }
+
+        if (! $whatsappService->validSignature($request)) {
+            return response()->json(['message' => 'Invalid WhatsApp signature.'], 403);
+        }
+
+        $events = $whatsappService->normalizeWebhook($request->all())
+            ->map(fn (array $payload) => $whatsappService->handleMessage($payload))
+            ->filter()
+            ->values();
+
+        return response()->json([
+            'received' => true,
+            'events' => $events->map(fn (MerchantWhatsappEvent $event) => [
+                'event_id' => $event->id,
+                'status' => $event->status,
+            ])->values(),
+        ]);
     }
 
     public function buySmsPackage(Request $request, Merchant $merchant): JsonResponse
@@ -558,6 +760,249 @@ class MerchantMarketingController extends Controller
         ]);
     }
 
+    public function connectSocialAccount(Request $request, Merchant $merchant): JsonResponse
+    {
+        $data = $request->validate([
+            'platform' => ['required', Rule::in(['instagram', 'facebook'])],
+            'provider_account_id' => ['required', 'string', 'max:120'],
+            'username' => ['nullable', 'string', 'max:120'],
+            'display_name' => ['nullable', 'string', 'max:160'],
+            'account_type' => ['nullable', 'string', 'max:60'],
+        ]);
+
+        $account = MerchantSocialAccount::query()->updateOrCreate(
+            [
+                'platform' => $data['platform'],
+                'provider_account_id' => $data['provider_account_id'],
+            ],
+            [
+                'merchant_id' => $merchant->id,
+                'connected_by' => $request->user()?->id,
+                'username' => $data['username'] ?? null,
+                'display_name' => $data['display_name'] ?? null,
+                'account_type' => $data['account_type'] ?? 'creator',
+                'status' => 'connected',
+                'metadata' => ['provider_mode' => 'manual_until_meta_oauth'],
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Social account connected for automation setup.',
+            'account' => $this->serializeSocialAccount($account),
+        ], 201);
+    }
+
+    public function startMetaConnection(Request $request, Merchant $merchant, MetaSocialConnectorService $metaConnector)
+    {
+        abort_unless($metaConnector->configured(), 422, 'Meta credentials are not configured.');
+
+        $state = Str::random(48);
+        Session::put('meta_oauth_state_'.$state, [
+            'merchant_id' => $merchant->id,
+            'user_id' => $request->user()?->id,
+            'created_at' => now()->timestamp,
+        ]);
+
+        return redirect()->away($metaConnector->authorizationUrl($state));
+    }
+
+    public function handleMetaCallback(Request $request, MetaSocialConnectorService $metaConnector)
+    {
+        $state = (string) $request->query('state');
+        $sessionKey = 'meta_oauth_state_'.$state;
+        $statePayload = Session::pull($sessionKey);
+
+        abort_unless($state !== '' && is_array($statePayload), 403, 'Invalid Meta connection state.');
+        abort_if($request->query('error'), 422, (string) ($request->query('error_description') ?: $request->query('error')));
+
+        $merchant = Merchant::query()->findOrFail($statePayload['merchant_id']);
+        abort_unless($request->user()?->merchantProfiles()->whereKey($merchant->id)->exists(), 403);
+
+        $accounts = $metaConnector->connectFromCode($merchant, (string) $request->query('code'), $request->user()?->id);
+
+        return redirect('/merchant/'.$merchant->username.'/marketing/social-dms')
+            ->with('success', $accounts->count().' Meta account'.($accounts->count() === 1 ? '' : 's').' connected.');
+    }
+
+    public function importSocialMedia(Merchant $merchant, MerchantSocialAccount $socialAccount, MetaSocialConnectorService $metaConnector): JsonResponse
+    {
+        abort_unless((int) $socialAccount->merchant_id === (int) $merchant->id, 404);
+
+        return response()->json([
+            'media' => $metaConnector->recentMedia($socialAccount)->values(),
+        ]);
+    }
+
+    public function storeSocialDmCampaign(Request $request, Merchant $merchant, SocialDmAutomationService $automationService): JsonResponse
+    {
+        $data = $this->validatedSocialDmCampaignData($request, $merchant, $automationService);
+        $campaign = MerchantSocialDmCampaign::query()->create($data + [
+            'merchant_id' => $merchant->id,
+            'created_by' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Comment-to-DM campaign created.',
+            'campaign' => $this->serializeSocialDmCampaign($campaign->load('socialAccount:id,username,provider_account_id,platform')),
+        ], 201);
+    }
+
+    public function updateSocialDmCampaign(Request $request, Merchant $merchant, MerchantSocialDmCampaign $socialDmCampaign, SocialDmAutomationService $automationService): JsonResponse
+    {
+        abort_unless((int) $socialDmCampaign->merchant_id === (int) $merchant->id, 404);
+        $socialDmCampaign->update($this->validatedSocialDmCampaignData($request, $merchant, $automationService));
+
+        return response()->json([
+            'message' => 'Comment-to-DM campaign updated.',
+            'campaign' => $this->serializeSocialDmCampaign($socialDmCampaign->fresh('socialAccount:id,username,provider_account_id,platform')),
+        ]);
+    }
+
+    public function destroySocialDmCampaign(Merchant $merchant, MerchantSocialDmCampaign $socialDmCampaign): JsonResponse
+    {
+        abort_unless((int) $socialDmCampaign->merchant_id === (int) $merchant->id, 404);
+        $socialDmCampaign->delete();
+
+        return response()->json(['message' => 'Comment-to-DM campaign deleted.']);
+    }
+
+    public function simulateSocialDmComment(Request $request, Merchant $merchant, SocialDmAutomationService $automationService): JsonResponse
+    {
+        $data = $request->validate([
+            'account_id' => ['required', 'integer', 'min:1'],
+            'post_id' => ['nullable', 'string', 'max:160'],
+            'comment_text' => ['required', 'string', 'max:1000'],
+            'commenter_username' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $account = MerchantSocialAccount::query()
+            ->where('merchant_id', $merchant->id)
+            ->whereKey($data['account_id'])
+            ->firstOrFail();
+
+        $event = $automationService->handleComment([
+            'platform' => $account->platform,
+            'account_id' => $account->provider_account_id,
+            'post_id' => $data['post_id'] ?? null,
+            'comment_id' => 'sim_comment_'.Str::random(18),
+            'commenter_id' => 'sim_user_'.Str::random(10),
+            'commenter_username' => $data['commenter_username'] ?? 'preview_user',
+            'text' => $data['comment_text'],
+        ]);
+
+        return response()->json([
+            'message' => 'Simulated comment processed.',
+            'event' => $event ? $this->serializeSocialDmEvent($event) : null,
+        ]);
+    }
+
+    public function connectWhatsappAccount(Request $request, Merchant $merchant, WhatsappCommerceService $whatsappService): JsonResponse
+    {
+        $data = $request->validate([
+            'phone_number_id' => ['required', 'string', 'max:120'],
+            'business_account_id' => ['nullable', 'string', 'max:120'],
+            'display_phone_number' => ['nullable', 'string', 'max:60'],
+            'verified_name' => ['nullable', 'string', 'max:160'],
+            'access_token' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $account = MerchantWhatsappAccount::query()->updateOrCreate(
+            ['phone_number_id' => $data['phone_number_id']],
+            [
+                'merchant_id' => $merchant->id,
+                'connected_by' => $request->user()?->id,
+                'business_account_id' => $data['business_account_id'] ?? config('services.whatsapp_cloud.business_account_id'),
+                'display_phone_number' => $data['display_phone_number'] ?? null,
+                'verified_name' => $data['verified_name'] ?? null,
+                'access_token' => $data['access_token'] ?? config('services.whatsapp_cloud.access_token'),
+                'status' => 'connected',
+                'metadata' => ['provider_mode' => $whatsappService->configured() ? 'cloud_api' : 'manual_until_credentials'],
+            ]
+        );
+
+        return response()->json([
+            'message' => 'WhatsApp account connected.',
+            'account' => $this->serializeWhatsappAccount($account),
+        ], 201);
+    }
+
+    public function completeWhatsappEmbeddedSignup(Request $request, Merchant $merchant, WhatsappCommerceService $whatsappService): JsonResponse
+    {
+        $data = $request->validate([
+            'code' => ['required', 'string', 'max:2000'],
+            'phone_number_id' => ['nullable', 'string', 'max:120'],
+            'waba_id' => ['nullable', 'string', 'max:120'],
+            'session_info' => ['nullable', 'array'],
+        ]);
+
+        $account = $whatsappService->connectEmbeddedSignup($merchant, $data, $request->user()?->id);
+
+        return response()->json([
+            'message' => 'WhatsApp Business account connected.',
+            'account' => $this->serializeWhatsappAccount($account),
+        ], 201);
+    }
+
+    public function storeWhatsappAutomation(Request $request, Merchant $merchant, WhatsappCommerceService $whatsappService): JsonResponse
+    {
+        $automation = MerchantWhatsappAutomation::query()->create($this->validatedWhatsappAutomationData($request, $merchant, $whatsappService) + [
+            'merchant_id' => $merchant->id,
+            'created_by' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'message' => 'WhatsApp automation created.',
+            'automation' => $this->serializeWhatsappAutomation($automation->load('whatsappAccount:id,display_phone_number,phone_number_id')),
+        ], 201);
+    }
+
+    public function updateWhatsappAutomation(Request $request, Merchant $merchant, MerchantWhatsappAutomation $whatsappAutomation, WhatsappCommerceService $whatsappService): JsonResponse
+    {
+        abort_unless((int) $whatsappAutomation->merchant_id === (int) $merchant->id, 404);
+        $whatsappAutomation->update($this->validatedWhatsappAutomationData($request, $merchant, $whatsappService));
+
+        return response()->json([
+            'message' => 'WhatsApp automation updated.',
+            'automation' => $this->serializeWhatsappAutomation($whatsappAutomation->fresh('whatsappAccount:id,display_phone_number,phone_number_id')),
+        ]);
+    }
+
+    public function destroyWhatsappAutomation(Merchant $merchant, MerchantWhatsappAutomation $whatsappAutomation): JsonResponse
+    {
+        abort_unless((int) $whatsappAutomation->merchant_id === (int) $merchant->id, 404);
+        $whatsappAutomation->delete();
+
+        return response()->json(['message' => 'WhatsApp automation deleted.']);
+    }
+
+    public function simulateWhatsappMessage(Request $request, Merchant $merchant, WhatsappCommerceService $whatsappService): JsonResponse
+    {
+        $data = $request->validate([
+            'account_id' => ['required', 'integer', 'min:1'],
+            'message_text' => ['required', 'string', 'max:1000'],
+            'from_phone' => ['nullable', 'string', 'max:60'],
+            'profile_name' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $account = MerchantWhatsappAccount::query()
+            ->where('merchant_id', $merchant->id)
+            ->whereKey($data['account_id'])
+            ->firstOrFail();
+
+        $event = $whatsappService->handleMessage([
+            'phone_number_id' => $account->phone_number_id,
+            'message_id' => 'sim_wa_msg_'.Str::random(18),
+            'from_phone' => $whatsappService->normalizePhone($data['from_phone'] ?? '255700000000'),
+            'profile_name' => $data['profile_name'] ?? 'Preview Buyer',
+            'text' => $data['message_text'],
+        ]);
+
+        return response()->json([
+            'message' => 'Simulated WhatsApp message processed.',
+            'event' => $event ? $this->serializeWhatsappEvent($event) : null,
+        ]);
+    }
+
     public function storeGroupSale(Request $request, Merchant $merchant): JsonResponse
     {
         $data = $this->validatedGroupSaleData($request, $merchant);
@@ -662,6 +1107,123 @@ class MerchantMarketingController extends Controller
 
         if (! $this->targetBelongsToMerchant($merchant, $data['target_type'], $data['target_id'] ?? null)) {
             abort(422, 'Selected referral target does not belong to this merchant.');
+        }
+
+        return $data;
+    }
+
+    private function validatedSocialDmCampaignData(Request $request, Merchant $merchant, SocialDmAutomationService $automationService): array
+    {
+        $data = $request->validate([
+            'social_account_id' => ['nullable', 'integer', 'min:1'],
+            'name' => ['required', 'string', 'max:160'],
+            'platform' => ['required', Rule::in(['instagram', 'facebook'])],
+            'post_provider_id' => ['nullable', 'string', 'max:160'],
+            'post_url' => ['nullable', 'url', 'max:500'],
+            'trigger_keywords' => ['required', 'array', 'min:1', 'max:20'],
+            'trigger_keywords.*' => ['required', 'string', 'max:80'],
+            'match_mode' => ['required', Rule::in(['contains', 'exact'])],
+            'destination_type' => ['required', Rule::in(['storefront', 'product', 'bundle', 'subscription_plan', 'post', 'content_item', 'custom_url'])],
+            'destination_id' => ['nullable', 'integer', 'min:1'],
+            'destination_url' => ['nullable', 'url', 'max:500'],
+            'dm_message' => ['required', 'string', 'min:8', 'max:950'],
+            'public_reply_message' => ['nullable', 'string', 'max:300'],
+            'starts_at' => ['nullable', 'date'],
+            'ends_at' => ['nullable', 'date', 'after:starts_at'],
+            'status' => ['required', Rule::in(['draft', 'active', 'paused', 'expired'])],
+        ]);
+
+        if (! empty($data['social_account_id'])) {
+            $account = MerchantSocialAccount::query()
+                ->where('merchant_id', $merchant->id)
+                ->whereKey($data['social_account_id'])
+                ->first();
+            abort_unless($account, 422, 'Choose a connected social account that belongs to this merchant.');
+            $data['platform'] = $account->platform;
+        } else {
+            $data['social_account_id'] = null;
+        }
+
+        $data['trigger_keywords'] = collect($data['trigger_keywords'])
+            ->map(fn ($keyword) => trim(Str::lower((string) $keyword)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($data['trigger_keywords'])) {
+            abort(422, 'Add at least one trigger word.');
+        }
+
+        if ($data['destination_type'] === 'custom_url') {
+            abort_unless(! empty($data['destination_url']), 422, 'Add the URL this DM should send.');
+            $data['destination_id'] = null;
+        } else {
+            $data['destination_url'] = $automationService->destinationUrl($merchant, $data['destination_type'], $data['destination_id'] ?? null);
+            if ($data['destination_type'] !== 'storefront' && ! $data['destination_id']) {
+                abort(422, 'Choose the exact Takeer offer this DM should open.');
+            }
+            if (! $this->targetBelongsToMerchant($merchant, $data['destination_type'], $data['destination_id'] ?? null)) {
+                abort(422, 'Selected DM destination does not belong to this merchant.');
+            }
+        }
+
+        if (! str_contains($data['dm_message'], '{{link}}')) {
+            $data['dm_message'] = rtrim($data['dm_message'])."\n\n{{link}}";
+        }
+
+        return $data;
+    }
+
+    private function validatedWhatsappAutomationData(Request $request, Merchant $merchant, WhatsappCommerceService $whatsappService): array
+    {
+        $data = $request->validate([
+            'whatsapp_account_id' => ['nullable', 'integer', 'min:1'],
+            'name' => ['required', 'string', 'max:160'],
+            'trigger_keywords' => ['required', 'array', 'min:1', 'max:20'],
+            'trigger_keywords.*' => ['required', 'string', 'max:80'],
+            'match_mode' => ['required', Rule::in(['contains', 'exact'])],
+            'destination_type' => ['required', Rule::in(['storefront', 'product', 'bundle', 'subscription_plan', 'post', 'content_item', 'custom_url'])],
+            'destination_id' => ['nullable', 'integer', 'min:1'],
+            'destination_url' => ['nullable', 'url', 'max:500'],
+            'response_message' => ['required', 'string', 'min:8', 'max:1000'],
+            'starts_at' => ['nullable', 'date'],
+            'ends_at' => ['nullable', 'date', 'after:starts_at'],
+            'status' => ['required', Rule::in(['draft', 'active', 'paused', 'expired'])],
+        ]);
+
+        if (! empty($data['whatsapp_account_id'])) {
+            abort_unless(MerchantWhatsappAccount::query()
+                ->where('merchant_id', $merchant->id)
+                ->whereKey($data['whatsapp_account_id'])
+                ->exists(), 422, 'Choose a WhatsApp account that belongs to this merchant.');
+        } else {
+            $data['whatsapp_account_id'] = null;
+        }
+
+        $data['trigger_keywords'] = collect($data['trigger_keywords'])
+            ->map(fn ($keyword) => trim(Str::lower((string) $keyword)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        abort_if(empty($data['trigger_keywords']), 422, 'Add at least one trigger word.');
+
+        if ($data['destination_type'] === 'custom_url') {
+            abort_unless(! empty($data['destination_url']), 422, 'Add the URL this WhatsApp automation should send.');
+            $data['destination_id'] = null;
+        } else {
+            $data['destination_url'] = $whatsappService->destinationUrl($merchant, $data['destination_type'], $data['destination_id'] ?? null);
+            if ($data['destination_type'] !== 'storefront' && ! $data['destination_id']) {
+                abort(422, 'Choose the exact Takeer offer this WhatsApp automation should open.');
+            }
+            if (! $this->targetBelongsToMerchant($merchant, $data['destination_type'], $data['destination_id'] ?? null)) {
+                abort(422, 'Selected WhatsApp destination does not belong to this merchant.');
+            }
+        }
+
+        if (! str_contains($data['response_message'], '{{link}}')) {
+            $data['response_message'] = rtrim($data['response_message'])."\n\n{{link}}";
         }
 
         return $data;
@@ -1443,6 +2005,137 @@ class MerchantMarketingController extends Controller
             'campaign_url' => url('/campaign/'.$link->merchant?->username.'/'.$link->code),
             'target_url' => $this->referralTargetUrl($link),
             'created_at' => $link->created_at?->toISOString(),
+        ];
+    }
+
+    private function serializeSocialAccount(MerchantSocialAccount $account): array
+    {
+        return [
+            'id' => $account->id,
+            'platform' => $account->platform,
+            'provider_account_id' => $account->provider_account_id,
+            'username' => $account->username,
+            'display_name' => $account->display_name,
+            'account_type' => $account->account_type,
+            'status' => $account->status,
+            'has_live_token' => (bool) $account->access_token,
+            'last_webhook_at' => $account->last_webhook_at?->toISOString(),
+            'created_at' => $account->created_at?->toISOString(),
+        ];
+    }
+
+    private function serializeSocialDmCampaign(MerchantSocialDmCampaign $campaign): array
+    {
+        return [
+            'id' => $campaign->id,
+            'social_account_id' => $campaign->social_account_id,
+            'social_account_label' => $campaign->socialAccount?->username ?: $campaign->socialAccount?->provider_account_id,
+            'name' => $campaign->name,
+            'platform' => $campaign->platform,
+            'post_provider_id' => $campaign->post_provider_id,
+            'post_url' => $campaign->post_url,
+            'trigger_keywords' => $campaign->trigger_keywords ?: [],
+            'match_mode' => $campaign->match_mode,
+            'destination_type' => $campaign->destination_type,
+            'destination_id' => $campaign->destination_id,
+            'destination_url' => $campaign->destination_url,
+            'dm_message' => $campaign->dm_message,
+            'public_reply_message' => $campaign->public_reply_message,
+            'status' => $campaign->status,
+            'comments_count' => (int) $campaign->comments_count,
+            'matched_count' => (int) $campaign->matched_count,
+            'dm_sent_count' => (int) $campaign->dm_sent_count,
+            'dm_failed_count' => (int) $campaign->dm_failed_count,
+            'clicks_count' => (int) $campaign->clicks_count,
+            'starts_at' => $campaign->starts_at?->toISOString(),
+            'ends_at' => $campaign->ends_at?->toISOString(),
+            'last_triggered_at' => $campaign->last_triggered_at?->toISOString(),
+            'created_at' => $campaign->created_at?->toISOString(),
+            'recent_events' => $campaign->events()
+                ->latest()
+                ->limit(5)
+                ->get()
+                ->map(fn (MerchantSocialDmEvent $event) => $this->serializeSocialDmEvent($event))
+                ->values(),
+        ];
+    }
+
+    private function serializeSocialDmEvent(MerchantSocialDmEvent $event): array
+    {
+        return [
+            'id' => $event->id,
+            'campaign_id' => $event->campaign_id,
+            'platform' => $event->platform,
+            'provider_comment_id' => $event->provider_comment_id,
+            'provider_post_id' => $event->provider_post_id,
+            'commenter_username' => $event->commenter_username,
+            'comment_text' => $event->comment_text,
+            'matched_keyword' => $event->matched_keyword,
+            'status' => $event->status,
+            'destination_url' => $event->destination_url,
+            'error_message' => $event->error_message,
+            'received_at' => $event->received_at?->toISOString(),
+            'sent_at' => $event->sent_at?->toISOString(),
+            'clicked_at' => $event->clicked_at?->toISOString(),
+        ];
+    }
+
+    private function serializeWhatsappAccount(MerchantWhatsappAccount $account): array
+    {
+        return [
+            'id' => $account->id,
+            'phone_number_id' => $account->phone_number_id,
+            'business_account_id' => $account->business_account_id,
+            'display_phone_number' => $account->display_phone_number,
+            'verified_name' => $account->verified_name,
+            'status' => $account->status,
+            'has_live_token' => (bool) $account->access_token || (bool) config('services.whatsapp_cloud.access_token'),
+            'last_webhook_at' => $account->last_webhook_at?->toISOString(),
+            'created_at' => $account->created_at?->toISOString(),
+        ];
+    }
+
+    private function serializeWhatsappAutomation(MerchantWhatsappAutomation $automation): array
+    {
+        return [
+            'id' => $automation->id,
+            'whatsapp_account_id' => $automation->whatsapp_account_id,
+            'whatsapp_account_label' => $automation->whatsappAccount?->display_phone_number ?: $automation->whatsappAccount?->phone_number_id,
+            'name' => $automation->name,
+            'trigger_keywords' => $automation->trigger_keywords ?: [],
+            'match_mode' => $automation->match_mode,
+            'destination_type' => $automation->destination_type,
+            'destination_id' => $automation->destination_id,
+            'destination_url' => $automation->destination_url,
+            'response_message' => $automation->response_message,
+            'status' => $automation->status,
+            'received_count' => (int) $automation->received_count,
+            'matched_count' => (int) $automation->matched_count,
+            'sent_count' => (int) $automation->sent_count,
+            'failed_count' => (int) $automation->failed_count,
+            'clicks_count' => (int) $automation->clicks_count,
+            'starts_at' => $automation->starts_at?->toISOString(),
+            'ends_at' => $automation->ends_at?->toISOString(),
+            'last_triggered_at' => $automation->last_triggered_at?->toISOString(),
+            'created_at' => $automation->created_at?->toISOString(),
+        ];
+    }
+
+    private function serializeWhatsappEvent(MerchantWhatsappEvent $event): array
+    {
+        return [
+            'id' => $event->id,
+            'automation_id' => $event->automation_id,
+            'from_phone' => $event->from_phone,
+            'profile_name' => $event->profile_name,
+            'message_text' => $event->message_text,
+            'matched_keyword' => $event->matched_keyword,
+            'status' => $event->status,
+            'destination_url' => $event->destination_url,
+            'error_message' => $event->error_message,
+            'received_at' => $event->received_at?->toISOString(),
+            'sent_at' => $event->sent_at?->toISOString(),
+            'clicked_at' => $event->clicked_at?->toISOString(),
         ];
     }
 

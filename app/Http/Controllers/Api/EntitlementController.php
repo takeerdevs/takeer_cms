@@ -12,9 +12,11 @@ use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\ContentReport;
 use App\Models\Entitlement;
+use App\Models\Merchant;
 use App\Models\Post;
 use App\Models\Product;
 use App\Models\ProductLicenseKey;
+use App\Models\PulseNotification;
 use App\Models\ServiceRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\Order;
@@ -24,6 +26,87 @@ use Illuminate\Http\Request;
 
 class EntitlementController extends Controller
 {
+    public function myPulse(Request $request): JsonResponse
+    {
+        $perPage = min(max((int) $request->query('per_page', 12), 1), 50);
+
+        $events = PulseNotification::query()
+            ->where('user_id', $request->user()->id)
+            ->latest('occurred_at')
+            ->paginate($perPage);
+
+        return response()->json([
+            'events' => $events->getCollection()->map(fn (PulseNotification $event) => [
+                'id' => $event->id,
+                'date' => $event->occurred_at?->toISOString(),
+                'icon' => $event->icon,
+                'tone' => $event->tone,
+                'eyebrow' => $event->eyebrow,
+                'title' => $event->title,
+                'body' => $event->body,
+                'meta' => $event->meta,
+                'href' => $event->href,
+                'status' => $event->status,
+                'event_type' => $event->event_type,
+                'read_at' => $event->read_at?->toISOString(),
+            ])->values(),
+            'meta' => [
+                'current_page' => $events->currentPage(),
+                'last_page' => $events->lastPage(),
+                'per_page' => $events->perPage(),
+                'total' => $events->total(),
+            ],
+        ]);
+    }
+
+    public function merchantPulse(Request $request, Merchant $merchant): JsonResponse
+    {
+        abort_unless((int) $merchant->user_id === (int) $request->user()->id, 403);
+
+        $perPage = min(max((int) $request->query('per_page', 12), 1), 50);
+        $merchantEventTypes = [
+            'merchant_order_started',
+            'merchant_order_quote_updated',
+            'merchant_payment_completed',
+            'merchant_payment_held',
+            'merchant_merchant_confirmation_needed',
+            'merchant_issue_reported',
+            'merchant_order_cancelled',
+            'merchant_review_created',
+        ];
+
+        $events = PulseNotification::query()
+            ->where('user_id', $request->user()->id)
+            ->where('merchant_id', $merchant->id)
+            ->whereIn('event_type', $merchantEventTypes)
+            ->latest('occurred_at')
+            ->paginate($perPage);
+
+        return response()->json([
+            'events' => $events->getCollection()->map(fn (PulseNotification $event) => [
+                'id' => $event->id,
+                'date' => $event->occurred_at?->toISOString(),
+                'icon' => $event->icon,
+                'tone' => $event->tone,
+                'eyebrow' => $event->eyebrow,
+                'title' => $event->title,
+                'body' => $event->body,
+                'meta' => $event->meta,
+                'href' => $event->href,
+                'status' => $event->status,
+                'event_type' => $event->event_type,
+                'payload' => $event->payload,
+                'read_at' => $event->read_at?->toISOString(),
+            ])->values(),
+            'meta' => [
+                'current_page' => $events->currentPage(),
+                'last_page' => $events->lastPage(),
+                'per_page' => $events->perPage(),
+                'total' => $events->total(),
+            ],
+        ]);
+    }
+
     public function myLibrary(Request $request): JsonResponse
     {
         $filterType = (string) $request->query('type', 'all');

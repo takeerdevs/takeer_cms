@@ -59,6 +59,32 @@ return [
         'email_provider' => env('SERVICE_EMAIL_PROVIDER', 'pending'),
     ],
 
+    'meta' => [
+        'client_id' => env('META_CLIENT_ID'),
+        'client_secret' => env('META_CLIENT_SECRET'),
+        'redirect_uri' => env('META_REDIRECT_URI'),
+        'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN'),
+        'graph_version' => env('META_GRAPH_VERSION', env('META_GRAPH_API_VERSION', 'v24.0')),
+        'graph_api_base_url' => env('META_GRAPH_API_BASE_URL', 'https://graph.facebook.com'),
+        'configuration_id' => env('META_CONFIGURATION_ID'),
+        'login_type' => env('META_LOGIN_TYPE', 'instagram'),
+        'scopes' => array_filter(array_map('trim', explode(',', env(
+            'META_SCOPES',
+            'instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages'
+        )))),
+    ],
+
+    'whatsapp_cloud' => [
+        'access_token' => env('WHATSAPP_CLOUD_ACCESS_TOKEN'),
+        'phone_number_id' => env('WHATSAPP_CLOUD_PHONE_NUMBER_ID'),
+        'business_account_id' => env('WHATSAPP_CLOUD_BUSINESS_ACCOUNT_ID'),
+        'configuration_id' => env('WHATSAPP_CLOUD_CONFIGURATION_ID', env('META_CONFIGURATION_ID')),
+        'app_secret' => env('WHATSAPP_CLOUD_APP_SECRET', env('META_CLIENT_SECRET')),
+        'webhook_verify_token' => env('WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN', env('META_WEBHOOK_VERIFY_TOKEN')),
+        'graph_version' => env('WHATSAPP_CLOUD_GRAPH_VERSION', env('META_GRAPH_VERSION', env('META_GRAPH_API_VERSION', 'v24.0'))),
+        'graph_api_base_url' => env('WHATSAPP_CLOUD_GRAPH_API_BASE_URL', env('META_GRAPH_API_BASE_URL', 'https://graph.facebook.com')),
+    ],
+
     'platform_notifications' => [
         'sms_provider' => env('PLATFORM_SMS_PROVIDER', 'beem_africa'),
         'whatsapp_provider' => env('PLATFORM_WHATSAPP_PROVIDER', 'whatsapp_business'),

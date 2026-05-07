@@ -155,6 +155,11 @@ export default function MerchantDetails({ merchantId }) {
                                     POS links disabled
                                 </span>
                             )}
+                            {hasPayoutOverrides(summary) && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-100">
+                                    Payout override active
+                                </span>
+                            )}
                         </div>
                         <Link href={`/admin/merchants/${merchantId}/settings`}>
                             <Button variant="outline">
@@ -442,6 +447,11 @@ function countForType(types, key) {
     if (key === 'bundles') return types.bundles || 0;
     if (key === 'subscriptions') return types.subscriptions || 0;
     return 0;
+}
+
+function hasPayoutOverrides(summary) {
+    const overrides = summary?.retail_settings?.payout_controls?.overrides || {};
+    return Object.values(overrides).some((mode) => mode && mode !== 'platform_default');
 }
 
 function Metric({ label, value }) {

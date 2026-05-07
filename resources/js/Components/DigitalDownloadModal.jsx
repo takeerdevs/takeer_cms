@@ -3,6 +3,7 @@ import { Download, X, FileText, Film, Music, Archive, Image, Package, Loader2, C
 import { toast } from 'sonner';
 import axios from 'axios';
 import { trackPlatformEvent } from '@/lib/attribution';
+import VideoPlayer from '@/Components/VideoPlayer';
 
 const FILE_TYPE_META = {
     pdf: { icon: FileText, label: 'PDF Document', color: 'from-red-600 to-red-900', bg: 'bg-red-50', text: 'text-red-700' },
@@ -33,6 +34,8 @@ function formatBytes(bytes) {
 export default function DigitalDownloadModal({ isOpen, onClose, orderId, productTitle, productId }) {
     const [fileUrl, setFileUrl] = useState(null);
     const [fileSize, setFileSize] = useState(null);
+    const [hlsUrl, setHlsUrl] = useState(null);
+    const [streamStatus, setStreamStatus] = useState(null);
     const [deliveryType, setDeliveryType] = useState(null);
     const [streamKind, setStreamKind] = useState(null);
     const [digitalContentType, setDigitalContentType] = useState(null);
@@ -43,12 +46,13 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
     const [isCourse, setIsCourse] = useState(false);
     const [loading, setLoading] = useState(false);
     const [downloaded, setDownloaded] = useState(false);
-    const [sendingLink, setSendingLink] = useState(false);
 
     useEffect(() => {
         if (!isOpen || !orderId) return;
         setFileUrl(null);
         setFileSize(null);
+        setHlsUrl(null);
+        setStreamStatus(null);
         setDeliveryType(null);
         setStreamKind(null);
         setDigitalContentType(null);
@@ -66,6 +70,8 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
             const res = await axios.get(`/api/orders/${orderId}/download`);
             setFileUrl(res.data?.url || null);
             setFileSize(res.data?.size || null);
+            setHlsUrl(res.data?.hls_url || null);
+            setStreamStatus(res.data?.stream_status || null);
             setIsCourse(res.data?.is_course || false);
             setDeliveryType(res.data?.type || null);
             setStreamKind(res.data?.stream_kind || null);
@@ -104,6 +110,9 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                 },
             }
         );
+        if (isStream && !isAudioStream) {
+            return;
+        }
         if (isCourse || deliveryType === 'stream' || deliveryType === 'gallery' || deliveryType === 'live_event') {
             window.location.href = fileUrl;
             return;
@@ -111,29 +120,6 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
         window.open(fileUrl, '_blank', 'noopener,noreferrer');
         setDownloaded(true);
         toast.success('Upakuaji umeanza!');
-    };
-
-    const handleSendLink = async () => {
-        if (!orderId) return;
-        setSendingLink(true);
-        try {
-            await axios.post(`/api/orders/${orderId}/send-download-link`);
-            trackPlatformEvent('download_link_sent', {
-                entity_type: 'product',
-                entity_id: productId || null,
-                source: 'digital_download_modal',
-                metadata: {
-                    order_id: orderId,
-                    delivery_type: deliveryType,
-                    digital_content_type: digitalContentType,
-                },
-            });
-            toast.success('Kiungo kimetumwa kwenye namba yako ya simu!');
-        } catch (e) {
-            toast.error(e.response?.data?.message || 'Imeshindwa kutuma kiungo. Jaribu tena.');
-        } finally {
-            setSendingLink(false);
-        }
     };
 
     if (!isOpen) return null;
@@ -221,20 +207,47 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                             <p className="text-sm font-bold text-slate-500">Inaandaa faili lako...</p>
                         </div>
                     ) : fileUrl ? (
-                        <button
-                            onClick={handleDownload}
-                            className={`w-full h-14 rounded-2xl bg-gradient-to-r ${isCourse || isStream ? 'from-indigo-600 to-indigo-900' : isGallery ? 'from-blue-600 to-cyan-800' : meta.color} text-white font-black uppercase tracking-widest text-sm shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] hover:brightness-105`}
-                        >
-                            {isCourse || isStream ? (
-                                <><PlayCircle className="h-5 w-5" /> {isStream ? (isAudioStream ? 'Sikiliza Audio' : 'Tazama Video') : 'Fungua Masomo'}</>
-                            ) : isGallery ? (
-                                <><Image className="h-5 w-5" /> Fungua Gallery</>
-                            ) : downloaded ? (
-                                <><CheckCircle2 className="h-5 w-5" /> Pakua Tena</>
-                            ) : (
-                                <><Download className="h-5 w-5" /> Pakua Faili</>
-                            )}
-                        </button>
+                        isStream && !isAudioStream ? (
+                            <div className="space-y-3">
+                                <div className="overflow-hidden rounded-2xl bg-black">
+                                    <div className="aspect-video">
+                                        <VideoPlayer
+                                            src={fileUrl}
+                                            hlsUrl={hlsUrl || undefined}
+                                            className="h-full w-full bg-black"
+                                            controls
+                                            playsInline
+                                            preload="metadata"
+                                            onPlay={handleDownload}
+                                        />
+                                    </div>
+                                </div>
+                                {hlsUrl ? (
+                                    <p className="text-center text-[10px] font-bold uppercase tracking-widest text-indigo-700">
+                                        HLS protected stream
+                                    </p>
+                                ) : streamStatus && streamStatus !== 'ready' ? (
+                                    <p className="rounded-2xl bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-800">
+                                        HLS bado inaandaliwa. Video itaendelea kwa fallback stream kwa sasa.
+                                    </p>
+                                ) : null}
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleDownload}
+                                className={`w-full h-14 rounded-2xl bg-gradient-to-r ${isCourse || isStream ? 'from-indigo-600 to-indigo-900' : isGallery ? 'from-blue-600 to-cyan-800' : meta.color} text-white font-black uppercase tracking-widest text-sm shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] hover:brightness-105`}
+                            >
+                                {isCourse || isStream ? (
+                                    <><PlayCircle className="h-5 w-5" /> {isStream ? (isAudioStream ? 'Sikiliza Audio' : 'Tazama Video') : 'Fungua Masomo'}</>
+                                ) : isGallery ? (
+                                    <><Image className="h-5 w-5" /> Fungua Gallery</>
+                                ) : downloaded ? (
+                                    <><CheckCircle2 className="h-5 w-5" /> Pakua Tena</>
+                                ) : (
+                                    <><Download className="h-5 w-5" /> Pakua Faili</>
+                                )}
+                            </button>
+                        )
                     ) : isCustomPending ? (
                         <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-center">
                             <MessageSquare className="mx-auto h-7 w-7 text-amber-700" />
@@ -303,19 +316,6 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                             )}
                         </div>
                     )}
-
-                    <button
-                        onClick={handleSendLink}
-                        disabled={sendingLink}
-                        className="w-full h-12 rounded-2xl border-2 border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-sm flex items-center justify-center gap-2 transition-all"
-                    >
-                        {sendingLink ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <MessageSquare className="h-4 w-4" />
-                        )}
-                        Tuma Kiungo kwa Simu
-                    </button>
 
                     <p className="text-[10px] text-center leading-relaxed">
                         Faili lako litapatikana pia kwenye <strong>Orders</strong> zako wakati wote.

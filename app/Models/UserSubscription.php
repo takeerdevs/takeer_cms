@@ -35,6 +35,13 @@ class UserSubscription extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::created(function (UserSubscription $subscription): void {
+            app(\App\Services\PulseNotificationService::class)->subscriptionStarted($subscription);
+        });
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

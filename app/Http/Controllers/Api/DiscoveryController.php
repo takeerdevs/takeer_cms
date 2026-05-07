@@ -144,6 +144,9 @@ class DiscoveryController extends Controller
     private function baseProductQuery(array $filters)
     {
         return Product::query()
+            ->whereHas('postTags.post', function ($post): void {
+                $post->whereNull('posts.deleted_at');
+            })
             ->whereHas('merchant', function ($merchant) use ($filters): void {
                 $merchant->where('is_active', true)
                     ->where('is_suspended', false)
@@ -155,8 +158,10 @@ class DiscoveryController extends Controller
                 'attributes',
                 'images',
                 'variants',
+                'postTags.post',
                 'categoryAttributeValues.categoryAttribute',
             ])
+            ->withCount('postTags')
             ->latest();
     }
 

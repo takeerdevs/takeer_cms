@@ -1036,6 +1036,21 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                             </div>
                         ) : (
                             <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                {isGuest && (
+                                    <div className="p-4 rounded-2xl bg-brand-50/50 border border-brand-100 space-y-3">
+                                        <p className="text-xs font-black uppercase tracking-widest text-brand-900">Taarifa Zako</p>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-brand-700/80 ml-1">Jina Lako Kamili</label>
+                                            <Input
+                                                value={name}
+                                                onChange={(e) => setName(e.target.value)}
+                                                placeholder="Andika jina lako..."
+                                                className="h-12 bg-white border-brand-100 focus:border-brand-400 rounded-xl px-4 font-bold text-brand-900 shadow-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Digital: Payment Selection Tabs */}
                                 <div className="space-y-4">
                                     <div className="flex p-1 bg-brand-50/50 dark:bg-slate-800 rounded-2xl border border-brand-100 dark:border-slate-700">

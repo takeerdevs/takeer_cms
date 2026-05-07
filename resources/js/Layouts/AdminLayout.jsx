@@ -6,7 +6,7 @@ import {
     LayoutDashboard, ShieldAlert, Users, ArrowDownToLine,
     Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper,
     ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell, BarChart3,
-    Tags, Ruler
+    Tags, Ruler, WalletCards
 } from 'lucide-react';
 
 const adminNav = [
@@ -30,7 +30,9 @@ const adminNav = [
     { name: 'Pricing & Fees', href: '/admin/fee-policies', icon: Percent },
     { name: 'Subscriptions', href: '/admin/subscriptions', icon: Crown },
     { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowDownToLine },
-    { name: 'AI Settings', href: '/admin/settings', icon: Settings2 },
+    { name: 'Payout Settings', href: '/admin/payout-settings', icon: WalletCards },
+    { name: 'General Settings', href: '/admin/settings', icon: Settings2 },
+    { name: 'AI Settings', href: '/admin/ai-settings', icon: Settings2 },
 ];
 
 export default function AdminLayout({ children, title = 'Admin', hideTopBar = false }) {

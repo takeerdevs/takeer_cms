@@ -43,7 +43,9 @@ export default function AdminDashboard() {
         { name: 'Sellable Units', href: '/admin/sellable-units', icon: Ruler, desc: 'Manage units, conversions, and quick quantities' },
         { name: 'Platform Wallet', href: '/admin/platform-wallet', icon: Wallet, desc: 'Track Takeer fees, GMV, and transaction proof' },
         { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowDownToLine, desc: 'Approve pending payout requests' },
-        { name: 'AI Settings', href: '/admin/settings', icon: Settings2, desc: 'Configure AI providers and keys' },
+        { name: 'Payout Settings', href: '/admin/payout-settings', icon: Wallet, desc: 'Control default payout release schedules' },
+        { name: 'General Settings', href: '/admin/settings', icon: Settings2, desc: 'Configure platform-wide non-AI defaults' },
+        { name: 'AI Settings', href: '/admin/ai-settings', icon: Settings2, desc: 'Configure AI providers and keys' },
     ];
 
     return (

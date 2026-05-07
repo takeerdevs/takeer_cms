@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use App\Models\Dispute;
+use App\Services\PayoutPolicyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,7 @@ class AdminSettingsController extends Controller
      */
     public function index(): JsonResponse
     {
+        $payoutPolicy = app(PayoutPolicyService::class);
         $settings = array_merge([
             'ai_provider' => 'openrouter',
             'openrouter_api_key' => '',
@@ -41,7 +43,7 @@ class AdminSettingsController extends Controller
             'retail_trial_days' => '0',
             'analytics_retention_days' => '365',
             'analytics_exclude_admins' => '1',
-        ], AdminSetting::allAsMap());
+        ], $payoutPolicy->defaultSettings(), AdminSetting::allAsMap());
 
         // Mask secret keys for display (show last 4 chars only)
         foreach (['openrouter_api_key', 'gemini_api_key'] as $keyField) {
@@ -62,7 +64,16 @@ class AdminSettingsController extends Controller
             'pending_withdrawals' => WithdrawalRequest::where('status', 'pending')->count(),
         ];
 
-        return response()->json(['settings' => $settings, 'stats' => $stats]);
+        return response()->json([
+            'settings' => $settings,
+            'stats' => $stats,
+            'payout_policy' => [
+                'buckets' => PayoutPolicyService::BUCKETS,
+                'modes' => collect(PayoutPolicyService::ACTIVE_MODES)
+                    ->mapWithKeys(fn (string $mode) => [$mode => $payoutPolicy->labels()[$mode]])
+                    ->all(),
+            ],
+        ]);
     }
 
     /**
@@ -70,6 +81,7 @@ class AdminSettingsController extends Controller
      */
     public function update(Request $request): JsonResponse
     {
+        $payoutPolicy = app(PayoutPolicyService::class);
         $allowed = [
             'ai_provider',
             'openrouter_api_key',
@@ -91,6 +103,7 @@ class AdminSettingsController extends Controller
             'retail_trial_days',
             'analytics_retention_days',
             'analytics_exclude_admins',
+            ...array_keys($payoutPolicy->defaultSettings()),
         ];
 
         foreach ($allowed as $key) {
@@ -116,6 +129,11 @@ class AdminSettingsController extends Controller
                 }
                 if ($key === 'analytics_exclude_admins') {
                     $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
+                }
+                if (str_starts_with($key, 'payout_policy_')) {
+                    $value = in_array($value, PayoutPolicyService::ACTIVE_MODES, true)
+                        ? $value
+                        : ($payoutPolicy->defaultSettings()[$key] ?? PayoutPolicyService::MODE_AUTOMATIC);
                 }
                 if (in_array($key, ['upload_allowed_extensions', 'upload_allowed_mime_types'], true)) {
                     $value = collect(preg_split('/[\s,]+/', strtolower((string) $value)))

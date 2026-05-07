@@ -165,7 +165,13 @@ class Order extends Model
             }
         });
 
+        static::created(function (Order $order): void {
+            app(\App\Services\PulseNotificationService::class)->orderCreated($order);
+        });
+
         static::updated(function (Order $order): void {
+            app(\App\Services\PulseNotificationService::class)->orderUpdated($order);
+
             if (! $order->wasChanged('payment_status')) {
                 return;
             }

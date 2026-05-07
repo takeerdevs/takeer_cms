@@ -756,7 +756,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         </button>
                         <h1 className="font-black text-base uppercase tracking-tight truncate flex-1">
                             Chapisho la <Link
-                                href={`/m/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
+                                href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                                 className="hover:text-brand-600 transition-colors"
                             >
                                 {post.merchant.name}
@@ -857,7 +857,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 {/* Merchant Section */}
                 <div className={`flex items-center gap-3 px-5 py-6 ${adminMode && isDeleted ? 'bg-rose-50/35' : ''}`}>
                     <Link
-                        href={`/m/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
+                        href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                         className="h-12 w-12 shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-lg border-2 border-background shadow-sm overflow-hidden hover:opacity-90 transition-opacity"
                     >
                         {post.merchant_profile?.avatar_url ? (
@@ -869,7 +869,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-0.5">
                             <Link
-                                href={`/m/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
+                                href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                                 className="font-bold text-base text-foreground leading-none truncate font-display hover:text-brand-600 transition-colors"
                             >
                                 {post.merchant_profile?.display_name || post.merchant?.name}
@@ -878,7 +878,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         </div>
                         <div className="flex items-center gap-2">
                             <Link
-                                href={`/m/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
+                                href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                                 className="text-xs text-muted-foreground truncate opacity-80 hover:text-brand-600 transition-colors"
                             >
                                 @{post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}

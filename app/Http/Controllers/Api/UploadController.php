@@ -1207,7 +1207,7 @@ class UploadController extends Controller
 
         $paidGalleryItems = null;
         if ($request->input('type') === 'digital' && $digitalDeliveryType === 'gallery_pack') {
-            $galleryWatermark = 'Takeer • '.($merchantProfile->username ?: $request->input('title'));
+            $galleryWatermark = 'Takeer / @'.($merchantProfile->username ?: $request->input('title'));
             $galleryService = app(GalleryImageService::class);
             $paidGalleryItems = collect($request->input('paid_gallery_items', []))
                 ->map(fn ($item) => $galleryService->prepareItem((array) $item, $galleryWatermark))

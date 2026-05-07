@@ -15,10 +15,15 @@ import {
     Sparkles,
     Store,
     CalendarClock,
+    CheckCircle2,
     ShieldCheck,
     Truck,
     MessageSquare,
     Zap,
+    AlertTriangle,
+    KeyRound,
+    RefreshCcw,
+    ReceiptText,
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -53,6 +58,9 @@ export default function Orders() {
     const [subscriptionPerPage, setSubscriptionPerPage] = useState(12);
     const [pulsePage, setPulsePage] = useState(1);
     const [pulsePerPage, setPulsePerPage] = useState(12);
+    const [pulseItems, setPulseItems] = useState([]);
+    const [pulseMeta, setPulseMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [pulseLoading, setPulseLoading] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -72,6 +80,11 @@ export default function Orders() {
         if (loading || activeTab !== 'pulse') return;
         setPulsePage(1);
     }, [pulsePerPage, activeTab]);
+
+    useEffect(() => {
+        if (loading || activeTab !== 'pulse') return;
+        loadPulsePage();
+    }, [pulsePage, pulsePerPage, activeTab]);
 
     useEffect(() => {
         if (loading || activeTab !== 'library') return;
@@ -116,10 +129,19 @@ export default function Orders() {
             const sessionApi = axios.create();
             delete sessionApi.defaults.headers.common.Authorization;
 
-            const [entitlementsRes, subscriptionsRes] = await Promise.allSettled([
+            const [pulseRes, entitlementsRes, subscriptionsRes] = await Promise.allSettled([
+                sessionApi.get('/orders/data/pulse', { params: { page: pulsePage, per_page: pulsePerPage } }),
                 sessionApi.get('/orders/data/entitlements'),
                 sessionApi.get('/orders/data/subscriptions'),
             ]);
+
+            if (pulseRes.status === 'fulfilled') {
+                setPulseItems(pulseRes.value.data?.events || []);
+                setPulseMeta(pulseRes.value.data?.meta || { current_page: 1, last_page: 1, total: 0 });
+            } else {
+                setPulseItems([]);
+                setPulseMeta({ current_page: 1, last_page: 1, total: 0 });
+            }
 
             if (entitlementsRes.status === 'fulfilled') {
                 const base = entitlementsRes.value.data?.entitlements || [];
@@ -142,13 +164,30 @@ export default function Orders() {
                 setSubscriptionMeta({ current_page: 1, last_page: 1, total: 0 });
             }
 
-            if (entitlementsRes.status === 'rejected' && subscriptionsRes.status === 'rejected') {
+            if (pulseRes.status === 'rejected' && entitlementsRes.status === 'rejected' && subscriptionsRes.status === 'rejected') {
                 throw new Error('Failed to load buyer data');
             }
         } catch (error) {
             toast.error('Imeshindwa kupakia library yako.');
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function loadPulsePage() {
+        setPulseLoading(true);
+        try {
+            const sessionApi = axios.create();
+            delete sessionApi.defaults.headers.common.Authorization;
+            const res = await sessionApi.get('/orders/data/pulse', {
+                params: { page: pulsePage, per_page: pulsePerPage },
+            });
+            setPulseItems(res.data?.events || []);
+            setPulseMeta(res.data?.meta || { current_page: 1, last_page: 1, total: 0 });
+        } catch (error) {
+            toast.error('Imeshindwa kupakia Pulse.');
+        } finally {
+            setPulseLoading(false);
         }
     }
 
@@ -220,79 +259,9 @@ export default function Orders() {
         ];
     }, [entitlements, subscriptions]);
 
-    const pulseItems = useMemo(() => {
-        const entitlementItems = entitlements.map((entry) => {
-            const item = entry.item || {};
-            const merchant = entry.merchant || item.merchant || {};
-            const isProduct = entry.item_type === 'product';
-            const isPhysical = isProduct && (item.type === 'physical' || entry.library_type === 'physical_product');
-            const isService = isProduct && (item.type === 'service' || entry.library_type === 'service_booking');
-            const isCustom = isProduct && item.digital_delivery_type === 'custom_delivery';
-            const orderStatus = entry.order_details?.payment_status;
-            const title = item.title || item.name || 'Owned item';
-
-            return {
-                id: `entitlement-${entry.id}`,
-                date: entry.granted_at || entry.starts_at,
-                icon: isService ? CalendarClock : isPhysical ? Truck : isCustom ? Sparkles : isProduct ? ShoppingBag : BookOpenText,
-                tone: isPhysical ? 'amber' : isService ? 'sky' : isCustom ? 'violet' : 'emerald',
-                eyebrow: isPhysical ? 'Physical sale' : isService ? 'Service booking' : isCustom ? 'Custom delivery' : 'Entitled content',
-                title,
-                body: isPhysical
-                    ? orderStatusLabel(entry.order_details)
-                    : isService
-                        ? serviceStatusLabel(entry.order_details)
-                        : `${merchant.name || 'Merchant'} granted access to this item.`,
-                meta: merchant.name || 'Takeer merchant',
-                href: notificationHref(entry),
-                action: isPhysical ? 'Track' : isService ? 'View booking' : 'Open',
-                status: orderStatus || entry.status,
-                sortDate: new Date(entry.granted_at || entry.starts_at || 0).getTime(),
-            };
-        });
-
-        const subscriptionItems = subscriptions.map((subscription) => {
-            const plan = subscription.plan || {};
-            const merchant = subscription.merchant || {};
-
-            return {
-                id: `subscription-${subscription.id}`,
-                date: subscription.started_at || subscription.created_at || subscription.current_period_start,
-                icon: Crown,
-                tone: ['active', 'pending', 'past_due'].includes(subscription.status) ? 'emerald' : 'slate',
-                eyebrow: 'Subscribed access',
-                title: plan.name || 'Membership plan',
-                body: `Membership ${subscription.status || 'active'}${subscription.current_period_end ? ` until ${formatDate(subscription.current_period_end)}` : ''}.`,
-                meta: merchant.display_name || merchant.name || 'Takeer merchant',
-                href: `/plan/${plan.slug || plan.id}`,
-                action: 'View plan',
-                status: subscription.status,
-                sortDate: new Date(subscription.started_at || subscription.created_at || subscription.current_period_start || 0).getTime(),
-            };
-        });
-
-        const liveItems = merchantLive.map((event) => ({
-            id: `live-${event.id}`,
-            date: new Date().toISOString(),
-            icon: ShoppingBag,
-            tone: 'amber',
-            eyebrow: 'Live product sale',
-            title: event.product_title || 'New paid order',
-            body: `Paid TZS ${Number(event.amount || 0).toLocaleString()} and waiting on merchant handling.`,
-            meta: event.buyer_phone || 'Buyer',
-            href: '/merchant/dashboard',
-            action: 'Dashboard',
-            status: event.status,
-            sortDate: Date.now(),
-        }));
-
-        return [...liveItems, ...entitlementItems, ...subscriptionItems]
-            .sort((a, b) => b.sortDate - a.sortDate);
-    }, [entitlements, subscriptions, merchantLive]);
-
-    const pulseLastPage = Math.max(Math.ceil(pulseItems.length / pulsePerPage), 1);
-    const safePulsePage = Math.min(pulsePage, pulseLastPage);
-    const visiblePulseItems = pulseItems.slice((safePulsePage - 1) * pulsePerPage, safePulsePage * pulsePerPage);
+    const pulseLastPage = pulseMeta.last_page || 1;
+    const safePulsePage = pulseMeta.current_page || 1;
+    const visiblePulseItems = pulseItems;
 
     useEffect(() => {
         if (pulsePage > pulseLastPage) {
@@ -398,8 +367,13 @@ export default function Orders() {
                         </div>
 
                         <div className="rounded-[24px] border border-border/70 bg-card overflow-hidden">
-                            {pulseItems.length === 0 ? (
-                                <EmptyPane icon={Library} title="No pulse yet" body="Your subscribed content, entitled items, and product order updates will appear here as a single feed." compact />
+                            {pulseLoading ? (
+                                <div className="flex items-center justify-center gap-3 p-8 text-sm font-semibold text-muted-foreground">
+                                    <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+                                    Inapakia Pulse...
+                                </div>
+                            ) : pulseItems.length === 0 ? (
+                                <EmptyPane icon={Library} title="No pulse yet" body="Payment confirmations, delivery updates, access usage, service bookings, and membership changes will appear here." compact />
                             ) : (
                                 <div className="divide-y divide-border/70">
                                     {visiblePulseItems.map((item) => (
@@ -409,10 +383,10 @@ export default function Orders() {
                             )}
                         </div>
 
-                        {pulseItems.length > 0 && (
+                        {(pulseMeta.total || 0) > 0 && (
                             <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
                                 <p className="text-sm font-semibold text-muted-foreground">
-                                    Showing {visiblePulseItems.length} of {pulseItems.length} updates · Page {safePulsePage} / {pulseLastPage}
+                                    Showing {visiblePulseItems.length} of {pulseMeta.total || 0} updates · Page {safePulsePage} / {pulseLastPage}
                                 </p>
                                 {pulseLastPage > 1 && (
                                     <div className="flex items-center gap-2">
@@ -588,17 +562,46 @@ export default function Orders() {
 }
 
 function PulseNotification({ item }) {
-    const Icon = item.icon || Library;
+    const iconMap = {
+        alert: AlertTriangle,
+        calendar: CalendarClock,
+        check: CheckCircle2,
+        crown: Crown,
+        download: Download,
+        key: KeyRound,
+        refresh: RefreshCcw,
+        receipt: ReceiptText,
+        shield_check: ShieldCheck,
+        shopping_bag: ShoppingBag,
+        sparkles: Sparkles,
+        truck: Truck,
+    };
+    const Icon = iconMap[item.icon] || Library;
     const toneClass = {
         amber: 'bg-amber-50 text-amber-700 border-amber-100',
         emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
         sky: 'bg-sky-50 text-sky-700 border-sky-100',
         violet: 'bg-violet-50 text-violet-700 border-violet-100',
+        rose: 'bg-rose-50 text-rose-700 border-rose-100',
         slate: 'bg-slate-50 text-slate-600 border-slate-100',
     }[item.tone] || 'bg-slate-50 text-slate-600 border-slate-100';
 
     return (
-        <div className="grid gap-3 p-4 md:grid-cols-[auto_1fr_auto] md:items-center md:p-5">
+        <div
+            className={[
+                'grid gap-3 p-4 md:grid-cols-[auto_1fr] md:items-center md:p-5',
+                item.href ? 'cursor-pointer transition-colors hover:bg-muted/30' : '',
+            ].join(' ')}
+            onClick={() => item.href && router.visit(item.href)}
+            role={item.href ? 'button' : undefined}
+            tabIndex={item.href ? 0 : undefined}
+            onKeyDown={(event) => {
+                if (item.href && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    router.visit(item.href);
+                }
+            }}
+        >
             <div className={`h-11 w-11 rounded-2xl border flex items-center justify-center ${toneClass}`}>
                 <Icon className="h-5 w-5" />
             </div>
@@ -619,15 +622,6 @@ function PulseNotification({ item }) {
                 </p>
             </div>
 
-            {item.href ? (
-                <Button variant="outline" className="h-10 rounded-xl md:w-28" onClick={() => router.visit(item.href)}>
-                    {item.action || 'Open'}
-                </Button>
-            ) : (
-                <Button variant="outline" className="h-10 rounded-xl md:w-28" disabled>
-                    {item.action || 'Open'}
-                </Button>
-            )}
         </div>
     );
 }
@@ -744,6 +738,9 @@ function OwnedCard({ entry }) {
     const orderId = entry.source_type === 'order' ? entry.source_id : null;
     const targetUrl = String(item.url || item.download_link || '').trim();
     const isLinkDigital = isDigitalProduct && /^[a-z][a-z0-9+\-.]*:\/\//i.test(targetUrl);
+    const shouldOpenProtectedStreamInModal = isDigitalProduct
+        && ['video_stream', 'audio_stream'].includes(item.digital_delivery_type)
+        && !item.allow_download;
 
     const handleConfirmReceipt = async () => {
         const message = isServiceProduct
@@ -832,6 +829,17 @@ function OwnedCard({ entry }) {
 
         if (!orderId) {
             toast.error('Pakua inapatikana kwa manunuzi ya moja kwa moja ya bidhaa hii.');
+            return;
+        }
+
+        if (shouldOpenProtectedStreamInModal) {
+            window.dispatchEvent(new CustomEvent('takeer:digital-ready', {
+                detail: {
+                    orderId,
+                    productTitle: item.title || item.name || 'Premium media',
+                    itemId: item.id || entry.item_id,
+                },
+            }));
             return;
         }
 
@@ -979,6 +987,11 @@ function OwnedCard({ entry }) {
                                 <>
                                     <ExternalLink className="mr-2 h-4 w-4" />
                                     Open Link
+                                </>
+                            ) : shouldOpenProtectedStreamInModal ? (
+                                <>
+                                    <BookOpenText className="mr-2 h-4 w-4" />
+                                    Open
                                 </>
                             ) : (
                                 <>

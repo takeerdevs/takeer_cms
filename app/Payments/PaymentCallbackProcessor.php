@@ -8,6 +8,7 @@ use App\Models\SubscriptionInvoice;
 use App\Models\Transaction;
 use App\Models\UserSubscription;
 use App\Services\EntitlementService;
+use App\Services\PayoutPolicyService;
 use App\Services\SmsService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -54,8 +55,8 @@ class PaymentCallbackProcessor
 
         DB::transaction(function () use ($order, $gatewayRef, $gateway) {
             $isPhysical = $order->requiresPhysicalFulfillment();
-            $isCustomDelivery = $order->product?->isDigital()
-                && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery';
+            $payoutPolicy = app(PayoutPolicyService::class)->resolveForOrder($order);
+            $shouldHoldFunds = $isPhysical || (bool) $payoutPolicy['holds_funds'];
 
             if ($isPhysical && $order->is_inquiry) {
                 $order->markPhysicalAgreement([
@@ -67,7 +68,7 @@ class PaymentCallbackProcessor
             $order->update([
                 'payment_status' => $isPhysical
                     ? 'awaiting_merchant_confirmation'
-                    : ($isCustomDelivery ? 'escrow_locked' : 'resolved_merchant_paid'),
+                    : ($shouldHoldFunds ? 'escrow_locked' : 'resolved_merchant_paid'),
                 'gateway_ref'    => $gatewayRef,
                 'payment_gateway' => $gateway,
                 'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
@@ -92,10 +93,10 @@ class PaymentCallbackProcessor
                 ['balance' => 0, 'frozen_balance' => 0]
             );
 
-            if ($isPhysical || $isCustomDelivery) {
-                // Freeze funds in merchant wallet until buyer confirms delivery
+            if ($shouldHoldFunds) {
+                // Freeze funds in merchant wallet until buyer, admin, or policy review releases them.
                 $wallet->increment('frozen_balance', $order->total_paid);
-                if ($isCustomDelivery) {
+                if (! $isPhysical) {
                     $this->entitlementService->grantForOrder($order->fresh(['product']));
                 }
                 if ($isPhysical) {
@@ -112,7 +113,7 @@ class PaymentCallbackProcessor
                     }
                 }
             } else {
-                // Instantly credit merchant for digital goods
+                // Credit merchant according to the resolved payout policy.
                 $wallet->increment('balance', $fee['net_amount']);
                 $this->entitlementService->grantForOrder($order->fresh(['product']));
 
@@ -130,6 +131,8 @@ class PaymentCallbackProcessor
                     'status' => 'confirmed',
                 ]);
         });
+
+        $this->sendDigitalAccessSms($order);
 
         // Fire events (outside transaction to avoid holding DB locks)
         if ($order->product) {
@@ -202,6 +205,27 @@ class PaymentCallbackProcessor
         ]);
 
         return $subscription;
+    }
+
+    private function sendDigitalAccessSms(Order $order): void
+    {
+        $order->loadMissing(['buyer', 'product']);
+        if (!$order->product || !($order->product->isDigital() || $order->product->isService())) {
+            return;
+        }
+
+        $phone = $order->buyer?->phone_number ?: $order->account_phone ?: $order->customer_phone;
+        if (!$phone) {
+            return;
+        }
+
+        $this->smsService->sendDigitalDeliveryNotification(
+            $phone,
+            (string) $order->product->title,
+            url('/orders'),
+            $order->buyer_id,
+            'digital-delivery:'.($order->public_id ?: $order->id)
+        );
     }
 
     private function handleRetailCreditPayment(Order $paymentOrder, string $gatewayRef, string $gateway): void

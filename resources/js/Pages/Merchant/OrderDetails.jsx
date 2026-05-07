@@ -84,7 +84,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const [bodaPhone, setBodaPhone] = useState(''); // Keep variable name but update label below
     const [localDeliveryPhone, setLocalDeliveryPhone] = useState('');
     const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
-    
+
     // PIN Verification State
     const [pickupPinInput, setPickupPinInput] = useState('');
     const [releasePinInput, setReleasePinInput] = useState('');
@@ -352,7 +352,6 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                         <>
                                             <p><span className="text-muted-foreground">Jina:</span> <span className="font-semibold">{order.buyer?.name || 'N/A'}</span></p>
                                             <p><span className="text-muted-foreground">Namba:</span> <span className="font-semibold">{order.buyer?.phone_number || 'N/A'}</span></p>
-                                            <p><span className="text-muted-foreground">Masked:</span> <span className="font-semibold">{maskPhone(order.buyer?.phone_number || '') || 'N/A'}</span></p>
                                         </>
                                     )}
                                 </CardContent>
@@ -370,8 +369,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <p><span className="text-muted-foreground">Kiasi:</span> <span className="font-semibold">{orderQuantityLabel(order)}</span></p>
                                     <p><span className="text-muted-foreground">Bei moja:</span> <span className="font-semibold">{orderUnitPriceLabel(order)}</span></p>
                                     <p><span className="text-muted-foreground">Jumla:</span> <span className="font-semibold">TZS {Number(order.total_paid || 0).toLocaleString()}</span></p>
-                                    <p><span className="text-muted-foreground">Payment phone:</span> <span className="font-semibold">{order.payment_phone || 'N/A'}</span></p>
-                                    <p><span className="text-muted-foreground">Account phone:</span> <span className="font-semibold">{order.account_phone || 'N/A'}</span></p>
+                                    <p><span className="text-muted-foreground">Payment phone:</span> <span className="font-semibold">{maskPhone(order.payment_phone)}</span></p>
+                                    <p><span className="text-muted-foreground">Account phone:</span> <span className="font-semibold">{maskPhone(order.account_phone)}</span></p>
                                 </CardContent>
                             </Card>
 
@@ -418,7 +417,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <p className="text-xs font-black uppercase tracking-widest text-brand-700/80 mb-2">Customer Address:</p>
                                             <p className="font-bold text-brand-900 mb-2">{order.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
                                             {order.delivery?.latitude && (
-                                                <a 
+                                                <a
                                                     href={`https://www.google.com/maps/search/?api=1&query=${order.delivery.latitude},${order.delivery.longitude}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
@@ -433,9 +432,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <form onSubmit={submitQuote} className="flex flex-col sm:flex-row gap-3">
                                                 <div className="flex-1">
                                                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Enter Shipping Fee (TZS)</label>
-                                                    <Input 
+                                                    <Input
                                                         type="number"
-                                                        placeholder="Mf. 5000" 
+                                                        placeholder="Mf. 5000"
                                                         value={shippingFeeInput}
                                                         onChange={e => setShippingFeeInput(e.target.value)}
                                                         className="font-bold rounded-xl h-11"
@@ -443,8 +442,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     />
                                                 </div>
                                                 <div className="flex items-end">
-                                                    <Button 
-                                                        type="submit" 
+                                                    <Button
+                                                        type="submit"
                                                         className="h-11 rounded-xl px-8 bg-brand-600 hover:bg-brand-700 font-bold"
                                                         disabled={quoteSubmitting || !shippingFeeInput}
                                                     >
@@ -558,8 +557,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                         <div className="flex flex-col gap-4">
                                             <p className="text-sm font-medium">Mteja umechagua kutuma dereva wake kuchukua mzigo. Unapomkabidhi mzigo huyo dereva, omba aakupe <strong>Pickup PIN</strong> aliyopewa na Mteja.</p>
                                             <form onSubmit={verifyPickupPin} className="flex gap-2 max-w-sm">
-                                                <Input 
-                                                    placeholder="Weka 4-Digit PIN..." 
+                                                <Input
+                                                    placeholder="Weka 4-Digit PIN..."
                                                     value={pickupPinInput}
                                                     onChange={e => setPickupPinInput(e.target.value)}
                                                     maxLength={4}
@@ -684,8 +683,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 <p className="text-sm font-semibold text-brand-900">Delivery verification needed:</p>
                                                 <p className="text-sm">Dereva wako akishamkabidhi mteja mzigo, mteja atampa huyo dereva <strong>Release PIN</strong>. Ingiza hapa chini ili kupata pesa zako:</p>
                                                 <form onSubmit={verifyDeliveryPin} className="flex gap-2 max-w-sm">
-                                                    <Input 
-                                                        placeholder="Enter 4-Digit Release PIN..." 
+                                                    <Input
+                                                        placeholder="Enter 4-Digit Release PIN..."
                                                         value={releasePinInput}
                                                         onChange={e => setReleasePinInput(e.target.value)}
                                                         maxLength={4}
@@ -779,21 +778,6 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </CardContent>
                                 </Card>
                             )}
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" className="rounded-xl" onClick={() => router.visit(`/merchant/${merchantUsername}/orders`)}>
-                                <Store className="h-4 w-4 mr-2" />
-                                Back to Orders
-                            </Button>
-                            <Button 
-                                className="rounded-xl" 
-                                onClick={() => router.visit(`/chat/${order?.public_id}?acting_as=merchant`)}
-                                disabled={loading || !order?.public_id}
-                            >
-                                <MessageSquare className="h-4 w-4 mr-2" />
-                                Continue in Safe Chat
-                            </Button>
                         </div>
                     </>
                 )}
