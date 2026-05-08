@@ -125,7 +125,7 @@ function ProductRailCard({ product, compact = false }) {
                         product_type: product.type,
                     },
                 })}
-                className={`${compact ? 'w-36' : 'w-40'} shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md`}
+                className="w-40 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
             >
                 <div className="relative aspect-square bg-white">
                     {discountPercent > 0 && (
@@ -141,7 +141,7 @@ function ProductRailCard({ product, compact = false }) {
                         </div>
                     )}
                 </div>
-                <div className="space-y-1.5 p-2.5">
+                <div className="space-y-1 px-2.5 py-2">
                     <p className="min-h-[36px] text-[12px] font-black leading-tight text-foreground line-clamp-2 mb-0">
                         {product.title}
                     </p>
@@ -150,7 +150,7 @@ function ProductRailCard({ product, compact = false }) {
                             {unitLabel}
                         </p>
                     )}
-                    <p className="pt-1 text-[12px] font-black leading-none text-slate-950">
+                    <p className="text-[12px] font-black leading-none text-slate-950">
                         {productRailPriceLabel(product, price, compact)}
                     </p>
                     {hasDiscount && (

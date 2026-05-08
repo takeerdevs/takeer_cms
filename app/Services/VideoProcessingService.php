@@ -137,6 +137,7 @@ class VideoProcessingService
         $baseDir = 'processed/posts/'.$media->post_id.'/'.$media->id;
         $thumbnailPath = $baseDir.'/thumb.jpg';
         $processedPath = $baseDir.'/playback_720.mp4';
+        $hlsPath = $baseDir.'/hls/master.m3u8';
 
         $opened->getFrameFromSeconds($duration > 2 ? 1.5 : 0.2)
             ->export()
@@ -150,10 +151,23 @@ class VideoProcessingService
             ->inFormat($this->socialMp4Format())
             ->save($processedPath);
 
+        FFMpeg::fromDisk('public')
+            ->open($source)
+            ->exportForHLS()
+            ->setSegmentLength(6)
+            ->addFormat($this->hlsFormat(280, 48), function ($media) {
+                $media->addFilter($this->scaleFilter(426).',fps=24');
+            })
+            ->addFormat($this->hlsFormat(850, 64), function ($media) {
+                $media->addFilter($this->scaleFilter(720).',fps=30');
+            })
+            ->toDisk('public')
+            ->save($hlsPath);
+
         return [
             'thumbnail_url' => Storage::disk('public')->url($thumbnailPath),
             'processed_url' => Storage::disk('public')->url($processedPath),
-            'hls_url' => null,
+            'hls_url' => Storage::disk('public')->url($hlsPath),
             'mime' => 'video/mp4',
             'size' => Storage::disk('public')->size($processedPath),
             'duration_seconds' => $duration ?: null,
