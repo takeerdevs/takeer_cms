@@ -3,9 +3,23 @@ export function productUnitLabel(product) {
     if (!unit) return '';
 
     const quantity = Number(product?.sellable_quantity || 1);
-    const symbol = unit.symbol || unit.name || 'unit';
+    const symbol = displayUnitName(unit, quantity);
+    const contentLabel = productPackageContentLabel(product);
 
-    return quantity && quantity !== 1 ? `${formatQuantity(quantity)} ${symbol}` : symbol;
+    if (contentLabel && ['piece', 'pc', 'unit'].includes(String(unit.code || unit.symbol || '').toLowerCase()) && quantity > 1) {
+        return `${formatQuantity(quantity)} x ${contentLabel}`;
+    }
+
+    const baseLabel = quantity && quantity !== 1 ? `${formatQuantity(quantity)} ${symbol}` : `1 ${symbol}`;
+    return contentLabel ? `${baseLabel} (${contentLabel})` : baseLabel;
+}
+
+export function productPackageContentLabel(product) {
+    const unit = product?.package_content_unit_type;
+    const quantity = Number(product?.package_content_quantity || 0);
+    if (!unit || !quantity) return '';
+
+    return `${formatQuantity(quantity)} ${displayUnitName(unit, quantity)}`;
 }
 
 export function productPriceLabel(product, amount = null) {
@@ -21,6 +35,11 @@ export function productPriceRangeLabel(product, minAmount, maxAmount) {
     const max = Number(maxAmount || 0).toLocaleString();
 
     return `TZS ${min} - ${max}${unitLabel ? ` / ${unitLabel}` : ''}`;
+}
+
+export function productCardPriceLabel(product, amount = null) {
+    const price = Number(amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
+    return `TZS ${price.toLocaleString()}`;
 }
 
 export function productStockLabel(product, stock = null) {
@@ -52,12 +71,38 @@ export function orderUnitPriceLabel(order) {
     const snapshot = order?.unit_snapshot;
     if (!snapshot) return `TZS ${price.toLocaleString()}`;
 
-    const sellable = Number(snapshot.sellable_quantity || 1);
-    const unitLabel = sellable && sellable !== 1
-        ? `${formatQuantity(sellable)} ${snapshot.symbol || snapshot.name || 'units'}`
-        : (snapshot.symbol || snapshot.name || 'unit');
+    const unitLabel = snapshotUnitLabel(snapshot);
 
     return `TZS ${price.toLocaleString()} / ${unitLabel}`;
+}
+
+function snapshotUnitLabel(snapshot) {
+    const sellable = Number(snapshot.sellable_quantity || 1);
+    const baseUnit = displayUnitName(snapshot, sellable);
+    const contentUnit = snapshot.package_content_unit_type;
+    const contentQuantity = Number(snapshot.package_content_quantity || 0);
+
+    if (contentUnit && contentQuantity) {
+        const contentLabel = `${formatQuantity(contentQuantity)} ${displayUnitName(contentUnit, contentQuantity)}`;
+        if (['piece', 'pc', 'unit'].includes(String(snapshot.code || snapshot.symbol || '').toLowerCase()) && sellable > 1) {
+            return `${formatQuantity(sellable)} x ${contentLabel}`;
+        }
+        return `${formatQuantity(sellable)} ${baseUnit} (${contentLabel})`;
+    }
+
+    return `${formatQuantity(sellable)} ${baseUnit}`;
+}
+
+export function displayUnitName(unit, quantity = 1) {
+    const code = String(unit?.code || '').toLowerCase();
+    const raw = unit?.symbol || unit?.name || 'unit';
+    const number = Number(quantity || 1);
+
+    if (['piece'].includes(code) || raw === 'piece') return number === 1 ? 'pc' : 'pcs';
+    if (code === 'pair' || raw === 'pair') return number === 1 ? 'pair' : 'pairs';
+    if (code === 'dozen' || raw === 'doz') return number === 1 ? 'dozen' : 'dozens';
+
+    return raw;
 }
 
 export function formatQuantity(value) {

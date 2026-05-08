@@ -684,6 +684,7 @@ function OwnedCard({ entry }) {
     const postRouteKey = item.public_id || item.id;
     const [isDownloading, setIsDownloading] = useState(false);
     const [showPin, setShowPin] = useState(false);
+    const [showReceiptConfirmModal, setShowReceiptConfirmModal] = useState(false);
     const [confirmingReceipt, setConfirmingReceipt] = useState(false);
     const [revisionMessage, setRevisionMessage] = useState('');
     const [revisionSubmitting, setRevisionSubmitting] = useState(false);
@@ -701,6 +702,15 @@ function OwnedCard({ entry }) {
     const disputeAllowsOptionalEvidence = isServiceProduct || isCustomDeliveryProduct;
     const serviceRequest = orderDetails?.service_request || null;
     const customDelivery = orderDetails?.custom_delivery || null;
+    const customRevisionLimit = Number(customDelivery?.revision_limit || 3);
+    const customRevisionCount = Number(customDelivery?.revision_count || 0);
+    const customRevisionRemaining = Math.max(customRevisionLimit - customRevisionCount, 0);
+    const customRevisionLimitReached = customRevisionRemaining <= 0;
+    const customDeliveryDueDate = customDelivery?.due_at ? new Date(customDelivery.due_at) : null;
+    const customDeliveryDueLabel = customDeliveryDueDate && !Number.isNaN(customDeliveryDueDate.valueOf())
+        ? customDeliveryDueDate.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : null;
+    const customDeliveryIsOverdue = customDeliveryDueDate && !customDelivery?.delivered_at && customDeliveryDueDate.getTime() < Date.now();
     const refundPolicy = orderDetails?.refund_policy || null;
     const canOpenRefundClaim = !refundPolicy || refundPolicy.status === 'eligible';
     const refundPolicyTone = canOpenRefundClaim
@@ -742,15 +752,42 @@ function OwnedCard({ entry }) {
         && ['video_stream', 'audio_stream'].includes(item.digital_delivery_type)
         && !item.allow_download;
 
-    const handleConfirmReceipt = async () => {
-        const message = isServiceProduct
-            ? 'Umehakikisha huduma imetolewa kama mlivyokubaliana? Malipo yatatumwa kwa mtoa huduma.'
-            : 'Umehakikisha umepokea mzigo huu na uko katika hali nzuri? Hela zitatumwa kwa muuzaji mara moja.';
-        if (!confirm(message)) return;
+    const confirmReceiptCopy = (() => {
+        if (isCustomDeliveryProduct) {
+            return {
+                title: 'Accept Custom Work?',
+                body: 'Confirm only if you are happy with this custom delivery. Takeer will release the held payment to the creator.',
+                cancel: 'Keep Reviewing',
+                confirm: 'Accept Custom Work',
+            };
+        }
+        if (isServiceProduct) {
+            return {
+                title: 'Confirm Service Complete?',
+                body: 'Confirm only if the service was delivered as agreed. Takeer will release the held payment to the provider.',
+                cancel: 'Not Yet',
+                confirm: 'Release Payment',
+            };
+        }
+
+        return {
+            title: 'Confirm Receipt?',
+            body: 'Confirm only if you received the item and it is in good condition. Takeer will release the held payment to the seller.',
+            cancel: 'Keep Checking',
+            confirm: 'Confirm Receipt',
+        };
+    })();
+
+    const handleConfirmReceipt = () => {
+        setShowReceiptConfirmModal(true);
+    };
+
+    const submitConfirmReceipt = async () => {
         setConfirmingReceipt(true);
         try {
             await axios.post(`/api/buyer/orders/${orderDetails.id}/confirm-receipt`);
             toast.success('Hifadhi imethibitishwa! Asante.');
+            setShowReceiptConfirmModal(false);
             window.location.reload(); // Refresh to update status
         } catch (error) {
             toast.error(error.response?.data?.message || 'Imeshindwa kudhibitisha.');
@@ -932,11 +969,17 @@ function OwnedCard({ entry }) {
                                                 ? 'Delivered for review'
                                                 : 'In production'}
                                 </p>
-                                <p className="mt-1 text-sm font-bold">
+                                <p className="mt-1 min-w-0 truncate text-sm font-bold" title={customDelivery?.file_name || undefined}>
                                     {customDelivery?.file_name || 'Merchant is preparing your custom delivery.'}
                                 </p>
                                 {customDelivery?.message && (
                                     <p className="mt-2 text-xs leading-5 text-muted-foreground whitespace-pre-line">{customDelivery.message}</p>
+                                )}
+                                {customDeliveryDueLabel && (
+                                    <p className={`mt-2 flex items-center gap-1.5 text-[11px] font-bold ${customDeliveryIsOverdue ? 'text-red-700' : 'text-muted-foreground'}`}>
+                                        <CalendarClock className="h-3.5 w-3.5" />
+                                        Due {customDeliveryDueLabel}
+                                    </p>
                                 )}
                                 {customDelivery?.revision_message && (
                                     <p className="mt-2 rounded-xl bg-white/80 px-3 py-2 text-xs leading-5 text-amber-900">
@@ -949,6 +992,12 @@ function OwnedCard({ entry }) {
                                 <Button className="w-full rounded-2xl" onClick={handleDownload} disabled={isDownloading}>
                                     {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                                     Download Delivery
+                                </Button>
+                            )}
+
+                            {orderDetails?.payment_status === 'escrow_locked' && !customDelivery?.delivered_at && customDeliveryIsOverdue && (
+                                <Button variant="outline" className="w-full rounded-xl text-red-600 border-red-200" onClick={() => setShowDisputeModal(true)} disabled={!canOpenRefundClaim}>
+                                    Dispute missed deadline
                                 </Button>
                             )}
 
@@ -966,10 +1015,14 @@ function OwnedCard({ entry }) {
                                         value={revisionMessage}
                                         onChange={(e) => setRevisionMessage(e.target.value)}
                                         rows={3}
-                                        placeholder="Need changes? Tell the creator what to revise..."
+                                        placeholder={customRevisionLimitReached ? 'Revision limit reached. Accept the work or open a dispute.' : 'Need changes? Tell the creator what to revise...'}
+                                        disabled={customRevisionLimitReached}
                                         className="w-full rounded-2xl border border-input bg-background p-3 text-sm"
                                     />
-                                    <Button variant="outline" className="w-full rounded-xl" onClick={handleRequestRevision} disabled={revisionSubmitting || revisionMessage.trim().length < 10}>
+                                    <p className="text-[11px] font-semibold text-muted-foreground">
+                                        {customRevisionRemaining} of {customRevisionLimit} revision requests remaining
+                                    </p>
+                                    <Button variant="outline" className="w-full rounded-xl" onClick={handleRequestRevision} disabled={customRevisionLimitReached || revisionSubmitting || revisionMessage.trim().length < 10}>
                                         {revisionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
                                         Request Revision
                                     </Button>
@@ -1344,6 +1397,41 @@ function OwnedCard({ entry }) {
                                         {disputeSubmitting ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : (isServiceProduct ? 'TUMA MGOGORO' : 'SUBMIT CLAIM')}
                                     </Button>
                                 </form>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showReceiptConfirmModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <div className="bg-background rounded-[28px] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                            <div className="p-6 space-y-5">
+                                <div className="h-12 w-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                                    <CheckCircle2 className="h-6 w-6" />
+                                </div>
+                                <div className="space-y-2">
+                                    <h2 className="text-xl font-black tracking-tight">{confirmReceiptCopy.title}</h2>
+                                    <p className="text-sm leading-6 text-muted-foreground">{confirmReceiptCopy.body}</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="rounded-xl"
+                                        onClick={() => setShowReceiptConfirmModal(false)}
+                                        disabled={confirmingReceipt}
+                                    >
+                                        {confirmReceiptCopy.cancel}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        onClick={submitConfirmReceipt}
+                                        disabled={confirmingReceipt}
+                                    >
+                                        {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : confirmReceiptCopy.confirm}
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -180,6 +180,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/shipping-profiles/{shippingProfile:id}', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'destroy']);
         Route::post('/shipping-profiles/{shippingProfile:id}/set-default', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'setDefault']);
 
+        Route::get('/return-policies', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'index']);
+        Route::post('/return-policies', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'store']);
+        Route::put('/return-policies/{returnPolicy:id}', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'update']);
+        Route::delete('/return-policies/{returnPolicy:id}', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'destroy']);
+        Route::post('/return-policies/{returnPolicy:id}/set-default', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'setDefault']);
+
         Route::get('/shipping-profiles/{shippingProfile:id}/zones', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'index']);
         Route::post('/shipping-profiles/{shippingProfile:id}/zones', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'store']);
         Route::put('/shipping-zones/{shippingZone:id}', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'update']);
@@ -226,6 +232,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Disputes
         Route::get('/disputes', [AdminController::class, 'indexDisputes']);
         Route::post('/disputes/{dispute}/resolve', [AdminController::class, 'resolveDispute']);
+        Route::get('/custom-delivery-events/{event}/download', [AdminController::class, 'downloadCustomDeliveryEvent']);
         Route::post('/disputes/{dispute}/trust-safety', [AdminController::class, 'handleTrustSafetyDispute']);
         Route::get('/trust-safety-reviews', [AdminController::class, 'indexTrustSafetyReviews']);
         Route::post('/trust-safety-reviews/{review}', [AdminController::class, 'resolveTrustSafetyReview']);

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\PostResource;
 use App\Models\AdminSetting;
 use App\Models\Bundle;
+use App\Models\CustomDeliveryEvent;
 use App\Models\ContentItem;
 use App\Models\Dispute;
 use App\Models\DisputeResolution;
@@ -50,6 +51,7 @@ class AdminController extends Controller
             'order.merchant:id,display_name,username',
             'order.product:id,title,type,digital_delivery_type,refund_policy,refund_window_days,refund_policy_note',
             'order.delivery:id,order_id,bus_company,waybill_tracking_number,waybill_photo_url,delivery_status',
+            'order.customDeliveryEvents',
             'resolution:id,order_id,admin_id,verdict,reason_notes,created_at',
             'resolution.admin:id,name',
         ])->latest();
@@ -86,6 +88,26 @@ class AdminController extends Controller
                     'refund_locked_at' => $order->refund_locked_at?->toISOString(),
                     'refund_lock_reason' => $order->refund_lock_reason,
                     'refund_policy' => $order->refundPolicyContext(),
+                    'custom_delivery_due_at' => $order->custom_delivery_due_at?->toISOString(),
+                    'custom_delivery_status' => $order->custom_delivery_status,
+                    'custom_delivery_revision_count' => (int) $order->custom_delivery_revision_count,
+                    'custom_delivery_events' => $order->customDeliveryEvents
+                        ->sortBy('created_at')
+                        ->values()
+                        ->map(fn (CustomDeliveryEvent $event) => [
+                            'id' => $event->id,
+                            'actor_type' => $event->actor_type,
+                            'event_type' => $event->event_type,
+                            'revision_number' => $event->revision_number,
+                            'file_name' => $event->file_name,
+                            'file_mime' => $event->file_mime,
+                            'file_size' => $event->file_size,
+                            'message' => $event->message,
+                            'created_at' => $event->created_at?->toISOString(),
+                            'download_url' => $event->file_url && str_starts_with((string) $event->file_url, 'private://')
+                                ? "/admin/api/custom-delivery-events/{$event->id}/download"
+                                : $event->file_url,
+                        ]),
                     'merchant_dispatch_video_url' => $order->merchant_dispatch_video_url,
                     'buyer' => $order->buyer ? [
                         'id' => $order->buyer->id,
@@ -123,6 +145,21 @@ class AdminController extends Controller
         });
 
         return response()->json($disputes);
+    }
+
+    public function downloadCustomDeliveryEvent(Request $request, CustomDeliveryEvent $event)
+    {
+        $fileUrl = (string) $event->file_url;
+        abort_unless(str_starts_with($fileUrl, 'private://'), 404);
+
+        $path = substr($fileUrl, strlen('private://'));
+        abort_unless(Storage::disk('local')->exists($path), 404);
+
+        return Storage::disk('local')->download($path, $event->file_name ?: basename($path), [
+            'Content-Type' => $event->file_mime ?: Storage::disk('local')->mimeType($path),
+            'Cache-Control' => 'no-store, private',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     /**

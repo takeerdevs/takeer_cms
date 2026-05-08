@@ -124,7 +124,7 @@ class CheckoutController extends Controller
         }
 
         if ($product?->isPhysical()) {
-            $product->loadMissing('unitType');
+            $product->loadMissing(['unitType', 'packageContentUnitType']);
             $requestedQuantity = max(0.001, (float) ($validated['quantity'] ?? 1));
             $sellableQuantity = max(0.001, (float) ($product->sellable_quantity ?: 1));
             $minimumQuantity = max(0.001, (float) ($product->min_order_quantity ?: $sellableQuantity));
@@ -375,6 +375,15 @@ class CheckoutController extends Controller
                         'code' => $product->unitType?->code,
                         'symbol' => $product->unitType?->symbol,
                         'sellable_quantity' => (float) ($product->sellable_quantity ?: 1),
+                        'package_content_quantity' => $product->package_content_quantity !== null ? (float) $product->package_content_quantity : null,
+                        'package_content_unit_type' => $product->package_content_unit_type_id ? [
+                            'unit_type_id' => $product->package_content_unit_type_id,
+                            'name' => $product->packageContentUnitType?->name,
+                            'code' => $product->packageContentUnitType?->code,
+                            'symbol' => $product->packageContentUnitType?->symbol,
+                        ] : null,
+                        'package_contents' => $product->package_contents,
+                        'package_content_items' => $product->package_content_items ?: [],
                     ] : null,
                     'unit_price'       => $purchasable instanceof Bundle && !empty($selectedBundleItems)
                         ? $totalPaid + $discountAmount
@@ -445,7 +454,10 @@ class CheckoutController extends Controller
                 if (!$isInquiry) {
                     $isCustomDelivery = $product?->isDigital()
                         && ($product->digital_delivery_type ?? null) === 'custom_delivery';
-                    $newOrder->update(['payment_status' => ($serviceRequest || $newOrder->requiresPhysicalFulfillment() || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid']);
+                    $newOrder->update([
+                        'payment_status' => ($serviceRequest || $newOrder->requiresPhysicalFulfillment() || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid',
+                        'custom_delivery_due_at' => $isCustomDelivery ? $newOrder->customDeliveryDueAtFrom() : null,
+                    ]);
                     if (! $newOrder->requiresPhysicalFulfillment()) {
                         app(\App\Services\EntitlementService::class)->grantForOrder($newOrder->fresh(['product']));
                     }
@@ -1094,7 +1106,7 @@ class CheckoutController extends Controller
         $selectedVariant = null;
         $requestedQuantity = 1.0;
         if ($validated['purchasable_type'] === 'product') {
-            $product = Product::with('unitType')->findOrFail($validated['purchasable_id']);
+            $product = Product::with(['unitType', 'packageContentUnitType'])->findOrFail($validated['purchasable_id']);
             $isServiceInquiry = $product->isService() && (
                 ($product->service_mode ?? null) === 'request_quote'
                 || ($product->service_pricing_model ?? null) === 'contract_quote'
@@ -1194,6 +1206,15 @@ class CheckoutController extends Controller
                     'code' => $product->unitType?->code,
                     'symbol' => $product->unitType?->symbol,
                     'sellable_quantity' => (float) ($product->sellable_quantity ?: 1),
+                    'package_content_quantity' => $product->package_content_quantity !== null ? (float) $product->package_content_quantity : null,
+                    'package_content_unit_type' => $product->package_content_unit_type_id ? [
+                        'unit_type_id' => $product->package_content_unit_type_id,
+                        'name' => $product->packageContentUnitType?->name,
+                        'code' => $product->packageContentUnitType?->code,
+                        'symbol' => $product->packageContentUnitType?->symbol,
+                    ] : null,
+                    'package_contents' => $product->package_contents,
+                    'package_content_items' => $product->package_content_items ?: [],
                 ] : null,
                 'unit_price' => $unitPrice,
                 'total_paid' => $totalPrice, // No shipping fee for pickup

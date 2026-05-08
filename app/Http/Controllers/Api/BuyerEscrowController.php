@@ -73,15 +73,35 @@ class BuyerEscrowController extends Controller
             return response()->json(['message' => 'The merchant has not delivered a file yet.'], 400);
         }
 
+        $revisionLimit = Order::CUSTOM_DELIVERY_REVISION_LIMIT;
+        if ((int) $order->custom_delivery_revision_count >= $revisionLimit) {
+            return response()->json([
+                'message' => "You have used all {$revisionLimit} revision requests for this custom work. Please accept the work or open a dispute if there is a serious issue.",
+                'revision_limit' => $revisionLimit,
+                'revision_count' => (int) $order->custom_delivery_revision_count,
+            ], 422);
+        }
+
         $validated = $request->validate([
             'message' => ['required', 'string', 'min:10', 'max:3000'],
         ]);
+
+        $nextRevisionCount = ((int) $order->custom_delivery_revision_count) + 1;
 
         $order->update([
             'custom_delivery_status' => 'revision_requested',
             'custom_delivery_revision_message' => $validated['message'],
             'custom_delivery_revision_requested_at' => now(),
+            'custom_delivery_revision_count' => $nextRevisionCount,
             'custom_delivery_accepted_at' => null,
+        ]);
+
+        $order->customDeliveryEvents()->create([
+            'actor_type' => 'buyer',
+            'actor_id' => $request->user()->id,
+            'event_type' => 'revision_requested',
+            'revision_number' => $nextRevisionCount,
+            'message' => $validated['message'],
         ]);
 
         return response()->json([
@@ -90,6 +110,8 @@ class BuyerEscrowController extends Controller
                 'status' => $order->custom_delivery_status,
                 'revision_message' => $order->custom_delivery_revision_message,
                 'revision_requested_at' => $order->custom_delivery_revision_requested_at?->toISOString(),
+                'revision_count' => (int) $order->custom_delivery_revision_count,
+                'revision_limit' => Order::CUSTOM_DELIVERY_REVISION_LIMIT,
             ],
         ]);
     }
@@ -130,7 +152,7 @@ class BuyerEscrowController extends Controller
             $evidenceUrl = Storage::disk('public')->url($path);
         }
 
-        DB::transaction(function () use ($order, $evidenceUrl, $validated, $serviceRequest) {
+        DB::transaction(function () use ($order, $evidenceUrl, $validated, $serviceRequest, $request) {
             $order->update(['payment_status' => 'disputed']);
             if ($serviceRequest) {
                 $serviceRequest->update([
@@ -151,6 +173,17 @@ class BuyerEscrowController extends Controller
                     'status' => 'open',
                 ]
             );
+
+            if ($order->product?->isDigital() && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery') {
+                $order->customDeliveryEvents()->create([
+                    'actor_type' => 'buyer',
+                    'actor_id' => $request->user()->id,
+                    'event_type' => 'dispute_opened',
+                    'revision_number' => (int) $order->custom_delivery_revision_count,
+                    'file_url' => $evidenceUrl !== 'service-dispute-no-file' ? $evidenceUrl : null,
+                    'message' => $validated['reason'],
+                ]);
+            }
         });
 
         return response()->json(['message' => 'Mgogoro umefunguliwa. Admin atafanya uchunguzi hivi punde.']);

@@ -64,6 +64,12 @@ class MerchantLocationController extends Controller
     {
         $merchant = $this->merchantFromRequest($request);
 
+        if ($merchant->type === 'personal' && $merchant->locations()->exists()) {
+            return response()->json([
+                'message' => 'Personal account inaweza kuwa na eneo moja tu la stock/pickup. Hariri eneo lililopo au verify business account kama unahitaji maeneo mengi.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'address' => 'required|string',
@@ -88,19 +94,20 @@ class MerchantLocationController extends Controller
 
         $location = $merchant->locations()->create($validated);
 
-        // Automatically add owner as Manager for this location
-        \App\Models\MerchantStaff::firstOrCreate([
-            'merchant_id' => $merchant->id,
-            'user_id' => $merchant->user_id,
-            'assigned_location_id' => $location->id,
-        ], [
-            'role' => 'MANAGER',
-            'pin_hash' => \Illuminate\Support\Facades\Hash::make('0000'), // Default PIN for owners
-            'is_active' => true,
-        ]);
+        if ($merchant->isBusinessProfile()) {
+            \App\Models\MerchantStaff::firstOrCreate([
+                'merchant_id' => $merchant->id,
+                'user_id' => $merchant->user_id,
+                'assigned_location_id' => $location->id,
+            ], [
+                'role' => 'MANAGER',
+                'pin_hash' => \Illuminate\Support\Facades\Hash::make('0000'),
+                'is_active' => true,
+            ]);
+        }
 
         return response()->json([
-            'message' => 'Shop location saved.',
+            'message' => $merchant->type === 'personal' ? 'Stock/pickup point saved.' : 'Shop location saved.',
             'data' => $location
         ]);
     }

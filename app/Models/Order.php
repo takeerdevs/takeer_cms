@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    public const CUSTOM_DELIVERY_REVISION_LIMIT = 3;
+
     protected $fillable = [
         'public_id',
         'pickup_code',
@@ -80,10 +82,12 @@ class Order extends Model
         'custom_delivery_file_mime',
         'custom_delivery_file_size',
         'custom_delivery_message',
+        'custom_delivery_due_at',
         'custom_delivery_delivered_at',
         'custom_delivery_status',
         'custom_delivery_revision_message',
         'custom_delivery_revision_requested_at',
+        'custom_delivery_revision_count',
         'custom_delivery_accepted_at',
         'download_count',
         'first_downloaded_at',
@@ -123,8 +127,10 @@ class Order extends Model
             'live_event_checked_in_at' => 'datetime',
             'live_event_access_last_sent_at' => 'datetime',
             'custom_delivery_file_size' => 'integer',
+            'custom_delivery_due_at' => 'datetime',
             'custom_delivery_delivered_at' => 'datetime',
             'custom_delivery_revision_requested_at' => 'datetime',
+            'custom_delivery_revision_count' => 'integer',
             'custom_delivery_accepted_at' => 'datetime',
             'download_count' => 'integer',
             'first_downloaded_at' => 'datetime',
@@ -137,6 +143,21 @@ class Order extends Model
     public function buyer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'buyer_id');
+    }
+
+    public function customDeliveryDueAtFrom($start = null)
+    {
+        $this->loadMissing('product');
+
+        if (! $this->product?->isDigital() || ($this->product?->digital_delivery_type ?? null) !== 'custom_delivery') {
+            return null;
+        }
+
+        $leadTimeDays = (int) ($this->product?->availability_lead_time_days ?? 0);
+
+        return $leadTimeDays > 0
+            ? ($start ?: now())->copy()->addDays($leadTimeDays)
+            : null;
     }
 
     public function coupon(): BelongsTo
@@ -240,6 +261,11 @@ class Order extends Model
     public function dispute(): HasOne
     {
         return $this->hasOne(Dispute::class);
+    }
+
+    public function customDeliveryEvents(): HasMany
+    {
+        return $this->hasMany(CustomDeliveryEvent::class);
     }
 
     public function review(): HasOne

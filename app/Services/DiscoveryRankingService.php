@@ -79,7 +79,7 @@ class DiscoveryRankingService
 
     public function locationBoost(Product $product, array $filters): int
     {
-        if ($product->type !== 'physical') {
+        if (! in_array($product->type, ['physical', 'service'], true)) {
             return 0;
         }
 
@@ -87,7 +87,7 @@ class DiscoveryRankingService
         $lat = isset($filters['lat']) ? (float) $filters['lat'] : null;
         $lng = isset($filters['lng']) ? (float) $filters['lng'] : null;
         $radiusKm = max(1, min(300, (float) ($filters['radius_km'] ?? 25)));
-        $locations = $product->merchant?->locations ?: collect();
+        $locations = $this->searchableLocations($product);
 
         if ($locations->isEmpty()) {
             return 0;
@@ -124,7 +124,7 @@ class DiscoveryRankingService
 
     public function discoveryLocation(Product $product, array $filters): ?array
     {
-        $locations = $product->merchant?->locations ?: collect();
+        $locations = $this->searchableLocations($product);
         if ($locations->isEmpty()) {
             return null;
         }
@@ -150,6 +150,63 @@ class DiscoveryRankingService
             'allow_self_pickup' => (bool) $location->allow_self_pickup,
             'distance_km' => $distanceKm !== null ? round($distanceKm, 1) : null,
         ] : null;
+    }
+
+    public function isInsideSearchRadius(Product $product, array $filters): bool
+    {
+        $lat = isset($filters['lat']) ? (float) $filters['lat'] : null;
+        $lng = isset($filters['lng']) ? (float) $filters['lng'] : null;
+
+        if ($lat === null || $lng === null) {
+            return true;
+        }
+
+        if (! in_array($product->type, ['physical', 'service'], true)) {
+            return false;
+        }
+
+        $nearest = $this->nearestLocation($this->searchableLocations($product), $lat, $lng);
+        if (! $nearest) {
+            return false;
+        }
+
+        $radiusKm = max(1, min(300, (float) ($filters['radius_km'] ?? 25)));
+
+        return $nearest['distance_km'] <= $radiusKm;
+    }
+
+    private function searchableLocations(Product $product): Collection
+    {
+        if ($product->type === 'service') {
+            $provider = $this->serviceProviderLocation($product);
+            if ($provider) {
+                return collect([$provider]);
+            }
+        }
+
+        return $product->merchant?->locations ?: collect();
+    }
+
+    private function serviceProviderLocation(Product $product): ?object
+    {
+        $location = $product->service_provider_location ?: [];
+        $lat = $location['lat'] ?? $location['latitude'] ?? null;
+        $lng = $location['lng'] ?? $location['longitude'] ?? null;
+
+        if ($lat === null || $lng === null) {
+            return null;
+        }
+
+        return (object) [
+            'name' => $location['name'] ?? 'Service location',
+            'address' => $location['address'] ?? null,
+            'city' => $location['city'] ?? null,
+            'region' => $location['region'] ?? null,
+            'latitude' => $lat,
+            'longitude' => $lng,
+            'is_primary' => true,
+            'allow_self_pickup' => false,
+        ];
     }
 
     private function nearestLocation(Collection $locations, float $lat, float $lng): ?array

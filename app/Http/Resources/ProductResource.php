@@ -122,7 +122,7 @@ class ProductResource extends JsonResource
                 ->where('merchant_id', $this->merchant_id)
                 ->where('type', 'physical')
                 ->whereIn('id', $serviceRelatedProductIds)
-                ->with(['images', 'unitType'])
+                ->with(['images', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs'])
                 ->withCount('postTags')
                 ->get()
                 ->filter(fn ($product) => ($product->post_tags_count ?? 0) > 0 || $isOwner)
@@ -141,8 +141,38 @@ class ProductResource extends JsonResource
                     'unit_type' => $product->product_unit_type_id ? [
                         'id' => $product->product_unit_type_id,
                         'name' => $product->unitType?->name,
+                        'code' => $product->unitType?->code,
                         'symbol' => $product->unitType?->symbol,
+                        'unit_category' => $product->unitType?->unit_category,
                     ] : null,
+                    'sellable_quantity' => $product->sellable_quantity !== null ? (float) $product->sellable_quantity : 1,
+                    'package_content_quantity' => $product->package_content_quantity !== null ? (float) $product->package_content_quantity : null,
+                    'package_content_unit_type' => $product->package_content_unit_type_id ? [
+                        'id' => $product->package_content_unit_type_id,
+                        'name' => $product->packageContentUnitType?->name,
+                        'code' => $product->packageContentUnitType?->code,
+                        'symbol' => $product->packageContentUnitType?->symbol,
+                        'unit_category' => $product->packageContentUnitType?->unit_category,
+                    ] : null,
+                    'package_contents' => $product->package_contents,
+                    'package_content_items' => $product->package_content_items ?: [],
+                    'return_policy' => $product->returnPolicy ? [
+                        'id' => $product->returnPolicy->id,
+                        'name' => $product->returnPolicy->name,
+                        'policy' => $product->returnPolicy->policy,
+                        'window_days' => $product->returnPolicy->window_days,
+                        'note' => $product->returnPolicy->note,
+                    ] : null,
+                    'faqs' => $product->faqs
+                        ->where('is_published', true)
+                        ->map(fn ($faq) => [
+                            'id' => $faq->id,
+                            'question' => $faq->question,
+                            'answer' => $faq->answer,
+                            'source' => $faq->source,
+                        ])
+                        ->values()
+                        ->all(),
                     'url' => url('/product/'.($product->slug ?: $product->id)),
                 ])
                 ->values()
@@ -174,6 +204,17 @@ class ProductResource extends JsonResource
             'inventory_count' => $this->inventory_count,
             'inventory_quantity' => $this->inventory_quantity !== null ? (float) $this->inventory_quantity : null,
             'sellable_quantity' => $this->sellable_quantity !== null ? (float) $this->sellable_quantity : 1,
+            'package_content_quantity' => $this->package_content_quantity !== null ? (float) $this->package_content_quantity : null,
+            'package_content_unit_type' => $this->package_content_unit_type_id ? [
+                'id' => $this->package_content_unit_type_id,
+                'name' => $this->packageContentUnitType?->name,
+                'code' => $this->packageContentUnitType?->code,
+                'symbol' => $this->packageContentUnitType?->symbol,
+                'unit_category' => $this->packageContentUnitType?->unit_category,
+                'allows_decimal' => (bool) ($this->packageContentUnitType?->allows_decimal ?? false),
+            ] : null,
+            'package_contents' => $this->package_contents,
+            'package_content_items' => $this->package_content_items ?: [],
             'min_order_quantity' => $this->min_order_quantity !== null ? (float) $this->min_order_quantity : null,
             'order_increment' => $this->order_increment !== null ? (float) $this->order_increment : null,
             'unit_type' => $this->product_unit_type_id ? [
@@ -192,10 +233,24 @@ class ProductResource extends JsonResource
             'download_link' => $canExposeDigitalDelivery && ($this->allow_download ?? true) ? $this->download_link : null,
             'digital_delivery_type' => $digitalDeliveryType,
             'refund_policy' => [
-                'policy' => $this->refund_policy ?: ($this->type === 'digital' ? 'strict' : 'standard'),
-                'window_days' => $this->refund_window_days !== null ? (int) $this->refund_window_days : null,
-                'note' => $this->refund_policy_note,
+                'id' => $this->returnPolicy?->id,
+                'name' => $this->returnPolicy?->name,
+                'policy' => $this->refund_policy ?: $this->returnPolicy?->policy ?: ($this->type === 'digital' ? 'strict' : 'standard'),
+                'window_days' => $this->refund_window_days !== null ? (int) $this->refund_window_days : $this->returnPolicy?->window_days,
+                'note' => $this->refund_policy_note ?: $this->returnPolicy?->note,
             ],
+            'faqs' => $this->whenLoaded('faqs', fn () => $this->faqs
+                ->filter(fn ($faq) => $isOwner || $faq->is_published)
+                ->map(fn ($faq) => [
+                    'id' => $faq->id,
+                    'question' => $faq->question,
+                    'answer' => $faq->answer,
+                    'source' => $faq->source,
+                    'is_published' => (bool) $faq->is_published,
+                    'sort_order' => (int) $faq->sort_order,
+                ])
+                ->values()
+                ->all()),
             'digital_content_type' => $this->type === 'digital' ? $this->digital_content_type : null,
             'digital_usage_license' => $this->type === 'digital' ? $this->digital_usage_license : null,
             'digital_access_instructions' => $canExposeDigitalDelivery && $this->type === 'digital'
@@ -289,7 +344,9 @@ class ProductResource extends JsonResource
             'service_mode' => $this->service_mode ?: $this->legacyServiceMode(),
             'service_scheduling_type' => $this->service_scheduling_type ?: 'none',
             'service_category' => $this->service_category,
+            'service_category_id' => $this->service_category_id,
             'service_subcategory' => $this->service_subcategory,
+            'service_subcategory_id' => $this->service_subcategory_id,
             'service_price_display' => $this->service_price_display ?: $this->legacyServicePriceDisplay(),
             'service_charges' => $this->service_charges ?? [],
             'service_options' => $this->service_options ?? [],

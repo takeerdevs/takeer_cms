@@ -24,18 +24,18 @@ const CATEGORIES = ['Nguo', 'Viatu', 'Simu na Vifaa', 'Chakula', 'Nyumba na Bust
 const PHYSICAL_FULFILLMENT_MODES = [
     {
         key: 'own_stock',
-        label: 'Nina stock yangu',
-        hint: 'Bidhaa ipo dukani/stoo, weka stock kwa eneo.',
+        label: 'Nina bidhaa mkononi',
+        hint: 'Ipo kwako sasa, hata kama uliinunua kwa mkulima/supplier.',
     },
     {
         key: 'supplier_sourced',
-        label: 'Natoa kwa supplier',
-        hint: 'Reseller: Takeer ihifadhi supplier privately.',
+        label: 'Sina stock, nitaitafuta',
+        hint: 'Utai-confirm au kuipata kutoka supplier baada ya oda.',
     },
     {
         key: 'made_to_order',
         label: 'Natengeneza baada ya oda',
-        hint: 'Weka muda wa kuandaa bidhaa.',
+        hint: 'Tailoring, food prep, crafts, printed items, n.k.',
     },
     {
         key: 'farm_harvest',
@@ -102,6 +102,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const imageContainerRef = useRef(null);
     const digitalFileRef = useRef(null);
     const coverImageRef = useRef(null);
+    const draftMediaSyncTimerRef = useRef(null);
+    const lastDraftMediaSyncRef = useRef('');
     const { auth } = usePage().props;
     const currentMerchant = auth?.user?.merchant_profiles?.find(m => m.username === merchantUsername)
         || auth?.user?.merchant_profiles?.[0] || {};
@@ -218,9 +220,20 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const [price, setPrice] = useState('');
     const [comparePrice, setComparePrice] = useState('');
+    const [refundPolicy, setRefundPolicy] = useState('standard');
+    const [refundWindowDays, setRefundWindowDays] = useState('3');
+    const [refundPolicyNote, setRefundPolicyNote] = useState('');
+    const [productFaqs, setProductFaqs] = useState([{ question: '', answer: '', is_published: true }]);
     const [quantity, setQuantity] = useState('');
     const [selectedUnitTypeId, setSelectedUnitTypeId] = useState('');
     const [sellableQuantity, setSellableQuantity] = useState('1');
+    const [packageContentUnitTypeId, setPackageContentUnitTypeId] = useState('');
+    const [packageContentQuantity, setPackageContentQuantity] = useState('');
+    const [packageContents, setPackageContents] = useState('');
+    const [packageContentItems, setPackageContentItems] = useState([{ qty: '1', unit: 'pc', name: '' }]);
+    const [returnPolicies, setReturnPolicies] = useState([]);
+    const [selectedReturnPolicyId, setSelectedReturnPolicyId] = useState('');
+    const [useCustomReturnPolicy, setUseCustomReturnPolicy] = useState(false);
     const [minOrderQuantity, setMinOrderQuantity] = useState('');
     const [orderIncrement, setOrderIncrement] = useState('');
     const [locationInventories, setLocationInventories] = useState({}); // { location_id: quantity }
@@ -249,6 +262,17 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [selectedShippingProfileId, setSelectedShippingProfileId] = useState('');
     const [digitalAccessTab, setDigitalAccessTab] = useState('plan');
     const [assignedAccessGroup, setAssignedAccessGroup] = useState(null); // { id, type, title }
+
+    const fetchReturnPolicies = async () => {
+        try {
+            const res = await axios.get('/api/merchant/return-policies');
+            const policies = res.data.data || [];
+            setReturnPolicies(policies);
+            setSelectedReturnPolicyId((current) => current || String(policies.find((policy) => policy.is_default)?.id || policies[0]?.id || ''));
+        } catch (error) {
+            console.error('Failed to load return policies', error);
+        }
+    };
 
     const serviceModeOptions = [
         { key: 'showcase_only', label: 'Showcase', hint: 'Onyesha tu, hakuna checkout', icon: Store },
@@ -436,7 +460,29 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         fetchMerchantProducts();
         fetchPromotables();
         fetchShippingProfiles();
+        fetchReturnPolicies();
     }, []);
+
+    useEffect(() => {
+        if (!productId || images.length === 0 || images.some((img) => img.isUploading)) return;
+
+        const payload = buildMediaPayload();
+        const signature = JSON.stringify({
+            productId,
+            media_items: payload.media_items,
+            hotspots,
+        });
+
+        if (signature === lastDraftMediaSyncRef.current) return;
+
+        clearTimeout(draftMediaSyncTimerRef.current);
+        draftMediaSyncTimerRef.current = setTimeout(() => {
+            persistDraftMedia(productId, { silent: true });
+            lastDraftMediaSyncRef.current = signature;
+        }, 700);
+
+        return () => clearTimeout(draftMediaSyncTimerRef.current);
+    }, [productId, images, hotspots]);
 
     const fetchCatalogRoot = async () => {
         try {
@@ -451,6 +497,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         try {
             const res = await axios.get('/api/service-categories');
             const options = (res.data?.data || []).map((category) => ({
+                id: category.id,
                 label: category.name,
                 risk_level: category.risk_level || 'standard',
                 required_documents: category.required_documents || ['identity'],
@@ -459,6 +506,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 max_first_quote_amount: category.max_first_quote_amount ?? null,
                 subcategories: (category.children || []).map((child) => child.name),
                 subcategoryConfigs: (category.children || []).map((child) => ({
+                    id: child.id,
                     label: child.name,
                     option_template: child.option_template || null,
                     risk_level: child.risk_level || category.risk_level || 'standard',
@@ -563,6 +611,37 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         setShowHotspotModal(true);
     };
 
+    const buildMediaPayload = () => ({
+        image_urls: images.map(img => img.url).filter(Boolean),
+        media_items: images.map(img => ({
+            url: img.url,
+            type: img.media_type || img.type || 'image',
+            media_type: img.media_type || img.type || 'image',
+            thumbnail_url: img.thumbnail_url || null,
+            processed_url: img.processed_url || null,
+            hls_url: img.hls_url || null,
+            mime: img.mime || null,
+            size: img.size || null,
+            duration_seconds: img.duration_seconds || null,
+            width: img.width || null,
+            height: img.height || null,
+            processing_status: img.processing_status || 'ready',
+        })).filter(item => item.url),
+        hotspots,
+    });
+
+    const persistDraftMedia = async (id = productId, { silent = false } = {}) => {
+        if (!id || images.some((img) => img.isUploading)) return;
+
+        try {
+            await axios.post(`/merchant/${merchantUsername}/products/${id}/media`, buildMediaPayload());
+        } catch (error) {
+            if (!silent) {
+                toast.error(error.response?.data?.message || 'Imeshindwa kuhifadhi media za draft.');
+            }
+        }
+    };
+
     const loadProductForEdit = async (id) => {
         setIsLoadingEdit(true);
         try {
@@ -576,6 +655,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setManualTitle(p.title);
             setPrice(p.price);
             setComparePrice(p.compare_at_price || '');
+            setRefundPolicy(p.refund_policy?.policy || 'standard');
+            setRefundWindowDays(p.refund_policy?.window_days ?? '3');
+            setRefundPolicyNote(p.refund_policy?.note || '');
+            setUseCustomReturnPolicy(Boolean(p.refund_policy && !p.refund_policy.id && p.type === 'physical'));
+            setProductFaqs(Array.isArray(p.faqs) && p.faqs.length > 0
+                ? p.faqs.map((faq) => ({ question: faq.question || '', answer: faq.answer || '', is_published: faq.is_published !== false }))
+                : [{ question: '', answer: '', is_published: true }]);
             setQuantity(p.inventory_quantity ?? p.inventory_count);
             setFulfillmentMode(p.fulfillment_mode || 'own_stock');
             setSourceDetails({
@@ -591,6 +677,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setGroupSaleDeadline(p.group_sale_deadline || '');
             setSelectedUnitTypeId(p.unit_type?.id ? String(p.unit_type.id) : '');
             setSellableQuantity(p.sellable_quantity ?? '1');
+            setPackageContentUnitTypeId(p.package_content_unit_type?.id ? String(p.package_content_unit_type.id) : '');
+            setPackageContentQuantity(p.package_content_quantity ?? '');
+            setPackageContents(p.package_contents || '');
+            setPackageContentItems(Array.isArray(p.package_content_items) && p.package_content_items.length > 0
+                ? p.package_content_items.map((item) => ({ qty: item.qty ?? '1', unit: item.unit || 'pc', name: item.name || '' }))
+                : [{ qty: '1', unit: 'pc', name: '' }]);
+            setSelectedReturnPolicyId(p.refund_policy?.id ? String(p.refund_policy.id) : '');
             setMinOrderQuantity(p.min_order_quantity ?? '');
             setOrderIncrement(p.order_increment ?? '');
             setSelectedShippingProfileId(p.shipping_profile_id ? String(p.shipping_profile_id) : '');
@@ -832,9 +925,107 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const selectedSchemaModels = selectedSchemaBrands.find((brand) => String(brand.id) === String(selectedBrandId))?.models || [];
     const selectedSchemaUnitTypes = selectedCatalogSchema?.unit_types || [];
     const selectedUnitType = selectedSchemaUnitTypes.find((unit) => String(unit.id) === String(selectedUnitTypeId)) || null;
+    const selectedPackageContentUnitType = selectedSchemaUnitTypes.find((unit) => String(unit.id) === String(packageContentUnitTypeId)) || null;
     const stockStep = selectedUnitType?.allows_decimal ? '0.001' : '1';
     const stockUnitLabel = selectedUnitType?.symbol || selectedUnitType?.name || 'units';
-    const quantityChipLabel = (entry) => entry?.label || `${entry?.value ?? ''} ${stockUnitLabel}`.trim();
+    const quantityChipLabel = (entry) => entry?.label || `${entry?.quantity ?? entry?.value ?? ''} ${stockUnitLabel}`.trim();
+    const unitDisplayName = (unit, quantity = 1) => {
+        const code = String(unit?.code || '').toLowerCase();
+        const raw = unit?.symbol || unit?.name || 'unit';
+        const number = Number(quantity || 1);
+        if (code === 'piece' || raw === 'piece') return number === 1 ? 'pc' : 'pcs';
+        if (code === 'pair' || raw === 'pair') return number === 1 ? 'pair' : 'pairs';
+        if (code === 'dozen' || raw === 'doz') return number === 1 ? 'dozen' : 'dozens';
+        return raw;
+    };
+    const formatPackageQuantity = (value) => {
+        const number = Number(value || 0);
+        if (!Number.isFinite(number) || number <= 0) return '';
+        return number.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+    };
+    const packagePreviewLabel = (() => {
+        if (!selectedUnitType) return '';
+        const saleQuantity = Number(sellableQuantity || 1);
+        const saleUnit = unitDisplayName(selectedUnitType, saleQuantity);
+        const base = `${formatPackageQuantity(saleQuantity || 1) || '1'} ${saleUnit}`;
+        if (!selectedPackageContentUnitType || !packageContentQuantity) return base;
+        const content = `${formatPackageQuantity(packageContentQuantity)} ${unitDisplayName(selectedPackageContentUnitType, packageContentQuantity)}`;
+        if (['piece', 'pc', 'unit'].includes(String(selectedUnitType.code || selectedUnitType.symbol || '').toLowerCase()) && saleQuantity > 1) {
+            return `${formatPackageQuantity(saleQuantity)} x ${content}`;
+        }
+        return `${base} (${content})`;
+    })();
+    const cleanPackageContentItems = packageContentItems
+        .map((item) => ({
+            qty: item.qty || '1',
+            unit: String(item.unit || '').trim(),
+            name: String(item.name || '').trim(),
+        }))
+        .filter((item) => item.name);
+    const cleanProductFaqs = productFaqs
+        .map((faq) => ({
+            question: String(faq.question || '').trim(),
+            answer: String(faq.answer || '').trim(),
+            is_published: faq.is_published !== false,
+        }))
+        .filter((faq) => faq.question && faq.answer);
+    const selectedReturnPolicy = returnPolicies.find((policy) => String(policy.id) === String(selectedReturnPolicyId)) || null;
+    const effectiveRefundPolicy = useCustomReturnPolicy ? refundPolicy : (selectedReturnPolicy?.policy || refundPolicy);
+    const effectiveRefundWindowDays = useCustomReturnPolicy ? refundWindowDays : (selectedReturnPolicy?.window_days ?? refundWindowDays);
+    const effectiveRefundPolicyNote = useCustomReturnPolicy ? refundPolicyNote : (selectedReturnPolicy?.note || refundPolicyNote);
+    const renderProductFaqEditor = () => (
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-700">Product FAQ</p>
+                    <p className="text-xs text-slate-500">Maswali na majibu yatakayoonekana kwenye ukurasa wa bidhaa.</p>
+                </div>
+                <button
+                    type="button"
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black text-slate-700"
+                    onClick={() => setProductFaqs((prev) => [...prev, { question: '', answer: '', is_published: true }])}
+                >
+                    Add FAQ
+                </button>
+            </div>
+            <div className="space-y-3">
+                {productFaqs.map((faq, index) => (
+                    <div key={`product-faq-${index}`} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">FAQ {index + 1}</span>
+                            <button
+                                type="button"
+                                className="text-xs font-black text-red-600"
+                                onClick={() => setProductFaqs((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+                            >
+                                Remove
+                            </button>
+                        </div>
+                        <Input
+                            className="h-10 bg-slate-50"
+                            value={faq.question}
+                            onChange={(e) => setProductFaqs((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, question: e.target.value } : row))}
+                            placeholder="Mf. Does it come with charger?"
+                        />
+                        <Textarea
+                            className="min-h-20 rounded-xl bg-slate-50"
+                            value={faq.answer}
+                            onChange={(e) => setProductFaqs((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, answer: e.target.value } : row))}
+                            placeholder="Mf. Yes, it includes 1 charging cable and manual."
+                        />
+                        <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
+                            <input
+                                type="checkbox"
+                                checked={faq.is_published !== false}
+                                onChange={(e) => setProductFaqs((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, is_published: e.target.checked } : row))}
+                            />
+                            Published
+                        </label>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
     const physicalLocations = currentMerchant?.locations || [];
     const selectedFulfillmentMode = PHYSICAL_FULFILLMENT_MODES.find((mode) => mode.key === fulfillmentMode) || PHYSICAL_FULFILLMENT_MODES[0];
     const availabilityDateCopy = {
@@ -1452,10 +1643,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const physicalPublishDisabledReason = (() => {
         if (step !== 'physical') return '';
         if (isUploadingMedia) return 'Subiri media zimalize kupanda.';
-        if (requiresLocationInventory && physicalLocations.length === 0) return 'Ongeza angalau eneo moja la duka/stoo kwenye Mipangilio.';
+        if (requiresLocationInventory && physicalLocations.length === 0) return 'Ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.';
         if (requiresLocationInventory && !hasVariants && locationStockTotal <= 0) return `Weka stock kwenye angalau eneo moja (${stockUnitLabel}).`;
         if (hasVariants && configuredPhysicalVariants.length === 0) return 'Jaza angalau variant moja yenye bei.';
-        if (requiresLocationInventory && hasVariants && configuredVariantStockTotal <= 0) return 'Weka stock ya angalau variant moja kwenye eneo la biashara.';
+        if (requiresLocationInventory && hasVariants && configuredVariantStockTotal <= 0) return 'Weka stock ya angalau variant moja kwenye eneo la stock/pickup.';
         if (fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) return 'Weka jina na simu ya supplier kwa Takeer.';
         if (fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours === '') return 'Weka muda wa kuthibitisha au kupata bidhaa kwa masaa.';
         if (fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') return 'Weka muda wa kuandaa bidhaa.';
@@ -1470,7 +1661,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
         try {
             const res = await axios.post(`/merchant/${merchantUsername}/upload/draft`, {
-                image_url: imageUrl
+                image_url: imageUrl,
+                ...buildMediaPayload(),
             });
 
             const draft = res.data.ai_draft || {};
@@ -1888,11 +2080,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             return;
         }
         if (step === 'physical' && requiresLocationInventory && physicalLocations.length === 0) {
-            toast.error('Tafadhali ongeza angalau eneo moja la duka/stoo kwenye Mipangilio.');
+            toast.error('Tafadhali ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.');
             return;
         }
         if (step === 'physical' && requiresLocationInventory && !hasVariants && locationStockTotal <= 0) {
-            toast.error(`Tafadhali weka stock kwenye angalau eneo moja la biashara (${stockUnitLabel}).`);
+            toast.error(`Tafadhali weka stock kwenye angalau eneo moja la stock/pickup (${stockUnitLabel}).`);
             return;
         }
         if (step === 'physical' && fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) {
@@ -1905,6 +2097,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         }
         if (step === 'physical' && fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') {
             toast.error('Tafadhali weka siku ngapi zinahitajika kuandaa bidhaa.');
+            return;
+        }
+        if (step === 'digital' && digitalDeliveryMode === 'custom_delivery' && availabilityLeadTimeDays === '') {
+            toast.error('Tafadhali weka siku ngapi zinahitajika kumaliza custom work.');
             return;
         }
         if (step === 'physical' && ['farm_harvest', 'preorder', 'group_sale'].includes(fulfillmentMode) && !availableFrom) {
@@ -1931,7 +2127,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 return;
             }
             if (requiresLocationInventory && configuredVariantStockTotal <= 0) {
-                toast.error('Tafadhali weka stock ya angalau variant moja kwenye eneo la biashara.');
+                toast.error('Tafadhali weka stock ya angalau variant moja kwenye eneo la stock/pickup.');
                 return;
             }
         }
@@ -2052,23 +2248,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             const publishVariants = step === 'physical' && hasVariants
                 ? variants.filter(isVariantConfigured)
                 : [];
+            const mediaPayload = buildMediaPayload();
             const res = await axios.post(`/merchant/${merchantUsername}/upload/publish`, {
-                image_urls: images.map(img => img.url).filter(Boolean),
-                media_items: images.map(img => ({
-                    url: img.url,
-                    type: img.media_type || img.type || 'image',
-                    media_type: img.media_type || img.type || 'image',
-                    thumbnail_url: img.thumbnail_url || null,
-                    processed_url: img.processed_url || null,
-                    hls_url: img.hls_url || null,
-                    mime: img.mime || null,
-                    size: img.size || null,
-                    duration_seconds: img.duration_seconds || null,
-                    width: img.width || null,
-                    height: img.height || null,
-                    processing_status: img.processing_status || 'ready',
-                })).filter(item => item.url),
-                hotspots: hotspots,
+                ...mediaPayload,
                 type: productType,
                 // Digital product: either the uploaded file or external link
                 digital_file_url: (step === 'digital' && digitalDeliveryMode === 'upload') ? digitalFile?.url : null,
@@ -2136,6 +2318,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     )
                     : 'fixed_price',
                 service_booking_type: step === 'service' ? serviceBookingType : 'instant',
+                service_category_id: step === 'service' ? selectedServiceCategory?.id || null : null,
+                service_subcategory_id: step === 'service' ? selectedServiceSubcategoryConfig?.id || null : null,
                 service_hourly_rate: step === 'service' && servicePriceDisplay === 'hourly'
                     ? Number(serviceHourlyRate || price || 0)
                     : null,
@@ -2155,7 +2339,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 service_options: step === 'service' ? serviceOptionsForPayload : [],
                 service_duration_minutes: step === 'service' && serviceDurationMinutes ? Number(serviceDurationMinutes) : null,
                 service_location_type: step === 'service' ? serviceLocationType : null,
-                service_provider_location: step === 'service' && ['provider_location', 'hybrid'].includes(serviceLocationType)
+                service_provider_location: step === 'service' && ['provider_location', 'customer_location', 'hybrid'].includes(serviceLocationType)
                     ? serviceProviderLocation
                     : null,
                 service_area: step === 'service' ? serviceAreaList : [],
@@ -2170,19 +2354,30 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 service_contact_value: step === 'service' ? serviceContactValue : null,
                 fulfillment_mode: step === 'physical' ? fulfillmentMode : 'own_stock',
                 source_details: step === 'physical' ? sourceDetails : null,
-                availability_lead_time_days: step === 'physical' && fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours !== ''
-                    ? Math.max(1, Math.ceil(Number(sourceDetails.confirmation_hours || 0) / 24))
-                    : step === 'physical' && availabilityLeadTimeDays !== ''
-                        ? Number(availabilityLeadTimeDays)
-                        : null,
+                availability_lead_time_days: step === 'digital' && digitalDeliveryMode === 'custom_delivery' && availabilityLeadTimeDays !== ''
+                    ? Number(availabilityLeadTimeDays)
+                    : step === 'physical' && fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours !== ''
+                        ? Math.max(1, Math.ceil(Number(sourceDetails.confirmation_hours || 0) / 24))
+                        : step === 'physical' && availabilityLeadTimeDays !== ''
+                            ? Number(availabilityLeadTimeDays)
+                            : null,
                 available_from: step === 'physical' && availableFrom ? availableFrom : null,
                 group_sale_goal_quantity: step === 'physical' && groupSaleGoalQuantity !== '' ? Number(groupSaleGoalQuantity) : null,
                 group_sale_deadline: step === 'physical' && groupSaleDeadline ? groupSaleDeadline : null,
                 quantity: step === 'physical' && !hasVariants ? (requiresLocationInventory ? locationStockTotal : 99999) : 99999,
                 product_unit_type_id: step === 'physical' && selectedUnitTypeId ? Number(selectedUnitTypeId) : null,
                 sellable_quantity: step === 'physical' ? Number(sellableQuantity || 1) : 1,
+                package_content_unit_type_id: step === 'physical' && packageContentUnitTypeId ? Number(packageContentUnitTypeId) : null,
+                package_content_quantity: step === 'physical' && packageContentQuantity !== '' ? Number(packageContentQuantity) : null,
+                package_contents: step === 'physical' ? packageContents.trim() || null : null,
+                package_content_items: step === 'physical' ? cleanPackageContentItems : [],
+                return_policy_id: step === 'physical' && !useCustomReturnPolicy && selectedReturnPolicyId ? Number(selectedReturnPolicyId) : null,
                 min_order_quantity: step === 'physical' && minOrderQuantity !== '' ? Number(minOrderQuantity) : null,
                 order_increment: step === 'physical' && orderIncrement !== '' ? Number(orderIncrement) : null,
+                refund_policy: step === 'physical' ? effectiveRefundPolicy : undefined,
+                refund_window_days: step === 'physical' && effectiveRefundPolicy !== 'final_sale' && effectiveRefundWindowDays !== '' && effectiveRefundWindowDays !== null ? Number(effectiveRefundWindowDays) : null,
+                refund_policy_note: step === 'physical' ? String(effectiveRefundPolicyNote || '').trim() || null : null,
+                faqs: step === 'physical' ? cleanProductFaqs : [],
                 has_variants: step === 'physical' ? hasVariants : false,
                 variants: publishVariants.map((variant, index) => ({
                     name: variant.name,
@@ -2260,6 +2455,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 category: manualCategory,
                 category_id: selectedCategoryId ? Number(selectedCategoryId) : null,
                 sub_category_id: selectedSubCategoryId ? Number(selectedSubCategoryId) : null,
+                ...buildMediaPayload(),
             });
             const data = res.data;
             if (data.product_id) {
@@ -3202,7 +3398,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                 </div>
                                                                                 {physicalLocations.length === 0 && (
                                                                                     <p className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] font-semibold text-orange-800">
-                                                                                        Ongeza eneo la duka/stoo kwenye Mipangilio ili kuweka stock ya variants.
+                                                                                        Ongeza eneo la stock/pickup kwenye Mipangilio ili kuweka stock ya variants.
                                                                                     </p>
                                                                                 )}
                                                                             </>
@@ -3257,7 +3453,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="space-y-4 sm:col-span-2 rounded-2xl border border-slate-200 bg-white p-4">
                                                         <div>
                                                             <p className="text-xs font-black uppercase tracking-wider text-slate-700">Fulfillment / Source</p>
-                                                            <p className="text-xs text-slate-500">Chagua kama bidhaa ipo stock, inatengenezwa, inatoka kwa supplier, au ni preorder/group sale.</p>
+                                                            <p className="text-xs text-slate-500">Chagua kama bidhaa ipo mkononi, inatengenezwa, itatafutwa kwa supplier, au ni preorder/group sale.</p>
                                                         </div>
                                                         <div className="grid gap-2 sm:grid-cols-3">
                                                             {fulfillmentModeOptions.map((mode) => (
@@ -3339,7 +3535,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         {!requiresLocationInventory && (
                                                             <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
                                                                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                                                                <span>{selectedFulfillmentMode.label} haitahitaji stock ya duka sasa. Mnunuzi ataona matarajio siku bidhaa itakamilika, na malipo yatashikiliwa hadi mteja atakapokea bidhaa yake ndani ya siku ulizoweka.</span>
+                                                                <span>{selectedFulfillmentMode.label} haitahitaji stock kwenye eneo sasa. Mnunuzi ataona matarajio siku bidhaa itakamilika, na malipo yatashikiliwa hadi mteja atakapokea bidhaa yake ndani ya siku ulizoweka.</span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -3347,12 +3543,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 {step === 'physical' && selectedSchemaUnitTypes.length > 0 && (
                                                     <div className="space-y-4 sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                                                         <div>
-                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-700">Kipimo cha kuuza</p>
-                                                            <p className="text-xs text-slate-500">Eleza unauza vipimo vingapi kwa kila mauzo. Mfano: pack ya vipande 3, carton ya chupa 12, au gunia la kilo 25.</p>
+                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-700">Bei hii ni ya nini?</p>
+                                                            <p className="text-xs text-slate-500">Tengeneza mstari mfupi ambao mteja ataona kwenye card. Mfano: 1 pc (50 g), 1 pack (250 ml), 3 pairs, au 2 x 675 ml.</p>
                                                         </div>
                                                         <div className="grid gap-3">
                                                             <div className="space-y-1.5">
-                                                                <label className="text-[11px] font-semibold text-slate-600">Aina ya kipimo</label>
+                                                                <label className="text-[11px] font-semibold text-slate-600">Mteja atanunua nini?</label>
                                                                 <select
                                                                     className="w-full h-11 rounded-xl border border-input bg-white px-3 text-sm"
                                                                     value={selectedUnitTypeId}
@@ -3367,7 +3563,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 </select>
                                                             </div>
                                                             <div className="space-y-1.5">
-                                                                <label className="text-[11px] font-semibold text-slate-600">Unauza {stockUnitLabel} ngapi kwa kila mauzo?</label>
+                                                                <label className="text-[11px] font-semibold text-slate-600">Idadi ya {stockUnitLabel} kwa bei hii</label>
                                                                 <Input
                                                                     type="number"
                                                                     min="0.001"
@@ -3378,13 +3574,109 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                     placeholder="1"
                                                                 />
                                                                 <p className="text-[10px] font-semibold leading-snug text-slate-500">
-                                                                    Mfano: pack ya vipande 3 weka 3. Chupa moja moja weka 1. Katoni ya chupa 12 weka 12.
+                                                                    Mfano: tshirt moja weka 1. Soksi jozi 3 weka 3. Betri pack ya 4 pcs weka 4 kama kipimo ni pc.
                                                                 </p>
                                                             </div>
                                                         </div>
-                                                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold leading-5 text-slate-600">
-                                                            Hii ndiyo pakiti au kiasi mteja atanunua kwa bei uliyoweka. Kama bei ni ya pack ya vipande 3, weka <span className="font-black text-slate-800">3</span>. Kama bei ni ya kipande kimoja, weka <span className="font-black text-slate-800">1</span>.
+                                                        <div className="grid gap-3 sm:grid-cols-2">
+                                                            <label className="space-y-1.5">
+                                                                <span className="text-[11px] font-semibold text-slate-600">Ndani yake kuna kipimo gani? (hiari)</span>
+                                                                <Input
+                                                                    type="number"
+                                                                    min="0.001"
+                                                                    step={selectedPackageContentUnitType?.allows_decimal ? '0.001' : '1'}
+                                                                    className="h-11 bg-white"
+                                                                    value={packageContentQuantity}
+                                                                    onChange={(e) => setPackageContentQuantity(e.target.value)}
+                                                                    placeholder="Mf. 250"
+                                                                />
+                                                            </label>
+                                                            <label className="space-y-1.5">
+                                                                <span className="text-[11px] font-semibold text-slate-600">Kipimo cha ndani</span>
+                                                                <select
+                                                                    className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm"
+                                                                    value={packageContentUnitTypeId}
+                                                                    onChange={(e) => setPackageContentUnitTypeId(e.target.value)}
+                                                                >
+                                                                    <option value="">Hakuna</option>
+                                                                    {selectedSchemaUnitTypes.map((unit) => (
+                                                                        <option key={`content-${unit.id}`} value={unit.id}>
+                                                                            {unit.name}{unit.symbol ? ` (${unit.symbol})` : ''}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </label>
                                                         </div>
+                                                        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">Yaliyomo kwenye pack/set (hiari)</p>
+                                                                    <p className="text-[10px] font-semibold text-slate-500">Ongeza item moja kwa mstari. Itaonekana kama 1x Charging Cable, 2x Cell Batteries.</p>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-700"
+                                                                    onClick={() => setPackageContentItems((prev) => [...prev, { qty: '1', unit: 'pc', name: '' }])}
+                                                                >
+                                                                    Add
+                                                                </button>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                {packageContentItems.map((item, index) => (
+                                                                    <div key={`content-row-${index}`} className="grid gap-2 sm:grid-cols-[80px_90px_1fr_36px]">
+                                                                        <Input
+                                                                            type="number"
+                                                                            min="0.001"
+                                                                            step="0.001"
+                                                                            className="h-10 bg-slate-50"
+                                                                            value={item.qty}
+                                                                            onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: e.target.value } : row))}
+                                                                            placeholder="1"
+                                                                        />
+                                                                        <Input
+                                                                            className="h-10 bg-slate-50"
+                                                                            value={item.unit}
+                                                                            onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, unit: e.target.value } : row))}
+                                                                            placeholder="pc"
+                                                                        />
+                                                                        <Input
+                                                                            className="h-10 bg-slate-50"
+                                                                            value={item.name}
+                                                                            onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, name: e.target.value } : row))}
+                                                                            placeholder="Charging Cable"
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            className="h-10 rounded-lg border border-slate-200 text-slate-500"
+                                                                            onClick={() => setPackageContentItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+                                                                            aria-label="Remove package content"
+                                                                        >
+                                                                            ×
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            {cleanPackageContentItems.length > 0 && (
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {cleanPackageContentItems.map((item, index) => (
+                                                                        <span key={`${item.name}-${index}`} className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">
+                                                                            {formatPackageQuantity(item.qty)}x {item.name}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            <Input
+                                                                className="h-10 bg-white"
+                                                                value={packageContents}
+                                                                onChange={(e) => setPackageContents(e.target.value)}
+                                                                placeholder="Extra note (optional), e.g. colors may vary"
+                                                            />
+                                                        </div>
+                                                        {packagePreviewLabel && (
+                                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900">
+                                                                Itaonekana kwa wateja: <span className="text-emerald-700">{packagePreviewLabel}</span>
+                                                            </div>
+                                                        )}
                                                         <details className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                                                             <summary className="cursor-pointer text-[11px] font-black uppercase tracking-wider text-slate-700">
                                                                 Sheria ya oda ya chini (hiari)
@@ -3411,7 +3703,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                     type="button"
                                                                     className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
                                                                     onClick={() => {
-                                                                        setSellableQuantity(String(entry.value));
+                                                                        setSellableQuantity(String(entry.quantity ?? entry.value ?? 1));
                                                                     }}
                                                                 >
                                                                     {quantityChipLabel(entry)}
@@ -3450,9 +3742,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             <div className="p-4 rounded-xl border border-orange-200 bg-orange-50 flex items-start gap-3">
                                                                 <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0" />
                                                                 <div className="space-y-1">
-                                                                    <p className="text-sm font-bold text-orange-800">Hujajaza maeneo ya biashara</p>
+                                                                    <p className="text-sm font-bold text-orange-800">Hujajaza eneo la stock/pickup</p>
                                                                     <p className="text-xs text-orange-700 leading-relaxed">
-                                                                        Ili kuuza bidhaa za kimwili, unapaswa kuwa na angalau eneo moja la duka/stoo kwenye Mipangilio.
+                                                                        Ili kuuza bidhaa uliyonayo mkononi, ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.
                                                                     </p>
                                                                     <button
                                                                         type="button"
@@ -3500,7 +3792,87 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         <Input type="number" placeholder="Mf. 45000" className="h-12 text-lg font-black border-dashed" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
                                                     </div>
                                                 </div>
+                                                {step === 'physical' && (
+                                                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                                        <div>
+                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-700">Return policy</p>
+                                                            <p className="text-xs text-slate-500">Hii itaonekana kwenye Product Details ili mteja ajue kabla ya kununua.</p>
+                                                        </div>
+                                                        {returnPolicies.length > 0 && (
+                                                            <label className="space-y-1.5">
+                                                                <span className="text-[11px] font-semibold text-slate-600">Saved policy</span>
+                                                                <select
+                                                                    className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm"
+                                                                    value={selectedReturnPolicyId}
+                                                                    disabled={useCustomReturnPolicy}
+                                                                    onChange={(e) => setSelectedReturnPolicyId(e.target.value)}
+                                                                >
+                                                                    <option value="">Use merchant default</option>
+                                                                    {returnPolicies.map((policy) => (
+                                                                        <option key={policy.id} value={policy.id}>
+                                                                            {policy.name}{policy.is_default ? ' (Default)' : ''}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </label>
+                                                        )}
+                                                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={useCustomReturnPolicy}
+                                                                onChange={(e) => setUseCustomReturnPolicy(e.target.checked)}
+                                                            />
+                                                            Custom policy for this product
+                                                        </label>
+                                                        {useCustomReturnPolicy ? (
+                                                            <div className="grid gap-2 sm:grid-cols-3">
+                                                                {[
+                                                                    { key: 'standard', label: 'Return accepted', hint: 'Kwa bidhaa zinazoweza kurudishwa.' },
+                                                                    { key: 'strict', label: 'Replacement only', hint: 'Damaged, wrong, or quality issue.' },
+                                                                    { key: 'final_sale', label: 'Final sale', hint: 'Perishable/custom, isipokuwa kosa kubwa.' },
+                                                                ].map((option) => (
+                                                                    <button
+                                                                        key={option.key}
+                                                                        type="button"
+                                                                        onClick={() => setRefundPolicy(option.key)}
+                                                                        className={`rounded-xl border px-3 py-2 text-left ${refundPolicy === option.key ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-200' : 'border-slate-200 bg-white'}`}
+                                                                    >
+                                                                        <span className="block text-xs font-black text-slate-900">{option.label}</span>
+                                                                        <span className="mt-1 block text-[10px] font-semibold leading-snug text-slate-500">{option.hint}</span>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        ) : selectedReturnPolicy ? (
+                                                            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">
+                                                                <span className="font-black">{selectedReturnPolicy.name}</span>: {selectedReturnPolicy.note || selectedReturnPolicy.policy}
+                                                            </div>
+                                                        ) : null}
+                                                        {useCustomReturnPolicy && refundPolicy !== 'final_sale' && (
+                                                            <label className="space-y-1.5">
+                                                                <span className="text-[11px] font-semibold text-slate-600">Window days</span>
+                                                                <Input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="30"
+                                                                    className="h-11 bg-white"
+                                                                    value={refundWindowDays}
+                                                                    onChange={(e) => setRefundWindowDays(e.target.value)}
+                                                                    placeholder="Mf. 3"
+                                                                />
+                                                            </label>
+                                                        )}
+                                                        {useCustomReturnPolicy && (
+                                                            <Textarea
+                                                                className="min-h-20 rounded-xl bg-white mt-2"
+                                                                value={refundPolicyNote}
+                                                                onChange={(e) => setRefundPolicyNote(e.target.value)}
+                                                                placeholder="Mf. Replacement ndani ya saa 72 kama bidhaa ni damaged, wrong, au sealed haijafunguliwa."
+                                                            />
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
+                                            {renderProductFaqEditor()}
                                             <Button
                                                 className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
                                                 onClick={publishProduct}
@@ -3525,12 +3897,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             {selectedSchemaUnitTypes.length > 0 && (
                                                 <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
                                                     <div>
-                                                        <p className="text-xs font-black uppercase tracking-wider text-slate-700">Kipimo cha kuuza</p>
-                                                        <p className="text-xs text-slate-500">Eleza unauza vipimo vingapi kwa kila mauzo ya variant.</p>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-slate-700">Bei hii ni ya nini?</p>
+                                                        <p className="text-xs text-slate-500">Mstari huu utaonekana kwenye card na order. Mfano: 1 pc (50 g), 1 pack (250 ml), au 3 pairs.</p>
                                                     </div>
                                                     <div className="grid gap-3">
                                                         <label className="space-y-1">
-                                                            <span className="text-[11px] font-semibold text-slate-600">Aina ya kipimo</span>
+                                                            <span className="text-[11px] font-semibold text-slate-600">Mteja atanunua nini?</span>
                                                             <select
                                                                 className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm"
                                                                 value={selectedUnitTypeId}
@@ -3545,7 +3917,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             </select>
                                                         </label>
                                                         <label className="space-y-1">
-                                                            <span className="text-[11px] font-semibold text-slate-600">Unauza {stockUnitLabel} ngapi kwa kila mauzo?</span>
+                                                            <span className="text-[11px] font-semibold text-slate-600">Idadi ya {stockUnitLabel} kwa bei hii</span>
                                                             <Input
                                                                 type="number"
                                                                 min="0.001"
@@ -3557,6 +3929,91 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             />
                                                         </label>
                                                     </div>
+                                                    <div className="grid gap-3 sm:grid-cols-2">
+                                                        <label className="space-y-1">
+                                                            <span className="text-[11px] font-semibold text-slate-600">Kipimo cha ndani (hiari)</span>
+                                                            <Input
+                                                                type="number"
+                                                                min="0.001"
+                                                                step={selectedPackageContentUnitType?.allows_decimal ? '0.001' : '1'}
+                                                                className="h-11 bg-white"
+                                                                value={packageContentQuantity}
+                                                                onChange={(e) => setPackageContentQuantity(e.target.value)}
+                                                                placeholder="Mf. 250"
+                                                            />
+                                                        </label>
+                                                        <label className="space-y-1">
+                                                            <span className="text-[11px] font-semibold text-slate-600">Unit ya ndani</span>
+                                                            <select
+                                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm"
+                                                                value={packageContentUnitTypeId}
+                                                                onChange={(e) => setPackageContentUnitTypeId(e.target.value)}
+                                                            >
+                                                                <option value="">Hakuna</option>
+                                                                {selectedSchemaUnitTypes.map((unit) => (
+                                                                    <option key={`variant-content-${unit.id}`} value={unit.id}>
+                                                                        {unit.name}{unit.symbol ? ` (${unit.symbol})` : ''}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </label>
+                                                    </div>
+                                                    <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">Yaliyomo kwenye pack/set</p>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-700"
+                                                                onClick={() => setPackageContentItems((prev) => [...prev, { qty: '1', unit: 'pc', name: '' }])}
+                                                            >
+                                                                Add
+                                                            </button>
+                                                        </div>
+                                                        {packageContentItems.map((item, index) => (
+                                                            <div key={`variant-content-row-${index}`} className="grid gap-2 sm:grid-cols-[80px_90px_1fr_36px]">
+                                                                <Input
+                                                                    type="number"
+                                                                    min="0.001"
+                                                                    step="0.001"
+                                                                    className="h-10 bg-slate-50"
+                                                                    value={item.qty}
+                                                                    onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: e.target.value } : row))}
+                                                                    placeholder="1"
+                                                                />
+                                                                <Input
+                                                                    className="h-10 bg-slate-50"
+                                                                    value={item.unit}
+                                                                    onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, unit: e.target.value } : row))}
+                                                                    placeholder="pc"
+                                                                />
+                                                                <Input
+                                                                    className="h-10 bg-slate-50"
+                                                                    value={item.name}
+                                                                    onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, name: e.target.value } : row))}
+                                                                    placeholder="Charging Cable"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    className="h-10 rounded-lg border border-slate-200 text-slate-500"
+                                                                    onClick={() => setPackageContentItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+                                                                    aria-label="Remove package content"
+                                                                >
+                                                                    ×
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        <Input
+                                                            className="h-10 bg-white"
+                                                            value={packageContents}
+                                                            onChange={(e) => setPackageContents(e.target.value)}
+                                                            placeholder="Extra note (optional)"
+                                                        />
+                                                    </div>
+                                                    {packagePreviewLabel && (
+                                                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 mt-2">
+                                                            Itaonekana kwa wateja: <span className="text-emerald-700">{packagePreviewLabel}</span>
+                                                        </div>
+                                                    )}
                                                     <details className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                                                         <summary className="cursor-pointer text-[11px] font-black uppercase tracking-wider text-slate-700">
                                                             Sheria ya oda ya chini (hiari)
@@ -3582,9 +4039,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 <div className="p-4 rounded-xl border border-orange-200 bg-orange-50 flex items-start gap-3">
                                                     <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0" />
                                                     <div className="space-y-1">
-                                                        <p className="text-sm font-bold text-orange-800">Hujajaza maeneo ya biashara</p>
+                                                        <p className="text-sm font-bold text-orange-800">Hujajaza eneo la stock/pickup</p>
                                                         <p className="text-xs text-orange-700 leading-relaxed">
-                                                            Ili kuuza bidhaa za kimwili, unapaswa kuwa na angalau eneo moja la duka/stoo kwenye Mipangilio.
+                                                            Ili kuuza bidhaa uliyonayo mkononi, ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.
                                                         </p>
                                                         <button
                                                             type="button"
@@ -3620,6 +4077,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </select>
                                                 <p className="text-[10px] text-muted-foreground italic">Templates hizi zimewekwa kwenye Settings {'>'} Shipping Profiles.</p>
                                             </div>
+                                            {renderProductFaqEditor()}
                                             <Button
                                                 className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
                                                 onClick={publishProduct}
@@ -4124,6 +4582,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     </p>
                                                 </div>
                                             </div>
+                                            <label className="block space-y-1">
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-900/70">Delivery deadline after payment</span>
+                                                <Input type="number" min="1" className="h-11 bg-white" value={availabilityLeadTimeDays} onChange={(e) => setAvailabilityLeadTimeDays(e.target.value)} placeholder="Mf. 3" />
+                                                <span className="block text-[10px] font-semibold text-blue-700/80">Takeer will calculate each order deadline from the payment time.</span>
+                                            </label>
                                             <Textarea
                                                 value={digitalAccessInstructions}
                                                 onChange={(e) => setDigitalAccessInstructions(e.target.value)}
@@ -5153,10 +5616,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     </button>
                                                 ))}
                                             </div>
-                                            {['provider_location', 'hybrid'].includes(serviceLocationType) && (
+                                            {['provider_location', 'customer_location', 'hybrid'].includes(serviceLocationType) && (
                                                 <div className="rounded-xl border bg-muted/20 p-3 space-y-2">
                                                     <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">
-                                                        Provider venue
+                                                        {serviceLocationType === 'customer_location' ? 'Service base for Near me' : 'Provider venue'}
                                                     </p>
                                                     {serviceProviderLocation?.address ? (
                                                         <div className="space-y-1">
@@ -5167,11 +5630,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         </div>
                                                     ) : (
                                                         <p className="text-xs text-muted-foreground">
-                                                            Add where customers should come for this service.
+                                                            {serviceLocationType === 'customer_location'
+                                                                ? 'Add your service base or main coverage point so nearby customers can discover you.'
+                                                                : 'Add where customers should come for this service.'}
                                                         </p>
                                                     )}
                                                     <Input
-                                                        placeholder="Venue name, e.g. Main Clinic, Studio A"
+                                                        placeholder={serviceLocationType === 'customer_location' ? 'Base name, e.g. Mikocheni coverage base' : 'Venue name, e.g. Main Clinic, Studio A'}
                                                         value={serviceProviderLocation?.name || ''}
                                                         onChange={(e) => setServiceProviderLocation((prev) => ({
                                                             ...(prev || {}),
@@ -5186,7 +5651,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             className="h-10 rounded-xl flex-1"
                                                             onClick={() => setServiceProviderLocationPickerOpen(true)}
                                                         >
-                                                            <MapPin className="h-4 w-4 mr-1" /> Pick venue
+                                                            <MapPin className="h-4 w-4 mr-1" /> {serviceLocationType === 'customer_location' ? 'Pick base' : 'Pick venue'}
                                                         </Button>
                                                         {serviceProviderLocation?.address && (
                                                             <Button

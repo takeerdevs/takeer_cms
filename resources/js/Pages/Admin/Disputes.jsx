@@ -3,7 +3,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import { Head } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
-import { Ban, MailWarning, Scale, ShieldAlert, CheckCircle2, RefreshCw, ShieldOff, Siren } from 'lucide-react';
+import { Ban, Download, MailWarning, Scale, ShieldAlert, CheckCircle2, RefreshCw, ShieldOff, Siren } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 
@@ -124,6 +124,7 @@ export default function Disputes() {
                             const buyer = order.buyer || {};
                             const merchant = order.merchant || {};
                             const delivery = order.delivery || {};
+                            const customEvents = order.custom_delivery_events || [];
                             const refundPolicy = order.refund_policy || dispute.refund_policy_snapshot || null;
                             const isOpen = dispute.status === 'open';
                             const isPosCreditReport = dispute.buyer_unboxing_video_url === 'pos-credit-link-report';
@@ -192,6 +193,51 @@ export default function Disputes() {
                                                     {refundPolicy.window_days !== null && refundPolicy.window_days !== undefined && <span>Window: {refundPolicy.window_days} days</span>}
                                                     <span>Access count: {refundPolicy.download_count || 0}</span>
                                                     {refundPolicy.refund_locked_at && <span>Locked: {new Date(refundPolicy.refund_locked_at).toLocaleDateString()}</span>}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {customEvents.length > 0 && (
+                                            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 text-sm">
+                                                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div>
+                                                        <p className="font-black uppercase tracking-wider text-xs text-indigo-800">Custom work history</p>
+                                                        <p className="text-xs text-indigo-700/80">
+                                                            {order.custom_delivery_due_at ? `Due ${new Date(order.custom_delivery_due_at).toLocaleString()}` : 'No deadline recorded'} · {order.custom_delivery_revision_count || 0} revision requests
+                                                        </p>
+                                                    </div>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700">{order.custom_delivery_status || 'custom work'}</span>
+                                                </div>
+                                                <div className="mt-3 space-y-2">
+                                                    {customEvents.map((event) => (
+                                                        <div key={event.id} className="rounded-lg border border-indigo-100 bg-white px-3 py-2">
+                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                                <div>
+                                                                    <p className="font-bold text-slate-900">
+                                                                        {String(event.event_type || '').replaceAll('_', ' ')}
+                                                                        {event.revision_number ? ` #${event.revision_number}` : ''}
+                                                                    </p>
+                                                                    <p className="text-[11px] font-semibold text-slate-500">
+                                                                        {event.actor_type || 'system'} · {event.created_at ? new Date(event.created_at).toLocaleString() : ''}
+                                                                    </p>
+                                                                </div>
+                                                                {event.download_url && (
+                                                                    <a href={event.download_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50">
+                                                                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                                                                        Evidence
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                            {event.file_name && (
+                                                                <p className="mt-2 truncate text-xs font-bold text-slate-700" title={event.file_name}>
+                                                                    {event.file_name}
+                                                                </p>
+                                                            )}
+                                                            {event.message && (
+                                                                <p className="mt-2 whitespace-pre-line text-xs leading-5 text-slate-700">{event.message}</p>
+                                                            )}
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
                                         )}

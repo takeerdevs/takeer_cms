@@ -29,6 +29,9 @@ class ProductUnitTypeSeeder extends Seeder
                 ['label' => '2 pieces', 'quantity' => 2, 'aliases' => ['mbili']],
                 ['label' => '5 pieces', 'quantity' => 5],
             ]),
+            $this->unit('Unit', 'unit', 'unit', 'count', null, 1, false, [
+                ['label' => '1 unit', 'quantity' => 1],
+            ]),
             $this->unit('Pair', 'pair', 'pair', 'count', 'piece', 2, false, [
                 ['label' => '1 pair', 'quantity' => 1, 'aliases' => ['jozi moja']],
             ]),
@@ -86,6 +89,9 @@ class ProductUnitTypeSeeder extends Seeder
             $this->unit('Carton', 'carton', 'carton', 'package', null, 1, false, [
                 ['label' => '1 carton', 'quantity' => 1],
             ]),
+            $this->unit('Crate', 'crate', 'crate', 'package', null, 1, false, [
+                ['label' => '1 crate', 'quantity' => 1],
+            ]),
             $this->unit('Bag', 'bag', 'bag', 'package', null, 1, false, [
                 ['label' => '1 bag', 'quantity' => 1],
             ]),
@@ -141,6 +147,7 @@ class ProductUnitTypeSeeder extends Seeder
     {
         return [
             'piece' => 'kipande',
+            'unit' => 'unit',
             'pair' => 'jozi',
             'dozen' => 'dazeni',
             'tray' => 'trei',
@@ -153,6 +160,7 @@ class ProductUnitTypeSeeder extends Seeder
             'pack' => 'pakiti',
             'box' => 'boksi',
             'carton' => 'katoni',
+            'crate' => 'kreti',
             'bag' => 'mfuko',
             'bottle' => 'chupa',
             'sachet' => 'sacheti',

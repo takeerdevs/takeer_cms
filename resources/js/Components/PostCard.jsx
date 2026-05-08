@@ -6,7 +6,7 @@ import MediaGrid from './MediaGrid';
 import LinkifiedText from './LinkifiedText';
 import LinkPreviewCard from './LinkPreviewCard';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
-import { productPriceLabel, productPriceRangeLabel } from '@/lib/productUnits';
+import { productCardPriceLabel, productPriceLabel, productPriceRangeLabel, productUnitLabel } from '@/lib/productUnits';
 import { trackPlatformEvent } from '@/lib/attribution';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -210,8 +210,11 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         per_project: ' / project',
     };
     const attachedProductPrice = Number(attachedProduct?.discounted_price > 0 ? attachedProduct.discounted_price : attachedProduct?.price || 0);
+    const attachedProductUnitLabel = !attachedProductIsService && attachedProduct?.type === 'physical'
+        ? productUnitLabel(attachedProduct)
+        : '';
     const attachedProductPriceLabel = (() => {
-        if (!attachedProductIsService) return productPriceLabel(attachedProduct, attachedProductPrice);
+        if (!attachedProductIsService) return productCardPriceLabel(attachedProduct, attachedProductPrice);
         if (attachedProductPriceDisplay === 'hidden' || attachedProductServiceMode === 'showcase_only') return 'Contact provider';
         if (attachedProductPriceDisplay === 'quote_only' || attachedProductServiceMode === 'request_quote') return 'Quote after request';
         if (attachedProductPriceDisplay === 'starts_from') return `From TZS ${attachedProductPrice.toLocaleString()}`;
@@ -592,6 +595,11 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                         )}
                         <div className="flex-1 min-w-0">
                             <p className="font-bold text-[22px] leading-tight text-foreground truncate">{attachedProduct.title}</p>
+                            {attachedProductUnitLabel && (
+                                <p className="mb-1 text-[12px] font-bold text-slate-500 truncate">
+                                    {attachedProductUnitLabel}
+                                </p>
+                            )}
                             {hasVariantPricing ? (
                                 <div className="space-y-0.5">
                                     <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">

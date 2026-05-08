@@ -23,9 +23,15 @@ class UnifiedSearchController extends Controller
     public function posts(Request $request, DiscoveryRankingService $ranking): JsonResponse
     {
         $validated = $request->validate([
-            'q' => 'required|string|min:2|max:220',
-            'type' => 'nullable|string|in:all,physical,digital,service,creator',
+            'q' => 'nullable|string|max:220',
+            'type' => 'nullable|string|in:all,physical,digital,service,creator,custom',
             'surface' => 'nullable|string|in:all,products',
+            'category_id' => 'nullable|integer|exists:product_categories,id',
+            'sub_category_id' => 'nullable|integer|exists:product_categories,id',
+            'service_category_id' => 'nullable|integer|exists:service_categories,id',
+            'service_subcategory_id' => 'nullable|integer|exists:service_categories,id',
+            'service_category' => 'nullable|string|max:120',
+            'service_subcategory' => 'nullable|string|max:120',
             'country_id' => 'nullable|integer|exists:countries,id',
             'location' => 'nullable|string|max:120',
             'lat' => 'nullable|numeric|between:-90,90',
@@ -35,10 +41,16 @@ class UnifiedSearchController extends Controller
             'page' => 'nullable|integer|min:1',
         ]);
 
-        $q = trim((string) $validated['q']);
+        $q = trim((string) ($validated['q'] ?? ''));
         $filters = [
             'type' => (string) ($validated['type'] ?? 'all'),
             'surface' => (string) ($validated['surface'] ?? 'all'),
+            'category_id' => $validated['category_id'] ?? null,
+            'sub_category_id' => $validated['sub_category_id'] ?? null,
+            'service_category_id' => $validated['service_category_id'] ?? null,
+            'service_subcategory_id' => $validated['service_subcategory_id'] ?? null,
+            'service_category' => trim((string) ($validated['service_category'] ?? '')),
+            'service_subcategory' => trim((string) ($validated['service_subcategory'] ?? '')),
             'country_id' => $validated['country_id'] ?? null,
             'location' => trim((string) ($validated['location'] ?? '')),
             'lat' => $validated['lat'] ?? null,
@@ -52,7 +64,7 @@ class UnifiedSearchController extends Controller
         $productOnly = $filters['surface'] === 'products';
         $postScores = [];
 
-        if (! $productOnly) {
+        if (! $productOnly && $tokens !== []) {
             $this->addWeightedIds($postScores, $this->directPostMatches($tokens), 120);
         }
 
@@ -61,21 +73,21 @@ class UnifiedSearchController extends Controller
             $this->addWeightedIds($postScores, $this->postIdsForProducts($productIds), 200);
         }
 
-        $contentIds = ! $productOnly && in_array($filters['type'], ['all', 'digital', 'creator'], true)
+        $contentIds = ! $productOnly && $tokens !== [] && in_array($filters['type'], ['all', 'digital', 'creator'], true)
             ? $this->matchingContentItemIds($tokens)
             : collect();
         if ($contentIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, Post::query()->whereIn('content_item_id', $contentIds)->pluck('id'), 170);
         }
 
-        $bundleIds = ! $productOnly && in_array($filters['type'], ['all', 'digital', 'creator'], true)
+        $bundleIds = ! $productOnly && $tokens !== [] && in_array($filters['type'], ['all', 'digital', 'creator'], true)
             ? $this->matchingBundleIds($tokens)
             : collect();
         if ($bundleIds->isNotEmpty()) {
             $this->addWeightedIds($postScores, $this->postIdsForPromotables($bundleIds, Bundle::class), 150);
         }
 
-        $planIds = ! $productOnly && in_array($filters['type'], ['all', 'creator'], true)
+        $planIds = ! $productOnly && $tokens !== [] && in_array($filters['type'], ['all', 'creator'], true)
             ? $this->matchingSubscriptionPlanIds($tokens)
             : collect();
         if ($planIds->isNotEmpty()) {
@@ -84,7 +96,7 @@ class UnifiedSearchController extends Controller
 
         $postResults = $productOnly ? collect() : $this->hydratePostResults($postScores, $request, $ranking);
         $productResults = $this->hydrateProductResults($productIds, $tokens, $q, $request, $ranking, $filters);
-        $merchantResults = $productOnly ? collect() : $this->hydrateMerchantResults($tokens, $q, $filters);
+        $merchantResults = ($productOnly || $tokens === []) ? collect() : $this->hydrateMerchantResults($tokens, $q, $filters);
 
         $allResults = collect()->concat($productResults)->concat($postResults)->concat($merchantResults)
             ->sortByDesc('sort_score')
@@ -178,6 +190,10 @@ class UnifiedSearchController extends Controller
                 'merchant.locations:id,merchant_id,name,address,city,region,latitude,longitude,is_primary,allow_self_pickup',
                 'attributes',
                 'images',
+                'unitType',
+                'packageContentUnitType',
+                'returnPolicy',
+                'faqs',
                 'variants',
                 'categoryAttributeValues.categoryAttribute',
             ])
@@ -189,6 +205,10 @@ class UnifiedSearchController extends Controller
         return collect($resolved)->map(function (array $payload) use ($products, $queryLower, $tokens, $ranking, $filters) {
             $product = $products->firstWhere('id', (int) ($payload['id'] ?? 0));
             if (! $product) {
+                return null;
+            }
+
+            if (($filters['lat'] ?? null) !== null && ($filters['lng'] ?? null) !== null && ! $ranking->isInsideSearchRadius($product, $filters)) {
                 return null;
             }
 
@@ -354,10 +374,34 @@ class UnifiedSearchController extends Controller
             ->when(($filters['type'] ?? 'all') !== 'all', function ($query) use ($filters): void {
                 $type = (string) $filters['type'];
                 if ($type === 'creator') {
-                    $query->where('type', 'digital');
+                    $query->where('type', 'digital')
+                        ->whereIn('digital_delivery_type', ['video_stream', 'audio_stream', 'gallery_pack', 'live_event', 'custom_delivery']);
+                    return;
+                }
+                if ($type === 'custom') {
+                    $query->where('type', 'digital')
+                        ->where('digital_delivery_type', 'custom_delivery');
                     return;
                 }
                 $query->where('type', $type);
+            })
+            ->when($filters['category_id'] ?? null, function ($query, $categoryId): void {
+                $query->whereHas('attributes', fn ($attr) => $attr->where('category_id', $categoryId));
+            })
+            ->when($filters['sub_category_id'] ?? null, function ($query, $subCategoryId): void {
+                $query->whereHas('attributes', fn ($attr) => $attr->where('sub_category_id', $subCategoryId));
+            })
+            ->when(($filters['service_category'] ?? '') !== '', function ($query) use ($filters): void {
+                $query->where('service_category', $filters['service_category']);
+            })
+            ->when(($filters['service_subcategory'] ?? '') !== '', function ($query) use ($filters): void {
+                $query->where('service_subcategory', $filters['service_subcategory']);
+            })
+            ->when($filters['service_category_id'] ?? null, function ($query, $categoryId): void {
+                $query->where('service_category_id', $categoryId);
+            })
+            ->when($filters['service_subcategory_id'] ?? null, function ($query, $subcategoryId): void {
+                $query->where('service_subcategory_id', $subcategoryId);
             })
             ->when(trim((string) ($filters['location'] ?? '')) !== '', function ($query) use ($filters, $operator): void {
                 $like = '%' . trim((string) $filters['location']) . '%';
@@ -371,7 +415,8 @@ class UnifiedSearchController extends Controller
                         });
                 });
             })
-            ->where(function ($query) use ($tokens, $operator, $digitalIntent) {
+            ->when($tokens !== [] || $digitalIntent['content_types'] !== [] || $digitalIntent['delivery_types'] !== [], function ($query) use ($tokens, $operator, $digitalIntent): void {
+                $query->where(function ($query) use ($tokens, $operator, $digitalIntent) {
                 foreach ($tokens as $token) {
                     $like = "%{$token}%";
                     $query->orWhere('title', $operator, $like)
@@ -421,7 +466,10 @@ class UnifiedSearchController extends Controller
                             ->whereIn('digital_delivery_type', $digitalIntent['delivery_types']);
                     });
                 }
+                });
             })
+            ->orderByDesc('views_count')
+            ->latest()
             ->limit(400)
             ->pluck('id');
     }

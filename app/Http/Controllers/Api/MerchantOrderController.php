@@ -260,10 +260,13 @@ class MerchantOrderController extends Controller
                 'file_mime' => $order->custom_delivery_file_mime,
                 'file_size' => $order->custom_delivery_file_size !== null ? (int) $order->custom_delivery_file_size : null,
                 'message' => $order->custom_delivery_message,
+                'due_at' => $order->custom_delivery_due_at?->toISOString(),
                 'delivered_at' => $order->custom_delivery_delivered_at?->toISOString(),
                 'status' => $order->custom_delivery_status,
                 'revision_message' => $order->custom_delivery_revision_message,
                 'revision_requested_at' => $order->custom_delivery_revision_requested_at?->toISOString(),
+                'revision_count' => (int) $order->custom_delivery_revision_count,
+                'revision_limit' => Order::CUSTOM_DELIVERY_REVISION_LIMIT,
                 'accepted_at' => $order->custom_delivery_accepted_at?->toISOString(),
             ],
             'bundle_item_selection' => $order->bundle_item_selection ?? [],
@@ -366,6 +369,18 @@ class MerchantOrderController extends Controller
             'custom_delivery_revision_message' => null,
             'custom_delivery_revision_requested_at' => null,
             'custom_delivery_accepted_at' => null,
+        ]);
+
+        $order->customDeliveryEvents()->create([
+            'actor_type' => 'merchant',
+            'actor_id' => $request->user()->id,
+            'event_type' => 'delivery_uploaded',
+            'revision_number' => (int) $order->custom_delivery_revision_count,
+            'file_url' => 'private://'.$path,
+            'file_name' => $originalName,
+            'file_mime' => $file->getClientMimeType(),
+            'file_size' => $file->getSize(),
+            'message' => $validated['message'] ?? null,
         ]);
 
         return response()->json([

@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import AddressPickerModal from '@/Components/AddressPickerModal';
 import { trackAttributionEvent } from '@/lib/attribution';
-import { productPriceLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
+import { formatQuantity, productCardPriceLabel, productPriceLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
 
 export default function ProductDetail({ product }) {
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -25,6 +25,7 @@ export default function ProductDetail({ product }) {
     const [serviceRequestOpen, setServiceRequestOpen] = useState(false);
     const [serviceRequestSubmitting, setServiceRequestSubmitting] = useState(false);
     const [galleryImageLoaded, setGalleryImageLoaded] = useState({});
+    const galleryTouchStartRef = useRef(null);
     const [serviceRequestForm, setServiceRequestForm] = useState({
         customer_name: '',
         customer_phone: '',
@@ -418,7 +419,7 @@ export default function ProductDetail({ product }) {
         ? `Estimated confirmation: ${product.availability_lead_time_hours} hour${Number(product.availability_lead_time_hours) === 1 ? '' : 's'}`
         : product.availability_lead_time_days
             ? `Estimated preparation: ${product.availability_lead_time_days} day${Number(product.availability_lead_time_days) === 1 ? '' : 's'}`
-        : null;
+            : null;
     const fulfillmentAvailableFromLabel = product.available_from
         ? `Expected availability: ${product.available_from}`
         : null;
@@ -458,17 +459,59 @@ export default function ProductDetail({ product }) {
         ? Number(groupSaleOffer?.campaign_price || product.checkout_price || 0)
         : hasProductVariants
             ? Number(selectedVariant?.price || 0)
-        : Number(product.type === 'service' && selectedServiceOption?.price !== null && selectedServiceOption?.price !== undefined
-            ? selectedServiceOption.price
-            : (product.discounted_price > 0 ? product.discounted_price : product.price || 0));
+            : Number(product.type === 'service' && selectedServiceOption?.price !== null && selectedServiceOption?.price !== undefined
+                ? selectedServiceOption.price
+                : (product.discounted_price > 0 ? product.discounted_price : product.price || 0));
     const effectiveServicePriceDisplay = product.type === 'service' && selectedServiceOption?.price_display
         ? selectedServiceOption.price_display
         : servicePriceDisplay;
     const effectiveCheckoutPrice = product.type === 'service'
         ? checkoutPrice + includedServiceChargesTotal
         : checkoutPrice;
-    const unitPriceText = productPriceLabel(product, checkoutPrice);
+    const unitPriceText = productCardPriceLabel(product, checkoutPrice);
     const unitLabel = productUnitLabel(product);
+    const refundPolicy = product?.refund_policy || {};
+    const refundPolicyLabel = (() => {
+        const windowText = refundPolicy.window_days !== null && refundPolicy.window_days !== undefined
+            ? `${refundPolicy.window_days} days`
+            : null;
+        if (refundPolicy.note) return refundPolicy.note;
+        if (refundPolicy.policy === 'final_sale') return 'Final sale unless damaged or incorrect.';
+        if (refundPolicy.policy === 'strict') return windowText ? `Replacement/review within ${windowText}.` : 'Replacement/review available for damaged or incorrect items.';
+        return windowText ? `Return or replacement within ${windowText}.` : 'Standard Takeer return/review policy applies.';
+    })();
+    const formatIncludedPackageItem = (item) => {
+        const name = String(item?.name || '').trim();
+        if (!name) return '';
+
+        const quantity = Number(item?.qty || 1);
+        const quantityLabel = formatQuantity(quantity || 1);
+        const unit = String(item?.unit || '').trim();
+        const normalizedUnit = unit.toLowerCase();
+        const shouldHideUnit = !unit || ['pc', 'pcs', 'piece', 'pieces', 'unit', 'units'].includes(normalizedUnit);
+
+        return shouldHideUnit
+            ? `${quantityLabel} ${name}`
+            : `${quantityLabel} ${unit} ${name}`;
+    };
+    const includedPackageItems = Array.isArray(product.package_content_items)
+        ? product.package_content_items
+            .filter((item) => item?.name)
+            .map(formatIncludedPackageItem)
+            .filter(Boolean)
+        : [];
+    const physicalProductDetails = product.type === 'physical'
+        ? [
+            product.package_contents ? ['Package contents', product.package_contents] : null,
+            includedPackageItems.length > 0
+                ? ["What's in the package", includedPackageItems]
+                : null,
+            refundPolicyLabel ? ['Return policy', refundPolicyLabel] : null,
+        ].filter(Boolean)
+        : [];
+    const productFaqs = Array.isArray(product?.faqs)
+        ? product.faqs.filter((faq) => faq?.question && faq?.answer)
+        : [];
     const servicePriceText = (() => {
         if (product.type !== 'service') return productPriceLabel(product, effectiveCheckoutPrice);
         if (payableServiceRequest) return `TZS ${Number(payableServiceRequest.quoted_amount || product.checkout_price || 0).toLocaleString()}`;
@@ -950,6 +993,46 @@ export default function ProductDetail({ product }) {
             .replace(/\b\w/g, (letter) => letter.toUpperCase())
     );
 
+    const goToPreviousMedia = () => {
+        if (images.length <= 1) return;
+        setCurrentImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+        setActiveHotspot(null);
+    };
+
+    const goToNextMedia = () => {
+        if (images.length <= 1) return;
+        setCurrentImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+        setActiveHotspot(null);
+    };
+
+    const handleGalleryTouchStart = (event) => {
+        const touch = event.touches?.[0];
+        if (!touch) return;
+        galleryTouchStartRef.current = {
+            x: touch.clientX,
+            y: touch.clientY,
+        };
+    };
+
+    const handleGalleryTouchEnd = (event) => {
+        if (images.length <= 1 || !galleryTouchStartRef.current) return;
+
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+
+        const deltaX = touch.clientX - galleryTouchStartRef.current.x;
+        const deltaY = touch.clientY - galleryTouchStartRef.current.y;
+        galleryTouchStartRef.current = null;
+
+        if (Math.abs(deltaX) < 45 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
+
+        if (deltaX < 0) {
+            goToNextMedia();
+        } else {
+            goToPreviousMedia();
+        }
+    };
+
     return (
         <AppLayout hideTabBar>
             <div className="min-h-screen bg-background text-foreground pb-24 md:pb-0 font-sans">
@@ -966,7 +1049,11 @@ export default function ProductDetail({ product }) {
                 </div>
 
                 {/* Hero Image Section with Multi-image Slider */}
-                <div className="relative w-full aspect-square bg-muted overflow-hidden">
+                <div
+                    className="relative w-full aspect-square bg-muted overflow-hidden touch-pan-y select-none"
+                    onTouchStart={handleGalleryTouchStart}
+                    onTouchEnd={handleGalleryTouchEnd}
+                >
                     <div className="w-full h-full relative group">
                         {isCurrentVideo ? (
                             <VideoPlayer
@@ -1061,14 +1148,16 @@ export default function ProductDetail({ product }) {
                         {images.length > 1 && (
                             <>
                                 <button
-                                    onClick={() => { setCurrentImageIndex(prev => prev > 0 ? prev - 1 : images.length - 1); setActiveHotspot(null); }}
-                                    className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 bg-black/30 backdrop-blur-md text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={goToPreviousMedia}
+                                    className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 h-10 w-10 bg-black/35 backdrop-blur-md text-white rounded-full flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                                    aria-label="Previous media"
                                 >
                                     <ChevronLeft className="h-6 w-6" />
                                 </button>
                                 <button
-                                    onClick={() => { setCurrentImageIndex(prev => prev < images.length - 1 ? prev + 1 : 0); setActiveHotspot(null); }}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 bg-black/30 backdrop-blur-md text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={goToNextMedia}
+                                    className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 h-10 w-10 bg-black/35 backdrop-blur-md text-white rounded-full flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                                    aria-label="Next media"
                                 >
                                     <ChevronRight className="h-6 w-6" />
                                 </button>
@@ -1077,11 +1166,17 @@ export default function ProductDetail({ product }) {
 
                         {/* Image Indicators */}
                         {images.length > 1 && (
-                            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex gap-1.5 z-30">
+                            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-30">
                                 {images.map((_, i) => (
-                                    <div
+                                    <button
                                         key={i}
+                                        type="button"
+                                        onClick={() => {
+                                            setCurrentImageIndex(i);
+                                            setActiveHotspot(null);
+                                        }}
                                         className={`h-1.5 rounded-full transition-all duration-300 ${i === currentImageIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/40'}`}
+                                        aria-label={`Show media ${i + 1}`}
                                     />
                                 ))}
                             </div>
@@ -1458,45 +1553,45 @@ export default function ProductDetail({ product }) {
                                 </div>
                             )}
                             {hasSoftwareReleases ? (
-                            <div className="divide-y divide-border">
-                                {softwareReleases.map((release) => (
-                                    <div key={release.id} className="p-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <p className="text-sm font-black text-foreground">v{release.version}</p>
-                                                    {release.is_latest && (
-                                                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">
-                                                            Latest
-                                                        </span>
+                                <div className="divide-y divide-border">
+                                    {softwareReleases.map((release) => (
+                                        <div key={release.id} className="p-4">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <p className="text-sm font-black text-foreground">v{release.version}</p>
+                                                        {release.is_latest && (
+                                                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                                                                Latest
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {release.title && (
+                                                        <p className="mt-1 text-sm font-bold text-slate-700">{release.title}</p>
+                                                    )}
+                                                    {release.changelog && (
+                                                        <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-line">{release.changelog}</p>
                                                     )}
                                                 </div>
-                                                {release.title && (
-                                                    <p className="mt-1 text-sm font-bold text-slate-700">{release.title}</p>
-                                                )}
-                                                {release.changelog && (
-                                                    <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-line">{release.changelog}</p>
+                                                {product.has_access && release.download_url && (
+                                                    <a
+                                                        href={release.download_url}
+                                                        onClick={() => trackContentInteraction('software_release_downloaded', {
+                                                            context: 'software_releases',
+                                                            release_id: release.id,
+                                                            version: release.version,
+                                                            is_latest: Boolean(release.is_latest),
+                                                        })}
+                                                        className="shrink-0 rounded-xl bg-brand-600 px-3 py-2 text-xs font-black text-white inline-flex items-center gap-2"
+                                                    >
+                                                        <DownloadCloud className="h-4 w-4" />
+                                                        Download
+                                                    </a>
                                                 )}
                                             </div>
-                                            {product.has_access && release.download_url && (
-                                                <a
-                                                    href={release.download_url}
-                                                    onClick={() => trackContentInteraction('software_release_downloaded', {
-                                                        context: 'software_releases',
-                                                        release_id: release.id,
-                                                        version: release.version,
-                                                        is_latest: Boolean(release.is_latest),
-                                                    })}
-                                                    className="shrink-0 rounded-xl bg-brand-600 px-3 py-2 text-xs font-black text-white inline-flex items-center gap-2"
-                                                >
-                                                    <DownloadCloud className="h-4 w-4" />
-                                                    Download
-                                                </a>
-                                            )}
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
                             ) : (
                                 <div className="p-4 text-sm font-semibold text-muted-foreground">
                                     No release downloads have been published yet.
@@ -1556,7 +1651,7 @@ export default function ProductDetail({ product }) {
                         )}
                         {product.type === 'physical' && unitLabel && (
                             <p className="mt-2 text-xs font-bold uppercase tracking-wider text-brand-700">
-                                Bei kwa {unitLabel} · {productStockLabel(product)}
+                                Bei kwa pakiti hii · {productStockLabel(product)}
                             </p>
                         )}
                         {product.type === 'service' && (
@@ -1746,8 +1841,8 @@ export default function ProductDetail({ product }) {
                                     </p>
                                 </div>
                                 <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${serviceTrust.trust_ready
-                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                        : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
                                     }`}>
                                     {serviceTrust.trust_ready ? 'Imekaguliwa' : 'Inakaguliwa'}
                                 </span>
@@ -1791,6 +1886,47 @@ export default function ProductDetail({ product }) {
                         </p>
                     </div>
 
+                    {physicalProductDetails.length > 0 && (
+                        <div className="mb-8 border-t border-border/40 pt-5">
+                            <div className="space-y-3">
+                                {physicalProductDetails.map(([label, value]) => (
+                                    <div key={label}>
+                                        <p className="text-sm font-black text-foreground">{label}</p>
+                                        {Array.isArray(value) ? (
+                                            <ul className="mt-1 space-y-1 text-sm leading-relaxed text-muted-foreground">
+                                                {value.map((item) => (
+                                                    <li key={item} className="flex gap-2">
+                                                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-brand-500/70 shrink-0" />
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{value}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {productFaqs.length > 0 && (
+                        <div className="mb-8 border-t border-border/40 pt-5">
+                            <h2 className="mb-3 text-lg font-black text-foreground">Questions & Answers</h2>
+                            <div className="space-y-3">
+                                {productFaqs.map((faq, index) => (
+                                    <details key={faq.id || `${faq.question}-${index}`} className="rounded-2xl border border-border bg-card px-4 py-3" open={index === 0}>
+                                        <summary className="cursor-pointer text-sm font-black text-foreground">
+                                            {faq.question}
+                                        </summary>
+                                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
+                                            {faq.answer}
+                                        </p>
+                                    </details>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Specifications Grid */}
                     {hasProductSpecifications && (
@@ -1986,16 +2122,8 @@ export default function ProductDetail({ product }) {
                     )}
 
                     {product.type === 'service' && ((product.service_area || []).length > 0 || product.service_client_requirements || providerServiceLocation?.address || serviceCharges.length > 0 || serviceOptions.length > 0) && (
-                        <div className="mb-6 border-t border-border/40 pt-5">
+                        <div className="mb-2">
                             <div className="space-y-4">
-                                {serviceOptions.length > 0 && (
-                                    <div className="rounded-xl bg-muted/30 px-3.5 py-3">
-                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Chaguo za huduma</p>
-                                        <p className="text-sm text-muted-foreground mt-1.5">
-                                            {serviceOptions.map((option) => option.name).join(' • ')}
-                                        </p>
-                                    </div>
-                                )}
                                 {serviceCharges.length > 0 && (
                                     <div>
                                         <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Gharama zilizojumuishwa</p>

@@ -22,6 +22,19 @@ class Product extends Model
         return 'slug';
     }
 
+    public function resolveRouteBinding($value, $field = null): ?self
+    {
+        $query = $this->newQuery();
+
+        if ($field) {
+            return $query->where($field, $value)->first();
+        }
+
+        return $query->where('slug', $value)
+            ->when(is_numeric($value), fn ($candidate) => $candidate->orWhere($this->getKeyName(), (int) $value))
+            ->first();
+    }
+
     protected $fillable = [
         'type',
         'merchant_id',
@@ -84,7 +97,9 @@ class Product extends Model
         'service_mode',
         'service_scheduling_type',
         'service_category',
+        'service_category_id',
         'service_subcategory',
+        'service_subcategory_id',
         'service_price_display',
         'service_charges',
         'service_options',
@@ -101,6 +116,11 @@ class Product extends Model
         'shipping_profile_id',
         'product_unit_type_id',
         'sellable_quantity',
+        'package_content_unit_type_id',
+        'package_content_quantity',
+        'package_contents',
+        'package_content_items',
+        'return_policy_id',
         'min_order_quantity',
         'order_increment',
         'inventory_quantity',
@@ -122,6 +142,10 @@ class Product extends Model
             'inventory_count' => 'integer',
             'product_unit_type_id' => 'integer',
             'sellable_quantity' => 'decimal:3',
+            'package_content_unit_type_id' => 'integer',
+            'package_content_quantity' => 'decimal:3',
+            'package_content_items' => 'array',
+            'return_policy_id' => 'integer',
             'min_order_quantity' => 'decimal:3',
             'order_increment' => 'decimal:3',
             'inventory_quantity' => 'decimal:3',
@@ -140,6 +164,8 @@ class Product extends Model
             'license_key_enabled' => 'boolean',
             'license_activation_limit' => 'integer',
             'service_hourly_rate' => 'decimal:2',
+            'service_category_id' => 'integer',
+            'service_subcategory_id' => 'integer',
             'service_min_hours' => 'integer',
             'service_deposit_amount' => 'decimal:2',
             'service_is_showcase' => 'boolean',
@@ -202,6 +228,21 @@ class Product extends Model
         return $this->belongsTo(ProductUnitType::class, 'product_unit_type_id');
     }
 
+    public function packageContentUnitType(): BelongsTo
+    {
+        return $this->belongsTo(ProductUnitType::class, 'package_content_unit_type_id');
+    }
+
+    public function returnPolicy(): BelongsTo
+    {
+        return $this->belongsTo(MerchantReturnPolicy::class, 'return_policy_id');
+    }
+
+    public function faqs(): HasMany
+    {
+        return $this->hasMany(ProductFaq::class)->orderBy('sort_order')->orderBy('id');
+    }
+
     public function softwareReleases(): HasMany
     {
         return $this->hasMany(ProductRelease::class)->latest('published_at')->latest('id');
@@ -250,6 +291,16 @@ class Product extends Model
     public function serviceAvailabilityRules(): HasMany
     {
         return $this->hasMany(ServiceAvailabilityRule::class);
+    }
+
+    public function serviceCategory(): BelongsTo
+    {
+        return $this->belongsTo(ServiceCategory::class, 'service_category_id');
+    }
+
+    public function serviceSubcategory(): BelongsTo
+    {
+        return $this->belongsTo(ServiceCategory::class, 'service_subcategory_id');
     }
 
     public function serviceSessions(): HasMany

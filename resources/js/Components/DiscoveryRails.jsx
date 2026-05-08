@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { CalendarClock, ChevronRight, Crown, DownloadCloud, Image, MapPin, Music, PenLine, Play, ShoppingBag, Sparkles, Store } from 'lucide-react';
+import { CalendarClock, ChevronRight, Crown, DownloadCloud, Image, Music, PenLine, Play, ShoppingBag, Sparkles, Store } from 'lucide-react';
 import axios from 'axios';
 import { trackPlatformEvent } from '@/lib/attribution';
+import { productUnitLabel } from '@/lib/productUnits';
 
 export function useDiscoveryRails() {
     const [rails, setRails] = useState([]);
@@ -93,7 +94,74 @@ export function DiscoveryRailSection({ rail, compact = false }) {
 function ProductRailCard({ product, compact = false }) {
     const Icon = productIcon(product);
     const label = productLabel(product);
-    const location = product.discovery_location;
+    const isPhysicalProduct = product.type === 'physical';
+    const unitLabel = isPhysicalProduct ? productUnitLabel(product) : '';
+    const price = Number(product.checkout_price ?? product.discounted_price ?? product.price ?? 0);
+    const comparePrice = Number(product.compare_at_price ?? product.price ?? 0);
+    const hasDiscount = isPhysicalProduct && comparePrice > price && price > 0;
+    const discountPercent = hasDiscount ? Math.round(((comparePrice - price) / comparePrice) * 100) : 0;
+    const physicalImageUrl = useMemo(() => {
+        const galleryImages = Array.isArray(product.images)
+            ? product.images
+                .map((image) => image?.thumbnail_url || image?.image_url || image?.url)
+                .filter(Boolean)
+            : [];
+        const options = galleryImages.length > 0 ? galleryImages : [product.image_url].filter(Boolean);
+        if (options.length === 0) return '';
+
+        return options[Math.floor(Math.random() * options.length)];
+    }, [product.id, product.image_url, product.images]);
+
+    if (isPhysicalProduct) {
+        return (
+            <Link
+                href={`/product/${product.slug || product.id}`}
+                onClick={() => trackPlatformEvent('product_click', {
+                    entity_type: 'product',
+                    entity_id: product.id,
+                    merchant_id: product.merchant_id || product.merchant?.id || null,
+                    metadata: {
+                        source: 'discovery_rail',
+                        product_type: product.type,
+                    },
+                })}
+                className={`${compact ? 'w-36' : 'w-40'} shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md`}
+            >
+                <div className="relative aspect-square bg-white">
+                    {discountPercent > 0 && (
+                        <div className="absolute left-2 top-0 z-10 rounded-b-md bg-blue-600 px-1.5 py-1 text-center text-[9px] font-black uppercase leading-none text-white">
+                            {discountPercent}%<br />OFF
+                        </div>
+                    )}
+                    {physicalImageUrl ? (
+                        <img src={physicalImageUrl} alt={product.title} className="h-full w-full object-cover" />
+                    ) : (
+                        <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                            <ShoppingBag className="h-7 w-7" />
+                        </div>
+                    )}
+                </div>
+                <div className="space-y-1.5 p-2.5">
+                    <p className="min-h-[38px] text-[13px] font-black leading-tight text-foreground line-clamp-2">
+                        {product.title}
+                    </p>
+                    {unitLabel && (
+                        <p className="truncate text-[12px] font-semibold text-slate-500">
+                            {unitLabel}
+                        </p>
+                    )}
+                    <p className="pt-1 text-[13px] font-black leading-none text-slate-950">
+                        TZS {price.toLocaleString()}
+                    </p>
+                    {hasDiscount && (
+                        <p className="text-[11px] font-bold leading-none text-slate-400 line-through">
+                            TZS {comparePrice.toLocaleString()}
+                        </p>
+                    )}
+                </div>
+            </Link>
+        );
+    }
 
     return (
         <Link
@@ -124,13 +192,6 @@ function ProductRailCard({ product, compact = false }) {
                     {label}
                 </span>
                 <p className={`${compact ? 'mt-1 text-[13px] min-h-[32px]' : 'mt-1.5 text-sm min-h-[34px]'} font-black leading-tight text-foreground line-clamp-2`}>{product.title}</p>
-                {location && (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-muted-foreground truncate">
-                        <MapPin className="h-3 w-3 text-brand-600 shrink-0" />
-                        {[location.city, location.region].filter(Boolean).join(', ') || location.name || 'Nearby'}
-                        {location.distance_km !== null && location.distance_km !== undefined ? ` • ${location.distance_km} km` : ''}
-                    </p>
-                )}
                 <p className="mt-2 text-sm font-black text-brand-600">TZS {Number(product.checkout_price ?? product.price ?? 0).toLocaleString()}</p>
             </div>
         </Link>

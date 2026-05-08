@@ -36,6 +36,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -57,7 +58,7 @@ class UploadController extends Controller
 
         $query = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs'])
             ->with(['variants', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
@@ -86,7 +87,7 @@ class UploadController extends Controller
         $productId = $id ?? $merchantOrId;
         $product = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'variants.locationInventories.location', 'locationInventories.location', 'postTags.post:id,views_count'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'variants.locationInventories.location', 'locationInventories.location', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
                 'orders as purchases_count' => fn ($orders) => $orders->whereNotIn('payment_status', ['pending', 'failed']),
@@ -444,6 +445,60 @@ class UploadController extends Controller
         ];
     }
 
+    private function mediaItemsFromRequest(Request $request): array
+    {
+        $mediaItems = collect($request->input('media_items', []))
+            ->map(fn ($item) => $this->normalizePromotableMediaItem((array) $item))
+            ->filter(fn ($item) => filled($item['url']))
+            ->values()
+            ->all();
+
+        if (count($mediaItems) === 0) {
+            $mediaItems = collect($request->input('image_urls', []))
+                ->filter()
+                ->map(fn ($url) => $this->normalizePromotableMediaItem(['url' => $url, 'type' => 'image']))
+                ->values()
+                ->all();
+        }
+
+        return $mediaItems;
+    }
+
+    private function syncProductDraftMedia(Product $product, array $mediaItems, array $hotspots = []): void
+    {
+        foreach ($mediaItems as $index => $mediaItem) {
+            ProductImage::updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'order' => $index,
+                ],
+                [
+                    'image_url' => $mediaItem['url'],
+                    'media_type' => $mediaItem['media_type'],
+                    'thumbnail_url' => $mediaItem['thumbnail_url'],
+                    'processed_url' => $mediaItem['processed_url'],
+                    'hls_url' => $mediaItem['hls_url'],
+                    'mime' => $mediaItem['mime'],
+                    'size' => $mediaItem['size'],
+                    'duration_seconds' => $mediaItem['duration_seconds'],
+                    'width' => $mediaItem['width'],
+                    'height' => $mediaItem['height'],
+                    'processing_status' => $mediaItem['processing_status'],
+                    'hotspots' => $mediaItem['media_type'] === 'image' ? ($hotspots[$index] ?? []) : [],
+                ]
+            );
+        }
+
+        $product->images()->where('order', '>=', count($mediaItems))->delete();
+
+        if (count($mediaItems) > 0) {
+            $first = $mediaItems[0];
+            $product->forceFill([
+                'url' => $first['thumbnail_url'] ?: $first['url'],
+            ])->save();
+        }
+    }
+
     /**
      * Accept an uploaded image url from the merchant, perform AI tagging,
      * modify the physical image, and return the drafted Product.
@@ -452,6 +507,9 @@ class UploadController extends Controller
     {
         $request->validate([
             'image_url' => 'required|string',
+            'media_items' => 'nullable|array',
+            'image_urls' => 'nullable|array',
+            'hotspots' => 'nullable|array',
         ]);
 
         $imageUrl = $request->input('image_url');
@@ -510,7 +568,15 @@ class UploadController extends Controller
             'price' => 0,
             'inventory_count' => 0,
             'buffer_stock' => 0,
+            'slug' => Str::slug($aiTags['category'] . ' ' . ($aiTags['sub_category'] ?? 'mpya')) . '-' . time(),
+            'url' => $imageUrl,
         ]);
+
+        $mediaItems = $this->mediaItemsFromRequest($request);
+        if (count($mediaItems) === 0) {
+            $mediaItems = [$this->normalizePromotableMediaItem(['url' => $imageUrl, 'type' => 'image'])];
+        }
+        $this->syncProductDraftMedia($product, $mediaItems, (array) $request->input('hotspots', []));
 
         // 3. Attach AI extracted tags
         $product->attributes()->create([
@@ -540,6 +606,9 @@ class UploadController extends Controller
             'title' => 'required|string|max:255',
             'category_id' => 'required|integer|exists:product_categories,id',
             'sub_category_id' => 'nullable|integer|exists:product_categories,id',
+            'media_items' => 'nullable|array',
+            'image_urls' => 'nullable|array',
+            'hotspots' => 'nullable|array',
         ]);
 
         $merchantProfile = $this->merchantFromRequest($request);
@@ -561,7 +630,13 @@ class UploadController extends Controller
             'price' => 0,
             'inventory_count' => 0,
             'buffer_stock' => 0,
+            'slug' => Str::slug($request->input('title')) . '-' . time(),
         ]);
+
+        $mediaItems = $this->mediaItemsFromRequest($request);
+        if (count($mediaItems) > 0) {
+            $this->syncProductDraftMedia($product, $mediaItems, (array) $request->input('hotspots', []));
+        }
 
         $category = $request->filled('category_id') ? ProductCategory::find((int) $request->input('category_id')) : null;
         $subCategory = $request->filled('sub_category_id') ? ProductCategory::find((int) $request->input('sub_category_id')) : null;
@@ -579,6 +654,24 @@ class UploadController extends Controller
             'product_id' => $product->id,
             'message' => 'Bidhaa imeandaliwa mwenyewe. Tafadhali weka bei na idadi.',
         ]);
+    }
+
+    public function syncDraftMedia(Request $request, Product $product): JsonResponse
+    {
+        $merchantProfile = $this->merchantFromRequest($request);
+
+        abort_unless((int) $product->merchant_id === (int) $merchantProfile->id, 404);
+
+        $request->validate([
+            'media_items' => 'nullable|array',
+            'image_urls' => 'nullable|array',
+            'hotspots' => 'nullable|array',
+        ]);
+
+        $mediaItems = $this->mediaItemsFromRequest($request);
+        $this->syncProductDraftMedia($product, $mediaItems, (array) $request->input('hotspots', []));
+
+        return ProductResource::make($product->fresh(['images']))->response();
     }
 
     /**
@@ -640,6 +733,18 @@ class UploadController extends Controller
             'quantity' => 'nullable|numeric|min:0',
             'product_unit_type_id' => 'nullable|integer|exists:product_unit_types,id',
             'sellable_quantity' => 'nullable|numeric|min:0.001',
+            'package_content_unit_type_id' => 'nullable|integer|exists:product_unit_types,id',
+            'package_content_quantity' => 'nullable|numeric|min:0.001',
+            'package_contents' => 'nullable|string|max:500',
+            'package_content_items' => 'nullable|array',
+            'package_content_items.*.qty' => 'nullable|numeric|min:0.001',
+            'package_content_items.*.unit' => 'nullable|string|max:40',
+            'package_content_items.*.name' => 'nullable|string|max:160',
+            'return_policy_id' => 'nullable|integer|exists:merchant_return_policies,id',
+            'faqs' => 'nullable|array',
+            'faqs.*.question' => 'nullable|string|max:1000',
+            'faqs.*.answer' => 'nullable|string|max:3000',
+            'faqs.*.is_published' => 'nullable|boolean',
             'min_order_quantity' => 'nullable|numeric|min:0.001',
             'order_increment' => 'nullable|numeric|min:0.001',
             'url' => 'nullable|string',
@@ -688,7 +793,9 @@ class UploadController extends Controller
             'service_mode' => 'nullable|string|in:showcase_only,request_quote,book_appointment,pay_now,external_booking',
             'service_scheduling_type' => 'nullable|string|in:none,recurring,fixed_sessions,external',
             'service_category' => 'nullable|string|max:120',
+            'service_category_id' => 'nullable|integer|exists:service_categories,id',
             'service_subcategory' => 'nullable|string|max:120',
+            'service_subcategory_id' => 'nullable|integer|exists:service_categories,id',
             'service_price_display' => 'nullable|string|in:hidden,fixed,starts_from,hourly,daily,nightly,weekly,monthly,yearly,per_person,per_visit,per_session,per_project,package,quote_only',
             'service_charges' => 'nullable|array',
             'service_charges.*.name' => 'required_with:service_charges|string|max:160',
@@ -764,6 +871,13 @@ class UploadController extends Controller
             if ($serviceTrustBlock) {
                 return $serviceTrustBlock;
             }
+
+            if (in_array($request->input('service_location_type', 'provider_location'), ['provider_location', 'customer_location', 'hybrid'], true)
+                && (! $request->filled('service_provider_location.lat') || ! $request->filled('service_provider_location.lng'))) {
+                return response()->json([
+                    'message' => 'Tafadhali chagua eneo la huduma kwenye ramani ili wateja waliokaribu waweze kukuona kwenye Near me.',
+                ], 422);
+            }
         }
 
         $accessGroupType = $request->input('access_group_type');
@@ -789,7 +903,7 @@ class UploadController extends Controller
 
         if ($request->input('type') === 'physical') {
             if ($requiresLocationInventory && $merchantLocationIds->isEmpty()) {
-                return response()->json(['message' => 'Tafadhali ongeza angalau eneo moja la duka/stoo kwenye Mipangilio kabla ya kuuza bidhaa ya kimwili.'], 422);
+                return response()->json(['message' => 'Tafadhali ongeza angalau eneo moja la stock/pickup kwenye Mipangilio kabla ya kuuza bidhaa uliyonayo mkononi.'], 422);
             }
 
             $inventoryLocationIds = collect(array_keys((array) $request->input('location_inventories', [])));
@@ -802,7 +916,7 @@ class UploadController extends Controller
                 ->values();
 
             if ($invalidLocationIds->isNotEmpty()) {
-                return response()->json(['message' => 'Stock inaweza kuwekwa kwenye maeneo yako ya biashara pekee.'], 422);
+                return response()->json(['message' => 'Stock inaweza kuwekwa kwenye maeneo yako ya stock/pickup pekee.'], 422);
             }
 
             if ($fulfillmentMode === 'supplier_sourced') {
@@ -964,12 +1078,48 @@ class UploadController extends Controller
             if ($requiresLocationInventory && $hasVariants) {
                 $variantLocationStockTotal = $preparedVariants->sum(fn ($variant) => $sumMerchantLocationStock((array) ($variant['location_inventories'] ?? [])));
                 if ($variantLocationStockTotal <= 0) {
-                    return response()->json(['message' => 'Tafadhali weka stock ya angalau variant moja kwenye eneo la biashara.'], 422);
+                    return response()->json(['message' => 'Tafadhali weka stock ya angalau variant moja kwenye eneo la stock/pickup.'], 422);
                 }
             } elseif ($requiresLocationInventory && $sumMerchantLocationStock((array) $request->input('location_inventories', [])) <= 0) {
-                return response()->json(['message' => 'Tafadhali weka stock kwenye angalau eneo moja la biashara.'], 422);
+                return response()->json(['message' => 'Tafadhali weka stock kwenye angalau eneo moja la stock/pickup.'], 422);
             }
         }
+
+        $returnPolicyId = null;
+        if ($request->input('type') === 'physical' && $request->filled('return_policy_id')) {
+            $returnPolicyId = \App\Models\MerchantReturnPolicy::query()
+                ->where('merchant_id', $merchantProfile->id)
+                ->where('id', (int) $request->input('return_policy_id'))
+                ->value('id');
+        }
+
+        if ($request->input('type') === 'physical' && ! $returnPolicyId) {
+            $returnPolicyId = \App\Models\MerchantReturnPolicy::query()
+                ->where('merchant_id', $merchantProfile->id)
+                ->where('is_default', true)
+                ->value('id');
+        }
+
+        $packageContentItems = collect($request->input('package_content_items', []))
+            ->map(fn ($item) => [
+                'qty' => isset($item['qty']) && $item['qty'] !== '' ? (float) $item['qty'] : 1,
+                'unit' => trim((string) ($item['unit'] ?? '')),
+                'name' => trim((string) ($item['name'] ?? '')),
+            ])
+            ->filter(fn ($item) => $item['name'] !== '')
+            ->values()
+            ->all();
+        $productFaqs = collect($request->input('faqs', []))
+            ->map(fn ($item, $index) => [
+                'question' => trim((string) ($item['question'] ?? '')),
+                'answer' => trim((string) ($item['answer'] ?? '')),
+                'is_published' => array_key_exists('is_published', (array) $item) ? (bool) $item['is_published'] : true,
+                'sort_order' => (int) $index,
+            ])
+            ->filter(fn ($item) => $item['question'] !== '' && $item['answer'] !== '')
+            ->values()
+            ->take(20)
+            ->all();
 
         // 2. Capture already uploaded digital file url (direct file takes priority over external URL)
         $productUrl = $request->input('url');
@@ -1010,6 +1160,9 @@ class UploadController extends Controller
             }
             $productUrl = null;
         } elseif ($request->input('type') === 'digital' && $digitalDeliveryType === 'custom_delivery') {
+            if (! $request->filled('availability_lead_time_days')) {
+                return response()->json(['message' => 'Custom work inahitaji delivery deadline/turnaround days.'], 422);
+            }
             $productUrl = null;
         } elseif ($request->input('type') === 'digital' && $request->filled('digital_file_url')) {
             $productUrl = $request->input('digital_file_url');
@@ -1033,6 +1186,12 @@ class UploadController extends Controller
         $serviceSchedulingType = $request->input('service_scheduling_type');
         $serviceCategory = $request->input('service_category');
         $serviceSubcategory = $request->input('service_subcategory');
+        $serviceCategoryModel = $request->input('type') === 'service'
+            ? $this->serviceCategoryForTrust($serviceCategory ?: '', $serviceSubcategory ?: '', $request->integer('service_category_id') ?: null, $request->integer('service_subcategory_id') ?: null)
+            : null;
+        $serviceParentCategory = $serviceCategoryModel?->parent ?: ($serviceCategoryModel?->parent_id === null ? $serviceCategoryModel : null);
+        $serviceCategoryId = $request->integer('service_category_id') ?: $serviceParentCategory?->id;
+        $serviceSubcategoryId = $request->integer('service_subcategory_id') ?: ($serviceCategoryModel?->parent_id ? $serviceCategoryModel->id : null);
         $servicePriceDisplay = $request->input('service_price_display');
         $serviceCharges = collect($request->input('service_charges', []))
             ->map(function (array $charge) {
@@ -1223,7 +1382,7 @@ class UploadController extends Controller
             'title' => $request->input('title'),
             'fulfillment_mode' => $request->input('type') === 'physical' ? $fulfillmentMode : 'own_stock',
             'source_details' => $request->input('type') === 'physical' ? $sourceDetails : null,
-            'availability_lead_time_days' => $request->input('type') === 'physical' && $request->filled('availability_lead_time_days')
+            'availability_lead_time_days' => (($request->input('type') === 'physical') || ($request->input('type') === 'digital' && $digitalDeliveryType === 'custom_delivery')) && $request->filled('availability_lead_time_days')
                 ? (int) $request->input('availability_lead_time_days')
                 : null,
             'available_from' => $request->input('type') === 'physical' && $request->filled('available_from')
@@ -1250,6 +1409,11 @@ class UploadController extends Controller
                 : 99999,
             'product_unit_type_id' => $request->input('type') === 'physical' ? ($request->input('product_unit_type_id') ?: null) : null,
             'sellable_quantity' => $request->input('type') === 'physical' ? (float) ($request->input('sellable_quantity') ?: 1) : 1,
+            'package_content_unit_type_id' => $request->input('type') === 'physical' ? ($request->input('package_content_unit_type_id') ?: null) : null,
+            'package_content_quantity' => $request->input('type') === 'physical' && $request->filled('package_content_quantity') ? (float) $request->input('package_content_quantity') : null,
+            'package_contents' => $request->input('type') === 'physical' ? ($request->input('package_contents') ?: null) : null,
+            'package_content_items' => $request->input('type') === 'physical' ? $packageContentItems : null,
+            'return_policy_id' => $request->input('type') === 'physical' ? $returnPolicyId : null,
             'min_order_quantity' => $request->input('type') === 'physical' && $request->filled('min_order_quantity') ? (float) $request->input('min_order_quantity') : null,
             'order_increment' => $request->input('type') === 'physical' && $request->filled('order_increment') ? (float) $request->input('order_increment') : null,
             'url' => $productUrl,
@@ -1329,7 +1493,7 @@ class UploadController extends Controller
             'service_options' => $serviceOptions,
             'service_duration_minutes' => $serviceDurationMinutes !== null && $serviceDurationMinutes !== '' ? (int) $serviceDurationMinutes : null,
             'service_location_type' => $serviceLocationType,
-            'service_provider_location' => in_array($serviceLocationType, ['provider_location', 'hybrid'], true) ? $serviceProviderLocation : null,
+            'service_provider_location' => in_array($serviceLocationType, ['provider_location', 'customer_location', 'hybrid'], true) ? $serviceProviderLocation : null,
             'service_area' => $serviceArea,
             'service_client_requirements' => $serviceClientRequirements,
             'service_intake_form' => $serviceIntakeForm,
@@ -1340,10 +1504,18 @@ class UploadController extends Controller
             'shipping_profile_id' => $shippingProfileId,
         ];
 
+        if ($request->input('type') === 'service' && Schema::hasColumn('products', 'service_category_id')) {
+            $productData['service_category_id'] = $serviceCategoryId;
+            $productData['service_subcategory_id'] = $serviceSubcategoryId;
+        }
+
         if ($request->filled('product_id')) {
             $product = Product::query()
                 ->where('merchant_id', $merchantProfile->id)
                 ->findOrFail($request->input('product_id'));
+            if (! $product->slug) {
+                $productData['slug'] = Str::slug($request->input('title')) . '-' . time();
+            }
             $product->update($productData);
             // For simplicity, we create a NEW post every time it's "published" to the feed,
             // but we update the product record itself.
@@ -1420,6 +1592,18 @@ class UploadController extends Controller
         } else {
             $product->variants()->delete();
             $product->locationInventories()->delete();
+        }
+
+        $product->faqs()->where('source', 'merchant')->delete();
+        foreach ($productFaqs as $faq) {
+            $product->faqs()->create([
+                'merchant_id' => $merchantProfile->id,
+                'question' => $faq['question'],
+                'answer' => $faq['answer'],
+                'source' => 'merchant',
+                'is_published' => $faq['is_published'],
+                'sort_order' => $faq['sort_order'],
+            ]);
         }
 
         $brand = $request->filled('brand_id') ? ProductBrand::find((int) $request->input('brand_id')) : null;
@@ -1877,7 +2061,12 @@ class UploadController extends Controller
             ], 422);
         }
 
-        $category = $this->serviceCategoryForTrust($categoryName, $subcategoryName);
+        $category = $this->serviceCategoryForTrust(
+            $categoryName,
+            $subcategoryName,
+            $request->integer('service_category_id') ?: null,
+            $request->integer('service_subcategory_id') ?: null
+        );
         if (! $category) {
             return response()->json([
                 'message' => 'Category ya huduma haijatambulika. Tafadhali chagua tena category kwenye orodha.',
@@ -1946,8 +2135,30 @@ class UploadController extends Controller
         return null;
     }
 
-    private function serviceCategoryForTrust(string $categoryName, string $subcategoryName): ?ServiceCategory
+    private function serviceCategoryForTrust(string $categoryName, string $subcategoryName, ?int $categoryId = null, ?int $subcategoryId = null): ?ServiceCategory
     {
+        if ($subcategoryId) {
+            $child = ServiceCategory::query()
+                ->whereKey($subcategoryId)
+                ->whereNotNull('parent_id')
+                ->first();
+
+            if ($child) {
+                return $child;
+            }
+        }
+
+        if ($categoryId) {
+            $parent = ServiceCategory::query()
+                ->whereKey($categoryId)
+                ->whereNull('parent_id')
+                ->first();
+
+            if ($parent && $subcategoryName === '') {
+                return $parent;
+            }
+        }
+
         $parent = ServiceCategory::query()
             ->whereNull('parent_id')
             ->whereRaw('LOWER(name) = ?', [Str::lower($categoryName)])

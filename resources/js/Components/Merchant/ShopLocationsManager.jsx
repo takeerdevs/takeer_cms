@@ -20,14 +20,14 @@ const DEFAULT_CENTER = {
 
 const libraries = ['places'];
 
-export default function ShopLocationsManager({ locations = [], onRefresh, loading: propLoading, profiles = [], onRefreshZones }) {
+export default function ShopLocationsManager({ locations = [], onRefresh, loading: propLoading, profiles = [], onRefreshZones, personalMode = false }) {
     const [loading, setLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [expandedShippingId, setExpandedShippingId] = useState(null);
     const [formData, setFormData] = useState({
-        name: 'Main Shop',
-        type: 'shop',
+        name: personalMode ? 'Main Stock Point' : 'Main Shop',
+        type: personalMode ? 'store' : 'shop',
         address: '',
         latitude: DEFAULT_CENTER.lat,
         longitude: DEFAULT_CENTER.lng,
@@ -54,12 +54,12 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
     useEffect(() => {
         if (!editingId) {
             if (locations.length === 0) {
-                setFormData(prev => ({ ...prev, name: 'Main Shop' }));
+                setFormData(prev => ({ ...prev, name: personalMode ? 'Main Stock Point' : 'Main Shop', type: personalMode ? 'store' : prev.type }));
             } else {
-                setFormData(prev => ({ ...prev, name: `Shop ${locations.length + 1}` }));
+                setFormData(prev => ({ ...prev, name: personalMode ? `Stock Point ${locations.length + 1}` : `Shop ${locations.length + 1}`, type: personalMode ? 'store' : prev.type }));
             }
         }
-    }, [locations.length, editingId]);
+    }, [locations.length, editingId, personalMode]);
 
     useEffect(() => {
         const fetchRetailSettings = async () => {
@@ -73,8 +73,8 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             }
         };
 
-        fetchRetailSettings();
-    }, []);
+        if (!personalMode) fetchRetailSettings();
+    }, [personalMode]);
 
     const onLoad = (autocomplete) => {
         autocompleteRef.current = autocomplete;
@@ -113,8 +113,8 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
     const resetForm = () => {
         setEditingId(null);
         setFormData({
-            name: `Shop ${locations.length + 1}`,
-            type: 'shop',
+            name: personalMode ? `Stock Point ${locations.length + 1}` : `Shop ${locations.length + 1}`,
+            type: personalMode ? 'store' : 'shop',
             address: '',
             latitude: DEFAULT_CENTER.lat,
             longitude: DEFAULT_CENTER.lng,
@@ -166,7 +166,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             } else {
                 await window.axios.post('/api/merchant/locations', formData);
                 resetForm();
-                toast.success('Eneo la duka limehifadhiwa!');
+                toast.success(personalMode ? 'Eneo la stock/pickup limehifadhiwa!' : 'Eneo la duka limehifadhiwa!');
             }
             if (onRefresh) onRefresh();
         } catch (err) {
@@ -210,6 +210,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
 
     const shops = locations.filter((loc) => String(loc.type || '').toLowerCase() === 'shop');
     const supplyLocations = locations.filter((loc) => ['store', 'warehouse'].includes(String(loc.type || '').toLowerCase()));
+    const personalLimitReached = personalMode && locations.length >= 1 && !editingId;
     const routeByShopId = shopRoutes.reduce((acc, row) => {
         acc[Number(row.shop_location_id)] = row;
         return acc;
@@ -254,33 +255,35 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         <Card className="glass-card shadow-sm mt-6">
             <CardHeader className="p-5 pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
-                    <MapPin className="h-4 w-4" /> Maeneo ya Duka (Shop Locations)
+                    <MapPin className="h-4 w-4" /> {personalMode ? 'Maeneo ya Stock / Pickup' : 'Maeneo ya Duka (Shop Locations)'}
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-5 space-y-4">
                 <p className="text-xs text-muted-foreground mb-4">
-                    Weka eneo sahihi la duka lako ili kuweza kuhesabu gharama za usafirishaji kwa wateja wa karibu.
+                    {personalMode
+                        ? 'Weka eneo bidhaa zako zilipo ili wateja waweze kulipia, kuchukua, au kukubaliana na wewe kuhusu delivery kwenye order chat. Anwani kamili hutumika baada ya order kuanzishwa.'
+                        : 'Weka eneo sahihi la duka lako ili kuweza kuhesabu gharama za usafirishaji kwa wateja wa karibu.'}
                 </p>
 
-                {shops.length > 0 && (
+                {!personalMode && shops.length > 0 && (
                     <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4 space-y-3">
-                <div>
-                    <p className="text-xs font-black uppercase text-brand-700">Mtiririko wa Bidhaa (Rahisi)</p>
-                    <p className="text-[11px] text-brand-700/80">
-                        Chagua stoo inayohudumia kila shop. Hii inafuata uhalisia wa dukani: Shop inauza, Store/Warehouse inasupply.
-                    </p>
-                </div>
+                        <div>
+                            <p className="text-xs font-black uppercase text-brand-700">Mtiririko wa Bidhaa (Rahisi)</p>
+                            <p className="text-[11px] text-brand-700/80">
+                                Chagua stoo inayohudumia kila shop. Hii inafuata uhalisia wa dukani: Shop inauza, Store/Warehouse inasupply.
+                            </p>
+                        </div>
 
-                <div className="space-y-2">
-                    {shops.map((shop) => {
-                        const route = routeByShopId[Number(shop.id)] || {};
-                        return (
-                            <div key={shop.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 rounded-xl bg-white border border-brand-100">
-                                <div>
-                                    <p className="text-[10px] font-black uppercase text-slate-500">Shop</p>
-                                    <p className="text-sm font-bold text-slate-900">{shop.name}</p>
-                                </div>
-                                <div>
+                        <div className="space-y-2">
+                            {shops.map((shop) => {
+                                const route = routeByShopId[Number(shop.id)] || {};
+                                return (
+                                    <div key={shop.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3 rounded-xl bg-white border border-brand-100">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-slate-500">Shop</p>
+                                            <p className="text-sm font-bold text-slate-900">{shop.name}</p>
+                                        </div>
+                                        <div>
                                             <label className="text-[10px] font-black uppercase text-slate-500">Stoo Inayohudumia Shop</label>
                                             <select
                                                 className="w-full h-9 mt-1 rounded-lg border border-input bg-white px-2 text-xs font-semibold"
@@ -290,13 +293,13 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                                 <option value="">Chagua Store/Warehouse</option>
                                                 {supplyLocations.map((loc) => (
                                                     <option key={loc.id} value={loc.id}>{loc.name} ({loc.type})</option>
-                                            ))}
-                                        </select>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
-                                </div>
-                        );
-                    })}
-                </div>
+                                );
+                            })}
+                        </div>
 
                         <div className="flex justify-end">
                             <Button
@@ -318,7 +321,9 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                     <div className="space-y-3 mb-6">
                         {locations.length === 0 ? (
                             <p className="text-sm text-brand-600 font-bold bg-brand-50 p-3 rounded-lg border border-brand-100">
-                                Bado hujaweka eneo lolote la duka. Hili ni hitaji la lazima kwa bidhaa za kushikika.
+                                {personalMode
+                                    ? 'Bado hujaweka eneo la stock/pickup. Hili linahitajika kama unauza bidhaa uliyonayo mkononi.'
+                                    : 'Bado hujaweka eneo lolote la duka. Hili ni hitaji la lazima kwa bidhaa za kushikika.'}
                             </p>
                         ) : (
                             locations.map(loc => (
@@ -328,37 +333,37 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                             <div className="flex items-center gap-2">
                                                 <p className="text-sm font-bold truncate">{loc.name}</p>
                                                 <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full font-bold uppercase">
-                                                    {String(loc.type || 'shop').toLowerCase()}
+                                                    {personalMode ? 'stock point' : String(loc.type || 'shop').toLowerCase()}
                                                 </span>
                                                 {loc.is_primary && (
                                                     <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
                                                         <CheckCircle2 className="h-2.5 w-2.5" /> PRIMARY
                                                     </span>
                                                 )}
-                                                <Button 
-                                                     variant="outline" 
-                                                     size="sm" 
-                                                     className={`h-6 px-2 text-[10px] font-black uppercase rounded-full gap-1.5 shadow-sm transition-all ${loc.allow_self_pickup ? 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
-                                                     onClick={(e) => {
-                                                         e.stopPropagation();
-                                                         handleTogglePickup(loc);
-                                                     }}
-                                                 >
-                                                     {loc.allow_self_pickup ? <CheckCircle2 className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                                                     Pickup {loc.allow_self_pickup ? 'On' : 'Off'}
-                                                 </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className={`h-6 px-2 text-[10px] font-black uppercase rounded-full gap-1.5 shadow-sm transition-all ${loc.allow_self_pickup ? 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100' : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleTogglePickup(loc);
+                                                    }}
+                                                >
+                                                    {loc.allow_self_pickup ? <CheckCircle2 className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                                                    Pickup {loc.allow_self_pickup ? 'On' : 'Off'}
+                                                </Button>
                                             </div>
                                             <p className="text-xs text-muted-foreground truncate">{loc.address}</p>
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0">
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm" 
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
                                                 className={`h-8 px-2 text-[10px] font-black uppercase gap-1.5 rounded-lg ${expandedShippingId === loc.id ? 'bg-brand-50 border-brand-200 text-brand-700' : ''}`}
                                                 onClick={() => setExpandedShippingId(expandedShippingId === loc.id ? null : loc.id)}
                                             >
-                                                <Truck className="h-3 w-3" /> 
-                                                Usafirishaji
+                                                <Truck className="h-3 w-3" />
+                                                {personalMode ? 'Delivery' : 'Usafirishaji'}
                                                 {expandedShippingId === loc.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                                             </Button>
                                             <Button variant="ghost" size="icon" className="text-brand-500 hover:text-brand-700 hover:bg-brand-50" onClick={() => handleEdit(loc)}>
@@ -372,9 +377,9 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
 
                                     {expandedShippingId === loc.id && (
                                         <div className="ml-4 pl-4 border-l-2 border-brand-100 pb-2 space-y-3">
-                                            <LocationShippingManager 
-                                                location={loc} 
-                                                profiles={profiles} 
+                                            <LocationShippingManager
+                                                location={loc}
+                                                profiles={profiles}
                                                 locations={locations}
                                                 onRefresh={onRefreshZones}
                                             />
@@ -386,140 +391,160 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                     </div>
                 )}
 
-                <form id="shop-location-form" onSubmit={handleSubmit} className="space-y-4 border-t pt-4 border-dashed mt-4">
-                    <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-xs font-bold text-muted-foreground uppercase opacity-70">
-                            {editingId ? 'Hariri Eneo la Duka' : 'Ongeza Eneo Mpya'}
-                        </h4>
+                {personalLimitReached && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-900">
+                        Personal account inaruhusu eneo moja tu la stock/pickup. Hariri eneo lililopo, au Tengeneza biashare nyingine ili uweze kuongeza maeneo mengi.
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Jina la Duka (Mf. Duka la Sinza)</label>
-                            <Input
-                                placeholder="Jina la eneo hili"
-                                value={formData.name}
-                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                required
-                                className="bg-muted/30 rounded-xl"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Aina ya Eneo</label>
-                            <select
-                                value={formData.type}
-                                onChange={e => setFormData({ ...formData, type: e.target.value })}
-                                className="w-full h-10 px-3 rounded-xl border border-input bg-muted/30 text-sm"
-                            >
-                                <option value="shop">Shop (Display/Sales Point)</option>
-                                <option value="store">Store (Stock Source)</option>
-                                <option value="warehouse">Warehouse</option>
-                            </select>
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Tafuta Eneo (Google Maps)</label>
-                            {isLoaded ? (
-                                <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged}>
-                                    <Input
-                                        type="text"
-                                        placeholder="Tafuta mtaa au jengo..."
-                                        className="bg-muted/30 rounded-xl"
-                                    />
-                                </Autocomplete>
-                            ) : (
-                                <Input disabled placeholder="Inapakia ramani..." className="bg-muted/30 rounded-xl" />
-                            )}
-                        </div>
-                        <div className="space-y-1 md:col-span-2">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase">Namba ya Simu (Si lazima)</label>
-                            <Input
-                                placeholder="Mfano: 07........"
-                                value={formData.contact_phone}
-                                onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
-                                className="bg-muted/30 rounded-xl"
-                            />
-                        </div>
-                    </div>
+                )}
 
-                    <div className="border border-input rounded-xl overflow-hidden">
-                        {isLoaded ? (
-                            <GoogleMap
-                                mapContainerStyle={MAP_CONTAINER_STYLE}
-                                center={{ lat: Number(formData.latitude), lng: Number(formData.longitude) }}
-                                zoom={15}
-                                options={{
-                                    streetViewControl: false,
-                                    mapTypeControl: false,
-                                    fullscreenControl: false,
-                                }}
-                            >
-                                <Marker
-                                    position={{ lat: Number(formData.latitude), lng: Number(formData.longitude) }}
-                                    draggable={true}
-                                    onDragEnd={onMarkerDragEnd}
+                {!personalLimitReached && (
+                    <form id="shop-location-form" onSubmit={handleSubmit} className="space-y-4 border-t pt-4 border-dashed mt-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-bold text-muted-foreground uppercase opacity-70">
+                                {editingId
+                                    ? (personalMode ? 'Hariri eneo la stock/pickup' : 'Hariri Eneo la Duka')
+                                    : (personalMode ? 'Ongeza eneo la stock/pickup' : 'Ongeza Eneo Mpya')}
+                            </h4>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">
+                                    {personalMode ? 'Jina la Eneo (Mf. Stock ya Nyumbani)' : 'Jina la Duka (Mf. Duka la Sinza)'}
+                                </label>
+                                <Input
+                                    placeholder="Jina la eneo hili"
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    required
+                                    className="bg-muted/30 rounded-xl"
                                 />
-                            </GoogleMap>
-                        ) : (
-                            <div className="w-full h-[250px] bg-muted flex flex-col items-center justify-center text-muted-foreground text-center p-4">
-                                <Globe className="h-10 w-10 mb-2 opacity-20" />
-                                <p className="text-xs">Ramani itaonekana hapa ukishaweka Google API Key.</p>
                             </div>
-                        )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100 mb-2">
-                        <div className="flex-1">
-                            <p className="text-[10px] font-black uppercase text-brand-600 mb-1">Mipangilio ya Eneo (Settings)</p>
-                            <div className="flex flex-wrap items-center gap-6">
-                                <label className="flex items-center gap-3 cursor-pointer group">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.is_primary}
-                                        onChange={e => setFormData(prev => ({ ...prev, is_primary: e.target.checked }))}
-                                        className="h-5 w-5 rounded-lg border-brand-200 text-brand-600 focus:ring-brand-500"
-                                    />
-                                    <div className="flex flex-col">
-                                        <span className="text-xs font-black text-slate-800 group-hover:text-brand-700 transition-colors uppercase">Duka Kuu (Primary Shop)</span>
-                                        <span className="text-[10px] text-slate-500 font-medium font-inter">Eneo hili litakuwa chaguo la kwanza la usafirishaji.</span>
-                                    </div>
-                                </label>
-
-                                <div className="h-8 w-px bg-brand-200 hidden md:block" />
-
-                                <label className="flex items-center gap-3 cursor-pointer group">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.allow_self_pickup}
-                                        onChange={e => setFormData(prev => ({ ...prev, allow_self_pickup: e.target.checked }))}
-                                        className="h-5 w-5 rounded-lg border-brand-200 text-brand-600 focus:ring-brand-500"
-                                    />
-                                    <div className="flex flex-col">
-                                        <span className="text-xs font-black text-brand-700 group-hover:text-brand-900 transition-colors uppercase">Ruhusu Pickup (Allow Self Pickup)</span>
-                                        <span className="text-[10px] text-brand-600/60 font-medium font-inter">Wateja wataweza kuchukua bidhaa wenyewe kwenye eneo hili.</span>
-                                    </div>
-                                </label>
+                            {!personalMode && (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Aina ya Eneo</label>
+                                    <select
+                                        value={formData.type}
+                                        onChange={e => setFormData({ ...formData, type: e.target.value })}
+                                        className="w-full h-10 px-3 rounded-xl border border-input bg-muted/30 text-sm"
+                                    >
+                                        <option value="shop">Shop (Display/Sales Point)</option>
+                                        <option value="store">Store (Stock Source)</option>
+                                        <option value="warehouse">Warehouse</option>
+                                    </select>
+                                </div>
+                            )}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Tafuta Eneo (Google Maps)</label>
+                                {isLoaded ? (
+                                    <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged}>
+                                        <Input
+                                            type="text"
+                                            placeholder="Tafuta mtaa au jengo..."
+                                            className="bg-muted/30 rounded-xl"
+                                        />
+                                    </Autocomplete>
+                                ) : (
+                                    <Input disabled placeholder="Inapakia ramani..." className="bg-muted/30 rounded-xl" />
+                                )}
+                            </div>
+                            <div className="space-y-1 md:col-span-2">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Namba ya Simu (Si lazima)</label>
+                                <Input
+                                    placeholder="Mfano: 07........"
+                                    value={formData.contact_phone}
+                                    onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
+                                    className="bg-muted/30 rounded-xl"
+                                />
                             </div>
                         </div>
-                    </div>
-                    <div className="flex items-center justify-end gap-3">
-                        {editingId && (
-                            <Button type="button" variant="ghost" onClick={resetForm} className="h-11 px-4 rounded-xl font-bold flex gap-2">
-                                <X className="h-4 w-4" />
-                                Ghairi
-                            </Button>
-                        )}
 
-                        <Button type="submit" disabled={isSaving || !formData.address} className="bg-brand-600 hover:bg-brand-700 h-11 px-6 rounded-xl font-bold flex gap-2">
-                            {isSaving ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : editingId ? (
-                                <Pencil className="h-4 w-4" />
+                        <div className="border border-input rounded-xl overflow-hidden">
+                            {isLoaded ? (
+                                <GoogleMap
+                                    mapContainerStyle={MAP_CONTAINER_STYLE}
+                                    center={{ lat: Number(formData.latitude), lng: Number(formData.longitude) }}
+                                    zoom={15}
+                                    options={{
+                                        streetViewControl: false,
+                                        mapTypeControl: false,
+                                        fullscreenControl: false,
+                                    }}
+                                >
+                                    <Marker
+                                        position={{ lat: Number(formData.latitude), lng: Number(formData.longitude) }}
+                                        draggable={true}
+                                        onDragEnd={onMarkerDragEnd}
+                                    />
+                                </GoogleMap>
                             ) : (
-                                <Plus className="h-4 w-4" />
+                                <div className="w-full h-[250px] bg-muted flex flex-col items-center justify-center text-muted-foreground text-center p-4">
+                                    <Globe className="h-10 w-10 mb-2 opacity-20" />
+                                    <p className="text-xs">Ramani itaonekana hapa ukishaweka Google API Key.</p>
+                                </div>
                             )}
-                            {editingId ? 'Hifadhi Mabadiliko' : 'Hifadhi Eneo'}
-                        </Button>
-                    </div>
-                </form>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100 mb-2">
+                            <div className="flex-1">
+                                <p className="text-[10px] font-black uppercase text-brand-600 mb-1">Mipangilio ya Eneo (Settings)</p>
+                                <div className="flex flex-wrap items-center gap-6">
+                                    <label className="flex items-center gap-3 cursor-pointer group">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.is_primary}
+                                            onChange={e => setFormData(prev => ({ ...prev, is_primary: e.target.checked }))}
+                                            className="h-5 w-5 rounded-lg border-brand-200 text-brand-600 focus:ring-brand-500"
+                                        />
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-black text-slate-800 group-hover:text-brand-700 transition-colors uppercase">
+                                                {personalMode ? 'Eneo Kuu la Stock' : 'Duka Kuu (Primary Shop)'}
+                                            </span>
+                                            <span className="text-[10px] text-slate-500 font-medium font-inter">
+                                                {personalMode ? 'Eneo hili litakuwa chaguo la kwanza kwa pickup/delivery.' : 'Eneo hili litakuwa chaguo la kwanza la usafirishaji.'}
+                                            </span>
+                                        </div>
+                                    </label>
+
+                                    <div className="h-8 w-px bg-brand-200 hidden md:block" />
+
+                                    <label className="flex items-center gap-3 cursor-pointer group">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.allow_self_pickup}
+                                            onChange={e => setFormData(prev => ({ ...prev, allow_self_pickup: e.target.checked }))}
+                                            className="h-5 w-5 rounded-lg border-brand-200 text-brand-600 focus:ring-brand-500"
+                                        />
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-black text-brand-700 group-hover:text-brand-900 transition-colors uppercase">Ruhusu Pickup (Allow Self Pickup)</span>
+                                            <span className="text-[10px] text-brand-600/60 font-medium font-inter">
+                                                {personalMode ? 'Mteja anaweza kulipia kisha mkakubaliana pickup kwenye order chat.' : 'Wateja wataweza kuchukua bidhaa wenyewe kwenye eneo hili.'}
+                                            </span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-3">
+                            {editingId && (
+                                <Button type="button" variant="ghost" onClick={resetForm} className="h-11 px-4 rounded-xl font-bold flex gap-2">
+                                    <X className="h-4 w-4" />
+                                    Ghairi
+                                </Button>
+                            )}
+
+                            <Button type="submit" disabled={isSaving || !formData.address} className="bg-brand-600 hover:bg-brand-700 h-11 px-6 rounded-xl font-bold flex gap-2">
+                                {isSaving ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : editingId ? (
+                                    <Pencil className="h-4 w-4" />
+                                ) : (
+                                    <Plus className="h-4 w-4" />
+                                )}
+                                {editingId ? 'Hifadhi Mabadiliko' : 'Hifadhi Eneo'}
+                            </Button>
+                        </div>
+                    </form>
+                )}
             </CardContent>
         </Card>
     );
@@ -606,7 +631,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
             <div className="flex flex-wrap items-center gap-2 pb-1">
                 {profiles.map(p => (
                     <div key={p.id} className="relative group">
-                        <Button 
+                        <Button
                             variant={activeProfileId === p.id ? 'default' : 'outline'}
                             size="sm"
                             className={`h-8 px-3 text-[10px] font-black uppercase rounded-full pl-3 pr-8 transition-all ${activeProfileId === p.id ? 'bg-brand-600' : 'text-brand-700 bg-white border-brand-100 hover:border-brand-300'}`}
@@ -615,10 +640,10 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
                             {p.is_default && <ShieldCheck className="h-3 w-3 mr-1 text-green-500" />}
                             {p.name}
                         </Button>
-                        
+
                         <div className={`absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity ${activeProfileId === p.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                             {activeProfileId === p.id && !p.is_default && (
-                                <button 
+                                <button
                                     onClick={() => handleSetDefault(p.id)}
                                     className="p-1 hover:bg-white/20 rounded-full text-white/70 hover:text-white"
                                     title="Weka kama Default"
@@ -626,7 +651,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
                                     <Star className="h-2.5 w-2.5" />
                                 </button>
                             )}
-                            <button 
+                            <button
                                 onClick={() => handleDeleteTemplate(p.id, p.name)}
                                 className={`p-1 rounded-full ${activeProfileId === p.id ? 'hover:bg-white/20 text-white/70 hover:text-white' : 'hover:bg-red-50 text-red-400 hover:text-red-600'}`}
                                 title="Futa Template"
@@ -638,9 +663,9 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
                 ))}
 
                 {!isAddingTemplate ? (
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-8 w-8 p-0 rounded-full border border-dashed border-input text-muted-foreground hover:text-brand-600 hover:border-brand-600"
                         onClick={() => setIsAddingTemplate(true)}
                     >
@@ -648,7 +673,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
                     </Button>
                 ) : (
                     <form onSubmit={handleAddTemplate} className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
-                        <Input 
+                        <Input
                             value={newTemplateName}
                             onChange={e => setNewTemplateName(e.target.value)}
                             placeholder="Jina la template..."
@@ -667,9 +692,9 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
 
             <div className="bg-white/50 p-4 rounded-2xl border border-brand-100 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200 min-h-[100px]">
                 {activeProfileId ? (
-                    <ShippingZonesManager 
-                        profileId={activeProfileId} 
-                        locations={locations} 
+                    <ShippingZonesManager
+                        profileId={activeProfileId}
+                        locations={locations}
                         fixedLocationId={location.id}
                         onRefresh={onRefresh}
                     />

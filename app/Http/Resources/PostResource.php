@@ -20,6 +20,7 @@ class PostResource extends JsonResource
         if (!$resolvedProduct || (isset($resolvedProduct->price) && (float) $resolvedProduct->price <= 0)) {
             $resolvedProduct = $tagProduct ?? $resolvedProduct;
         }
+        $resolvedProduct?->loadMissing(['unitType', 'packageContentUnitType', 'returnPolicy', 'faqs']);
 
         $this->loadMissing(['media.productImage', 'linkPreview']);
         $mediaItems = $this->media ?? collect();
@@ -108,7 +109,7 @@ class PostResource extends JsonResource
             : collect($rawHotspots)->map(function ($spots) use ($request) {
                 return collect($spots)->map(function ($spot) use ($request) {
                     if (isset($spot['type']) && $spot['type'] === 'product' && isset($spot['data'])) {
-                        $product = \App\Models\Product::with(['images', 'attributes', 'merchant'])->find($spot['data']);
+                        $product = \App\Models\Product::with(['images', 'attributes', 'merchant', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs'])->find($spot['data']);
                         if ($product) {
                             $spot['product'] = ProductResource::make($product)->resolve($request);
                         }

@@ -154,6 +154,16 @@ class Merchant extends Model
         return $this->hasMany(Product::class, 'merchant_id');
     }
 
+    public function returnPolicies(): HasMany
+    {
+        return $this->hasMany(MerchantReturnPolicy::class);
+    }
+
+    public function productFaqs(): HasMany
+    {
+        return $this->hasMany(ProductFaq::class);
+    }
+
     public function contentItems(): HasMany
     {
         return $this->hasMany(ContentItem::class, 'merchant_id');

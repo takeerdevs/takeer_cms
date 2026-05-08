@@ -61,6 +61,7 @@ class PaymentWebhookController extends Controller
 
                 $order->update([
                     'payment_status' => $isPhysical ? 'awaiting_merchant_confirmation' : (($isHeldService || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid'),
+                    'custom_delivery_due_at' => $isCustomDelivery ? $order->customDeliveryDueAtFrom() : $order->custom_delivery_due_at,
                     'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
                 ]);
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Filter, LocateFixed, Search as SearchIcon, Loader2 } from 'lucide-react';
+import { DownloadCloud, Filter, LocateFixed, Search as SearchIcon, Loader2, PenLine, ShoppingBag, Sparkles, Store } from 'lucide-react';
 import axios from 'axios';
 import PostCard from '@/Components/PostCard';
 import MerchantSearchCard from '@/Components/MerchantSearchCard';
@@ -9,13 +9,19 @@ import ProductSearchCard from '@/Components/ProductSearchCard';
 import { trackPlatformEvent } from '@/lib/attribution';
 
 export default function SearchPage() {
-    const { initialQuery = '', initialPage = 1, initialFilters = {}, countries = [] } = usePage().props;
+    const { initialQuery = '', initialPage = 1, initialFilters = {}, countries = [], productCategories = [], serviceCategories = [] } = usePage().props;
     const sentinelRef = useRef(null);
     const autoSearchReadyRef = useRef(false);
     const [query, setQuery] = useState(initialQuery || '');
     const [filters, setFilters] = useState({
         type: initialFilters.type || 'all',
         surface: initialFilters.surface || 'all',
+        category_id: initialFilters.category_id || '',
+        sub_category_id: initialFilters.sub_category_id || '',
+        service_category_id: initialFilters.service_category_id || '',
+        service_subcategory_id: initialFilters.service_subcategory_id || '',
+        service_category: initialFilters.service_category || '',
+        service_subcategory: initialFilters.service_subcategory || '',
         country_id: initialFilters.country_id || '',
         location: initialFilters.location || '',
         lat: initialFilters.lat || '',
@@ -34,6 +40,12 @@ export default function SearchPage() {
         setFilters({
             type: initialFilters.type || 'all',
             surface: initialFilters.surface || 'all',
+            category_id: initialFilters.category_id || '',
+            sub_category_id: initialFilters.sub_category_id || '',
+            service_category_id: initialFilters.service_category_id || '',
+            service_subcategory_id: initialFilters.service_subcategory_id || '',
+            service_category: initialFilters.service_category || '',
+            service_subcategory: initialFilters.service_subcategory || '',
             country_id: initialFilters.country_id || '',
             location: initialFilters.location || '',
             lat: initialFilters.lat || '',
@@ -50,11 +62,11 @@ export default function SearchPage() {
         }
 
         const q = query.trim();
-        if (q.length < 2) {
+        const nextFilters = compactFilters(filters);
+        if (q.length > 0 && q.length < 2) {
             return undefined;
         }
 
-        const nextFilters = compactFilters(filters);
         const currentFilters = compactFilters(initialFilters);
         const sameQuery = q === (initialQuery || '').trim();
         const sameFilters = JSON.stringify(nextFilters) === JSON.stringify(currentFilters);
@@ -64,7 +76,7 @@ export default function SearchPage() {
         }
 
         const timeout = window.setTimeout(() => {
-            router.get('/search', { q, page: 1, ...nextFilters }, {
+            router.get('/search', { ...(q ? { q } : {}), page: 1, ...nextFilters }, {
                 preserveState: true,
                 preserveScroll: true,
                 replace: true,
@@ -77,7 +89,9 @@ export default function SearchPage() {
     useEffect(() => {
         const q = (initialQuery || '').trim();
         const page = Number(initialPage || 1);
-        if (!q) {
+        const requestFilters = compactFilters(initialFilters);
+        const physicalProductSurface = requestFilters.surface === 'products' && requestFilters.type === 'physical';
+        if (!hasSearchIntent(q, requestFilters)) {
             setResults([]);
             setMeta(null);
             return;
@@ -90,8 +104,8 @@ export default function SearchPage() {
             params: {
                 q,
                 page,
-                per_page: 10,
-                ...compactFilters(initialFilters),
+                per_page: physicalProductSurface ? 12 : 10,
+                ...requestFilters,
             },
         })
             .then((res) => {
@@ -107,7 +121,7 @@ export default function SearchPage() {
                         query: q,
                         page,
                         result_count: nextMeta?.total ?? data.length,
-                        filters: compactFilters(initialFilters),
+                        filters: requestFilters,
                     },
                 });
             })
@@ -126,7 +140,12 @@ export default function SearchPage() {
         };
     }, [initialQuery, initialPage, JSON.stringify(initialFilters)]);
 
-    const hasMore = Boolean(meta?.query && meta.current_page < meta.last_page);
+    const hasMore = Boolean(meta && meta.current_page < meta.last_page);
+    const activeResultFilters = meta?.filters || compactFilters(initialFilters);
+    const productResultsLayout = results.length > 0
+        && results.every((item) => item.type === 'product')
+        && activeResultFilters.surface === 'products'
+        && activeResultFilters.type === 'physical';
 
     const loadMore = useCallback(() => {
         if (!hasMore || loading || loadingMore) return;
@@ -136,7 +155,7 @@ export default function SearchPage() {
 
         axios.get('/api/search/unified/posts', {
             params: {
-                q: meta.query,
+                q: meta.query || '',
                 page: nextPage,
                 per_page: meta.per_page || 10,
                 ...compactFilters(filters),
@@ -171,21 +190,42 @@ export default function SearchPage() {
     const submit = (e) => {
         e.preventDefault();
         const q = query.trim();
-        if (!q) return;
+        if (q.length > 0 && q.length < 2) return;
 
-        router.get('/search', { q, page: 1, ...compactFilters(filters) }, {
+        router.get('/search', { ...(q ? { q } : {}), page: 1, ...compactFilters(filters) }, {
             preserveState: true,
             replace: false,
         });
     };
 
     const goToPage = (page) => {
-        if (!meta?.query) return;
-        router.get('/search', { q: meta.query, page, ...compactFilters(filters) }, {
+        if (!meta) return;
+        router.get('/search', { ...(meta.query ? { q: meta.query } : {}), page, ...compactFilters(filters) }, {
             preserveState: true,
             replace: false,
         });
     };
+
+    const browseMode = (next) => {
+        const nextFilters = {
+            ...filters,
+            ...next,
+            ...(next.type !== 'physical' ? { category_id: '', sub_category_id: '' } : {}),
+            ...(next.type !== 'service' ? { service_category_id: '', service_subcategory_id: '', service_category: '', service_subcategory: '' } : {}),
+        };
+        setQuery('');
+        setFilters(nextFilters);
+        router.get('/search', { page: 1, ...compactFilters(nextFilters) }, {
+            preserveState: true,
+            replace: false,
+        });
+    };
+
+    const selectedProductCategory = productCategories.find((category) => String(category.id) === String(filters.category_id));
+    const selectedServiceCategory = serviceCategories.find((category) => (
+        String(category.id) === String(filters.service_category_id)
+        || (!filters.service_category_id && category.name === filters.service_category)
+    ));
 
     const useBrowserLocation = () => {
         setLocationError('');
@@ -208,12 +248,10 @@ export default function SearchPage() {
             setLocating(false);
 
             const q = query.trim();
-            if (q) {
-                router.get('/search', { q, page: 1, ...compactFilters(nextFilters) }, {
-                    preserveState: true,
-                    replace: false,
-                });
-            }
+            router.get('/search', { ...(q ? { q } : {}), page: 1, ...compactFilters(nextFilters) }, {
+                preserveState: true,
+                replace: false,
+            });
         }, () => {
             setLocating(false);
             setLocationError('Location was not enabled. You can still enter a city or area manually.');
@@ -246,13 +284,26 @@ export default function SearchPage() {
                         <div className="grid grid-cols-2 gap-2">
                             <select
                                 value={filters.type}
-                                onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value }))}
+                                onChange={(e) => {
+                                    const type = e.target.value;
+                                    setFilters(prev => ({
+                                        ...prev,
+                                        type,
+                                        category_id: type === 'physical' ? prev.category_id : '',
+                                        sub_category_id: type === 'physical' ? prev.sub_category_id : '',
+                                        service_category: type === 'service' ? prev.service_category : '',
+                                        service_subcategory: type === 'service' ? prev.service_subcategory : '',
+                                        service_category_id: type === 'service' ? prev.service_category_id : '',
+                                        service_subcategory_id: type === 'service' ? prev.service_subcategory_id : '',
+                                    }));
+                                }}
                                 className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold"
                             >
                                 <option value="all">All offers</option>
                                 <option value="physical">Physical products</option>
                                 <option value="digital">Digital content</option>
                                 <option value="service">Services</option>
+                                <option value="custom">Custom work</option>
                                 <option value="creator">Creator offers</option>
                             </select>
                             <select
@@ -268,6 +319,72 @@ export default function SearchPage() {
                                 ))}
                             </select>
                         </div>
+                        {filters.type === 'physical' && (
+                            <div className="grid grid-cols-2 gap-2">
+                                <select
+                                    value={filters.category_id}
+                                    onChange={(e) => setFilters(prev => ({ ...prev, category_id: e.target.value, sub_category_id: '' }))}
+                                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold"
+                                >
+                                    <option value="">Any product category</option>
+                                    {productCategories.map((category) => (
+                                        <option key={category.id} value={category.id}>{category.name}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={filters.sub_category_id}
+                                    onChange={(e) => setFilters(prev => ({ ...prev, sub_category_id: e.target.value }))}
+                                    disabled={!selectedProductCategory}
+                                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold disabled:opacity-50"
+                                >
+                                    <option value="">Any subcategory</option>
+                                    {(selectedProductCategory?.children || []).map((category) => (
+                                        <option key={category.id} value={category.id}>{category.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                        {filters.type === 'service' && (
+                            <div className="grid grid-cols-2 gap-2">
+                                <select
+                                    value={filters.service_category_id}
+                                    onChange={(e) => {
+                                        const category = serviceCategories.find((item) => String(item.id) === e.target.value);
+                                        setFilters(prev => ({
+                                            ...prev,
+                                            service_category_id: e.target.value,
+                                            service_subcategory_id: '',
+                                            service_category: category?.name || '',
+                                            service_subcategory: '',
+                                        }));
+                                    }}
+                                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold"
+                                >
+                                    <option value="">Any service category</option>
+                                    {serviceCategories.map((category) => (
+                                        <option key={category.id} value={category.id}>{category.name}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={filters.service_subcategory_id}
+                                    onChange={(e) => {
+                                        const subcategory = (selectedServiceCategory?.children || []).find((item) => String(item.id) === e.target.value);
+                                        setFilters(prev => ({
+                                            ...prev,
+                                            service_subcategory_id: e.target.value,
+                                            service_subcategory: subcategory?.name || '',
+                                        }));
+                                    }}
+                                    disabled={!selectedServiceCategory}
+                                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-semibold disabled:opacity-50"
+                                >
+                                    <option value="">Any specialty</option>
+                                    {(selectedServiceCategory?.children || []).map((category) => (
+                                        <option key={category.id} value={category.id}>{category.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                         <div className="grid grid-cols-[1fr_auto] gap-2">
                             <input
                                 value={filters.location}
@@ -306,9 +423,18 @@ export default function SearchPage() {
                     </div>
                 </form>
 
-                {!initialQuery && (
+                <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <BrowseButton icon={ShoppingBag} label="Products" active={filters.type === 'physical'} onClick={() => browseMode({ type: 'physical', surface: 'products' })} />
+                    <BrowseButton icon={DownloadCloud} label="Downloads" active={filters.type === 'digital'} onClick={() => browseMode({ type: 'digital', surface: 'products' })} />
+                    <BrowseButton icon={Store} label="Services" active={filters.type === 'service'} onClick={() => browseMode({ type: 'service', surface: 'products' })} />
+                    <BrowseButton icon={PenLine} label="Custom work" active={filters.type === 'custom'} onClick={() => browseMode({ type: 'custom', surface: 'products' })} />
+                </div>
+
+                {!hasSearchIntent(initialQuery, compactFilters(initialFilters)) && (
                     <div className="py-16 text-center text-muted-foreground">
-                        Andika neno la kutafuta ili kuona matokeo.
+                        <Sparkles className="mx-auto mb-3 h-7 w-7 text-brand-500" />
+                        <p className="font-bold text-foreground">Search, or browse what people are selling.</p>
+                        <p className="mt-1 text-sm">Pick Products, Downloads, Services, or Custom work to explore without typing.</p>
                     </div>
                 )}
 
@@ -318,13 +444,21 @@ export default function SearchPage() {
                     </div>
                 )}
 
-                {!loading && initialQuery && results.length === 0 && (
+                {!loading && hasSearchIntent(initialQuery, compactFilters(initialFilters)) && results.length === 0 && (
                     <div className="py-14 text-center text-muted-foreground">
-                        Hakuna matokeo ya "{initialQuery}".
+                        {initialQuery ? `Hakuna matokeo ya "${initialQuery}".` : 'Hakuna matokeo kwa filters ulizochagua.'}
                     </div>
                 )}
 
-                {!loading && results.length > 0 && (
+                {!loading && productResultsLayout && (
+                    <div className="grid grid-cols-3 gap-3">
+                        {results.map((item) => (
+                            <ProductSearchCard key={`product-${item.id}`} product={item.payload} variant="grid" />
+                        ))}
+                    </div>
+                )}
+
+                {!loading && results.length > 0 && !productResultsLayout && (
                     <div className="divide-y divide-border rounded-2xl border border-border/60 bg-background/80 overflow-hidden">
                         {results.map((item) => {
                             if (item.type === 'post') {
@@ -392,8 +526,28 @@ function LazyPostCard({ post }) {
     );
 }
 
+function BrowseButton({ icon: Icon, label, active, onClick }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`h-11 rounded-xl border px-3 text-sm font-black inline-flex items-center justify-center gap-2 transition-colors ${active ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-border bg-background text-foreground hover:bg-accent/50'}`}
+        >
+            <Icon className="h-4 w-4" />
+            {label}
+        </button>
+    );
+}
+
 function compactFilters(filters = {}) {
     return Object.fromEntries(
         Object.entries(filters).filter(([, value]) => value !== '' && value !== null && value !== undefined && value !== 'all')
+    );
+}
+
+function hasSearchIntent(query = '', filters = {}) {
+    return Boolean(
+        String(query || '').trim()
+        || Object.keys(compactFilters(filters)).length > 0
     );
 }

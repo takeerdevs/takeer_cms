@@ -34,6 +34,8 @@ use App\Models\Merchant;
 use App\Models\AdminSetting;
 use App\Models\Post;
 use App\Models\Product;
+use App\Models\ProductCategory;
+use App\Models\ServiceCategory;
 use App\Models\SubscriptionPlan;
 use App\Models\Country;
 use App\Models\Currency;
@@ -112,6 +114,9 @@ Route::get('/product/{product}', function (Product $product) {
         'attributes.brand',
         'attributes.model',
         'unitType',
+        'packageContentUnitType',
+        'returnPolicy',
+        'faqs',
         'images',
         'variants',
         'categoryAttributeValues.categoryAttribute'
@@ -162,6 +167,10 @@ Route::get('/service-requests/{publicId}/pay/{token}', function (string $publicI
             'product.merchant.storefrontSetting',
             'product.attributes.brand',
             'product.attributes.model',
+            'product.unitType',
+            'product.packageContentUnitType',
+            'product.returnPolicy',
+            'product.faqs',
             'product.images',
             'product.variants',
             'product.categoryAttributeValues.categoryAttribute',
@@ -211,6 +220,12 @@ Route::get('/search', function (Request $request) {
         'initialFilters' => [
             'type' => (string) $request->query('type', 'all'),
             'surface' => (string) $request->query('surface', 'all'),
+            'category_id' => $request->query('category_id'),
+            'sub_category_id' => $request->query('sub_category_id'),
+            'service_category_id' => $request->query('service_category_id'),
+            'service_subcategory_id' => $request->query('service_subcategory_id'),
+            'service_category' => trim((string) $request->query('service_category', '')),
+            'service_subcategory' => trim((string) $request->query('service_subcategory', '')),
             'country_id' => $request->query('country_id', $detectedCountryId),
             'location' => trim((string) $request->query('location', '')),
             'lat' => $request->query('lat'),
@@ -221,6 +236,20 @@ Route::get('/search', function (Request $request) {
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'iso_alpha2', 'flag', 'city_name', 'state_name']),
+        'productCategories' => ProductCategory::query()
+            ->with(['children' => fn ($query) => $query->where('is_active', true)->orderBy('sort_order')->orderBy('name')])
+            ->whereNull('parent_id')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'parent_id', 'name', 'slug']),
+        'serviceCategories' => ServiceCategory::query()
+            ->with(['children' => fn ($query) => $query->where('is_active', true)->orderBy('sort_order')->orderBy('name')])
+            ->whereNull('parent_id')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'parent_id', 'name', 'slug']),
     ]);
 })->name('search.page');
 
@@ -1275,6 +1304,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/products/{id}/api', [UploadController::class, 'show'])->whereNumber('id');
         Route::delete('/products/{id}', [UploadController::class, 'deleteProduct'])->whereNumber('id');
         Route::post('/products/{product}/hotspots', [UploadController::class, 'syncHotspots'])->whereNumber('product');
+        Route::post('/products/{product}/media', [UploadController::class, 'syncDraftMedia'])->whereNumber('product');
         Route::get('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'index']);
         Route::post('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'store']);
         Route::patch('/products/{product:id}/releases/{release:id}', [\App\Http\Controllers\Api\ProductReleaseController::class, 'update']);
@@ -1471,6 +1501,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/merchant/products/api', [UploadController::class, 'index']);
         Route::get('/merchant/products/{id}/api', [UploadController::class, 'show']);
         Route::delete('/merchant/products/{id}', [UploadController::class, 'deleteProduct']);
+        Route::post('/merchant/products/{product}/media', [UploadController::class, 'syncDraftMedia']);
         Route::post('/merchant/upload/media', [UploadController::class, 'uploadMedia']);
         Route::post('/merchant/upload/draft', [UploadController::class, 'draftProduct']);
         Route::post('/merchant/upload/manual', [UploadController::class, 'manualDraft']);
@@ -1555,6 +1586,7 @@ Route::middleware(['auth', 'admin'])->group(function () {
     Route::prefix('/admin/api')->group(function () {
         Route::get('/disputes', [AdminController::class, 'indexDisputes']);
         Route::post('/disputes/{dispute}/resolve', [AdminController::class, 'resolveDispute']);
+        Route::get('/custom-delivery-events/{event}/download', [AdminController::class, 'downloadCustomDeliveryEvent']);
         Route::post('/disputes/{dispute}/trust-safety', [AdminController::class, 'handleTrustSafetyDispute']);
         Route::get('/trust-safety-reviews', [AdminController::class, 'indexTrustSafetyReviews']);
         Route::post('/trust-safety-reviews/{review}', [AdminController::class, 'resolveTrustSafetyReview']);
