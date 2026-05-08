@@ -45,6 +45,7 @@ class PostResource extends JsonResource
         $isOwnerViewer = $user && (int) ($this->merchant?->user_id ?? 0) === (int) $user->id;
         $latestModeration = $this->relationLoaded('latestModerationAction') ? $this->latestModerationAction : null;
         $canViewDeletedContent = !$isDeleted || $isAdminViewer || $isOwnerViewer;
+        $canExposeOriginalMedia = $isAdminViewer || $isOwnerViewer;
         $showRemovedNotice = $isDeleted && !$canViewDeletedContent && (bool) ($latestModeration?->show_public_notice ?? true);
 
         if ($isRestricted && !$isAdminViewer && !$isOwnerViewer) {
@@ -363,7 +364,11 @@ class PostResource extends JsonResource
             'likes_count' => $this->likes_count,
             'like_count' => $this->likes_count,
             'comment_count' => $this->comment_count,
-            'is_liked' => $this->isLikedBy($request->user()),
+            'is_liked' => $request->user()
+                ? (array_key_exists('is_liked_by_viewer', $this->getAttributes())
+                    ? (bool) $this->getAttribute('is_liked_by_viewer')
+                    : $this->isLikedBy($request->user()))
+                : false,
             'comments_enabled' => $commentsEnabled,
             'reactions_enabled' => $reactionsEnabled,
             'is_deleted' => $isDeleted,
@@ -388,7 +393,7 @@ class PostResource extends JsonResource
             'media' => (!$canViewDeletedContent || (!$hasAccess && $isRestricted)) ? [] : $mediaItems->map(fn($item) => [
                 'id' => $item->id,
                 'url' => $item->media_type === 'video' ? ($item->processed_url ?: $item->url) : $item->url,
-                'original_url' => $item->url,
+                'original_url' => $canExposeOriginalMedia ? $item->url : null,
                 'type' => $item->media_type,
                 'media_type' => $item->media_type,
                 'thumbnail_url' => $item->thumbnail_url,
@@ -406,7 +411,7 @@ class PostResource extends JsonResource
             'images' => (!$canViewDeletedContent || (!$hasAccess && $isRestricted)) ? [] : $mediaItems->map(fn($item) => [
                 'id' => $item->id,
                 'url' => $item->media_type === 'video' ? ($item->processed_url ?: $item->url) : $item->url,
-                'original_url' => $item->url,
+                'original_url' => $canExposeOriginalMedia ? $item->url : null,
                 'type' => $item->media_type,
                 'media_type' => $item->media_type,
                 'thumbnail_url' => $item->thumbnail_url,

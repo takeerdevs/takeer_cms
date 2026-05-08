@@ -485,6 +485,10 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         : post.images?.length
             ? post.images
             : post.media_url ? [{ url: post.media_url, media_type: post.media_type || 'image' }] : [];
+    const mediaItemType = (item) => {
+        if (typeof item === 'string') return /\.(mp4|mov|webm|ogg)(\?|$)/i.test(item) ? 'video' : 'image';
+        return item.media_type || item.type || 'image';
+    };
     const postHotspots = post.resolved_hotspots || post.hotspots || {};
     const postType = post.post_type || (post.body || post.excerpt ? 'long' : 'short');
     const isLongForm = postType === 'long';
@@ -1205,7 +1209,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         <div className="flex flex-col gap-8 scroll-mt-20">
                             {mediaItems.map((img, idx) => {
                                 const mediaUrl = typeof img === 'string' ? img : (img.processed_url || img.hls_url || img.url);
-                                const mediaType = typeof img === 'string' ? (/\.(mp4|mov|webm|ogg)(\?|$)/i.test(img) ? 'video' : 'image') : (img.media_type || img.type || 'image');
+                                const mediaType = mediaItemType(img);
                                 const isVideo = mediaType === 'video';
                                 const isProcessing = isVideo
                                     && typeof img !== 'string'
@@ -1232,7 +1236,6 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                                     hlsUrl={typeof img === 'string' ? null : img.hls_url}
                                                     poster={typeof img === 'string' ? undefined : img.thumbnail_url || undefined}
                                                     className="w-full h-auto block bg-black"
-                                                    preferMp4
                                                     autoPlay
                                                     muted
                                                     loop

@@ -47,8 +47,8 @@ use Illuminate\Support\Str;
 Route::get('/pay/retail-credit/{publicId}', [\App\Http\Controllers\Api\RetailCreditPaymentController::class, 'show'])->name('retail-credit-payment.show');
 Route::get('/pay/{slug}', [\App\Http\Controllers\Api\PublicPaymentPageController::class, 'show'])->name('payment-page.show');
 
-Route::get('/', function () {
-    $posts = app(\App\Services\DiscoveryRankingService::class)->rankPostQuery(App\Models\Post::with([
+Route::get('/', function (Request $request) {
+    $query = App\Models\Post::with([
         'merchant.storefrontSetting',
         'linkPreview',
         'linkedContentItem',
@@ -56,20 +56,39 @@ Route::get('/', function () {
         'linkedProduct.attributes',
         'linkedProduct.variants',
         'linkedProduct.images',
+        'linkedProduct.unitType',
+        'linkedProduct.packageContentUnitType',
+        'linkedProduct.returnPolicy',
+        'linkedProduct.faqs',
         'product.attributes',
         'product.variants',
+        'product.unitType',
+        'product.packageContentUnitType',
+        'product.returnPolicy',
+        'product.faqs',
         'productTags.product.attributes',
         'productTags.product.variants',
         'productTags.product.images',
+        'productTags.product.unitType',
+        'productTags.product.packageContentUnitType',
+        'productTags.product.returnPolicy',
+        'productTags.product.faqs',
         'reactions',
         'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
-    ]))->paginate(10);
+    ]);
+
+    if ($request->user()) {
+        $query->withExists([
+            'likes as is_liked_by_viewer' => fn ($likes) => $likes->where('user_id', $request->user()->id),
+        ]);
+    }
+
+    $posts = app(\App\Services\DiscoveryRankingService::class)->rankPostQuery($query)->simplePaginate(8);
 
     $initialFeed = PostResource::collection($posts)->response()->getData(true);
     return Inertia::render('Feed', [
-        'initialPosts' => $initialFeed['data'] ?? [],
         'initialFeed' => $initialFeed,
     ]);
 });
@@ -686,26 +705,49 @@ Route::get('/{merchantSlug}/terminal', function (string $merchantSlug) {
 
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-Route::get('/feed', function () {
-    $posts = app(\App\Services\DiscoveryRankingService::class)->rankPostQuery(App\Models\Post::with([
+Route::get('/feed', function (Request $request) {
+    $query = App\Models\Post::with([
         'merchant.storefrontSetting',
         'linkPreview',
         'linkedContentItem',
         'media.productImage',
         'linkedProduct.attributes',
         'linkedProduct.images',
+        'linkedProduct.variants',
+        'linkedProduct.unitType',
+        'linkedProduct.packageContentUnitType',
+        'linkedProduct.returnPolicy',
+        'linkedProduct.faqs',
         'product.attributes',
+        'product.images',
+        'product.variants',
+        'product.unitType',
+        'product.packageContentUnitType',
+        'product.returnPolicy',
+        'product.faqs',
         'productTags.product.attributes',
         'productTags.product.images',
+        'productTags.product.variants',
+        'productTags.product.unitType',
+        'productTags.product.packageContentUnitType',
+        'productTags.product.returnPolicy',
+        'productTags.product.faqs',
         'reactions',
         'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
-    ]))->paginate(10);
+    ]);
+
+    if ($request->user()) {
+        $query->withExists([
+            'likes as is_liked_by_viewer' => fn ($likes) => $likes->where('user_id', $request->user()->id),
+        ]);
+    }
+
+    $posts = app(\App\Services\DiscoveryRankingService::class)->rankPostQuery($query)->simplePaginate(8);
 
     $initialFeed = PostResource::collection($posts)->response()->getData(true);
     return Inertia::render('Feed', [
-        'initialPosts' => $initialFeed['data'] ?? [],
         'initialFeed' => $initialFeed,
     ]);
 });

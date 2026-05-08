@@ -32,6 +32,7 @@ export default function VideoPlayer({
     preferMp4 = false,
     overlayMuteToggle = false,
     videoRef = null,
+    onPlay,
     ...props
 }) {
     const internalRef = useRef(null);
@@ -172,6 +173,10 @@ export default function VideoPlayer({
             playsInline={playsInline}
             preload={preload}
             {...props}
+            onPlay={(event) => {
+                window.dispatchEvent(new CustomEvent(AUTOPLAY_REQUEST_EVENT, { detail: { video: event.currentTarget } }));
+                onPlay?.(event);
+            }}
         />
     );
 

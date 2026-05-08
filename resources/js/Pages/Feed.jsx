@@ -6,14 +6,22 @@ import { Loader2 } from 'lucide-react';
 import PostCard from '@/Components/PostCard';
 import { DiscoveryHeader, DiscoveryRailSection, useDiscoveryRails } from '@/Components/DiscoveryRails';
 
-const fetcher = (url) => fetch(url, { headers: { Accept: 'application/json' } }).then(res => res.json());
+const fetcher = async (url) => {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error('Feed request failed');
+
+    const payload = await res.json();
+    if (!Array.isArray(payload?.data)) throw new Error('Feed response is invalid');
+
+    return payload;
+};
 
 export default function Feed({ initialPosts = [], initialFeed = null }) {
     const { auth } = usePage().props;
     const defaultProfile = auth.user?.merchant_profiles?.find(p => p.is_default) || auth.user?.merchant_profiles?.[0];
     const { rails, loaded: railsLoaded } = useDiscoveryRails();
     const heroRail = rails[0] || null;
-    const inlineRails = rails.slice(1, 5);
+    const inlineRails = rails.slice(0, 5);
     const sentinelRef = useRef(null);
     const fallbackPage = useMemo(() => initialFeed || ({
         data: initialPosts,

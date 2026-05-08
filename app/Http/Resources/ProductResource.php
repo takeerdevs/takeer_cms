@@ -413,23 +413,30 @@ class ProductResource extends JsonResource
                 'confidence' => $value->confidence !== null ? (float) $value->confidence : null,
                 'is_verified' => (bool) $value->is_verified,
             ])),
-            'images' => $this->whenLoaded('images', fn() => $this->images->map(fn($img) => [
-                'image_url' => $img->image_url,
-                'url' => $img->image_url,
-                'media_type' => $img->media_type ?: 'image',
-                'type' => $img->media_type ?: 'image',
-                'thumbnail_url' => $img->thumbnail_url,
-                'processed_url' => $img->processed_url,
-                'hls_url' => $img->hls_url,
-                'mime' => $img->mime,
-                'size' => $img->size !== null ? (int) $img->size : null,
-                'duration_seconds' => $img->duration_seconds !== null ? (int) $img->duration_seconds : null,
-                'width' => $img->width !== null ? (int) $img->width : null,
-                'height' => $img->height !== null ? (int) $img->height : null,
-                'processing_status' => $img->processing_status ?: 'ready',
-                'hotspots' => $img->hotspots ?? [],
-                'order' => $img->order,
-            ])),
+            'images' => $this->whenLoaded('images', fn() => $this->images->map(function ($img) use ($isOwner) {
+                $isVideo = ($img->media_type ?: 'image') === 'video';
+                $publicMediaUrl = $isVideo
+                    ? ($img->processed_url ?: ($isOwner ? $img->image_url : null))
+                    : $img->image_url;
+
+                return [
+                    'image_url' => $publicMediaUrl,
+                    'url' => $publicMediaUrl,
+                    'media_type' => $img->media_type ?: 'image',
+                    'type' => $img->media_type ?: 'image',
+                    'thumbnail_url' => $img->thumbnail_url,
+                    'processed_url' => $img->processed_url,
+                    'hls_url' => $img->hls_url,
+                    'mime' => $img->mime,
+                    'size' => $img->size !== null ? (int) $img->size : null,
+                    'duration_seconds' => $img->duration_seconds !== null ? (int) $img->duration_seconds : null,
+                    'width' => $img->width !== null ? (int) $img->width : null,
+                    'height' => $img->height !== null ? (int) $img->height : null,
+                    'processing_status' => $img->processing_status ?: 'ready',
+                    'hotspots' => $img->hotspots ?? [],
+                    'order' => $img->order,
+                ];
+            })),
             'merchant' => $this->whenLoaded('merchant', fn() => [
                 'id' => $this->merchant->id,
                 'name' => $this->merchant->name,

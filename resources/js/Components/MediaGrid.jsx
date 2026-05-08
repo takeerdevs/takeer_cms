@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileVideo, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { FileVideo, Loader2, Play, Volume2, VolumeX } from 'lucide-react';
 
 const VIDEO_EXTENSION_RE = /\.(mp4|m4v|mov|webm|ogg)(\?|#|$)/i;
 const AUTOPLAY_REQUEST_EVENT = 'takeer:social-video-autoplay-request';
@@ -23,7 +23,7 @@ const mediaKind = (item) => {
     return VIDEO_EXTENSION_RE.test(url) ? 'video' : 'image';
 };
 
-function AutoplayVideoThumb({ src, poster, className, onAspect, onReady }) {
+function AutoplayVideoThumb({ src, poster, className, onAspect, onReady, autoPlay = true }) {
     const videoRef = React.useRef(null);
     const mutedRef = React.useRef(true);
     const [muted, setMuted] = React.useState(true);
@@ -34,7 +34,7 @@ function AutoplayVideoThumb({ src, poster, className, onAspect, onReady }) {
 
         let isVisible = false;
         const attemptAutoplay = () => {
-            if (!isVisible || document.hidden) return;
+            if (!autoPlay || !isVisible || document.hidden) return;
             video.muted = mutedRef.current;
             window.dispatchEvent(new CustomEvent(AUTOPLAY_REQUEST_EVENT, { detail: { video } }));
             const playPromise = video.play?.();
@@ -70,7 +70,7 @@ function AutoplayVideoThumb({ src, poster, className, onAspect, onReady }) {
             window.removeEventListener(AUTOPLAY_REQUEST_EVENT, pauseForOtherVideo);
             document.removeEventListener('visibilitychange', pauseWhenHidden);
         };
-    }, [src]);
+    }, [autoPlay, src]);
 
     React.useEffect(() => {
         mutedRef.current = muted;
@@ -101,24 +101,35 @@ function AutoplayVideoThumb({ src, poster, className, onAspect, onReady }) {
                 }}
                 onLoadedData={() => onReady?.()}
                 onCanPlay={() => onReady?.()}
+                onPlay={(event) => {
+                    window.dispatchEvent(new CustomEvent(AUTOPLAY_REQUEST_EVENT, { detail: { video: event.currentTarget } }));
+                }}
             />
             <div
                 aria-hidden="true"
                 className="absolute inset-0 z-10 bg-transparent"
                 onContextMenu={(event) => event.preventDefault()}
             />
-            <button
-                type="button"
-                aria-label={muted ? 'Unmute video' : 'Mute video'}
-                onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setMuted((current) => !current);
-                }}
-                className="absolute bottom-3 right-3 z-20 h-10 w-10 rounded-full bg-black/55 backdrop-blur-md text-white flex items-center justify-center shadow-lg border border-white/10 hover:bg-black/70 transition-colors"
-            >
-                {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-            </button>
+            {autoPlay ? (
+                <button
+                    type="button"
+                    aria-label={muted ? 'Unmute video' : 'Mute video'}
+                    onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setMuted((current) => !current);
+                    }}
+                    className="absolute bottom-3 right-3 z-20 h-10 w-10 rounded-full bg-black/55 backdrop-blur-md text-white flex items-center justify-center shadow-lg border border-white/10 hover:bg-black/70 transition-colors"
+                >
+                    {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                </button>
+            ) : (
+                <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/15">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg">
+                        <Play className="h-5 w-5 fill-current" />
+                    </span>
+                </div>
+            )}
         </>
     );
 }
@@ -134,7 +145,7 @@ function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
 
-function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null, fit = 'cover' }) {
+function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null, fit = 'cover', autoPlayVideo = true }) {
     if (!item) return null;
     const video = mediaKind(item) === 'video';
     const src = typeof item === 'string' ? item : item?.processed_url ?? item?.url ?? item?.preview;
@@ -168,13 +179,14 @@ function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspe
                                     className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} group-active:brightness-90 transition-all`}
                                     onAspect={(width, height) => onAspect?.(index, width, height)}
                                     onReady={() => setLoaded(true)}
+                                    autoPlay={autoPlayVideo}
                                 />
                             ) : (
                                 <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
                                     <FileVideo className="h-9 w-9 text-white/55" />
                                 </div>
                             )}
-                            {src && !loaded && (
+                            {autoPlayVideo && src && !loaded && (
                                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-zinc-900/70">
                                     <Loader2 className="h-7 w-7 animate-spin text-white/70" />
                                 </div>
@@ -224,6 +236,13 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
     if (!items.length) return null;
 
     const count = items.length;
+    const autoplayVideoIndex = React.useMemo(() => {
+        const videoIndexes = items
+            .map((item, index) => (mediaKind(item) === 'video' ? index : -1))
+            .filter((index) => index >= 0);
+
+        return videoIndexes.length === 1 ? videoIndexes[0] : -1;
+    }, [items]);
     const [aspects, setAspects] = React.useState(() => (
         Object.fromEntries(items.map((item, index) => [index, getItemAspect(item)]).filter(([, aspect]) => aspect))
     ));
@@ -286,6 +305,7 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
                         className="w-full h-full"
                         onAspect={handleAspect}
                         fit="contain"
+                        autoPlayVideo={0 === autoplayVideoIndex}
                     />
                 </div>
             </div>
@@ -305,6 +325,7 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
                         onTap={onTap}
                         className="w-full h-full"
                         onAspect={handleAspect}
+                        autoPlayVideo={i === autoplayVideoIndex}
                     />
                 ))}
             </div>
@@ -321,10 +342,10 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
         if (primaryLandscape) {
             return (
                 <div className="w-full aspect-[4/3] grid grid-rows-2 gap-px overflow-hidden bg-border/10 border-y border-border/5">
-                    <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} />
+                    <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} />
                     <div className="grid grid-cols-2 gap-px h-full">
-                        <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} />
-                        <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} />
+                        <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} />
+                        <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} />
                     </div>
                 </div>
             );
@@ -332,10 +353,10 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
 
         return (
             <div className="w-full aspect-[4/3] grid grid-cols-2 gap-px overflow-hidden bg-border/10 border-y border-border/5">
-                <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} />
+                <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} />
                 <div className="grid grid-rows-2 gap-px h-full">
-                    <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} />
-                    <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} />
+                    <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} />
+                    <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} />
                 </div>
             </div>
         );
@@ -345,9 +366,9 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
     // Fixed: 2x2 grid inside 4:3 container (for 5+, overlay still on 4th)
     return (
         <div className="w-full aspect-[4/3] grid grid-cols-2 grid-rows-2 gap-px overflow-hidden bg-border/10 border-y border-border/5">
-            <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} />
-            <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} />
-            <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} />
+            <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} />
+            <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} />
+            <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} />
             <MediaThumb
                 item={items[3]}
                 index={3}
@@ -355,6 +376,7 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
                 className="h-full"
                 overlay={count > 4 ? count - 4 : null}
                 onAspect={handleAspect}
+                autoPlayVideo={3 === autoplayVideoIndex}
             />
         </div>
     );

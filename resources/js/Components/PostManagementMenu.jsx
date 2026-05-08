@@ -54,7 +54,7 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                 router.visit('/feed');
             } else {
                 // On feed, just refresh current state
-                router.reload({ only: ['initialPosts'] });
+                router.reload({ only: ['initialFeed'] });
             }
         } catch (error) {
             console.error('Failed to delete post:', error);

@@ -49,7 +49,7 @@ export default function ProductSearchCard({ product, variant = 'list' }) {
                 </div>
 
                 <div className="flex flex-1 flex-col space-y-1.5 p-2.5">
-                    <p className="min-h-[38px] text-[13px] font-black leading-tight text-foreground line-clamp-2">{product.title}</p>
+                    <p className="min-h-[36px] text-[13px] font-black leading-tight text-foreground line-clamp-2 mb-0">{product.title}</p>
                     {unitLabel && (
                         <p className="truncate text-[12px] font-semibold text-slate-500">{unitLabel}</p>
                     )}

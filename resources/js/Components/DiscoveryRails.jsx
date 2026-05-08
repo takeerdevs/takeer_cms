@@ -3,7 +3,7 @@ import { Link } from '@inertiajs/react';
 import { CalendarClock, ChevronRight, Crown, DownloadCloud, Image, Music, PenLine, Play, ShoppingBag, Sparkles, Store } from 'lucide-react';
 import axios from 'axios';
 import { trackPlatformEvent } from '@/lib/attribution';
-import { productUnitLabel } from '@/lib/productUnits';
+import { productRailPriceLabel, productUnitLabel } from '@/lib/productUnits';
 
 export function useDiscoveryRails() {
     const [rails, setRails] = useState([]);
@@ -142,7 +142,7 @@ function ProductRailCard({ product, compact = false }) {
                     )}
                 </div>
                 <div className="space-y-1.5 p-2.5">
-                    <p className="min-h-[38px] text-[13px] font-black leading-tight text-foreground line-clamp-2">
+                    <p className="min-h-[36px] text-[12px] font-black leading-tight text-foreground line-clamp-2 mb-0">
                         {product.title}
                     </p>
                     {unitLabel && (
@@ -150,12 +150,12 @@ function ProductRailCard({ product, compact = false }) {
                             {unitLabel}
                         </p>
                     )}
-                    <p className="pt-1 text-[13px] font-black leading-none text-slate-950">
-                        TZS {price.toLocaleString()}
+                    <p className="pt-1 text-[12px] font-black leading-none text-slate-950">
+                        {productRailPriceLabel(product, price, compact)}
                     </p>
                     {hasDiscount && (
                         <p className="text-[11px] font-bold leading-none text-slate-400 line-through">
-                            TZS {comparePrice.toLocaleString()}
+                            {productRailPriceLabel(product, comparePrice, compact)}
                         </p>
                     )}
                 </div>
@@ -191,8 +191,8 @@ function ProductRailCard({ product, compact = false }) {
                     <Icon className="h-3 w-3" />
                     {label}
                 </span>
-                <p className={`${compact ? 'mt-1 text-[13px] min-h-[32px]' : 'mt-1.5 text-sm min-h-[34px]'} font-black leading-tight text-foreground line-clamp-2`}>{product.title}</p>
-                <p className="mt-2 text-sm font-black text-brand-600">TZS {Number(product.checkout_price ?? product.price ?? 0).toLocaleString()}</p>
+                <p className={`${compact ? 'mt-1 text-[12px] min-h-[32px]' : 'mt-1.5 text-sm min-h-[34px]'} font-black leading-tight text-foreground line-clamp-2`}>{product.title}</p>
+                <p className="mt-2 text-sm font-black text-brand-600">{productRailPriceLabel(product, null, compact)}</p>
             </div>
         </Link>
     );
