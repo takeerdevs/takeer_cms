@@ -167,6 +167,18 @@
     animation: spin-slow 3s linear infinite;
   }
 
+  @keyframes hotspot-ping {
+    75%,
+    100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+
+  .animate-hotspot-ping {
+    animation: hotspot-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
   /* Feed: hide bottom nav gap on fullscreen post */
   .feed-snap-item {
     scroll-snap-align: start;

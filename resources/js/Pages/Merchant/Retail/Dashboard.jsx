@@ -630,7 +630,7 @@ export default function Dashboard({ merchant }) {
                                                                 </div>
                                                                 <div className="min-w-0">
                                                                     <p className="text-[11px] font-black text-slate-900 truncate">{item.product?.title || 'Unknown Product'}</p>
-                                                                    <p className="text-[9px] text-slate-400 font-bold">Qty: {item.quantity} x {formatCurrency(unitPrice)}</p>
+                                                                    <p className="text-[9px] text-slate-400 font-bold">Qty {item.quantity} @ {formatCurrency(unitPrice)}</p>
                                                                 </div>
                                                             </div>
                                                             <p className="text-[11px] font-black text-slate-900 shrink-0">{formatCurrency(item.quantity * unitPrice)}</p>

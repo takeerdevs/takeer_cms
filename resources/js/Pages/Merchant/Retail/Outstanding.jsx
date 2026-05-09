@@ -275,7 +275,7 @@ export default function Outstanding({ merchant }) {
                                                                     <span className="font-bold text-slate-700 truncate">
                                                                         {item.product_title}{item.variant_name ? ` (${item.variant_name})` : ''}
                                                                     </span>
-                                                                    <span className="font-black text-slate-900 shrink-0">x{item.quantity}</span>
+                                                                    <span className="font-black text-slate-900 shrink-0">Qty {item.quantity}</span>
                                                                 </div>
                                                             ))}
                                                         </div>

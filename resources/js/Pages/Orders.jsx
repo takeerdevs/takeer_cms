@@ -735,15 +735,13 @@ function OwnedCard({ entry }) {
         };
 
     const handlePayInquiry = async (orderId) => {
-        setPayingInquiry(true);
-        try {
-            const res = await window.axios.post(`/api/v1/checkout/pay-inquiry/${orderId}`);
-            toast.success(res.data.message || 'Ombi la malipo limetumwa! Weka PIN kwenye simu yako.');
-        } catch (err) {
-            toast.error(err.response?.data?.message || 'Imeshindikana kuanzisha malipo. Jaribu tena.');
-        } finally {
-            setPayingInquiry(false);
+        const chatTarget = orderDetails?.public_id ? `/chat/${orderDetails.public_id}?checkout=1` : null;
+        if (chatTarget) {
+            router.visit(chatTarget);
+            return;
         }
+
+        toast.error('Fungua order chat ili kukamilisha malipo.');
     };
     const orderId = entry.source_type === 'order' ? entry.source_id : null;
     const targetUrl = String(item.url || item.download_link || '').trim();
@@ -1245,7 +1243,7 @@ function OwnedCard({ entry }) {
                                     >
                                         {showPin ? 'Hide PIN' : 'Reveal PIN'}
                                     </button>
-                                    <p className="mt-2 text-[10px] text-brand-800 leading-tight">Mpe huyu PIN boda wako. Atampa muuzaji mzigo unapochukuliwa.</p>
+                                    <p className="mt-2 text-[10px] text-brand-800 leading-tight">Mpe hii PIN boda wako. Atampa muuzaji mzigo unapochukuliwa.</p>
                                 </div>
                             )}
 

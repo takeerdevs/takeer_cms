@@ -48,6 +48,12 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
         setLedgerType(initialLedgerType);
     }, [initialLedgerType]);
 
+    useEffect(() => {
+        if (!ledgerMode && new URLSearchParams(window.location.search).get('withdraw') === '1') {
+            setIsWithdrawModalOpen(true);
+        }
+    }, [ledgerMode, merchantUsername]);
+
     const fetchHistory = async (page = null) => {
         setLoading(true);
         try {

@@ -30,6 +30,10 @@ export default function MerchantDetails({ merchantId }) {
     const [credentialReviews, setCredentialReviews] = useState({});
 
     const title = useMemo(() => merchant?.display_name ? `${merchant.display_name} - Merchant Control` : 'Merchant Control', [merchant]);
+    const kycDocuments = useMemo(() => buildKycDocuments(merchant?.kyc), [merchant]);
+    const identityDocuments = useMemo(() => kycDocuments.filter((document) => document.group === 'identity'), [kycDocuments]);
+    const businessDocuments = useMemo(() => kycDocuments.filter((document) => document.group === 'business'), [kycDocuments]);
+    const inheritedIdentitySource = merchant?.kyc?.inherited_identity_source;
 
     const loadMerchant = async () => {
         setLoading(true);
@@ -230,15 +234,26 @@ export default function MerchantDetails({ merchantId }) {
                                 {merchant?.kyc && (
                                     <div className="mt-6 border-t pt-6 space-y-6">
                                         <div className="flex items-center justify-between">
-                                            <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">Submitted KYC Data</h3>
-                                            <div className="flex gap-2">
-                                                <Button 
-                                                    size="sm" 
-                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                                                    onClick={() => handleKycAction('approve')}
-                                                    disabled={merchant.kyc_status === 'verified'}
-                                                >
-                                                    Verify Identity
+                                                    <div>
+                                                        <h3 className="font-black text-slate-900 uppercase tracking-widest text-xs">Submitted KYC Data</h3>
+                                                        {inheritedIdentitySource && (
+                                                            <p className="mt-1 text-xs font-semibold text-slate-500">
+                                                                Identity is already verified from{' '}
+                                                                <Link href={`/admin/merchants/${inheritedIdentitySource.merchant_id}`} className="text-brand-700 underline underline-offset-2">
+                                                                    {inheritedIdentitySource.display_name}
+                                                                </Link>
+                                                                . Review the new business data and documents for this merchant.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                                                            onClick={() => handleKycAction('approve')}
+                                                            disabled={merchant.kyc_status === 'verified'}
+                                                        >
+                                                    {inheritedIdentitySource ? 'Verify Business KYC' : 'Verify Identity'}
                                                 </Button>
                                                 <Button 
                                                     size="sm" 
@@ -255,6 +270,7 @@ export default function MerchantDetails({ merchantId }) {
                                         <div className="grid md:grid-cols-3 gap-4">
                                             <div className="md:col-span-2 grid grid-cols-2 gap-3">
                                                 <Detail label="KYC Full Name" value={`${merchant.kyc.first_name} ${merchant.kyc.last_name}`} />
+                                                <Detail label="Business Type" value={merchant.kyc.business_type || merchant.type || '-'} />
                                                 <Detail label="ID Type" value={merchant.kyc.id_type} />
                                                 <Detail label="ID Number" value={merchant.kyc.id_number} />
                                                 <Detail label="Date of Birth" value={merchant.kyc.date_of_birth ? new Date(merchant.kyc.date_of_birth).toLocaleDateString() : '-'} />
@@ -262,51 +278,44 @@ export default function MerchantDetails({ merchantId }) {
                                                 <Detail label="Occupation" value={merchant.kyc.occupation} />
                                                 {merchant.kyc.tin_number && <Detail label="TIN Number" value={merchant.kyc.tin_number} />}
                                                 {merchant.kyc.brela_number && <Detail label="BRELA Number" value={merchant.kyc.brela_number} />}
+                                                {merchant.kyc.rejection_reason && <Detail label="Rejection Reason" value={merchant.kyc.rejection_reason} />}
                                                 <div className="col-span-2">
                                                     <Detail label="Residential Address" value={merchant.kyc.residential_address} />
                                                 </div>
                                             </div>
 
                                             <div className="space-y-4">
-                                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ID Documents</p>
-                                                <div className="grid grid-cols-1 gap-2">
-                                                    {merchant.kyc.id_front_signed_url ? (
-                                                        <a href={merchant.kyc.id_front_signed_url} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                                                            <img src={merchant.kyc.id_front_signed_url} alt="ID Front" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View Front</div>
-                                                        </a>
-                                                    ) : (
-                                                        <div className="aspect-[3/2] flex items-center justify-center bg-slate-100 rounded-xl border border-slate-200 text-slate-400 text-xs">No Front Image</div>
-                                                    )}
+                                                <div>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                                            {inheritedIdentitySource ? 'Verified identity documents' : 'ID documents'}
+                                                        </p>
+                                                        {inheritedIdentitySource && (
+                                                            <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-700 border border-emerald-100">
+                                                                Inherited
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="mt-2 grid grid-cols-1 gap-2">
+                                                        {identityDocuments.map((document) => (
+                                                            <KycDocumentCard key={document.key} document={document} />
+                                                        ))}
+                                                    </div>
+                                                </div>
 
-                                                    {merchant.kyc.id_back_signed_url ? (
-                                                        <a href={merchant.kyc.id_back_signed_url} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                                                            <img src={merchant.kyc.id_back_signed_url} alt="ID Back" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View Back</div>
-                                                        </a>
-                                                    ) : (
-                                                        <div className="aspect-[3/2] flex items-center justify-center bg-slate-100 rounded-xl border border-slate-200 text-slate-400 text-xs">No Back Image</div>
-                                                    )}
-
-                                                    {merchant.kyc.business_license_signed_url && (
-                                                        <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Business License</p>
-                                                            <a href={merchant.kyc.business_license_signed_url} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                                                                <img src={merchant.kyc.business_license_signed_url} alt="License" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View License</div>
-                                                            </a>
-                                                        </div>
-                                                    )}
-
-                                                    {merchant.kyc.registration_doc_signed_url && (
-                                                        <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Registration Document</p>
-                                                            <a href={merchant.kyc.registration_doc_signed_url} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                                                                <img src={merchant.kyc.registration_doc_signed_url} alt="Reg Doc" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">View Document</div>
-                                                            </a>
-                                                        </div>
-                                                    )}
+                                                <div className="border-t border-slate-100 pt-4">
+                                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Business documents to review</p>
+                                                    <div className="mt-2 grid grid-cols-1 gap-2">
+                                                        {businessDocuments.length > 0 ? (
+                                                            businessDocuments.map((document) => (
+                                                                <KycDocumentCard key={document.key} document={document} />
+                                                            ))
+                                                        ) : (
+                                                            <div className="flex min-h-24 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 text-center text-xs font-semibold text-slate-400">
+                                                                No extra business documents submitted.
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -452,6 +461,70 @@ function countForType(types, key) {
 function hasPayoutOverrides(summary) {
     const overrides = summary?.retail_settings?.payout_controls?.overrides || {};
     return Object.values(overrides).some((mode) => mode && mode !== 'platform_default');
+}
+
+function buildKycDocuments(kyc) {
+    if (!kyc) return [];
+
+    return [
+        {
+            key: 'id_front',
+            label: 'ID Front',
+            group: 'identity',
+            signedUrl: kyc.id_front_signed_url,
+            storedUrl: kyc.id_front_url,
+        },
+        {
+            key: 'id_back',
+            label: 'ID Back',
+            group: 'identity',
+            signedUrl: kyc.id_back_signed_url,
+            storedUrl: kyc.id_back_url,
+        },
+        {
+            key: 'tin_document',
+            label: 'TIN Document',
+            group: 'business',
+            signedUrl: kyc.tin_document_signed_url,
+            storedUrl: kyc.tin_document_url,
+        },
+        {
+            key: 'business_license',
+            label: 'Business License',
+            group: 'business',
+            signedUrl: kyc.business_license_signed_url,
+            storedUrl: kyc.business_license_url,
+        },
+        {
+            key: 'registration_doc',
+            label: 'Registration Document',
+            group: 'business',
+            signedUrl: kyc.registration_doc_signed_url,
+            storedUrl: kyc.registration_doc_url,
+        },
+    ].filter((document) => document.group === 'identity' || document.signedUrl || document.storedUrl);
+}
+
+function KycDocumentCard({ document }) {
+    if (!document.signedUrl) {
+        return (
+            <div className="flex aspect-[3/2] items-center justify-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-center text-xs font-semibold text-slate-400">
+                {document.storedUrl ? `${document.label} preview unavailable` : `No ${document.label}`}
+            </div>
+        );
+    }
+
+    return (
+        <a href={document.signedUrl} target="_blank" rel="noreferrer" className="block relative group aspect-[3/2] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+            <img src={document.signedUrl} alt={document.label} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+            <div className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm">
+                {document.label}
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
+                View {document.label}
+            </div>
+        </a>
+    );
 }
 
 function Metric({ label, value }) {

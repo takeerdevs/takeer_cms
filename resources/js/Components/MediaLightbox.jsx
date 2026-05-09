@@ -12,6 +12,16 @@ const isVideo = (item) => {
 
 const getUrl = (item) => typeof item === 'string' ? item : item?.url ?? item?.preview ?? '';
 
+function hotspotLinkDomain(value) {
+    if (!value) return '';
+
+    try {
+        return new URL(value).hostname.replace(/^www\./, '');
+    } catch {
+        return String(value).replace(/^https?:\/\//, '').split('/')[0];
+    }
+}
+
 function LightboxVideoPlayer({ item }) {
     const src = typeof item === 'string'
         ? item
@@ -118,8 +128,8 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                                                     }}
                                                 >
                                                     <div className="relative">
-                                                        <div className="absolute inset-0 bg-white/40 rounded-full animate-ping" />
-                                                        <div className="h-8 w-8 bg-black/80 backdrop-blur-md rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer hover:bg-brand-600 transition-colors">
+                                                        <div className="absolute inset-0 rounded-full bg-white/50 animate-hotspot-ping" />
+                                                        <div className="h-8 w-8 rounded-full bg-brand-600 shadow-[0_10px_28px_rgba(2,132,199,0.35),0_0_0_1px_rgba(15,23,42,0.18)] flex items-center justify-center cursor-pointer hover:bg-brand-700 transition-colors">
                                                             {spot.type === 'product' && <MapPin className="h-4 w-4 text-white" />}
                                                             {spot.type === 'link' && <LinkIcon className="h-4 w-4 text-white" />}
                                                             {spot.type === 'text' && <Edit3 className="h-4 w-4 text-white" />}
@@ -176,7 +186,7 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                                 <Card className="bg-white shadow-2xl overflow-hidden border-0 relative">
                                     <button
                                         onClick={() => setActiveHotspot(null)}
-                                        className="absolute top-2 right-2 h-8 w-8 bg-accent/50 hover:bg-accent rounded-full flex items-center justify-center"
+                                        className="absolute top-2 right-2 h-8 w-8 rounded-full flex items-center justify-center bg-accent/50 hover:bg-accent"
                                     >
                                         <X className="h-4 w-4" />
                                     </button>
@@ -224,19 +234,24 @@ export default function MediaLightbox({ post, items = [], startIndex = 0, isOpen
                                             <div className="flex-1 min-w-0 py-2">
                                                 <div className="flex items-center gap-2 text-brand-600 font-bold mb-1">
                                                     <LinkIcon className="h-4 w-4" />
-                                                    <span>Kiungo (Link)</span>
+                                                    <span className="truncate">{hotspotLinkDomain(activeHotspot.data) || 'Fungua kiungo'}</span>
                                                 </div>
-                                                <a href={activeHotspot.data} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline break-all">
+                                                <p className="text-xs text-muted-foreground line-clamp-1 break-all">
                                                     {activeHotspot.data}
-                                                </a>
+                                                </p>
+                                                <Button
+                                                    size="sm"
+                                                    className="mt-3 w-full h-9 text-xs bg-brand-600 hover:bg-brand-700 text-white"
+                                                    asChild
+                                                >
+                                                    <a href={activeHotspot.data} target="_blank" rel="noreferrer">
+                                                        Fungua
+                                                    </a>
+                                                </Button>
                                             </div>
                                         )}
                                         {activeHotspot.type === 'text' && (
                                             <div className="flex-1 min-w-0 py-2">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <Edit3 className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="font-bold text-sm">Maelezo</span>
-                                                </div>
                                                 <p className="text-sm text-muted-foreground">
                                                     {activeHotspot.data}
                                                 </p>

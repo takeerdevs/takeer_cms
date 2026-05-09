@@ -159,6 +159,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/bundles/{bundle:id}', [MerchantBundleController::class, 'destroy']);
 
         // Merchant Order PIN Verification
+        Route::post('/{merchant:username}/order-checkup/lookup', [MerchantOrderController::class, 'checkupLookup']);
         Route::post('/{merchant:username}/orders/{order:id}/verify-pickup', [MerchantOrderController::class, 'verifyPickup']);
         Route::post('/{merchant:username}/orders/{order:id}/verify-delivery', [MerchantOrderController::class, 'verifyDelivery']);
         Route::post('/{merchant:username}/orders/{order:id}/extend-lock', [MerchantOrderController::class, 'extendExpiration']);

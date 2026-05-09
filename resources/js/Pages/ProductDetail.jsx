@@ -15,6 +15,16 @@ import AddressPickerModal from '@/Components/AddressPickerModal';
 import { trackAttributionEvent } from '@/lib/attribution';
 import { formatQuantity, productCardPriceLabel, productPriceLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
 
+function hotspotLinkDomain(value) {
+    if (!value) return '';
+
+    try {
+        return new URL(value).hostname.replace(/^www\./, '');
+    } catch {
+        return String(value).replace(/^https?:\/\//, '').split('/')[0];
+    }
+}
+
 export default function ProductDetail({ product }) {
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [activeHotspot, setActiveHotspot] = useState(null);
@@ -1095,8 +1105,8 @@ export default function ProductDetail({ product }) {
                                 }}
                             >
                                 <div className="relative">
-                                    <div className="absolute inset-0 bg-white/40 rounded-full animate-ping scale-150" />
-                                    <div className={`h-8 w-8 rounded-full border-2 border-white shadow-xl flex items-center justify-center transition-all transform hover:scale-110 active:scale-90 ${activeHotspot === spot ? 'bg-brand-600' : 'bg-black/60 backdrop-blur-md'}`}>
+                                    <div className="absolute inset-0 rounded-full bg-white/50 animate-hotspot-ping scale-150" />
+                                    <div className={`h-8 w-8 rounded-full shadow-[0_10px_28px_rgba(2,132,199,0.35),0_0_0_1px_rgba(15,23,42,0.18)] flex items-center justify-center transition-all transform hover:scale-110 active:scale-90 ${activeHotspot === spot ? 'bg-brand-700' : 'bg-brand-600'}`}>
                                         {spot.type === 'product' && <ShoppingBag className="h-4 w-4 text-white" />}
                                         {spot.type === 'link' && <LinkIcon className="h-4 w-4 text-white" />}
                                         {spot.type === 'text' && <Info className="h-4 w-4 text-white" />}
@@ -1108,35 +1118,39 @@ export default function ProductDetail({ product }) {
                                         className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[45] w-56"
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        <div className="bg-white/95 backdrop-blur-xl p-3 rounded-2xl shadow-2xl border border-white/20 space-y-2 relative">
+                                        <div className="bg-white/95 text-foreground border-white/20 backdrop-blur-xl p-3 rounded-2xl shadow-2xl border space-y-2 relative">
                                             <button
                                                 onClick={() => setActiveHotspot(null)}
                                                 className="absolute -top-2 -right-2 h-6 w-6 bg-brand-600 text-white rounded-full flex items-center justify-center shadow-lg"
                                             >
                                                 <ChevronLeft className="h-4 w-4 rotate-90" />
                                             </button>
-                                            <p className="text-[10px] font-black uppercase text-brand-600 tracking-widest">
-                                                {spot.type}
+                                            {spot.type !== 'text' && (
+                                                <p className="text-[10px] font-black uppercase text-brand-600 tracking-widest">
+                                                    {spot.type === 'link' ? hotspotLinkDomain(spot.data) || 'Link' : 'Bidhaa'}
+                                                </p>
+                                            )}
+                                            <p className={`${spot.type === 'text' ? 'text-xs font-medium leading-relaxed text-foreground/80' : 'text-sm font-bold text-foreground'} break-words`}>
+                                                {spot.type === 'product' ? (spot.product?.title || `Bidhaa #${spot.data}`) : spot.type === 'link' ? spot.data : spot.data}
                                             </p>
-                                            <p className="text-sm font-bold text-foreground break-words">
-                                                {spot.type === 'product' ? (spot.product?.title || `Bidhaa #${spot.data}`) : spot.data}
-                                            </p>
-                                            <Button
-                                                size="sm"
-                                                className="w-full rounded-xl h-9 px-3 bg-brand-600 text-white font-bold"
-                                                onClick={() => {
-                                                    if (spot.type === 'link') {
-                                                        window.open(spot.data, '_blank');
-                                                        return;
-                                                    }
-                                                    if (spot.type === 'product') {
-                                                        const target = spot.product?.slug || spot.data;
-                                                        if (target) window.location.href = `/product/${target}`;
-                                                    }
-                                                }}
-                                            >
-                                                {spot.type === 'product' ? 'Ione' : spot.type === 'link' ? 'Fungua' : 'Sawa'}
-                                            </Button>
+                                            {spot.type !== 'text' && (
+                                                <Button
+                                                    size="sm"
+                                                    className="w-full rounded-xl h-9 px-3 bg-brand-600 text-white font-bold"
+                                                    onClick={() => {
+                                                        if (spot.type === 'link') {
+                                                            window.open(spot.data, '_blank');
+                                                            return;
+                                                        }
+                                                        if (spot.type === 'product') {
+                                                            const target = spot.product?.slug || spot.data;
+                                                            if (target) window.location.href = `/product/${target}`;
+                                                        }
+                                                    }}
+                                                >
+                                                    {spot.type === 'product' ? 'Ione' : 'Fungua'}
+                                                </Button>
+                                            )}
                                         </div>
                                         <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-white/95" />
                                     </div>
@@ -1863,11 +1877,11 @@ export default function ProductDetail({ product }) {
                                 ))}
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-2">
-                                <div className="rounded-xl bg-white/70 border border-white px-3 py-2">
+                                <div className="rounded-xl bg-white/40 border border-white px-3 py-2">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Huduma zilizokamilika</p>
                                     <p className="text-lg font-black text-slate-950">{serviceTrust.completed_services_count || 0}</p>
                                 </div>
-                                <div className="rounded-xl bg-white/70 border border-white px-3 py-2">
+                                <div className="rounded-xl bg-white/40 border border-white px-3 py-2">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Migogoro</p>
                                     <p className="text-lg font-black text-slate-950">{serviceTrust.disputes_count || 0}</p>
                                 </div>

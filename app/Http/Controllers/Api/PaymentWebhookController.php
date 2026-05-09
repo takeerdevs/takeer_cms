@@ -8,6 +8,7 @@ use App\Models\SubscriptionInvoice;
 use App\Models\UserSubscription;
 use App\Models\Transaction;
 use App\Services\EntitlementService;
+use App\Services\OrderExtraItemFulfillmentService;
 use App\Services\SmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,6 +53,9 @@ class PaymentWebhookController extends Controller
                 $isCustomDelivery = $order->product?->isDigital()
                     && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery';
 
+                $childOrders = app(OrderExtraItemFulfillmentService::class)->splitPaidExtras($order->fresh(['product', 'variant', 'delivery', 'merchant']));
+                $order->refresh();
+
                 if ($isPhysical && $order->is_inquiry) {
                     $order->markPhysicalAgreement([
                         'total_paid' => (float) $order->total_paid,
@@ -65,27 +69,37 @@ class PaymentWebhookController extends Controller
                     'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
                 ]);
 
-                // Log TRA-ready transaction
-                $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
-                Transaction::create([
-                    'user_id' => $order->buyer_id,
-                    'order_id' => $order->id,
-                    'type' => 'order_revenue',
-                    ...$fee['snapshot'],
-                    'gross_amount' => $order->total_paid,
-                    'fee_amount' => $fee['fee_amount'],
-                    'net_amount' => $fee['net_amount'],
-                    'tax_amount' => $fee['tax_amount'],
-                    'reference' => $mpesaReceiptNumber,
-                ]);
+                $processedOrders = collect([$order->fresh(['product', 'merchant.user'])])
+                    ->merge($childOrders->map(fn (Order $child) => $child->fresh(['product', 'merchant.user', 'delivery'])));
+
+                foreach ($processedOrders as $processedOrder) {
+                    // Log TRA-ready transaction
+                    $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($processedOrder, (float) $processedOrder->total_paid);
+                    Transaction::create([
+                        'user_id' => $processedOrder->buyer_id,
+                        'order_id' => $processedOrder->id,
+                        'type' => 'order_revenue',
+                        ...$fee['snapshot'],
+                        'gross_amount' => $processedOrder->total_paid,
+                        'fee_amount' => $fee['fee_amount'],
+                        'net_amount' => $fee['net_amount'],
+                        'tax_amount' => $fee['tax_amount'],
+                        'reference' => $processedOrder->id === $order->id ? $mpesaReceiptNumber : "{$mpesaReceiptNumber}-{$processedOrder->id}",
+                    ]);
+
+                    $wallet = $processedOrder->merchant->user->wallet()->firstOrCreate(['user_id' => $processedOrder->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);
+                    if ($processedOrder->requiresPhysicalFulfillment() || $processedOrder->payment_status === 'escrow_locked') {
+                        $wallet->increment('frozen_balance', $processedOrder->total_paid);
+                    } else {
+                        $wallet->increment('balance', $fee['net_amount']);
+                    }
+
+                    if (!$processedOrder->requiresPhysicalFulfillment()) {
+                        $this->entitlementService->grantForOrder($processedOrder->fresh(['product']));
+                    }
+                }
 
                 if ($isPhysical || $isHeldService || $isCustomDelivery) {
-                    // Freeze funds in merchant's wallet until delivery/customer confirmation.
-                    $wallet = $order->merchant->user->wallet()->firstOrCreate(['user_id' => $order->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);
-                    $wallet->increment('frozen_balance', $order->total_paid);
-                    if ($isCustomDelivery) {
-                        $this->entitlementService->grantForOrder($order->fresh(['product']));
-                    }
                     if ($isPhysical) {
                         $order->loadMissing(['buyer', 'merchant.user', 'delivery']);
                         $publicId = (string) ($order->public_id ?: $order->id);
@@ -100,11 +114,6 @@ class PaymentWebhookController extends Controller
                         }
                     }
                 } else {
-                    // Instantly release payout for non-physical commerce items.
-                    $wallet = $order->merchant->user->wallet()->firstOrCreate(['user_id' => $order->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);
-                    $wallet->increment('balance', $fee['net_amount']);
-                    $this->entitlementService->grantForOrder($order->fresh(['product']));
-
                     if ($order->purchasable_type === 'subscription_plan') {
                         $subscription = $this->createOrRenewSubscription($order);
                         $this->entitlementService->grantForSubscription($subscription);

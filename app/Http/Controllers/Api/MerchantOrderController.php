@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\MessageSent;
 use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\Merchant;
+use App\Models\MerchantStaff;
+use App\Models\Message;
 use App\Models\Order;
 use App\Models\Post;
 use App\Models\Product;
@@ -14,6 +17,7 @@ use App\Models\UserSubscription;
 use App\Services\SmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -549,7 +553,7 @@ class MerchantOrderController extends Controller
      */
     public function verifyPickup(Request $request, Merchant $merchant, Order $order): JsonResponse
     {
-        abort_unless($merchant->user_id === $request->user()->id, 403);
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
 
         $validated = $request->validate(['pickup_pin' => 'required|string']);
@@ -558,14 +562,202 @@ class MerchantOrderController extends Controller
             return response()->json(['message' => 'PIN sio sahihi. Tafadhali hakiki upya.'], 400);
         }
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($order, $merchant) {
+        abort_unless(
+            in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true),
+            422,
+            'Order must be paid before pickup can be released.'
+        );
+
+        DB::transaction(function () use ($order, $merchant, $request) {
             $order->delivery->update(['delivery_status' => 'delivered']);
 
             app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
             app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
+
+            $activeStaff = $this->activeStaffContext($request, $merchant);
+            $actorName = $request->user()->name ?: ($merchant->business_name ?: $merchant->username);
+            $merchantName = $merchant->business_name ?: $merchant->username;
+
+            $message = Message::create([
+                'order_id' => $order->id,
+                'sender_id' => $request->user()->id,
+                'receiver_id' => $order->buyer_id,
+                'type' => 'action',
+                'body' => "{$actorName} verified pickup for {$merchantName} and released this order.",
+                'payload' => [
+                    'action_type' => 'pickup_verified',
+                    'acting_as' => 'merchant',
+                    'actor_name' => $actorName,
+                    'actor_user_id' => $request->user()->id,
+                    'actor_staff_id' => $activeStaff?->id,
+                    'actor_staff_role' => $activeStaff?->role,
+                    'merchant_name' => $merchantName,
+                    'merchant_id' => $merchant->id,
+                    'verified_at' => now()->toISOString(),
+                ],
+            ]);
+
+            $message->load('sender:id,name,role');
+            broadcast(new MessageSent($message, $order))->toOthers();
         });
 
-        return response()->json(['message' => 'Mzigo umekabidhiwa kikamilifu! Malipo yameidhinishwa.', 'order' => $order->fresh(['delivery'])]);
+        $freshOrder = $order->fresh(['buyer:id,name,phone_number', 'product:id,title,type,url,download_link', 'product.images', 'variant:id,name,swatch_image_url', 'delivery']);
+
+        return response()->json([
+            'message' => 'Mzigo umekabidhiwa kikamilifu! Malipo yameidhinishwa.',
+            'order' => $this->checkupPayload($freshOrder),
+        ]);
+    }
+
+    public function checkupLookup(Request $request, Merchant $merchant): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:64'],
+        ]);
+
+        $code = strtoupper(trim((string) $validated['code']));
+        $digitsOnly = preg_replace('/\D+/', '', $code);
+
+        $order = Order::query()
+            ->with(['buyer:id,name,phone_number', 'product:id,title,type,url,download_link', 'product.images', 'variant:id,name,swatch_image_url', 'delivery'])
+            ->where('merchant_id', $merchant->id)
+            ->where(function ($query) use ($code, $digitsOnly) {
+                $query->where('public_id', $code)
+                    ->orWhere('transaction_ref', $code)
+                    ->orWhere('pickup_code', $code)
+                    ->orWhereHas('delivery', function ($deliveryQuery) use ($code, $digitsOnly) {
+                        $deliveryQuery->where('pickup_pin', $code);
+                        if ($digitsOnly && $digitsOnly !== $code) {
+                            $deliveryQuery->orWhere('pickup_pin', $digitsOnly);
+                        }
+                    });
+            })
+            ->orderByRaw("CASE payment_status WHEN 'awaiting_merchant_confirmation' THEN 0 WHEN 'escrow_locked' THEN 1 WHEN 'shipped' THEN 2 WHEN 'pending' THEN 3 ELSE 4 END")
+            ->latest()
+            ->first();
+
+        if (! $order) {
+            return response()->json(['message' => 'Oda haijapatikana kwa code hiyo.'], 404);
+        }
+
+        return response()->json([
+            'order' => $this->checkupPayload($order),
+        ]);
+    }
+
+    private function checkupPayload(Order $order): array
+    {
+        $display = $this->resolveDisplay($order);
+        $phone = (string) ($order->buyer?->phone_number ?: $order->account_phone ?: $order->customer_phone ?: '');
+        $maskedPhone = $phone !== ''
+            ? substr($phone, 0, 4) . '***' . substr($phone, -3)
+            : null;
+        $deliveryType = $order->delivery?->delivery_type;
+        $isPickup = $deliveryType === 'self_pickup' || filled($order->delivery?->pickup_pin);
+        $isPaidForRelease = in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true);
+        $canVerifyPickup = $isPickup
+            && $isPaidForRelease
+            && $order->delivery?->pickup_pin;
+        $amountPaid = $isPaidForRelease || in_array($order->payment_status, ['shipped', 'disputed', 'resolved_merchant_paid'], true)
+            ? (float) $order->total_paid
+            : 0.0;
+        $amountRemaining = max(0, (float) $order->total_paid - $amountPaid);
+
+        return [
+            'id' => $order->id,
+            'public_id' => $order->public_id,
+            'title' => $display['title'] ?: ($order->product?->title ?? 'Order'),
+            'kind' => $display['kind'],
+            'image_url' => $order->variant?->swatch_image_url ?: $order->product?->image_url,
+            'payment_status' => $order->payment_status,
+            'delivery_type' => $isPickup ? 'self_pickup' : $deliveryType,
+            'delivery_status' => $isPickup && in_array($order->delivery?->delivery_status, ['awaiting_boda', 'inquiry', null], true)
+                ? 'awaiting_pickup'
+                : $order->delivery?->delivery_status,
+            'total_paid' => (float) $order->total_paid,
+            'amount_total' => (float) $order->total_paid,
+            'amount_paid' => $amountPaid,
+            'amount_remaining' => $amountRemaining,
+            'quantity' => (float) ($order->quantity ?: 1),
+            'items' => $this->checkupItems($order),
+            'customer_name' => $order->buyer?->name,
+            'customer_phone' => $maskedPhone,
+            'has_pickup_pin' => (bool) $order->delivery?->pickup_pin,
+            'can_verify_pickup' => (bool) $canVerifyPickup,
+            'release_blocked_reason' => $canVerifyPickup ? null : $this->checkupReleaseBlockedReason($order, $isPickup),
+            'chat_url' => $order->public_id ? "/chat/{$order->public_id}?acting_as=merchant" : null,
+            'created_at' => $order->created_at?->toISOString(),
+        ];
+    }
+
+    private function checkupItems(Order $order): array
+    {
+        $items = [[
+            'key' => 'main',
+            'title' => $this->resolveDisplay($order)['title'] ?: ($order->product?->title ?? 'Order item'),
+            'image_url' => $order->variant?->swatch_image_url ?: $order->product?->image_url,
+            'quantity' => (float) ($order->quantity ?: 1),
+            'unit_price' => (float) ($order->unit_price ?: $order->total_paid),
+            'line_total' => (float) ($order->unit_price ?: $order->total_paid) * (float) ($order->quantity ?: 1),
+            'type' => $order->product?->type,
+            'is_main' => true,
+        ]];
+
+        foreach (($order->extra_items ?? []) as $index => $item) {
+            $type = $item['type'] ?? $item['product_type'] ?? null;
+            $quantity = $type === 'physical' ? (float) ($item['quantity'] ?? 1) : 1.0;
+            $unitPrice = (float) ($item['price'] ?? 0);
+
+            $items[] = [
+                'key' => 'extra-'.$index,
+                'title' => $item['title'] ?? 'Added item',
+                'image_url' => $item['image'] ?? null,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'line_total' => $unitPrice * $quantity,
+                'type' => $type,
+                'is_main' => false,
+            ];
+        }
+
+        return $items;
+    }
+
+    private function checkupReleaseBlockedReason(Order $order, bool $isPickup): string
+    {
+        if (! $isPickup) {
+            return 'This order is not a pickup order.';
+        }
+
+        if (! in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true)) {
+            return 'Payment is not complete yet. Complete payment before releasing this order.';
+        }
+
+        if (! $order->delivery?->pickup_pin) {
+            return 'Pickup PIN is not available for this order.';
+        }
+
+        return 'This order cannot be released from this code right now.';
+    }
+
+    private function canOperateMerchant(Request $request, Merchant $merchant): bool
+    {
+        if ((int) $merchant->user_id === (int) $request->user()->id) {
+            return true;
+        }
+
+        return $this->activeStaffContext($request, $merchant) !== null;
+    }
+
+    private function activeStaffContext(Request $request, Merchant $merchant): ?MerchantStaff
+    {
+        return MerchantStaff::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('user_id', $request->user()->id)
+            ->where('is_active', true)
+            ->first();
     }
     
     /**
@@ -684,13 +876,39 @@ class MerchantOrderController extends Controller
             return response()->json(['message' => 'Huwezi kuongeza muda kwa agizo hili.'], 400);
         }
 
-        $order->update([
-            'expires_at' => ($order->expires_at?->isPast() ? now() : $order->expires_at)->addMinutes(30)
+        $previousExpiresAt = $order->expires_at;
+        $baseExpiresAt = ($previousExpiresAt && !$previousExpiresAt->isPast()) ? $previousExpiresAt->copy() : now();
+        $newExpiresAt = $baseExpiresAt->addMinutes(30);
+
+        $order->update(['expires_at' => $newExpiresAt]);
+
+        $merchantName = $merchant->storefrontSetting?->store_name
+            ?: $merchant->business_name
+            ?: $merchant->user?->name
+            ?: 'Merchant';
+
+        $message = $order->messages()->create([
+            'sender_id' => $request->user()->id,
+            'receiver_id' => $order->buyer_id,
+            'type' => 'system',
+            'body' => "{$merchantName} added 30 minutes to the order time left.",
+            'payload' => [
+                'action_type' => 'order_time_extended',
+                'acting_as' => 'merchant',
+                'minutes_added' => 30,
+                'merchant_name' => $merchantName,
+                'previous_expires_at' => $previousExpiresAt?->toISOString(),
+                'new_expires_at' => $newExpiresAt->toISOString(),
+            ],
         ]);
+
+        $message->load('sender:id,name,role');
+        broadcast(new MessageSent($message, $order))->toOthers();
 
         return response()->json([
             'message' => 'Muda wa lock umeongezwa kwa dakika 30.',
-            'order' => $order
+            'order' => $order->fresh()->load(['product.unitType', 'product.images', 'merchant.locations', 'delivery', 'dispute', 'review']),
+            'messages' => $order->messages()->with(['sender:id,name,role'])->oldest()->get(),
         ]);
     }
 

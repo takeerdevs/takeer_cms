@@ -11,6 +11,7 @@ import ShopLocationsModal from './ShopLocationsModal';
 import UserAddressManager from './UserAddressManager';
 import axios from 'axios';
 import { checkoutAttributionFields, trackAttributionEvent } from '@/lib/attribution';
+import { formatQuantity } from '@/lib/productUnits';
 
 const DEFAULT_CENTER = {
     lat: -6.7924, // Dar es Salaam
@@ -31,7 +32,6 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [resolvedProduct, setResolvedProduct] = useState(product);
     const [selectedVariantId, setSelectedVariantId] = useState('');
     const [variantFilters, setVariantFilters] = useState({});
-    const [physicalQuantity, setPhysicalQuantity] = useState('1');
 
     // Shipping State
     const [addresses, setAddresses] = useState([]);
@@ -419,9 +419,12 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const unitType = activeProduct?.unit_type || null;
     const unitSymbol = unitType?.symbol || unitType?.name || 'unit';
     const sellableQuantity = Math.max(0.001, Number(activeProduct?.sellable_quantity || 1));
-    const minPhysicalQuantity = Math.max(0.001, Number(activeProduct?.min_order_quantity || sellableQuantity || 1));
-    const physicalQuantityStep = Math.max(0.001, Number(activeProduct?.order_increment || (unitType?.allows_decimal ? 0.25 : 1)));
-    const requestedPhysicalQuantity = Math.max(minPhysicalQuantity, Number(physicalQuantity || minPhysicalQuantity));
+    const requestedPhysicalQuantity = sellableQuantity;
+    const packageContentQuantity = Number(activeProduct?.package_content_quantity || 0);
+    const packageContentUnit = activeProduct?.package_content_unit_type || null;
+    const checkoutQuantitySummary = packageContentQuantity && packageContentUnit
+        ? '1 package'
+        : `${formatQuantity(sellableQuantity)} ${unitSymbol}`;
     const serviceBaseMultiplier = activeProduct?.type === 'service' && !hasExplicitCheckoutPrice
         ? servicePricingMultiplier(selectedServiceOption?.price_display || activeProduct?.service_price_display)
         : 1;
@@ -498,7 +501,6 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 start_date: '',
                 end_date: '',
             });
-            setPhysicalQuantity(String(activeProduct?.min_order_quantity || activeProduct?.sellable_quantity || 1));
             setCouponCode(urlCoupon || '');
             setIsCouponExpanded(Boolean(urlCoupon));
             if (isPhysicalProduct) {
@@ -507,7 +509,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 setStep(2); // Digital always stays in "Payment" view
             }
         }
-    }, [isOpen, isPhysicalProduct, activeProduct?.min_order_quantity, activeProduct?.sellable_quantity]);
+    }, [isOpen, isPhysicalProduct]);
 
     useEffect(() => {
         if (!isOpen || !activeProduct?.id) return;
@@ -946,45 +948,6 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
                         {isPhysicalProduct ? (
                             <div className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-                                {itemType === 'product' && unitType && (
-                                    <div className="rounded-2xl border border-brand-100 bg-white p-3 sm:p-4 space-y-3">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="text-xs font-black uppercase tracking-wider text-brand-700/80">Kiasi</p>
-                                                <p className="text-xs text-slate-500">
-                                                    Bei ni kwa {sellableQuantity} {unitSymbol}. Chagua kiasi unachotaka.
-                                                </p>
-                                            </div>
-                                            {(unitType.common_quantities || []).length > 0 && (
-                                                <div className="flex flex-wrap justify-end gap-1.5">
-                                                    {unitType.common_quantities.slice(0, 4).map((entry) => (
-                                                        <button
-                                                            key={`${entry.label}-${entry.value}`}
-                                                            type="button"
-                                                            className="rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-800"
-                                                            onClick={() => setPhysicalQuantity(String(entry.value))}
-                                                        >
-                                                            {entry.label || entry.value}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="grid grid-cols-[1fr_auto] gap-2">
-                                            <Input
-                                                type="number"
-                                                min={minPhysicalQuantity}
-                                                step={physicalQuantityStep}
-                                                value={physicalQuantity}
-                                                onChange={(e) => setPhysicalQuantity(e.target.value)}
-                                                className="h-12 rounded-xl bg-brand-50/50 font-black text-brand-900"
-                                            />
-                                            <div className="h-12 rounded-xl border border-brand-100 bg-brand-50 px-4 flex items-center text-sm font-black text-brand-800">
-                                                {unitSymbol}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
                                 {/* Physical: Shipping Form */}
                                 <div className="rounded-2xl border border-brand-100 dark:border-slate-700 bg-brand-50/40 dark:bg-slate-900/70 p-3 sm:p-4 space-y-3">
                                     <div className="flex items-center justify-between mb-1">
@@ -1219,7 +1182,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                     <span className="text-sm font-black text-brand-900 truncate max-w-[150px] sm:max-w-[250px]">{itemTitle}</span>
                                     {isPhysicalProduct && itemType === 'product' && unitType && (
                                         <span className="text-[11px] font-bold text-slate-500">
-                                            {requestedPhysicalQuantity} {unitSymbol}
+                                            {checkoutQuantitySummary}
                                         </span>
                                     )}
                                 </div>

@@ -16,7 +16,12 @@ class RetailModuleController extends Controller
     public function activate(Request $request): JsonResponse
     {
         $user = $request->user();
-        $merchant = $user->merchantProfiles()->where('is_active', true)->first()
+        $activeMerchantId = session('active_merchant_id');
+        $merchant = $activeMerchantId
+            ? $user->merchantProfiles()->whereKey($activeMerchantId)->first()
+            : null;
+        $merchant = $merchant
+            ?? $user->merchantProfiles()->where('is_active', true)->first()
             ?? $user->merchantProfiles()->first();
 
         if (!$merchant) {
@@ -72,7 +77,12 @@ class RetailModuleController extends Controller
     public function deactivate(Request $request): JsonResponse
     {
         $user = $request->user();
-        $merchant = $user->merchantProfiles()->where('is_active', true)->first()
+        $activeMerchantId = session('active_merchant_id');
+        $merchant = $activeMerchantId
+            ? $user->merchantProfiles()->whereKey($activeMerchantId)->first()
+            : null;
+        $merchant = $merchant
+            ?? $user->merchantProfiles()->where('is_active', true)->first()
             ?? $user->merchantProfiles()->first();
 
         if (!$merchant) {

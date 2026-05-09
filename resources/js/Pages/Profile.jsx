@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
     User, UserCircle, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
     Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, Banknote, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
-    Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone
+    Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone,
+    Search, Loader2, KeyRound
 } from 'lucide-react';
 import axios from 'axios';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -44,6 +45,11 @@ export default function Profile({
 
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
     const [isCreateShopModalOpen, setIsCreateShopModalOpen] = useState(false);
+    const [isOrderCheckupOpen, setIsOrderCheckupOpen] = useState(false);
+    const [checkupCode, setCheckupCode] = useState('');
+    const [checkupOrder, setCheckupOrder] = useState(null);
+    const [checkupLoading, setCheckupLoading] = useState(false);
+    const [checkupVerifying, setCheckupVerifying] = useState(false);
     const [retailDashboard, setRetailDashboard] = useState(null);
     const retailEligible = isRetailEligible(activeMerchant, merchantKyc, merchantKycStatus);
     const retailActive = retailEligible && activeMerchant?.active_modules?.includes('retail_ops');
@@ -180,6 +186,46 @@ export default function Profile({
             axios.get('/api/retail/dashboard')
                 .then(res => setRetailDashboard(res.data))
                 .catch(err => console.error('Failed to load retail stats', err));
+        }
+    };
+
+    const lookupOrderCheckup = async (e) => {
+        e?.preventDefault();
+        if (!merchantSlug || !checkupCode.trim() || checkupLoading) return;
+
+        setCheckupLoading(true);
+        setCheckupOrder(null);
+        try {
+            const res = await axios.post(`/api/merchant/${merchantSlug}/order-checkup/lookup`, {
+                code: checkupCode.trim(),
+            });
+            setCheckupOrder(res.data.order);
+            toast.success('Oda imepatikana.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Oda haikupatikana.');
+        } finally {
+            setCheckupLoading(false);
+        }
+    };
+
+    const verifyOrderCheckupPickup = async () => {
+        if (!merchantSlug || !checkupOrder?.id || !checkupCode.trim() || checkupVerifying) return;
+
+        setCheckupVerifying(true);
+        try {
+            const res = await axios.post(`/api/merchant/${merchantSlug}/orders/${checkupOrder.id}/verify-pickup`, {
+                pickup_pin: checkupCode.trim(),
+            });
+            toast.success(res.data.message || 'Pickup imethibitishwa.');
+            setCheckupOrder(prev => res.data.order ? {
+                ...prev,
+                ...res.data.order,
+                can_verify_pickup: false,
+            } : prev);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kuthibitisha pickup.');
+        } finally {
+            setCheckupVerifying(false);
         }
     };
 
@@ -383,6 +429,147 @@ export default function Profile({
                     </CreateDialogContent>
                 </CreateDialog>
 
+                <Dialog open={isOrderCheckupOpen} onOpenChange={(open) => {
+                    setIsOrderCheckupOpen(open);
+                    if (!open) {
+                        setCheckupCode('');
+                        setCheckupOrder(null);
+                    }
+                }}>
+                    <DialogContent className="max-h-[90vh] max-w-lg overflow-hidden rounded-[2rem] border-slate-100 p-0">
+                        <div className="max-h-[90vh] overflow-y-auto p-6 space-y-5">
+                            <DialogHeader>
+                                <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
+                                    <KeyRound className="h-6 w-6" />
+                                </div>
+                                <DialogTitle className="text-2xl font-black tracking-tight text-slate-900">Order Checkup</DialogTitle>
+                                <DialogDescription className="text-sm font-medium text-slate-500">
+                                    Enter pickup PIN, pickup code, or order reference to verify a customer pickup.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <form onSubmit={lookupOrderCheckup} className="relative">
+                                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-400" />
+                                <Input
+                                    value={checkupCode}
+                                    onChange={(event) => setCheckupCode(event.target.value.toUpperCase())}
+                                    placeholder="PIN au Order Ref"
+                                    className="h-14 rounded-2xl border-brand-100 bg-brand-50/40 pl-11 pr-24 text-base font-black tracking-widest text-brand-900 focus:border-brand-300"
+                                />
+                                <Button
+                                    type="submit"
+                                    disabled={checkupLoading || !checkupCode.trim()}
+                                    className="absolute right-1.5 top-1/2 h-11 -translate-y-1/2 rounded-xl bg-brand-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-brand-700"
+                                >
+                                    {checkupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check'}
+                                </Button>
+                            </form>
+
+                            {checkupOrder && (
+                                <div className="overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-sm">
+                                    <div className="flex items-start gap-4 p-4">
+                                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 text-slate-400">
+                                            {checkupOrder.image_url ? (
+                                                <img src={checkupOrder.image_url} alt={checkupOrder.title} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <Package className="h-7 w-7" />
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                                                <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-brand-700">
+                                                    #{String(checkupOrder.public_id || '').slice(0, 8)}
+                                                </span>
+                                                <span className={cn(
+                                                    "rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
+                                                    checkupOrder.can_verify_pickup ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                                                )}>
+                                                    {checkupOrder.can_verify_pickup ? 'Ready' : String(checkupOrder.payment_status || '').replaceAll('_', ' ')}
+                                                </span>
+                                            </div>
+                                            <h4 className="line-clamp-2 text-sm font-black leading-snug text-slate-900">{checkupOrder.title}</h4>
+                                            <p className="mt-1 text-xs font-bold text-slate-500">
+                                                {checkupOrder.customer_name || checkupOrder.customer_phone || 'Customer'} · {String(checkupOrder.delivery_type || 'order').replaceAll('_', ' ')}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 border-t border-slate-100 bg-slate-50/70 p-4">
+                                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Items in order</p>
+                                        {(checkupOrder.items || []).map((item) => (
+                                            <div key={item.key || item.title} className="flex items-center gap-3 rounded-2xl bg-white p-2">
+                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50 text-slate-400">
+                                                    {item.image_url ? (
+                                                        <img src={item.image_url} alt={item.title} className="h-full w-full object-cover" />
+                                                    ) : (
+                                                        <Package className="h-5 w-5" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-xs font-black text-slate-900">{item.title}</p>
+                                                    <p className="text-[10px] font-bold text-slate-500">
+                                                        Qty {Number(item.quantity || 1).toLocaleString()} · {formatMoney(item.line_total || 0)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 border-t border-slate-100 bg-slate-50/70 p-4">
+                                        <div className="rounded-2xl bg-white px-3 py-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total</p>
+                                            <p className="mt-0.5 text-sm font-black text-slate-900">{formatMoney(checkupOrder.amount_total ?? checkupOrder.total_paid ?? 0)}</p>
+                                        </div>
+                                        <div className="rounded-2xl bg-emerald-50 px-3 py-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600">Paid</p>
+                                            <p className="mt-0.5 text-sm font-black text-emerald-800">{formatMoney(checkupOrder.amount_paid || 0)}</p>
+                                        </div>
+                                        <div className="rounded-2xl bg-amber-50 px-3 py-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Left</p>
+                                            <p className="mt-0.5 text-sm font-black text-amber-800">{formatMoney(checkupOrder.amount_remaining || 0)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t border-slate-100 px-4 py-3">
+                                        <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Pickup status</span>
+                                            <span className="text-xs font-black text-slate-900">{String(checkupOrder.delivery_status || 'pending').replaceAll('_', ' ')}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 p-4">
+                                        {checkupOrder.can_verify_pickup ? (
+                                            <Button
+                                                onClick={verifyOrderCheckupPickup}
+                                                disabled={checkupVerifying}
+                                                className="h-12 w-full rounded-2xl bg-emerald-600 text-[11px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                            >
+                                                {checkupVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                                                Confirm & Release Order
+                                            </Button>
+                                        ) : (
+                                            <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-[11px] font-bold leading-relaxed text-amber-800">
+                                                {checkupOrder.release_blocked_reason || 'This order cannot be released from this code right now.'}
+                                            </div>
+                                        )}
+                                        {checkupOrder.chat_url && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => router.visit(checkupOrder.chat_url)}
+                                                className="h-11 w-full rounded-2xl border-brand-100 text-[11px] font-black uppercase tracking-widest text-brand-700 hover:bg-brand-50"
+                                            >
+                                                <MessageSquare className="mr-2 h-4 w-4" />
+                                                Open Chat
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8">
                     <div className="lg:col-span-12 space-y-6">
 
@@ -461,7 +648,15 @@ export default function Profile({
                                                 <MiniMetric label="Change" value={`${Number(creatorMonetization.revenue_change_percent || 0).toLocaleString()}%`} icon={TrendingUp} tone="blue" compact />
                                             </div>
                                             <div className="grid min-w-0 gap-3 md:grid-cols-3">
-                                                <PayoutMetric label="Available payout" value={formatMoney(creatorMonetization.payouts?.available_balance || 0)} icon={Wallet} tone="emerald" />
+                                                <PayoutMetric
+                                                    label="Available payout"
+                                                    value={formatMoney(creatorMonetization.payouts?.available_balance || 0)}
+                                                    icon={Wallet}
+                                                    tone="emerald"
+                                                    href={`/merchant/${merchantSlug}/wallet`}
+                                                    actionLabel="Withdraw"
+                                                    actionHref={`/merchant/${merchantSlug}/wallet?withdraw=1`}
+                                                />
                                                 <PayoutMetric label="Held / escrow" value={formatMoney(creatorMonetization.payouts?.held_balance || 0)} icon={ShieldCheck} tone="blue" />
                                                 <PayoutMetric label="Pending withdrawals" value={formatMoney(creatorMonetization.payouts?.pending_withdrawals || 0)} icon={Banknote} tone="amber" />
                                             </div>
@@ -517,16 +712,14 @@ export default function Profile({
                                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Actions</h3>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <ActionBtn icon={Plus} label="New Item" href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
+                                                <ActionBtn icon={KeyRound} label="Order Checkup" onClick={() => setIsOrderCheckupOpen(true)} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
                                                 {retailEligible && (
-                                                    <ActionBtn icon={Store} label="Retail Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/retail-operations`} color="bg-amber-50" textColor="text-amber-700" borderColor="border-amber-100" />
+                                                    <ActionBtn icon={Store} label="Retail" href={`/merchant/${merchantSlug}/retail/dashboard`} color="bg-brand-50" textColor="text-brand-700" borderColor="border-brand-100" />
                                                 )}
                                                 <ActionBtn icon={HardDrive} label="Storage Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/storage`} color="bg-sky-50" textColor="text-sky-700" borderColor="border-sky-100" />
                                                 <ActionBtn icon={Clock} label="Pulse" href={`/merchant/${merchantSlug}/pulse`} color="bg-blue-50" textColor="text-blue-700" borderColor="border-blue-100" />
                                                 <ActionBtn icon={Megaphone} label="Marketing" href={`/merchant/${merchantSlug}/marketing`} color="bg-violet-50" textColor="text-violet-700" borderColor="border-violet-100" />
                                                 <ActionBtn icon={Wallet} label="Wallet" href={`/merchant/${merchantSlug}/wallet`} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
-                                                {retailActive && (
-                                                    <ActionBtn icon={Store} label="Retail" href={`/merchant/${merchantSlug}/retail/dashboard`} color="bg-brand-50" textColor="text-brand-700" borderColor="border-brand-100" />
-                                                )}
                                                 <ActionBtn icon={Settings} label="Settings" href={`/merchant/${merchantSlug}/settings`} color="bg-slate-50" textColor="text-slate-700" borderColor="border-slate-100" />
                                             </div>
                                         </div>
@@ -589,10 +782,14 @@ export default function Profile({
                                                     recentOrders.map(order => (
                                                         <Card key={order.id} className="border border-slate-100 hover:border-brand-200 transition-all rounded-xl shadow-sm group">
                                                             <CardContent className="p-4">
-                                                                <div className="flex items-center justify-between gap-4">
+                                                                <Link href={`/merchant/${merchantSlug}/orders/${order.id}`} className="flex items-center justify-between gap-4">
                                                                     <div className="flex items-center gap-3 min-w-0">
-                                                                        <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 transition-colors group-hover:bg-brand-50 group-hover:border-brand-100">
-                                                                            {React.createElement(iconFromKey(order.display_icon), { className: 'h-6 w-6 text-slate-500 group-hover:text-brand-600' })}
+                                                                        <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden transition-colors group-hover:bg-brand-50 group-hover:border-brand-100">
+                                                                            {order.image_url ? (
+                                                                                <img src={order.image_url} alt={order.display_title || 'Order item'} className="h-full w-full object-cover" />
+                                                                            ) : (
+                                                                                React.createElement(iconFromKey(order.display_icon), { className: 'h-6 w-6 text-slate-500 group-hover:text-brand-600' })
+                                                                            )}
                                                                         </div>
                                                                         <div className="min-w-0">
                                                                             <div className="flex items-center gap-2 mb-0.5">
@@ -608,7 +805,7 @@ export default function Profile({
                                                                     <p className="font-bold text-slate-900 text-lg">
                                                                         {formatMoney(order.amount || 0)}
                                                                     </p>
-                                                                </div>
+                                                                </Link>
                                                             </CardContent>
                                                         </Card>
                                                     ))
@@ -1124,14 +1321,17 @@ function StatCard({ title, value, icon: Icon, color, bgColor, borderColor, trend
     );
 }
 
-function ActionBtn({ icon: Icon, label, href, color, textColor, borderColor = "" }) {
+function ActionBtn({ icon: Icon, label, href, onClick, color, textColor, borderColor = "" }) {
+    const Comp = href ? Link : 'button';
+    const props = href ? { href } : { type: 'button', onClick };
+
     return (
-        <Link href={href} className={cn("flex flex-col items-center justify-center gap-2.5 p-5 rounded-2xl border transition-all active:scale-[0.98] group shadow-sm", color, textColor, borderColor || "border-transparent")}>
+        <Comp {...props} className={cn("flex flex-col items-center justify-center gap-2.5 p-5 rounded-2xl border transition-all active:scale-[0.98] group shadow-sm", color, textColor, borderColor || "border-transparent")}>
             <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center transition-all group-hover:scale-110", textColor === 'text-white' ? "bg-white/10" : "bg-white border " + borderColor)}>
                 <Icon className="h-5 w-5" />
             </div>
             <span className="font-bold text-[10px] uppercase tracking-wide">{label}</span>
-        </Link>
+        </Comp>
     );
 }
 
@@ -1183,20 +1383,55 @@ function MiniMetric({ label, value, icon: Icon, tone = 'slate', compact = false 
     );
 }
 
-function PayoutMetric({ label, value, icon: Icon, tone = 'emerald' }) {
+function PayoutMetric({ label, value, icon: Icon, tone = 'emerald', href = null, actionLabel = null, actionHref = null }) {
     const toneClasses = {
         emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
         blue: 'bg-blue-50 text-blue-700 border-blue-100',
         amber: 'bg-amber-50 text-amber-700 border-amber-100',
     }[tone] || 'bg-slate-50 text-slate-700 border-slate-100';
 
+    const goToHref = () => {
+        if (href) router.visit(href);
+    };
+
+    const handleKeyDown = (event) => {
+        if (!href || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        goToHref();
+    };
+
     return (
-        <div className={`rounded-2xl border bg-white/80 p-3 ${toneClasses}`}>
+        <div
+            role={href ? 'button' : undefined}
+            tabIndex={href ? 0 : undefined}
+            onClick={goToHref}
+            onKeyDown={handleKeyDown}
+            className={cn(
+                "rounded-2xl border bg-white/80 p-3 text-left",
+                href && "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40",
+                toneClasses
+            )}
+        >
             <div className="flex items-center gap-2">
                 <Icon className="h-4 w-4" />
                 <p className="text-[10px] font-black uppercase tracking-wider">{label}</p>
             </div>
-            <p className="mt-2 text-sm md:text-base font-black text-slate-900 truncate">{value}</p>
+            <div className="mt-2 flex min-w-0 items-center justify-between gap-3">
+                <p className="min-w-0 truncate text-sm font-black text-slate-900 md:text-base">{value}</p>
+                {actionLabel && actionHref && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 shrink-0 rounded-xl border-emerald-200 bg-white/75 px-3 text-xs font-black text-slate-950 shadow-none hover:bg-white"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            router.visit(actionHref);
+                        }}
+                    >
+                        {actionLabel}
+                    </Button>
+                )}
+            </div>
         </div>
     );
 }

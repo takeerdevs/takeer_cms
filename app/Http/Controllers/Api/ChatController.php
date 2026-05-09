@@ -8,6 +8,7 @@ use App\Http\Resources\ProductResource;
 use App\Models\Message;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\OrderExtraItemFulfillmentService;
 use App\Services\SmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -154,11 +155,19 @@ class ChatController extends Controller
             } elseif ($actionType === 'add_to_order') {
                 $item = $validated['payload']['product'] ?? null;
                 if ($item) {
+                    $productMeta = Product::query()->find((int) ($item['id'] ?? 0));
+                    $isPhysicalItem = ($productMeta?->type ?? ($item['type'] ?? $item['product_type'] ?? null)) === 'physical';
+                    $itemQuantity = $isPhysicalItem ? ($item['quantity'] ?? 1) : 1;
                     $itemKey = isset($item['variant_id']) ? "v-{$item['variant_id']}" : "p-{$item['id']}";
                     $mainKey = isset($order->variant_id) ? "v-{$order->variant_id}" : "p-{$order->product_id}";
 
                     if ($itemKey === $mainKey) {
-                        $order->quantity = ($order->quantity ?? 1) + ($item['quantity'] ?? 1);
+                        if (($order->product?->type ?? null) === 'physical') {
+                            $currentRequestedQuantity = $this->effectivePrimaryQuantity($order);
+                            $order->requested_quantity = $currentRequestedQuantity + $itemQuantity;
+                            $order->quantity = (int) ceil($order->requested_quantity);
+                            $this->markQuantityRepresentsPackages($order);
+                        }
                     } else {
                         $extra = $order->extra_items ?? [];
                         $exists = false;
@@ -166,7 +175,11 @@ class ChatController extends Controller
                         foreach ($extra as &$existing) {
                             $existingKey = isset($existing['variant_id']) ? "v-{$existing['variant_id']}" : "p-{$existing['id']}";
                             if ($existingKey === $itemKey) {
-                                $existing['quantity'] = ($existing['quantity'] ?? 1) + ($item['quantity'] ?? 1);
+                                if (($existing['type'] ?? $existing['product_type'] ?? null) === 'physical') {
+                                    $existing['quantity'] = ($existing['quantity'] ?? 1) + $itemQuantity;
+                                } else {
+                                    $existing['quantity'] = 1;
+                                }
                                 $exists = true;
                                 break;
                             }
@@ -177,9 +190,14 @@ class ChatController extends Controller
                                 'variant_id' => $item['variant_id'] ?? null,
                                 'title' => $item['title'],
                                 'price' => $item['price'],
-                                'quantity' => $item['quantity'] ?? 1,
+                                'quantity' => $itemQuantity,
                                 'image' => $item['image'] ?? null,
-                                'variant_name' => $item['variant_name'] ?? null
+                                'variant_name' => $item['variant_name'] ?? null,
+                                'type' => $productMeta?->type ?? ($item['type'] ?? null),
+                                'product_type' => $productMeta?->type ?? ($item['product_type'] ?? $item['type'] ?? null),
+                                'digital_delivery_type' => $productMeta?->digital_delivery_type ?? ($item['digital_delivery_type'] ?? null),
+                                'digital_content_type' => $productMeta?->digital_content_type ?? ($item['digital_content_type'] ?? null),
+                                'service_location_type' => $productMeta?->service_location_type ?? ($item['service_location_type'] ?? null),
                             ];
                         }
                         $order->extra_items = $extra;
@@ -231,13 +249,16 @@ class ChatController extends Controller
                     $isMain = (int) $order->product_id === (int) $itemId && (!$variantId || (int) $order->variant_id === (int) $variantId);
 
                     if ($isMain) {
-                        $order->requested_quantity = $newQty;
-                        $order->quantity = (int) ceil($newQty);
+                        if (($order->product?->type ?? null) === 'physical') {
+                            $order->requested_quantity = $newQty;
+                            $order->quantity = (int) ceil($newQty);
+                            $this->markQuantityRepresentsPackages($order);
+                        }
                     } else {
                         $extra = $order->extra_items ?? [];
                         foreach ($extra as &$e) {
                             $itemMatch = (int) $e['id'] === (int) $itemId && (!$variantId || (int) ($e['variant_id'] ?? 0) === (int) $variantId);
-                            if ($itemMatch) {
+                            if ($itemMatch && ($e['type'] ?? $e['product_type'] ?? null) === 'physical') {
                                 $e['quantity'] = $newQty;
                                 break;
                             }
@@ -262,7 +283,25 @@ class ChatController extends Controller
             try {
                 if ($actionType === 'initiate_payment') {
                     $paymentPhone = $validated['payload']['payment_number'] ?? $order->payment_phone ?? $order->account_phone;
+                    $this->ensureSelfPickupPin($order);
                     $order = $this->triggerPaymentPush($request, $order, $paymentPhone);
+
+                    $payload = $message->payload ?: [];
+                    $order->loadMissing(['delivery', 'product']);
+                    $isSelfPickupPhysical = $this->orderHasPhysicalItems($order)
+                        && $order->delivery?->delivery_type === 'self_pickup'
+                        && filled($order->delivery?->pickup_pin);
+
+                    $message->forceFill([
+                        'payload' => array_merge($payload, [
+                            'payment_status' => $order->payment_status,
+                            'delivery_type' => $order->delivery?->delivery_type,
+                            'pickup_pin' => $isSelfPickupPhysical ? (string) $order->delivery->pickup_pin : null,
+                            'show_shop_locations' => $isSelfPickupPhysical,
+                            'product_title' => $order->product?->title,
+                            'total_paid' => (float) $order->total_paid,
+                        ]),
+                    ])->save();
                     // Continue to return the message object so frontend can update optimistic UI
                 } elseif ($actionType === 'update_delivery') {
                     if ($order->canBeCancelledBeforePayment()) {
@@ -289,7 +328,7 @@ class ChatController extends Controller
                         }
 
                         if ($delivery->delivery_status === 'inquiry') {
-                            $delivery->delivery_status = ($deliveryType === 'self_pickup') ? 'awaiting_boda' : 'inquiry';
+                            $delivery->delivery_status = ($deliveryType === 'self_pickup') ? 'awaiting_pickup' : 'inquiry';
                         }
                         $delivery->save();
                     }
@@ -307,8 +346,46 @@ class ChatController extends Controller
 
         return response()->json([
             'message' => $message,
-            'order' => $order->fresh()->load(['product.unitType', 'merchant.locations', 'delivery', 'dispute', 'review'])
+            'order' => $order->fresh()->load(['product.unitType', 'product.images', 'merchant.locations', 'delivery', 'dispute', 'review'])
         ], 201);
+    }
+
+    private function ensureSelfPickupPin(Order $order): void
+    {
+        $order->loadMissing('delivery');
+
+        if (! $this->orderHasPhysicalItems($order) || $order->delivery?->delivery_type !== 'self_pickup') {
+            return;
+        }
+
+        $delivery = $order->delivery()->firstOrCreate(['order_id' => $order->id]);
+
+        if (! $delivery->pickup_pin) {
+            $delivery->pickup_pin = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        }
+
+        if (! $delivery->delivery_status || $delivery->delivery_status === 'inquiry' || $delivery->delivery_status === 'awaiting_boda') {
+            $delivery->delivery_status = 'awaiting_pickup';
+        }
+
+        $delivery->save();
+        $order->setRelation('delivery', $delivery);
+    }
+
+    private function orderHasPhysicalItems(Order $order): bool
+    {
+        if ($order->requiresPhysicalFulfillment()) {
+            return true;
+        }
+
+        foreach (($order->extra_items ?? []) as $item) {
+            $type = $item['type'] ?? $item['product_type'] ?? null;
+            if ($type === 'physical') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function triggerPaymentPush(Request $request, Order $order, string $paymentPhone): Order
@@ -341,11 +418,20 @@ class ChatController extends Controller
         try {
             // SIMULATION: Auto-approve payment for testing
             $isPhysical = $order->requiresPhysicalFulfillment();
-            $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : 'resolved_merchant_paid';
+            $isCustomDelivery = $order->product?->isDigital()
+                && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery';
+            $targetStatus = $isPhysical ? 'awaiting_merchant_confirmation' : ($isCustomDelivery ? 'escrow_locked' : 'resolved_merchant_paid');
+            $childOrders = collect();
 
-            \Illuminate\Support\Facades\DB::transaction(function () use ($order, $targetStatus, $isPhysical) {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($order, $targetStatus, $isPhysical, $isCustomDelivery, &$childOrders) {
                 if ($isPhysical) {
                     $this->reservePhysicalOrderInventory($order);
+                }
+
+                $childOrders = app(OrderExtraItemFulfillmentService::class)->splitPaidExtras($order->fresh(['product', 'variant', 'delivery', 'merchant']));
+                $order->refresh();
+
+                if ($isPhysical) {
                     $order->markPhysicalAgreement([
                         'total_paid' => (float) $order->total_paid,
                         'notes' => 'Buyer accepted the quoted physical order in chat.',
@@ -354,40 +440,48 @@ class ChatController extends Controller
 
                 $order->update([
                     'payment_status' => $targetStatus,
+                    'custom_delivery_due_at' => $isCustomDelivery ? $order->customDeliveryDueAtFrom() : $order->custom_delivery_due_at,
                     'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
                 ]);
             });
 
-            if (!$isPhysical) {
-                app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
+            $processedOrders = collect([$order->fresh(['product', 'merchant.user'])])
+                ->merge($childOrders->map(fn (Order $child) => $child->fresh(['product', 'merchant.user', 'delivery'])));
+
+            foreach ($processedOrders as $processedOrder) {
+                if (!$processedOrder->requiresPhysicalFulfillment()) {
+                    app(\App\Services\EntitlementService::class)->grantForOrder($processedOrder->fresh(['product']));
+                }
             }
 
             // Log TRA-ready transaction simulation
-            $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
-            \App\Models\Transaction::create([
-                'user_id' => $order->buyer_id,
-                'order_id' => $order->id,
-                'type' => 'order_revenue',
-                ...$fee['snapshot'],
-                'gross_amount' => $order->total_paid,
-                'fee_amount' => $fee['fee_amount'],
-                'net_amount' => $fee['net_amount'],
-                'tax_amount' => $fee['tax_amount'],
-                'reference' => 'SIM-CHAT-' . strtoupper(\Illuminate\Support\Str::random(10)),
-            ]);
+            foreach ($processedOrders as $processedOrder) {
+                $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($processedOrder, (float) $processedOrder->total_paid);
+                \App\Models\Transaction::create([
+                    'user_id' => $processedOrder->buyer_id,
+                    'order_id' => $processedOrder->id,
+                    'type' => 'order_revenue',
+                    ...$fee['snapshot'],
+                    'gross_amount' => $processedOrder->total_paid,
+                    'fee_amount' => $fee['fee_amount'],
+                    'net_amount' => $fee['net_amount'],
+                    'tax_amount' => $fee['tax_amount'],
+                    'reference' => 'SIM-CHAT-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                ]);
 
-            // Freeze funds in merchant's wallet simulation
-            $merchantUser = $order->merchant->user ?? $order->product?->merchant?->user ?? null;
-            if ($merchantUser) {
-                $wallet = $merchantUser->wallet()->firstOrCreate(
-                    ['user_id' => $merchantUser->id],
-                    ['balance' => 0, 'frozen_balance' => 0]
-                );
+                // Freeze funds for physical/custom-held work, release immediately for instant digital/access orders.
+                $merchantUser = $processedOrder->merchant->user ?? $processedOrder->product?->merchant?->user ?? null;
+                if ($merchantUser) {
+                    $wallet = $merchantUser->wallet()->firstOrCreate(
+                        ['user_id' => $merchantUser->id],
+                        ['balance' => 0, 'frozen_balance' => 0]
+                    );
 
-                if ($isPhysical) {
-                    $wallet->increment('frozen_balance', $order->total_paid);
-                } else {
-                    $wallet->increment('balance', $fee['net_amount']);
+                    if ($processedOrder->requiresPhysicalFulfillment() || $processedOrder->payment_status === 'escrow_locked') {
+                        $wallet->increment('frozen_balance', $processedOrder->total_paid);
+                    } else {
+                        $wallet->increment('balance', $fee['net_amount']);
+                    }
                 }
             }
 
@@ -400,6 +494,7 @@ class ChatController extends Controller
                         $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
                     }
                 }
+                $merchantUser = $order->merchant->user ?? $order->product?->merchant?->user ?? null;
                 if ($merchantUser?->phone_number) {
                     $this->smsService->sendPhysicalPaymentHeldToMerchant($merchantUser->phone_number, $publicId, (float) $order->total_paid, $merchantUser->id);
                 }
@@ -594,9 +689,8 @@ class ChatController extends Controller
 
     private function calculateTotal(Order $order): float
     {
-        $requestedQuantity = max(0.001, (float) ($order->requested_quantity ?: $order->quantity ?: 1));
-        $sellableQuantity = max(0.001, (float) data_get($order->unit_snapshot, 'sellable_quantity', 1));
-        $baseTotal = ((float) $order->unit_price) * ($requestedQuantity / $sellableQuantity);
+        $requestedQuantity = $this->effectivePrimaryQuantity($order);
+        $baseTotal = ((float) $order->unit_price) * $requestedQuantity;
         $shipping = $order->shipping_fee ?? 0;
         $discount = $order->discount_amount ?? 0;
 
@@ -604,10 +698,60 @@ class ChatController extends Controller
 
         if ($order->extra_items) {
             foreach ($order->extra_items as $item) {
-                $total += (($item['price'] ?? 0) * ($item['quantity'] ?? 1));
+                $itemType = $item['type'] ?? $item['product_type'] ?? null;
+                if (! $itemType && isset($item['id'])) {
+                    $itemType = Product::query()->whereKey((int) $item['id'])->value('type');
+                }
+                $quantity = $itemType === 'physical' ? ($item['quantity'] ?? 1) : 1;
+                $total += (($item['price'] ?? 0) * $quantity);
             }
         }
 
         return (float) max(0, $total);
+    }
+
+    private function effectivePrimaryQuantity(Order $order): float
+    {
+        $quantity = max(0.001, (float) ($order->requested_quantity ?: $order->quantity ?: 1));
+        $snapshot = $order->unit_snapshot ?? [];
+
+        if (! $this->isPackageSnapshot($snapshot)) {
+            return $quantity;
+        }
+
+        if (($snapshot['quantity_represents_packages'] ?? false) === true) {
+            return $quantity;
+        }
+
+        $sellableQuantity = max(0.001, (float) ($snapshot['sellable_quantity'] ?? 1));
+        return $quantity / $sellableQuantity;
+    }
+
+    private function markQuantityRepresentsPackages(Order $order): void
+    {
+        $snapshot = $order->unit_snapshot ?? [];
+        if (! $this->isPackageSnapshot($snapshot)) {
+            return;
+        }
+
+        $snapshot['quantity_represents_packages'] = true;
+        $order->unit_snapshot = $snapshot;
+    }
+
+    private function isPackageSnapshot(array $snapshot): bool
+    {
+        if (empty($snapshot)) {
+            return false;
+        }
+
+        $code = strtolower((string) ($snapshot['code'] ?? ''));
+        $symbol = strtolower((string) ($snapshot['symbol'] ?? ''));
+        $name = strtolower((string) ($snapshot['name'] ?? ''));
+
+        return ! empty($snapshot['package_content_quantity'])
+            || in_array($code, ['pack', 'package', 'pkg'], true)
+            || in_array($symbol, ['pack', 'package', 'pkg'], true)
+            || str_contains($name, 'package')
+            || str_contains($name, 'pack');
     }
 }

@@ -951,7 +951,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (!selectedPackageContentUnitType || !packageContentQuantity) return base;
         const content = `${formatPackageQuantity(packageContentQuantity)} ${unitDisplayName(selectedPackageContentUnitType, packageContentQuantity)}`;
         if (['piece', 'pc', 'unit'].includes(String(selectedUnitType.code || selectedUnitType.symbol || '').toLowerCase()) && saleQuantity > 1) {
-            return `${formatPackageQuantity(saleQuantity)} x ${content}`;
+            return `${formatPackageQuantity(saleQuantity)} ${saleUnit} (${content})`;
         }
         return `${base} (${content})`;
     })();
@@ -3544,7 +3544,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="space-y-4 sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                                                         <div>
                                                             <p className="text-xs font-black uppercase tracking-wider text-slate-700">Bei hii ni ya nini?</p>
-                                                            <p className="text-xs text-slate-500">Tengeneza mstari mfupi ambao mteja ataona kwenye card. Mfano: 1 pc (50 g), 1 pack (250 ml), 3 pairs, au 2 x 675 ml.</p>
+                                                            <p className="text-xs text-slate-500">Tengeneza mstari mfupi ambao mteja ataona kwenye card. Mfano: 1 pc (50 g), 1 pack (250 ml), 3 pairs, au 2 pcs (675 ml).</p>
                                                         </div>
                                                         <div className="grid gap-3">
                                                             <div className="space-y-1.5">

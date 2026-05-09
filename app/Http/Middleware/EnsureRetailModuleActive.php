@@ -3,10 +3,11 @@
 namespace App\Http\Middleware;
 
 use Closure;
+use App\Models\AdminSetting;
 use App\Models\Merchant;
+use App\Models\MerchantPlatformSubscription;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Inertia\Inertia;
 
 class EnsureRetailModuleActive
 {
@@ -46,20 +47,48 @@ class EnsureRetailModuleActive
             return redirect('/profile')->with('error', 'Retail Operations is only available for verified business accounts with completed business KYC.');
         }
 
+        if (! $merchant->hasModule('retail_ops')) {
+            $accessMode = (string) AdminSetting::get('retail_access_mode', 'free');
+
+            if ($accessMode === 'free' || $this->hasActiveRetailSubscription($merchant)) {
+                $modules = $merchant->active_modules ?? [];
+                $modules[] = 'retail_ops';
+                $merchant->forceFill(['active_modules' => array_values(array_unique($modules))])->save();
+                $merchant->refresh();
+            }
+        }
+
         if (!$merchant->hasModule('retail_ops')) {
+            $redirectUrl = "/merchant/{$merchant->username}/platform-subscriptions/retail-operations";
+
             if ($request->expectsJson()) {
                 return response()->json([
-                    'message' => 'The Retail Ops module is not active for this merchant account.'
-                ], 403);
+                    'message' => 'Retail Ops requires an active subscription.',
+                    'requires_subscription' => true,
+                    'redirect_url' => $redirectUrl,
+                ], 402);
             }
-            // Web: redirect to settings with a message
-            return redirect()->back()->with('error', 'Please enable the Retail Ops module from your Business Settings first.');
+
+            return redirect($redirectUrl)->with('error', 'Retail Ops requires an active subscription.');
         }
 
         // Share merchant in the request for easy access in controllers
         $request->attributes->set('active_merchant', $merchant);
 
         return $next($request);
+    }
+
+    private function hasActiveRetailSubscription(Merchant $merchant): bool
+    {
+        $subscription = MerchantPlatformSubscription::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('feature', 'retail_ops')
+            ->whereIn('status', ['trialing', 'active', 'free'])
+            ->latest('id')
+            ->first();
+
+        return $subscription
+            && (! $subscription->current_period_end || $subscription->current_period_end->isFuture());
     }
 
     private function merchantForUser(Request $request, int $merchantId): ?Merchant

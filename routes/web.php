@@ -831,6 +831,18 @@ Route::middleware('auth')->group(function () {
             ? $merchantProfiles->find($activeMerchantId) 
             : ($merchantProfiles->where('is_default', true)->first() ?? $merchantProfiles->first());
 
+        if ($activeMerchant
+            && (string) \App\Models\AdminSetting::get('retail_access_mode', 'free') === 'free'
+            && $activeMerchant->isRetailEligible()
+            && ! $activeMerchant->hasModule('retail_ops')
+        ) {
+            $modules = $activeMerchant->active_modules ?? [];
+            $modules[] = 'retail_ops';
+            $activeMerchant->forceFill(['active_modules' => array_values(array_unique($modules))])->save();
+            $activeMerchant->refresh()->load(['kyc', 'locations']);
+            $merchantProfiles = $merchantProfiles->map(fn ($merchant) => (int) $merchant->id === (int) $activeMerchant->id ? $activeMerchant : $merchant);
+        }
+
         $merchantIds = $activeMerchant ? [$activeMerchant->id] : $merchantProfiles->pluck('id');
 
         // This Month Earnings
@@ -1040,7 +1052,7 @@ Route::middleware('auth')->group(function () {
                 'orders_completed' => $activeMerchant->orders()->whereIn('payment_status', ['resolved_merchant_paid'])->count(),
             ] : null,
             'recentOrders' => $activeMerchant ? $activeMerchant->orders()
-                ->with('product:id,title,type')
+                ->with(['product:id,title,type,url,download_link', 'product.images'])
                 ->latest()
                 ->take(5)
                 ->get()
@@ -1054,6 +1066,7 @@ Route::middleware('auth')->group(function () {
                         'display_title' => $display['title'],
                         'display_kind' => $display['kind'],
                         'display_icon' => $display['icon'],
+                        'image_url' => $order->product?->image_url,
                     ];
                 }) : [],
             'salesBreakdown' => $breakdown,
@@ -1159,7 +1172,7 @@ Route::middleware('auth')->group(function () {
     })->name('merchant.create');
 
     Route::get('/chat/{order}', function (Request $request, $order) {
-        $orderModel = \App\Models\Order::with(['product', 'delivery', 'merchant.locations', 'messages' => fn($q) => $q->orderBy('created_at')])->where('public_id', $order)->firstOrFail();
+        $orderModel = \App\Models\Order::with(['product.images', 'delivery', 'merchant.locations', 'messages' => fn($q) => $q->orderBy('created_at')])->where('public_id', $order)->firstOrFail();
         $user = $request->user();
 
         $merchantIds = $user->merchantProfiles()->pluck('id');
@@ -1178,6 +1191,30 @@ Route::middleware('auth')->group(function () {
             abort_unless($merchantIds->contains((int) ($orderModel->merchant_id ?? 0)), 403, 'Unauthorized merchant context');
         } else {
             abort_unless((int) $orderModel->buyer_id === (int) $user->id || (bool) ($user->is_admin ?? false) || ($user->role ?? null) === 'admin', 403, 'Unauthorized buyer context');
+        }
+
+        $extraItems = collect($orderModel->extra_items ?? []);
+        if ($extraItems->isNotEmpty()) {
+            $productsById = \App\Models\Product::query()
+                ->whereIn('id', $extraItems->pluck('id')->filter()->unique()->values())
+                ->get()
+                ->keyBy('id');
+
+            $orderModel->setAttribute('extra_items', $extraItems->map(function ($item) use ($productsById) {
+                $product = $productsById->get((int) ($item['id'] ?? 0));
+                if (!$product) {
+                    return $item;
+                }
+
+                return [
+                    ...$item,
+                    'type' => $item['type'] ?? $product->type,
+                    'product_type' => $item['product_type'] ?? $product->type,
+                    'digital_delivery_type' => $item['digital_delivery_type'] ?? $product->digital_delivery_type,
+                    'digital_content_type' => $item['digital_content_type'] ?? $product->digital_content_type,
+                    'service_location_type' => $item['service_location_type'] ?? $product->service_location_type,
+                ];
+            })->values()->all());
         }
 
         return Inertia::render('Chat', [
@@ -1323,6 +1360,16 @@ Route::middleware('auth')->group(function () {
         Route::post('/wallet/withdraw', [\App\Http\Controllers\Api\MerchantWalletController::class, 'requestWithdrawal'])->name('merchant.wallet.withdraw');
         Route::get('/platform-subscriptions/retail-operations', function (Merchant $merchant) {
             abort_unless($merchant->isRetailEligible(), 403, 'Retail Operations is only available for verified business accounts with completed business KYC.');
+
+            if ((string) \App\Models\AdminSetting::get('retail_access_mode', 'free') === 'free') {
+                if (! $merchant->hasModule('retail_ops')) {
+                    $modules = $merchant->active_modules ?? [];
+                    $modules[] = 'retail_ops';
+                    $merchant->forceFill(['active_modules' => array_values(array_unique($modules))])->save();
+                }
+
+                return redirect("/merchant/{$merchant->username}/retail/dashboard");
+            }
 
             return Inertia::render('Merchant/PlatformSubscription', [
                 'merchantUsername' => $merchant->username,

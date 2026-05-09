@@ -626,10 +626,37 @@ class Order extends Model
 
     private function groupSaleQuantityUnits(): int
     {
-        $requestedQuantity = max(0.001, (float) ($this->requested_quantity ?: $this->quantity ?: 1));
-        $sellableQuantity = max(0.001, (float) data_get($this->unit_snapshot, 'sellable_quantity', 1));
+        return max(1, (int) round($this->effectivePackageQuantity()));
+    }
 
-        return max(1, (int) round($requestedQuantity / $sellableQuantity));
+    private function effectivePackageQuantity(): float
+    {
+        $requestedQuantity = max(0.001, (float) ($this->requested_quantity ?: $this->quantity ?: 1));
+
+        if (! $this->isPackageUnitSnapshot()) {
+            return $requestedQuantity;
+        }
+
+        if ((bool) data_get($this->unit_snapshot, 'quantity_represents_packages')) {
+            return $requestedQuantity;
+        }
+
+        $sellableQuantity = max(0.001, (float) data_get($this->unit_snapshot, 'sellable_quantity', 1));
+        return $requestedQuantity / $sellableQuantity;
+    }
+
+    private function isPackageUnitSnapshot(): bool
+    {
+        $snapshot = $this->unit_snapshot ?: [];
+        $code = strtolower((string) data_get($snapshot, 'code', ''));
+        $symbol = strtolower((string) data_get($snapshot, 'symbol', ''));
+        $name = strtolower((string) data_get($snapshot, 'name', ''));
+
+        return (bool) data_get($snapshot, 'package_content_quantity')
+            || in_array($code, ['pack', 'package', 'pkg'], true)
+            || in_array($symbol, ['pack', 'package', 'pkg'], true)
+            || str_contains($name, 'package')
+            || str_contains($name, 'pack');
     }
 
     private function normalizedGroupSalePhone(?string $phone): string
@@ -678,12 +705,13 @@ class Order extends Model
         // 1. Individual Product/Variant
         if ($this->purchasable_type === 'product' && $this->product) {
             if ($this->product->isPhysical()) {
-                $requestedQuantity = (float) ($this->requested_quantity ?: $this->quantity ?: 1);
+                $requestedQuantity = $this->effectivePackageQuantity();
+                $quantity = max(1, (int) ceil($requestedQuantity));
                 if ($this->variant_id) {
-                    ProductVariant::whereKey($this->variant_id)->increment('inventory_count', $this->quantity);
+                    ProductVariant::whereKey($this->variant_id)->increment('inventory_count', $quantity);
                     ProductVariant::whereKey($this->variant_id)->increment('inventory_quantity', $requestedQuantity);
                 }
-                Product::whereKey($this->product_id)->increment('inventory_count', $this->quantity);
+                Product::whereKey($this->product_id)->increment('inventory_count', $quantity);
                 Product::whereKey($this->product_id)->increment('inventory_quantity', $requestedQuantity);
             }
         }

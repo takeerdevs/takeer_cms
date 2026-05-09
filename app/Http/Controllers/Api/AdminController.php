@@ -670,36 +670,48 @@ class AdminController extends Controller
         // Resolve signed URLs for KYC documents if they exist
         if ($merchant->kyc) {
             $mediaService = app(\App\Services\MediaUploadService::class);
-            if ($merchant->kyc->id_front_url) {
-                $path = str_replace('private://', '', $merchant->kyc->id_front_url);
-                try {
-                    $merchant->kyc->id_front_signed_url = $mediaService->getSignedUrl($path);
-                } catch (\Exception $e) {
-                    $merchant->kyc->id_front_signed_url = null;
+            $signKycDocument = function (?string $url) use ($mediaService): ?string {
+                $path = str_replace('private://', '', (string) $url);
+                if ($path === '') {
+                    return null;
                 }
-            }
-            if ($merchant->kyc->id_back_url) {
-                $path = str_replace('private://', '', $merchant->kyc->id_back_url);
+
                 try {
-                    $merchant->kyc->id_back_signed_url = $mediaService->getSignedUrl($path);
+                    return $mediaService->getSignedUrl($path);
                 } catch (\Exception $e) {
-                    $merchant->kyc->id_back_signed_url = null;
+                    return null;
                 }
-            }
-            if ($merchant->kyc->business_license_url) {
-                $path = str_replace('private://', '', $merchant->kyc->business_license_url);
-                try {
-                    $merchant->kyc->business_license_signed_url = $mediaService->getSignedUrl($path);
-                } catch (\Exception $e) {
-                    $merchant->kyc->business_license_signed_url = null;
-                }
-            }
-            if ($merchant->kyc->registration_doc_url) {
-                $path = str_replace('private://', '', $merchant->kyc->registration_doc_url);
-                try {
-                    $merchant->kyc->registration_doc_signed_url = $mediaService->getSignedUrl($path);
-                } catch (\Exception $e) {
-                    $merchant->kyc->registration_doc_signed_url = null;
+            };
+
+            $merchant->kyc->id_front_signed_url = $signKycDocument($merchant->kyc->id_front_url);
+            $merchant->kyc->id_back_signed_url = $signKycDocument($merchant->kyc->id_back_url);
+            $merchant->kyc->tin_document_signed_url = $signKycDocument($merchant->kyc->tin_document_url);
+            $merchant->kyc->business_license_signed_url = $signKycDocument($merchant->kyc->business_license_url);
+            $merchant->kyc->registration_doc_signed_url = $signKycDocument($merchant->kyc->registration_doc_url);
+
+            if (! in_array($merchant->kyc->business_type, ['personal', 'individual'], true)) {
+                $sourceMerchant = \App\Models\Merchant::query()
+                    ->with('kyc')
+                    ->where('user_id', $merchant->user_id)
+                    ->whereKeyNot($merchant->id)
+                    ->where('is_verified', true)
+                    ->where('kyc_status', 'verified')
+                    ->whereHas('kyc', function ($query) use ($merchant) {
+                        $query
+                            ->whereIn('business_type', ['personal', 'individual'])
+                            ->where('status', 'verified')
+                            ->where('id_type', $merchant->kyc->id_type)
+                            ->where('id_number', $merchant->kyc->id_number);
+                    })
+                    ->first();
+
+                if ($sourceMerchant) {
+                    $merchant->kyc->inherited_identity_source = [
+                        'merchant_id' => $sourceMerchant->id,
+                        'display_name' => $sourceMerchant->display_name,
+                        'username' => $sourceMerchant->username,
+                        'verified_at' => $sourceMerchant->kyc?->updated_at?->toISOString(),
+                    ];
                 }
             }
         }

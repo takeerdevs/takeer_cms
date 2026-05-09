@@ -73,6 +73,23 @@ function statusMeta(status, isEscrowOrder) {
     return map[status] || { label: status || 'Unknown', cls: 'bg-muted text-muted-foreground' };
 }
 
+function deliveryMethodLabel(delivery) {
+    const type = delivery?.delivery_type || delivery?.type || '';
+    if (type === 'self_pickup') return 'SELF PICKUP';
+    if (type === 'local_boda') return 'LOCAL DELIVERY';
+    if (type === 'intercity_bus') return 'INTERCITY BUS';
+    return type ? type.replaceAll('_', ' ').toUpperCase() : 'STANDARD';
+}
+
+function deliveryStatusLabel(delivery) {
+    const type = delivery?.delivery_type || delivery?.type || '';
+    const status = delivery?.delivery_status || delivery?.status || '';
+    if (type === 'self_pickup' && ['awaiting_boda', 'inquiry', 'awaiting_pickup'].includes(status)) {
+        return 'awaiting_pickup';
+    }
+    return status || 'N/A';
+}
+
 export default function MerchantOrderDetails({ merchantUsername, merchantName, orderId }) {
     const [loading, setLoading] = useState(true);
     const [order, setOrder] = useState(null);
@@ -123,7 +140,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             if (['awaiting_merchant_confirmation', 'escrow_locked', 'disputed'].includes(order.payment_status)) {
                 return 'Hii ni order ya escrow: pesa hushikiliwa hadi hatua za utimilifu zikamilike.';
             }
-            return 'Escrow imekamilika kwa order hii.';
+            if (order.payment_status === 'resolved_merchant_paid') {
+                return 'Escrow imekamilika: mteja amelipa, order imekabidhiwa, na fedha zimetumwa kwa muuzaji.';
+            }
+            return 'Escrow bado haijakamilika kwa order hii.';
         }
         return 'Hii ni order ya instant flow: malipo huwekwa settled mara moja.';
     }, [order]);
@@ -385,8 +405,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <p className="font-medium text-foreground">{flowCopy}</p>
                                     {order.delivery && (
                                         <>
-                                            <p><span className="text-muted-foreground">Delivery Method:</span> <span className="font-semibold uppercase text-brand-700">{order.delivery.delivery_type === 'local_boda' ? 'LOCAL' : (order.delivery.delivery_type?.replace('_', ' ') || 'Standard')}</span></p>
-                                            <p><span className="text-muted-foreground">Delivery status:</span> <span className="font-semibold">{order.delivery.delivery_status || 'N/A'}</span></p>
+                                            <p><span className="text-muted-foreground">Delivery Method:</span> <span className="font-semibold uppercase text-brand-700">{deliveryMethodLabel(order.delivery)}</span></p>
+                                            <p><span className="text-muted-foreground">Delivery status:</span> <span className="font-semibold">{deliveryStatusLabel(order.delivery)}</span></p>
                                             {order.delivery.physical_address && (
                                                 <p><span className="text-muted-foreground">Anwani ya Mteja:</span> <span className="font-semibold">{order.delivery.physical_address}</span></p>
                                             )}

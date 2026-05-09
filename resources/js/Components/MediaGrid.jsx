@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileVideo, Loader2, Play, Volume2, VolumeX } from 'lucide-react';
+import { ExternalLink, FileVideo, Info, Loader2, Play, ShoppingBag, Volume2, VolumeX } from 'lucide-react';
 
 const VIDEO_EXTENSION_RE = /\.(mp4|m4v|mov|webm|ogg)(\?|#|$)/i;
 const AUTOPLAY_REQUEST_EVENT = 'takeer:social-video-autoplay-request';
@@ -38,7 +38,7 @@ function AutoplayVideoThumb({ src, poster, className, onAspect, onReady, autoPla
             video.muted = mutedRef.current;
             window.dispatchEvent(new CustomEvent(AUTOPLAY_REQUEST_EVENT, { detail: { video } }));
             const playPromise = video.play?.();
-            if (playPromise?.catch) playPromise.catch(() => {});
+            if (playPromise?.catch) playPromise.catch(() => { });
         };
         const pauseForOtherVideo = (event) => {
             if (event.detail?.video !== video) video.pause();
@@ -79,7 +79,7 @@ function AutoplayVideoThumb({ src, poster, className, onAspect, onReady, autoPla
         video.muted = muted;
         if (!muted) {
             const playPromise = video.play?.();
-            if (playPromise?.catch) playPromise.catch(() => {});
+            if (playPromise?.catch) playPromise.catch(() => { });
         }
     }, [muted]);
 
@@ -145,7 +145,35 @@ function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
 
-function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null, fit = 'cover', autoPlayVideo = true }) {
+function HotspotPreviewOverlay({ hotspots = [] }) {
+    const visibleHotspots = (hotspots || []).filter(Boolean).slice(0, 6);
+    if (visibleHotspots.length === 0) return null;
+
+    return (
+        <div className="pointer-events-none absolute inset-0 z-30">
+            {visibleHotspots.map((spot, idx) => {
+                const Icon = spot.type === 'product'
+                    ? ShoppingBag
+                    : spot.type === 'link'
+                        ? ExternalLink
+                        : Info;
+
+                return (
+                    <span
+                        key={`${spot.x}-${spot.y}-${idx}`}
+                        className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-brand-600 text-white shadow-[0_8px_22px_rgba(2,132,199,0.32),0_0_0_1px_rgba(15,23,42,0.14)]"
+                        style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
+                    >
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-white/50 animate-hotspot-ping" />
+                        <Icon className="relative h-3.5 w-3.5" />
+                    </span>
+                );
+            })}
+        </div>
+    );
+}
+
+function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspect = null, fit = 'cover', autoPlayVideo = true, hotspots = [] }) {
     if (!item) return null;
     const video = mediaKind(item) === 'video';
     const src = typeof item === 'string' ? item : item?.processed_url ?? item?.url ?? item?.preview;
@@ -218,6 +246,7 @@ function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspe
                     <span className="text-white text-2xl font-black drop-shadow-lg">+{overlay}</span>
                 </div>
             )}
+            {overlay === null && <HotspotPreviewOverlay hotspots={hotspots} />}
         </div>
     );
 }
@@ -231,7 +260,7 @@ function MediaThumb({ item, index, onTap, className = '', overlay = null, onAspe
  * 4 items → 2 × 2 grid
  * 5+      → row of 2 + row of 3 (last shows +N overlay)
  */
-export default function MediaGrid({ items: rawItems = [], onTap }) {
+export default function MediaGrid({ items: rawItems = [], onTap, hotspots = {} }) {
     const items = React.useMemo(() => (rawItems || []).filter(Boolean), [rawItems]);
     if (!items.length) return null;
 
@@ -306,6 +335,7 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
                         onAspect={handleAspect}
                         fit="contain"
                         autoPlayVideo={0 === autoplayVideoIndex}
+                        hotspots={hotspots[0] || []}
                     />
                 </div>
             </div>
@@ -326,6 +356,7 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
                         className="w-full h-full"
                         onAspect={handleAspect}
                         autoPlayVideo={i === autoplayVideoIndex}
+                        hotspots={hotspots[i] || []}
                     />
                 ))}
             </div>
@@ -342,10 +373,10 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
         if (primaryLandscape) {
             return (
                 <div className="w-full aspect-[4/3] grid grid-rows-2 gap-px overflow-hidden bg-border/10 border-y border-border/5">
-                    <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} />
+                    <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} hotspots={hotspots[0] || []} />
                     <div className="grid grid-cols-2 gap-px h-full">
-                        <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} />
-                        <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} />
+                        <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} hotspots={hotspots[1] || []} />
+                        <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} hotspots={hotspots[2] || []} />
                     </div>
                 </div>
             );
@@ -353,10 +384,10 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
 
         return (
             <div className="w-full aspect-[4/3] grid grid-cols-2 gap-px overflow-hidden bg-border/10 border-y border-border/5">
-                <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} />
+                <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} hotspots={hotspots[0] || []} />
                 <div className="grid grid-rows-2 gap-px h-full">
-                    <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} />
-                    <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} />
+                    <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} hotspots={hotspots[1] || []} />
+                    <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} hotspots={hotspots[2] || []} />
                 </div>
             </div>
         );
@@ -366,9 +397,9 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
     // Fixed: 2x2 grid inside 4:3 container (for 5+, overlay still on 4th)
     return (
         <div className="w-full aspect-[4/3] grid grid-cols-2 grid-rows-2 gap-px overflow-hidden bg-border/10 border-y border-border/5">
-            <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} />
-            <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} />
-            <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} />
+            <MediaThumb item={items[0]} index={0} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={0 === autoplayVideoIndex} hotspots={hotspots[0] || []} />
+            <MediaThumb item={items[1]} index={1} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={1 === autoplayVideoIndex} hotspots={hotspots[1] || []} />
+            <MediaThumb item={items[2]} index={2} onTap={onTap} className="h-full" onAspect={handleAspect} autoPlayVideo={2 === autoplayVideoIndex} hotspots={hotspots[2] || []} />
             <MediaThumb
                 item={items[3]}
                 index={3}
@@ -377,6 +408,7 @@ export default function MediaGrid({ items: rawItems = [], onTap }) {
                 overlay={count > 4 ? count - 4 : null}
                 onAspect={handleAspect}
                 autoPlayVideo={3 === autoplayVideoIndex}
+                hotspots={hotspots[3] || []}
             />
         </div>
     );

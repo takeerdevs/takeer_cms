@@ -726,7 +726,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 router.visit(route('product.show', productRouteKey));
                             }
                         }}
-                        className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 dark:from-brand-500 dark:to-brand-400 text-white text-base font-extrabold hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-500/25"
+                        className="w-full h-10 rounded-lg bg-brand-600 text-white text-sm font-black hover:bg-brand-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
                     >
                         <ShoppingBag className="h-4 w-4" /> {attachedProductCtaLabel}
                     </button>
@@ -851,7 +851,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             This post is no longer available because it violated Takeer rules.
                         </p>
                         {post.moderation?.public_reason && (
-                            <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-sm font-semibold text-rose-900">
+                            <p className="mt-3 rounded-xl bg-white/40 px-3 py-2 text-sm font-semibold text-rose-900">
                                 Reason: {post.moderation.public_reason}
                             </p>
                         )}

@@ -14,6 +14,17 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
         setIsOpen(!isOpen);
     };
 
+    const linkDomain = (() => {
+        if (tag.type !== 'link' || !tag.data) return '';
+
+        try {
+            const url = new URL(tag.data);
+            return url.hostname.replace(/^www\./, '');
+        } catch {
+            return String(tag.data).replace(/^https?:\/\//, '').split('/')[0];
+        }
+    })();
+
     const renderPopoverContent = () => {
         if (tag.type === 'product' && tag.product) {
             const p = tag.product;
@@ -35,8 +46,8 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
                     </div>
 
                     <button
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
+                        onClick={(e) => {
+                            e.stopPropagation();
                             if (p.type === 'digital' && p.has_access) {
                                 window.dispatchEvent(new CustomEvent('takeer:digital-ready', {
                                     detail: {
@@ -47,7 +58,7 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
                                     }
                                 }));
                             } else {
-                                onProductTap(p); 
+                                onProductTap(p);
                             }
                         }}
                         className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-colors"
@@ -67,13 +78,13 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
         if (tag.type === 'link') {
             return (
                 <div className="w-56 bg-white rounded-2xl p-3 shadow-2xl border border-black/5 ring-1 ring-black/5 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                        <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <div className="h-8 w-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
                             <ExternalLink className="h-4 w-4" />
                         </div>
-                        <span className="text-[10px] font-black uppercase tracking-tight text-foreground truncate">Kiungo / Link</span>
+                        <span className="text-xs font-black text-foreground truncate">{linkDomain || 'Fungua kiungo'}</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed bg-accent/50 p-2 rounded-xl border border-black/5">
+                    <p className="text-[10px] text-muted-foreground line-clamp-1 leading-relaxed">
                         {tag.data}
                     </p>
                     <a
@@ -81,9 +92,9 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl transition-colors mt-1"
+                        className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl transition-colors mt-1"
                     >
-                        Fungua Link
+                        Fungua
                     </a>
                 </div>
             );
@@ -91,14 +102,8 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
 
         if (tag.type === 'text') {
             return (
-                <div className="w-64 bg-white rounded-2xl p-4 shadow-2xl border border-black/5 ring-1 ring-black/5">
-                    <div className="flex items-center gap-2 mb-2.5">
-                        <div className="h-7 w-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                            <Info className="h-4 w-4" />
-                        </div>
-                        <span className="text-[10px] font-black uppercase tracking-tight text-foreground">Maelezo</span>
-                    </div>
-                    <p className="text-xs text-foreground/80 leading-relaxed font-medium">
+                <div className="w-64 rounded-2xl bg-white p-4 shadow-2xl border border-black/5 ring-1 ring-black/5">
+                    <p className="text-xs font-medium leading-relaxed text-foreground/80">
                         {tag.data}
                     </p>
                 </div>
@@ -119,11 +124,11 @@ export default function ShoppablePin({ tag, onProductTap, merchant }) {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 whileTap={{ scale: 0.9 }}
-                className={`relative flex items-center justify-center h-8 w-8 rounded-full backdrop-blur-md shadow-lg border-2 transition-all duration-300 ${isOpen ? 'bg-brand-600 border-white text-white scale-110 z-40' : 'bg-white/90 border-white/20 text-brand-600 hover:bg-white'}`}
+                className={`relative flex items-center justify-center h-8 w-8 rounded-full shadow-[0_10px_28px_rgba(2,132,199,0.35),0_0_0_1px_rgba(15,23,42,0.18)] transition-all duration-300 ${isOpen ? 'bg-brand-700 text-white scale-110 z-40' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
                 aria-label={`Hotspot ${tag.type}`}
             >
                 {/* Ripple Effect Background - only when closed */}
-                {!isOpen && <span className="absolute inline-flex h-full w-full rounded-full bg-white/50 opacity-75 animate-ping" />}
+                {!isOpen && <span className="absolute inline-flex h-full w-full rounded-full bg-white/50 opacity-75 animate-hotspot-ping" />}
 
                 {isOpen ? <X className="h-4 w-4 relative z-50" /> : (
                     <>

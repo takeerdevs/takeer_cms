@@ -3,7 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, usePage } from '@inertiajs/react';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { AlertTriangle, MapPin, Send, Image as ImageIcon, Camera, ShieldCheck, Loader2, Workflow, ShoppingBag, Tag, Truck, AlertCircle, CircleAlert, Star, X, CheckCircle2, Info, CreditCard, History, ArrowLeft, Video, Search, Plus, Navigation, Zap, Clock, Store, ChevronRight, Save, Lock, DownloadCloud } from 'lucide-react';
+import { AlertTriangle, MapPin, Send, Image as ImageIcon, Camera, ShieldCheck, Loader2, Workflow, ShoppingBag, Tag, Truck, AlertCircle, CircleAlert, Star, X, CheckCircle2, Info, CreditCard, History, ArrowLeft, Video, Search, Plus, Minus, Navigation, Zap, Clock, Store, ChevronRight, ChevronDown, Save, Lock, DownloadCloud, ExternalLink, UserRound, FileDown, Wrench, Sparkles, PackageCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     Drawer,
@@ -17,27 +17,190 @@ import {
 import { cn } from '@/lib/utils';
 import ShopLocationsModal from '@/Components/ShopLocationsModal';
 import AddressPickerModal from '@/Components/AddressPickerModal';
-import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
+import { orderPackageCount, orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
 
-const MediaDisplay = ({ url, className }) => {
+const MediaDisplay = ({ url, className, mode = 'cover' }) => {
     if (!url) return null;
     const isVideo = url.match(/\.(mp4|webm|ogg|mov)$/i) || url.includes('/video/') || url.includes('type=video');
 
     if (isVideo) {
         return (
-            <div className={cn("relative rounded-2xl overflow-hidden bg-slate-900 group", className)}>
-                <video src={url} className="w-full h-full object-cover" controls />
-                <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-blue-600 text-[8px] font-black text-white rounded">VIDEO</div>
+            <div className={cn("relative overflow-hidden bg-slate-900 group", className)}>
+                <video src={url} className={mode === 'natural' ? "h-auto max-h-80 w-full object-contain" : "w-full h-full object-cover"} controls />
             </div>
         );
     }
 
     return (
-        <div className={cn("relative rounded-2xl overflow-hidden bg-slate-100 group cursor-pointer", className)} onClick={() => window.open(url, '_blank')}>
-            <img src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="Chat attachment" />
+        <div className={cn("relative overflow-hidden bg-slate-100 group cursor-pointer", className)} onClick={() => window.open(url, '_blank')}>
+            <img
+                src={url}
+                className={cn(
+                    "w-full transition-transform group-hover:scale-105",
+                    mode === 'natural' ? "h-auto max-h-80 object-contain" : "h-full object-cover"
+                )}
+                alt="Chat attachment"
+            />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
         </div>
     );
+};
+
+const isDefaultMediaBody = (body) => ['Picha/Video ya Bidhaa', 'Picha/Video ya Uthibitisho'].includes(String(body || '').trim());
+
+const sanitizeChatBody = (body) => String(body || '')
+    .replace(/Pickup PIN ya mteja ni:\s*\d+\.?\s*/gi, '')
+    .replace(/Mteja atalipa basi atakapokuja na PIN hii kukuchukulia bidhaa\.?/gi, 'Mteja atalipia mtandaoni; baada ya malipo, ingiza PIN atakayokuonyesha kwenye order chat ili kuthibitisha pickup.')
+    .replace(/Mteja akija tumie POS kuingiza pin atakayokutajia na tutaangalia kama inafanana na hii automatic, huhitaji kuikariri\.?/gi, 'Mteja akifika, ingiza PIN atakayokuonyesha kwenye order chat au order details ili kuthibitisha pickup.');
+
+const ChatRoleAvatar = ({ role, className }) => {
+    const isMerchant = role === 'merchant';
+    const Icon = isMerchant ? Store : UserRound;
+
+    return (
+        <div
+            className={cn(
+                "flex shrink-0 items-center justify-center rounded-full text-white shadow-sm",
+                isMerchant ? "bg-brand-600" : "bg-white border border-slate-100 text-slate-600",
+                className
+            )}
+            title={isMerchant ? 'Merchant' : 'Customer'}
+            aria-label={isMerchant ? 'Merchant' : 'Customer'}
+        >
+            <Icon className="h-1/2 w-1/2" strokeWidth={2.6} />
+        </div>
+    );
+};
+
+const PickupPinCard = ({ pickupPin, amount, timestamp, onShopLocations, showShopLocations = true, className }) => {
+    const pinDigits = String(pickupPin || '').padStart(4, '0').split('');
+
+    return (
+        <div className={cn("w-full max-w-md overflow-hidden rounded-[2rem] border border-brand-100 bg-white shadow-xl shadow-brand-100/60 dark:border-brand-900/50 dark:bg-slate-900", className)}>
+            <div className="bg-brand-50/80 px-5 py-5 text-center dark:bg-brand-950/30">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
+                    <Lock className="h-6 w-6" />
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-brand-500">Pickup PIN</p>
+                <div className="mt-3 flex justify-center gap-2">
+                    {pinDigits.map((digit, index) => (
+                        <span key={`${digit}-${index}`} className="flex h-14 w-12 items-center justify-center rounded-2xl border border-brand-100 bg-white text-3xl font-black text-brand-900 shadow-sm dark:border-brand-800 dark:bg-slate-950 dark:text-brand-100">
+                            {digit}
+                        </span>
+                    ))}
+                </div>
+                <p className="mx-auto mt-3 max-w-xs text-[11px] font-bold leading-relaxed text-slate-500">
+                    Onyesha PIN hii dukani ili kuchukua bidhaa zako.
+                </p>
+            </div>
+            <div className="space-y-2 p-4">
+                {amount !== undefined && amount !== null && (
+                    <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-950">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Malipo</span>
+                        <span className="text-sm font-black text-slate-900 dark:text-slate-100">TZS {Number(amount || 0).toLocaleString()}</span>
+                    </div>
+                )}
+                {showShopLocations && (
+                    <button
+                        type="button"
+                        onClick={onShopLocations}
+                        className="flex w-full items-center justify-between rounded-2xl border border-brand-100 bg-white px-4 py-3 text-left text-brand-800 transition-colors hover:bg-brand-50 dark:border-brand-900/50 dark:bg-slate-950 dark:text-brand-100 dark:hover:bg-brand-950/40"
+                    >
+                        <span className="flex min-w-0 items-center gap-3">
+                            <Store className="h-5 w-5 shrink-0 text-brand-600" />
+                            <span className="text-xs font-black uppercase tracking-widest">Shop locations</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0" />
+                    </button>
+                )}
+            </div>
+            {timestamp && (
+                <div className="border-t border-slate-100 px-4 py-2 text-right text-[9px] font-bold text-slate-300 dark:border-slate-800">
+                    {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const orderItemMeta = (item = {}, order = null) => {
+    const type = item.type || item.product_type || item.purchasable_type || (!item.isExtra ? order?.product?.type : null);
+    const deliveryType = item.digital_delivery_type || (!item.isExtra ? order?.product?.digital_delivery_type : null);
+    const isCustomPhysical = type === 'physical' && deliveryType === 'custom_delivery';
+
+    if (type === 'physical' || isCustomPhysical) {
+        return {
+            label: 'Physical fulfillment',
+            detail: 'Pickup/delivery handling required after payment.',
+            Icon: PackageCheck,
+            tone: 'text-amber-700 bg-amber-50 border-amber-100',
+        };
+    }
+
+    if (type === 'service') {
+        return {
+            label: 'Service order',
+            detail: 'Shown in Orders; no physical pickup unless the service requires it.',
+            Icon: Wrench,
+            tone: 'text-indigo-700 bg-indigo-50 border-indigo-100',
+        };
+    }
+
+    if (deliveryType === 'custom_delivery') {
+        return {
+            label: 'Custom digital work',
+            detail: 'Merchant delivers the final file in Orders.',
+            Icon: Sparkles,
+            tone: 'text-violet-700 bg-violet-50 border-violet-100',
+        };
+    }
+
+    if (type === 'digital') {
+        return {
+            label: 'Digital download',
+            detail: 'Access is added to the customer Orders page after payment.',
+            Icon: FileDown,
+            tone: 'text-sky-700 bg-sky-50 border-sky-100',
+        };
+    }
+
+    if (item.isExtra) {
+        return {
+            label: 'Added item',
+            detail: 'This item will be handled according to its product type after payment.',
+            Icon: ShoppingBag,
+            tone: 'text-slate-700 bg-slate-50 border-slate-100',
+        };
+    }
+
+    return {
+        label: 'Order item',
+        detail: 'Added to this order.',
+        Icon: ShoppingBag,
+        tone: 'text-slate-700 bg-slate-50 border-slate-100',
+    };
+};
+
+const isPhysicalDealItem = (item = {}, order = null) => {
+    const type = item.type || item.product_type || (!item.isExtra ? order?.product?.type : null);
+
+    if (type) return type === 'physical';
+    if (item.isExtra === false) return Boolean(order?.requires_physical_fulfillment);
+
+    return false;
+};
+
+const dealItemQuantityState = (item = {}, order = null) => {
+    const quantityValue = Number(item.isMain ? orderPackageCount(order) : (item.quantity ?? 1));
+    const quantityStep = 1;
+
+    return {
+        quantityValue,
+        quantityStep,
+        canDecrease: quantityValue > quantityStep,
+        decreaseQuantity: Math.max(quantityStep, quantityValue - quantityStep),
+        increaseQuantity: quantityValue + quantityStep,
+    };
 };
 
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
@@ -108,17 +271,22 @@ const statusCopy = (order) => {
 };
 
 const deliveryCopy = (order) => {
-    if (isDigitalOrder(order)) return digitalAccessCopy(order);
     const type = order?.delivery?.delivery_type || order?.delivery?.type;
     if (type === 'self_pickup') return 'Self pickup';
     if (type === 'local_boda') return 'Local delivery';
     if (type === 'intercity_bus') return 'Intercity bus';
     if (type === 'shipping') return 'Shipping';
+    if (isPhysicalOrder(order)) return 'Physical order';
+    if (isDigitalOrder(order)) return digitalAccessCopy(order);
     return 'Delivery pending';
 };
 
 const isDigitalOrder = (order) => {
     const productType = order?.product?.type;
+    if (productType === 'physical') return false;
+    if (order?.delivery?.delivery_type || order?.delivery?.type) return false;
+    if (order?.order_flow === 'escrow') return false;
+
     return productType === 'digital'
         || ['content_item', 'subscription_plan'].includes(order?.purchasable_type)
         || Boolean(order?.product?.digital_delivery_type || order?.product?.download_link);
@@ -142,6 +310,22 @@ const digitalAccessCopy = (order) => {
     return 'Digital access';
 };
 
+const formatTimeLeft = (expiresAt, nowMs = Date.now()) => {
+    if (!expiresAt) return '';
+    const expiresMs = new Date(expiresAt).getTime();
+    if (!Number.isFinite(expiresMs)) return '';
+
+    const diffMs = expiresMs - nowMs;
+    if (diffMs <= 0) return 'Expired';
+
+    const totalMinutes = Math.ceil(diffMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours > 0) return `Time left ${hours}h ${minutes}m`;
+    return `Time left ${minutes}m`;
+};
+
 const systemBodyForOrder = (body, order) => {
     if (!isDigitalOrder(order) || !body) return body;
     if (!body.includes('anza mchakato wa kusafirisha') && !body.includes('usafirishaji')) return body;
@@ -163,6 +347,7 @@ export default function Chat({
     const { auth, country } = usePage().props;
     const [messages, setMessages] = useState(initialMessages);
     const [order, setOrder] = useState(initialOrder);
+    const [nowMs, setNowMs] = useState(Date.now());
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const bottomRef = useRef(null);
@@ -225,13 +410,18 @@ export default function Chat({
         }
     }, [activeAction, order?.delivery?.id, order?.delivery?.delivery_type, order?.delivery?.physical_address]);
 
+    useEffect(() => {
+        const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
+        return () => window.clearInterval(timer);
+    }, []);
+
 
 
     const handleAddressSaved = (data) => {
         setCustomerLat(data.lat);
         setCustomerLng(data.lng);
         setPhysicalAddress(data.address);
-        
+
         const result = findBestShippingZone(data.lat, data.lng, data.region, shippingZones);
         if (result) {
             setSelectedZoneId(String(result.zone.id));
@@ -250,6 +440,7 @@ export default function Chat({
     const [isSearching, setIsSearching] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [selectedVariant, setSelectedVariant] = useState(null);
+    const [isDealExpanded, setIsDealExpanded] = useState(false);
 
     // Payment State
     const [isActionDrawerOpen, setIsActionDrawerOpen] = useState(false);
@@ -342,7 +533,7 @@ export default function Chat({
             toast.success(order?.product?.type === 'service' ? 'Offer ya huduma imetumwa kwa mteja.' : 'Gharama ya usafiri imetumwa kwa mteja.');
             setShippingFeeInput('');
             if (data.order) setOrder(data.order);
-            
+
             // Notify optimistic UI with a system-like message
             const actionMsg = {
                 id: Date.now(),
@@ -379,13 +570,13 @@ export default function Chat({
         setDispatchSubmitting(true);
         try {
             const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
-            
+
             // 1. Upload video
             const videoData = new FormData();
             videoData.append('file', dispatchVideo);
             videoData.append('type', 'public');
             videoData.append('folder', `chat/${orderId}/dispatch`);
-            
+
             let videoRes = await fetch('/api/media/upload', {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token || '' },
@@ -402,7 +593,7 @@ export default function Chat({
                 receiptData.append('file', transportReceipt);
                 receiptData.append('type', 'public');
                 receiptData.append('folder', `chat/${orderId}/dispatch`);
-                
+
                 let receiptRes = await fetch('/api/media/upload', {
                     method: 'POST',
                     headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token || '' },
@@ -443,7 +634,7 @@ export default function Chat({
             setDispatchVideo(null);
             setTransportReceipt(null);
             if (data.order) setOrder(data.order);
-            
+
             // Send formatted action to chat
             submitAction('shipping_proof', {
                 title: 'Dispatch Evidence',
@@ -701,9 +892,9 @@ export default function Chat({
                 const errData = await res.json();
                 throw new Error(errData.message || 'Imeshindwa kupakia media.');
             }
-            
+
             const data = await res.json();
-            
+
             if (activeAction === 'shipping_proof') {
                 submitAction('shipping_proof', { mediaUrl: data.url, title: 'Ushahidi wa Dispatch' });
                 setActiveAction(null);
@@ -742,9 +933,10 @@ export default function Chat({
                 const errData = await res.json();
                 throw new Error(errData.message || 'Imeshindwa kukamilisha hatua hiyo.');
             }
-            
+
             const data = await res.json();
             if (data.order) setOrder(data.order);
+            if (data.messages) setMessages(data.messages);
             toast.success(data.message);
             setActiveAction(null);
         } catch (error) {
@@ -797,7 +989,7 @@ export default function Chat({
             sender_id: auth.user.id,
             type: 'action',
             body: payload.title || `Oda imebadilishwa: ${actionType}`,
-            payload: { ...payload, action_type: actionType, acting_as: actingAs },
+            payload: { ...payload, action_type: actionType, acting_as: actingAs, actor_name: auth.user.name },
             sender: { role: auth.user.role, name: auth.user.name },
             created_at: new Date().toISOString()
         };
@@ -837,11 +1029,13 @@ export default function Chat({
             if (data.order) setOrder(data.order);
 
             toast.success(`${actionMsg.body} imewekwa kikamilifu!`);
+            return data;
 
         } catch (error) {
             toast.error(error.message);
             // Revert optimistic if failed
             setMessages(prev => prev.filter(m => m.id !== tempId));
+            return null;
         }
     };
 
@@ -887,6 +1081,68 @@ export default function Chat({
         && order?.inquiry_status === 'pending'
         && order?.delivery?.delivery_type !== 'self_pickup';
     const agreedAt = order?.agreed_at || order?.agreement_snapshot?.agreed_at || order?.agreement_snapshot?.offered_at;
+    const orderImageUrl = order?.variant?.swatch_image_url
+        || order?.variant_snapshot?.swatch_image_url
+        || order?.product?.image_url
+        || order?.product?.url;
+    const expiryLabel = order?.payment_status === 'pending' ? formatTimeLeft(order?.expires_at, nowMs) : '';
+    const orderItems = [
+        {
+            key: `main-${order?.product?.id || order?.product_id || 'item'}`,
+            id: order?.product_id,
+            variant_id: order?.variant_id,
+            title: order?.product?.title || order?.display_title || 'Physical order',
+            image: orderImageUrl,
+            quantityLabel: orderQuantityLabel(order),
+            price: Number(order?.unit_price || 0) * orderPackageCount(order),
+            quantity: order?.quantity,
+            requested_quantity: order?.requested_quantity,
+            unit_snapshot: order?.unit_snapshot,
+            type: order?.product?.type || (order?.requires_physical_fulfillment ? 'physical' : undefined),
+            digital_delivery_type: order?.product?.digital_delivery_type,
+            product_type: order?.product?.type,
+            isMain: true,
+            isExtra: false,
+        },
+        ...(order?.extra_items || []).map((item, index) => ({
+            key: `extra-${item.variant_id || item.id || index}`,
+            id: item.id,
+            variant_id: item.variant_id,
+            title: item.title || 'Added product',
+            image: item.image,
+            quantityLabel: `${Number(item.quantity || 1).toLocaleString()} ${Number(item.quantity || 1) === 1 ? 'item' : 'items'}`,
+            price: Number(item.price || 0) * (isPhysicalDealItem({ ...item, isExtra: true }, order) ? Number(item.quantity || 1) : 1),
+            quantity: item.quantity ?? 1,
+            type: item.type || item.product_type,
+            digital_delivery_type: item.digital_delivery_type,
+            product_type: item.product_type || item.type,
+            isMain: false,
+            isExtra: true,
+        })),
+    ];
+    const itemsSubtotal = orderItems.reduce((sum, item) => sum + item.price, 0);
+    const shippingTotal = Number(order?.shipping_fee || 0);
+    const discountTotal = Number(order?.discount_amount || 0);
+    const dealTotal = Math.max(0, itemsSubtotal + shippingTotal - discountTotal);
+    const dealSummaryParts = [
+        `${orderItems.length} ${orderItems.length === 1 ? 'item' : 'items'}`,
+        shippingTotal > 0 ? `Usafiri ${shippingTotal.toLocaleString()}` : null,
+        discountTotal > 0 ? `Punguzo -${discountTotal.toLocaleString()}` : null,
+    ].filter(Boolean);
+    const hasPhysicalOrderItems = orderItems.some((item) => isPhysicalDealItem(item, order));
+    const isSelfPickupOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'self_pickup';
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('checkout') !== '1') return;
+        if (actingAs !== 'buyer' || order?.payment_status !== 'pending' || !canBuyerPay) return;
+
+        setIsPaymentDrawerOpen(true);
+        params.delete('checkout');
+        const query = params.toString();
+        window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    }, [actingAs, canBuyerPay, order?.payment_status]);
 
     return (
         <AppLayout>
@@ -908,9 +1164,9 @@ export default function Chat({
                                     </span>
                                     <span className={cn(
                                         "text-[10px] font-black py-0.5 px-2 rounded-full uppercase tracking-tighter border",
-                                        order?.payment_status === 'completed' || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
-                                        order?.payment_status === 'failed' ? "bg-red-50 text-red-600 border-red-100" :
-                                        "bg-amber-50 text-amber-600 border-amber-100"
+                                        order?.payment_status === 'completed' || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                                            order?.payment_status === 'failed' ? "bg-red-50 text-red-600 border-red-100" :
+                                                "bg-amber-50 text-amber-600 border-amber-100"
                                     )}>
                                         {order?.payment_status === 'failed' ? 'IMESITISHWA' : orderStatus}
                                     </span>
@@ -920,11 +1176,14 @@ export default function Chat({
 
                         <div className="flex flex-col items-end">
                             <p className="text-[9px] font-black text-brand-600/60 uppercase tracking-widest leading-none mb-1">Jumla ya Oda</p>
-                            <p className="text-lg font-black text-brand-800 dark:text-brand-200 tracking-tighter leading-none">TZS {Number(order?.total_paid || 0).toLocaleString()}</p>
+                            <p className="text-lg font-black text-brand-800 dark:text-brand-200 tracking-tighter leading-none">TZS {dealTotal.toLocaleString()}</p>
                             <div className="flex gap-2 text-[9px] font-bold text-slate-400 mt-1">
-                                <span>Bidhaa: {Number(order?.unit_price || 0).toLocaleString()}</span>
-                                {Number(order?.shipping_fee) > 0 && (
-                                    <span className="text-emerald-500 font-black">+ Usafiri: {Number(order?.shipping_fee).toLocaleString()}</span>
+                                <span>Bidhaa: {itemsSubtotal.toLocaleString()}</span>
+                                {shippingTotal > 0 && (
+                                    <span className="text-emerald-500 font-black">+ Usafiri: {shippingTotal.toLocaleString()}</span>
+                                )}
+                                {discountTotal > 0 && (
+                                    <span className="text-amber-600 font-black">- Punguzo: {discountTotal.toLocaleString()}</span>
                                 )}
                             </div>
                         </div>
@@ -934,51 +1193,150 @@ export default function Chat({
                 {/* Current Deal */}
                 <div className="shrink-0 px-4 pt-3">
                     <div className="max-w-3xl mx-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
-                        <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0 flex items-start gap-3">
-                                <div className="h-10 w-10 shrink-0 rounded-xl bg-brand-50 text-brand-700 border border-brand-100 flex items-center justify-center">
-                                    {order?.payment_status === 'escrow_locked' || order?.payment_status === 'awaiting_merchant_confirmation'
-                                        ? <ShieldCheck className="h-5 w-5" />
-                                        : <ShoppingBag className="h-5 w-5" />
-                                    }
+                        <button
+                            type="button"
+                            aria-expanded={isDealExpanded}
+                            onClick={() => setIsDealExpanded((value) => !value)}
+                            className="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-950"
+                        >
+                            <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Deal</p>
+                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${currentStatus.tone}`}>
+                                        {currentStatus.label}
+                                    </span>
                                 </div>
-                                <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Deal</p>
-                                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${currentStatus.tone}`}>
-                                            {currentStatus.label}
-                                        </span>
+                                <p className="mt-1 text-lg font-black tracking-tight text-slate-950 dark:text-slate-100">
+                                    TZS {dealTotal.toLocaleString()}
+                                </p>
+                                <p className="mt-0.5 text-[10px] font-bold text-slate-500">
+                                    {dealSummaryParts.join(' · ')}
+                                </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                                <span className="hidden rounded-xl bg-brand-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-brand-700 sm:inline-flex">
+                                    {isDealExpanded ? 'Hide details' : 'Show details'}
+                                </span>
+                                <ChevronDown className={cn("h-5 w-5 text-slate-400 transition-transform duration-300", isDealExpanded && "rotate-180")} />
+                            </div>
+                        </button>
+
+                        <div
+                            aria-hidden={!isDealExpanded}
+                            className={cn(
+                                "grid border-t border-slate-100 transition-[grid-template-rows,opacity,border-color] duration-300 ease-out dark:border-slate-800",
+                                isDealExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] border-transparent opacity-0 dark:border-transparent"
+                            )}
+                        >
+                            <div className="overflow-hidden">
+                                <div className="p-3">
+                                <div className="grid gap-2">
+                                    {orderItems.map((item) => {
+                                        const meta = orderItemMeta(item, order);
+                                        const Icon = meta.Icon;
+                                        const isPhysicalItem = isPhysicalDealItem(item, order);
+                                        const quantityState = dealItemQuantityState(item, order);
+                                        const canAdjustPhysicalQuantity = isPhysicalItem && actingAs === 'buyer' && canCancelBeforePayment;
+                                        const quantityNumber = item.isMain ? quantityState.quantityValue : Number(item.quantity || 1);
+                                        return (
+                                            <div key={item.key} className="flex min-w-0 items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-2 dark:border-slate-800 dark:bg-slate-950/50">
+                                                <div className="flex shrink-0 flex-col items-center gap-1.5">
+                                                    <div className="h-12 w-12 overflow-hidden rounded-xl bg-white text-brand-700 border border-slate-100 flex items-center justify-center dark:bg-slate-900 dark:border-slate-800">
+                                                        {item.image ? (
+                                                            <img src={item.image} alt={item.title} className="h-full w-full object-cover" />
+                                                        ) : (
+                                                            <Icon className="h-5 w-5" />
+                                                        )}
+                                                    </div>
+                                                    {canAdjustPhysicalQuantity && (
+                                                        <div className="inline-flex h-8 min-w-[5.75rem] items-center justify-center overflow-hidden rounded-full border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (item.isMain) {
+                                                                        if (quantityState.canDecrease) {
+                                                                            submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: quantityState.decreaseQuantity, product_title: item.title, title: `Punguza ${item.title}` });
+                                                                        }
+                                                                    } else if (Number(item.quantity || 1) > 1) {
+                                                                        submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: Number(item.quantity || 1) - 1, product_title: item.title, title: `Punguza ${item.title}` });
+                                                                    } else {
+                                                                        submitAction('remove_item', { id: item.id, variant_id: item.variant_id, product_title: item.title, title: `Ondoa ${item.title}` });
+                                                                    }
+                                                                }}
+                                                                disabled={item.isMain && !quantityState.canDecrease}
+                                                                className="flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:bg-slate-50 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-30"
+                                                                aria-label="Decrease quantity"
+                                                            >
+                                                                <Minus className="h-3.5 w-3.5" />
+                                                            </button>
+                                                            <span className="min-w-7 text-center text-xs font-black text-brand-900 dark:text-brand-100">
+                                                                {Number(quantityNumber).toLocaleString()}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.isMain ? quantityState.increaseQuantity : Number(item.quantity || 1) + 1, product_title: item.title, title: `Ongeza ${item.title}` })}
+                                                                className="flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:bg-slate-50 hover:text-brand-600"
+                                                                aria-label="Increase quantity"
+                                                            >
+                                                                <Plus className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="break-words text-sm font-black leading-snug text-slate-900 dark:text-slate-100">
+                                                        {item.title}
+                                                    </p>
+                                                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500">
+                                                        {isPhysicalItem && <span>{item.quantityLabel}</span>}
+                                                        <span>TZS {item.price.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                        <div className={cn("inline-flex max-w-full items-start gap-1.5 rounded-xl border px-2 py-1 text-[10px] font-bold", meta.tone)}>
+                                                            <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                                            <span><span className="font-black">{meta.label}:</span> {meta.detail}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className={cn("mt-3 grid gap-2", discountTotal > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
+                                    <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Bidhaa</p>
+                                        <p className="mt-0.5 truncate text-xs font-black text-slate-800 dark:text-slate-100">
+                                            {itemsSubtotal.toLocaleString()}
+                                        </p>
                                     </div>
-                                    <p className="mt-1 truncate text-sm font-black text-slate-900 dark:text-slate-100">
-                                        {order?.product?.title || order?.display_title || 'Physical order'}
-                                    </p>
-                                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500">
-                                        <span>{orderQuantityLabel(order)}</span>
-                                        <span>{deliveryCopy(order)}</span>
-                                        {agreedAt && <span>{new Date(agreedAt).toLocaleDateString()}</span>}
+                                    <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Usafiri</p>
+                                        <p className="mt-0.5 truncate text-xs font-black text-slate-800 dark:text-slate-100">
+                                            {order?.shipping_fee === null || order?.shipping_fee === undefined ? 'TBD' : shippingTotal.toLocaleString()}
+                                        </p>
                                     </div>
+                                    {discountTotal > 0 && (
+                                        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Punguzo</p>
+                                            <p className="mt-0.5 truncate text-xs font-black">
+                                                - {discountTotal.toLocaleString()}
+                                            </p>
+                                        </div>
+                                    )}
+                                    <div className="rounded-xl bg-brand-50 px-3 py-2 text-brand-800 border border-brand-100">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-brand-500">Total</p>
+                                        <p className="mt-0.5 truncate text-xs font-black">
+                                            {dealTotal.toLocaleString()}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500">
+                                    <span>{deliveryCopy(order)}</span>
+                                    {agreedAt && <span>{new Date(agreedAt).toLocaleDateString()}</span>}
                                 </div>
                             </div>
-
-                            <div className="grid grid-cols-3 gap-2 sm:w-[330px]">
-                                <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Bidhaa</p>
-                                    <p className="mt-0.5 truncate text-xs font-black text-slate-800 dark:text-slate-100">
-                                        {orderUnitPriceLabel(order).replace('TZS ', '')}
-                                    </p>
-                                </div>
-                                <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Usafiri</p>
-                                    <p className="mt-0.5 truncate text-xs font-black text-slate-800 dark:text-slate-100">
-                                        {order?.shipping_fee === null || order?.shipping_fee === undefined ? 'TBD' : Number(order.shipping_fee || 0).toLocaleString()}
-                                    </p>
-                                </div>
-                                <div className="rounded-xl bg-brand-50 px-3 py-2 text-brand-800 border border-brand-100">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-brand-500">Total</p>
-                                    <p className="mt-0.5 truncate text-xs font-black">
-                                        {Number(order?.total_paid || 0).toLocaleString()}
-                                    </p>
-                                </div>
                             </div>
                         </div>
 
@@ -1014,6 +1372,17 @@ export default function Chat({
                                         <X className="mr-1.5 h-3.5 w-3.5" />
                                         Cancel
                                     </Button>
+                                )}
+                                {expiryLabel && (
+                                    <span className={cn(
+                                        "inline-flex h-9 items-center rounded-xl border px-3 text-[10px] font-black uppercase tracking-widest",
+                                        expiryLabel === 'Expired'
+                                            ? "border-red-100 bg-red-50 text-red-600"
+                                            : "border-amber-100 bg-amber-50 text-amber-700"
+                                    )}>
+                                        <Clock className="mr-1.5 h-3.5 w-3.5" />
+                                        {expiryLabel}
+                                    </span>
                                 )}
                             </div>
                         )}
@@ -1058,12 +1427,13 @@ export default function Chat({
                                         return 'Mteja';
                                     };
                                     const renderedName = getSenderName();
+                                    const displayedBody = sanitizeChatBody(msg.body);
 
                                     if (isSystem) {
                                         return (
                                             <div key={msg.id} className="flex justify-center my-2">
                                                 <div className="text-[11px] font-bold text-center text-brand-700/80 dark:text-brand-300/80 bg-brand-50/80 dark:bg-brand-900/40 px-4 py-2 rounded-2xl max-w-[85%] leading-relaxed border border-brand-100/50 shadow-sm">
-                                                    {msg.body}
+                                                    {displayedBody}
                                                 </div>
                                             </div>
                                         );
@@ -1071,46 +1441,179 @@ export default function Chat({
 
                                     if (isAction) {
                                         const actionType = msg.payload?.action_type;
-                                        const initials = isMe ? 'MI' : (msgActingAs === 'merchant' ? 'MZ' : 'MT');
-
                                         if (actionType === 'suggest_product') {
                                             const p = msg.payload?.product;
+                                            const productUrl = p?.id ? `/product/${p.id}` : null;
                                             return (
                                                 <div key={msg.id} className={cn("flex w-full my-6", isMe ? "justify-end" : "justify-start")}>
-                                                    <div className="flex flex-col max-w-[85%]">
+                                                    <div className="flex flex-col" style={{ width: 'min(356px, 82%)' }}>
                                                         <div className={cn("flex items-center gap-2 mb-2 opacity-60", isMe ? "justify-end" : "justify-start")}>
-                                                            <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">{renderedName} ANAPENDEKEZA BIDHAA</span>
+                                                            <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">{renderedName}</span>
                                                         </div>
-                                                        <div className="relative group overflow-hidden rounded-[2.5rem] bg-white border border-slate-100 shadow-xl shadow-slate-200/50 transition-all hover:scale-[1.02]">
-                                                            {p.image && <img src={p.image} className="w-full h-48 object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="" />}
+                                                        <div
+                                                            role={productUrl ? 'link' : undefined}
+                                                            tabIndex={productUrl ? 0 : undefined}
+                                                            onClick={() => productUrl && window.open(productUrl, '_blank', 'noopener,noreferrer')}
+                                                            onKeyDown={(event) => {
+                                                                if (!productUrl || !['Enter', ' '].includes(event.key)) return;
+                                                                event.preventDefault();
+                                                                window.open(productUrl, '_blank', 'noopener,noreferrer');
+                                                            }}
+                                                            className={cn(
+                                                                "relative group w-full min-w-48 overflow-hidden rounded-[2.5rem] border border-slate-100 bg-white shadow-xl shadow-slate-200/50 transition-all sm:min-w-64",
+                                                                productUrl && "cursor-pointer hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-brand-100"
+                                                            )}
+                                                            title={productUrl ? 'Fungua maelezo ya bidhaa' : undefined}
+                                                        >
+                                                            {p.image && <img src={p.image} className="h-auto max-h-80 w-full object-contain bg-slate-50 opacity-90 transition-opacity group-hover:opacity-100" alt={p.title || 'Bidhaa'} />}
                                                             <div className="p-5">
-                                                                <h4 className="font-black text-brand-900 mb-1">{p.title}</h4>
-                                                                <div className="flex items-center justify-between mb-4">
+                                                                <h4 className="mb-1 whitespace-normal break-words font-black leading-snug text-brand-900">{p.title}</h4>
+                                                                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                                                                     <span className="text-xl font-black text-brand-600">TZS {Number(p.price).toLocaleString()}</span>
+                                                                    {productUrl && (
+                                                                        <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-brand-700">
+                                                                            Details <ExternalLink className="h-3 w-3" />
+                                                                        </span>
+                                                                    )}
                                                                 </div>
-                                                                    {order?.payment_status !== 'failed' && !isMe && (
-                                                                        <Button
-                                                                            onClick={() => submitAction('add_to_order', {
+                                                                {order?.payment_status !== 'failed' && !isMe && (
+                                                                    <Button
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            submitAction('add_to_order', {
                                                                                 product: {
                                                                                     id: p.id,
                                                                                     variant_id: p.variant_id,
                                                                                     title: p.title, // already includes variant name if suggested from modal
                                                                                     price: p.price,
                                                                                     image: p.image,
-                                                                                    quantity: 1
+                                                                                    quantity: 1,
+                                                                                    type: p.type,
+                                                                                    product_type: p.product_type || p.type,
+                                                                                    digital_delivery_type: p.digital_delivery_type,
+                                                                                    digital_content_type: p.digital_content_type,
+                                                                                    service_location_type: p.service_location_type
                                                                                 },
                                                                                 title: `ONGEZA ${p.title.toUpperCase()}`
-                                                                            })}
-                                                                            className="w-full h-12 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase text-xs tracking-widest flex items-center gap-2"
-                                                                        >
-                                                                            <Plus className="h-4 w-4" /> WEKA KWENYE ODA
-                                                                        </Button>
-                                                                    )}
+                                                                            });
+                                                                        }}
+                                                                        className="w-full h-12 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase text-xs tracking-widest flex items-center gap-2"
+                                                                    >
+                                                                        <Plus className="h-4 w-4" /> WEKA KWENYE ODA
+                                                                    </Button>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             );
+                                        }
+
+                                        if (actionType === 'add_to_order') {
+                                            const item = msg.payload?.product;
+                                            return (
+                                                <div key={msg.id} className={cn("flex w-full my-4", isMe ? "justify-end" : "justify-start")}>
+                                                    <div className={cn("flex max-w-[356px] flex-col gap-1", isMe ? "items-end" : "items-start")}>
+                                                        <span className="px-1 text-[9px] font-semibold text-slate-400">{renderedName}</span>
+                                                        <div className={cn(
+                                                            "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 shadow-sm dark:bg-slate-900",
+                                                            isMe ? "rounded-br-sm border-brand-100" : "rounded-bl-sm border-slate-100 dark:border-slate-800"
+                                                        )}>
+                                                            <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800 flex items-center justify-center">
+                                                                {item?.image ? (
+                                                                    <img src={item.image} alt={item?.title || 'Added product'} className="h-full w-full object-cover" />
+                                                                ) : (
+                                                                    <ShoppingBag className="h-6 w-6" />
+                                                                )}
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="mb-1 flex items-center gap-1.5 text-emerald-600">
+                                                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                                                    <span className="text-[9px] font-black uppercase tracking-widest">Added to order</span>
+                                                                </div>
+                                                                <p className="line-clamp-2 text-sm font-black leading-snug text-slate-900 dark:text-slate-100">
+                                                                    {item?.title || displayedBody}
+                                                                </p>
+                                                                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold text-slate-500">
+                                                                    <span>{Number(item?.quantity || 1).toLocaleString()} {Number(item?.quantity || 1) === 1 ? 'item' : 'items'}</span>
+                                                                    <span>TZS {Number(item?.price || 0).toLocaleString()}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <span className="px-1 text-[9px] font-bold text-slate-300">
+                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (['update_item_quantity', 'remove_item'].includes(actionType)) {
+                                            const actorName = msg.payload?.actor_name || msg.sender?.name || renderedName;
+                                            const productTitle = msg.payload?.product_title || msg.payload?.title || displayedBody?.replace(/^(Ongeza|Punguza|Ondoa)\s+/i, '') || 'item';
+                                            const label = actionType === 'remove_item'
+                                                ? `${actorName} removed ${productTitle} from the order`
+                                                : `${actorName} updated quantity for ${productTitle} to`;
+                                            const quantity = msg.payload?.quantity;
+                                            const ActorIcon = msgActingAs === 'merchant' ? Store : UserRound;
+
+                                            return (
+                                                <div key={msg.id} className="flex justify-center my-2">
+                                                    <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl border border-brand-100/60 bg-brand-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-700/90 shadow-sm dark:border-brand-900/40 dark:bg-brand-900/40 dark:text-brand-200">
+                                                        <ActorIcon className="h-3.5 w-3.5 shrink-0" />
+                                                        <span>
+                                                            {label}
+                                                            {quantity ? ` ${Number(quantity).toLocaleString()}` : ''}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (actionType === 'pickup_verified') {
+                                            const actorName = msg.payload?.actor_name || msg.sender?.name || renderedName;
+                                            const merchantName = msg.payload?.merchant_name || 'merchant';
+
+                                            return (
+                                                <div key={msg.id} className="flex justify-center my-2">
+                                                    <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl border border-emerald-100/70 bg-emerald-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-emerald-800 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-900/30 dark:text-emerald-100">
+                                                        <Store className="h-3.5 w-3.5 shrink-0" />
+                                                        <span>{actorName} confirmed pickup for {merchantName} and released this order.</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (actionType === 'initiate_payment') {
+                                            const pickupPin = msg.payload?.pickup_pin || order?.delivery?.pickup_pin;
+                                            const paymentAmount = Number(msg.payload?.total_paid || order?.total_paid || dealTotal || 0);
+                                            const showPickupCard = hasPhysicalOrderItems
+                                                && (isSelfPickupOrder || msg.payload?.delivery_type === 'self_pickup')
+                                                && pickupPin;
+
+                                            if (showPickupCard && actingAs === 'buyer') {
+                                                return (
+                                                    <div key={msg.id} className="my-5 flex w-full justify-center">
+                                                        <PickupPinCard
+                                                            pickupPin={pickupPin}
+                                                            amount={paymentAmount}
+                                                            timestamp={msg.created_at}
+                                                            onShopLocations={() => setIsShopModalOpen(true)}
+                                                        />
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (showPickupCard) {
+                                                return (
+                                                    <div key={msg.id} className="flex justify-center my-2">
+                                                        <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl border border-brand-100/60 bg-brand-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-700/90 shadow-sm dark:border-brand-900/40 dark:bg-brand-900/40 dark:text-brand-200">
+                                                            <Store className="h-3.5 w-3.5 shrink-0" />
+                                                            <span>Pickup PIN imetumwa kwa mteja kwa ajili ya kuchukua bidhaa.</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
                                         }
 
                                         return (
@@ -1132,16 +1635,11 @@ export default function Chat({
                                                     )}>
                                                         <div className={cn("flex items-start gap-3", isMe ? "flex-row-reverse" : "flex-row")}>
                                                             {/* User Avatar Circle */}
-                                                            <div className={cn(
-                                                                "h-10 w-10 rounded-2xl flex items-center justify-center text-xs font-black shadow-inner shrink-0",
-                                                                msgActingAs === 'merchant' ? "bg-brand-600 text-white" : "bg-blue-600 text-white"
-                                                            )}>
-                                                                {initials}
-                                                            </div>
+                                                            <ChatRoleAvatar role={msgActingAs} className="h-10 w-10 rounded-2xl shadow-inner" />
 
                                                             <div className={cn("flex-1 min-w-0", isMe ? "text-right" : "text-left")}>
                                                                 <div className={cn("flex flex-wrap items-start gap-x-2 gap-y-1", isMe ? "justify-end" : "justify-start")}>
-                                                                    <h4 className="min-w-0 break-words text-xs font-black leading-5 text-brand-900 dark:text-brand-100 uppercase tracking-tight">{msg.body}</h4>
+                                                                    <h4 className="min-w-0 break-words text-xs font-black leading-5 text-brand-900 dark:text-brand-100 uppercase tracking-tight">{displayedBody}</h4>
                                                                     <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
                                                                 </div>
 
@@ -1272,7 +1770,7 @@ export default function Chat({
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
-                                                                                
+
                                                                                 {(msg.payload?.mediaUrl || msg.payload?.receiptUrl || msg.media_url) && (
                                                                                     <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
                                                                                         {msg.payload?.mediaUrl || msg.media_url ? (
@@ -1290,7 +1788,7 @@ export default function Chat({
                                                                                     </div>
                                                                                 )}
                                                                             </div>
-                                                                            
+
                                                                             <p className="text-[10px] font-bold text-slate-400 px-1 uppercase tracking-tight flex items-center gap-2 italic">
                                                                                 <Info className="h-3 w-3" /> Ushahidi wa upakiaji na waybill umehifadhiwa.
                                                                             </p>
@@ -1308,46 +1806,55 @@ export default function Chat({
                                                                         </div>
                                                                     )}
                                                                 </div>
-                                                                    <div className={cn("mt-3 flex text-[9px] font-black uppercase tracking-widest text-slate-300 dark:text-slate-600", isMe ? "justify-end" : "justify-start")}>
-                                                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                                    </div>
+                                                                <div className={cn("mt-3 flex text-[9px] font-black uppercase tracking-widest text-slate-300 dark:text-slate-600", isMe ? "justify-end" : "justify-start")}>
+                                                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </div>
+                                            </div>
                                         );
                                     }
 
                                     return (
                                         <div key={msg.id} className={cn("flex w-full mb-3 items-end gap-2", isMe ? "justify-end" : "justify-start")}>
                                             {!isMe && (
-                                                <div className={cn(
-                                                    "h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 mb-1",
-                                                    msgActingAs === 'merchant' ? "bg-brand-600 text-white" : "bg-blue-600 text-white"
-                                                )}>
-                                                    {msgActingAs === 'merchant' ? 'MZ' : 'MT'}
-                                                </div>
+                                                <ChatRoleAvatar role={msgActingAs} className="mb-1 h-8 w-8" />
                                             )}
-                                            <div className={cn("max-w-[82%] md:max-w-[68%] flex flex-col gap-1 min-w-0", isMe ? "items-end" : "items-start")}>
+                                            <div className={cn("max-w-[356px] flex flex-col gap-1 min-w-0", isMe ? "items-end" : "items-start")}>
                                                 <span className="text-[9px] font-semibold text-slate-400 px-1">{renderedName}</span>
-                                                <div className={cn(
-                                                    "rounded-2xl px-4 py-3 shadow-sm relative",
-                                                    isMe ? "bg-brand-600 text-white rounded-br-sm" : "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-bl-sm border border-slate-100 dark:border-slate-800"
-                                                )}>
-                                                    {msg.media_url && <MediaDisplay url={msg.media_url} className="mb-3 aspect-auto max-h-64 rounded-xl overflow-hidden" />}
-                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
-                                                    <div className={cn("flex items-center justify-end gap-1 mt-1", isMe ? "text-white/50" : "text-slate-400")}>
-                                                        <span className="text-[9px]">
+                                                {msg.media_url ? (
+                                                    <div className={cn(
+                                                        "relative overflow-hidden rounded-2xl shadow-sm bg-slate-100 dark:bg-slate-900",
+                                                        isMe ? "rounded-br-sm" : "rounded-bl-sm"
+                                                    )}>
+                                                        <MediaDisplay url={msg.media_url} mode="natural" className="max-h-80 w-full min-w-48 sm:min-w-64 overflow-hidden" />
+                                                        {!isDefaultMediaBody(msg.body) && displayedBody && (
+                                                            <p className="px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+                                                                {displayedBody}
+                                                            </p>
+                                                        )}
+                                                        <span className="absolute bottom-2 right-2 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-bold text-white backdrop-blur-sm">
                                                             {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                         </span>
                                                     </div>
-                                                </div>
+                                                ) : (
+                                                    <div className={cn(
+                                                        "rounded-2xl px-4 py-3 shadow-sm relative",
+                                                        isMe ? "bg-brand-600 text-white rounded-br-sm" : "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-bl-sm border border-slate-100 dark:border-slate-800"
+                                                    )}>
+                                                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{displayedBody}</p>
+                                                        <div className={cn("flex items-center justify-end gap-1 mt-1", isMe ? "text-white/50" : "text-slate-400")}>
+                                                            <span className="text-[9px]">
+                                                                {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                             {isMe && (
-                                                <div className="h-8 w-8 rounded-full bg-brand-600 flex items-center justify-center text-[10px] font-black shrink-0 mb-1 text-white">
-                                                    {actingAs === 'merchant' ? 'MZ' : 'MT'}
-                                                </div>
+                                                <ChatRoleAvatar role={actingAs} className="mb-1 h-8 w-8" />
                                             )}
                                         </div>
                                     );
@@ -1410,15 +1917,13 @@ export default function Chat({
                         )}
 
                         {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
-                            <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <ShieldCheck className="h-5 w-5 text-brand-600" />
-                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Pickup PIN yako</h4>
-                                </div>
-                                <p className="text-xs text-brand-800/80 mb-3 font-medium">Mpe muuzaji PIN hii unapoenda kuchukua mzigo wako (au mpe dereva wako ampe muuzaji):</p>
-                                <div className="bg-white rounded-xl h-12 flex items-center justify-center border border-brand-200">
-                                    <span className="font-black text-xl tracking-[0.5em] text-brand-900">{order?.delivery?.pickup_pin}</span>
-                                </div>
+                            <div className="mx-auto flex w-full max-w-lg flex-col">
+                                <PickupPinCard
+                                    pickupPin={order?.delivery?.pickup_pin}
+                                    amount={order?.total_paid}
+                                    onShopLocations={() => setIsShopModalOpen(true)}
+                                    className="max-w-none"
+                                />
                                 <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
                                     RIPOTI TATIZO
                                 </Button>
@@ -1436,11 +1941,11 @@ export default function Chat({
                                 <h4 className="font-black text-amber-900 uppercase tracking-tight text-sm">Toa Review Yako</h4>
                             </div>
                             <p className="text-xs text-amber-800/80 mb-4 font-medium">Asante kwa kununua! Toa maoni yako kuhusu bidhaa na huduma ya muuzaji.</p>
-                            
+
                             <div className="flex justify-center gap-3 mb-4">
                                 {[1, 2, 3, 4, 5].map((star) => (
-                                    <button 
-                                        key={star} 
+                                    <button
+                                        key={star}
                                         onClick={() => setReviewStars(star)}
                                         className="transition-transform active:scale-90"
                                     >
@@ -1449,7 +1954,7 @@ export default function Chat({
                                 ))}
                             </div>
 
-                            <textarea 
+                            <textarea
                                 value={reviewComment}
                                 onChange={e => setReviewComment(e.target.value)}
                                 placeholder="Andika maoni yako hapa..."
@@ -1457,8 +1962,8 @@ export default function Chat({
                                 rows={2}
                             />
 
-                            <Button 
-                                onClick={submitReview} 
+                            <Button
+                                onClick={submitReview}
                                 disabled={isSubmittingReview || !reviewComment.trim()}
                                 className="w-full h-12 rounded-xl bg-amber-600 hover:bg-amber-700 font-black text-white uppercase tracking-widest text-[10px]"
                             >
@@ -1480,35 +1985,35 @@ export default function Chat({
                                     </h4>
                                 </div>
                                 {!isServiceOrder && (
-                                <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">Customer Address:</p>
-                                    <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
-                                    
-                                    {closestLocation && (
-                                        <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center text-brand-600 shadow-sm">
-                                                    <Store className="h-4 w-4" />
-                                                </div>
-                                                <div>
-                                                    <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">Kutoka: {closestLocation.name}</p>
-                                                    <p className="text-[10px] font-black text-brand-900 tracking-tight">Umbali: {closestLocation.distance.toFixed(1)} km</p>
+                                    <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">Customer Address:</p>
+                                        <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
+
+                                        {closestLocation && (
+                                            <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center text-brand-600 shadow-sm">
+                                                        <Store className="h-4 w-4" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">Kutoka: {closestLocation.name}</p>
+                                                        <p className="text-[10px] font-black text-brand-900 tracking-tight">Umbali: {closestLocation.distance.toFixed(1)} km</p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {order?.delivery?.latitude && (
-                                        <a 
-                                            href={`https://www.google.com/maps/dir/${closestLocation?.latitude || ''},${closestLocation?.longitude || ''}/${order.delivery.latitude},${order.delivery.longitude}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-brand-600 hover:text-brand-700 underline"
-                                        >
-                                            <MapPin className="h-3 w-3" /> FUNGUA KWENYE RAMANI
-                                        </a>
-                                    )}
-                                </div>
+                                        {order?.delivery?.latitude && (
+                                            <a
+                                                href={`https://www.google.com/maps/dir/${closestLocation?.latitude || ''},${closestLocation?.longitude || ''}/${order.delivery.latitude},${order.delivery.longitude}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-brand-600 hover:text-brand-700 underline"
+                                            >
+                                                <MapPin className="h-3 w-3" /> FUNGUA KWENYE RAMANI
+                                            </a>
+                                        )}
+                                    </div>
                                 )}
                                 <form onSubmit={submitQuote} className="flex gap-2">
                                     <Input type="number" placeholder={isServiceOrder ? 'Weka Offer ya Huduma (TZS)' : 'Weka Gharama (TZS)'} value={shippingFeeInput} onChange={e => setShippingFeeInput(e.target.value)} className="flex-1 font-bold h-12 rounded-xl" required />
@@ -1531,13 +2036,13 @@ export default function Chat({
                                 </div>
                                 <form onSubmit={submitDispatch} className="space-y-3">
                                     <div className="grid grid-cols-2 gap-2">
-                                        <button type="button" onClick={() => { const el = document.getElementById('dispatch-video-input'); if(el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
+                                        <button type="button" onClick={() => { const el = document.getElementById('dispatch-video-input'); if (el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
                                             <Camera className={cn("h-5 w-5 mb-1", dispatchVideo ? "text-emerald-500" : "text-brand-500")} />
                                             <span className="text-[10px] font-black uppercase text-slate-500">Packing Video</span>
                                             <input id="dispatch-video-input" type="file" accept="video/*" className="hidden" onChange={e => setDispatchVideo(e.target.files?.[0])} />
                                         </button>
                                         {dispatchMode === 'intercity' ? (
-                                            <button type="button" onClick={() => { const el = document.getElementById('dispatch-receipt-input'); if(el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
+                                            <button type="button" onClick={() => { const el = document.getElementById('dispatch-receipt-input'); if (el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
                                                 <ImageIcon className={cn("h-5 w-5 mb-1", transportReceipt ? "text-emerald-500" : "text-brand-500")} />
                                                 <span className="text-[10px] font-black uppercase text-slate-500">Waybill</span>
                                                 <input id="dispatch-receipt-input" type="file" accept="image/*" className="hidden" onChange={e => setTransportReceipt(e.target.files?.[0])} />
@@ -1577,11 +2082,15 @@ export default function Chat({
 
                         {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
                             <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <ShieldCheck className="h-5 w-5 text-indigo-600" />
-                                    <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Verify Pickup</h4>
+                                <div className="flex items-start gap-3 mb-3">
+                                    <div className="h-10 w-10 rounded-2xl bg-white text-indigo-600 shadow-sm flex items-center justify-center shrink-0">
+                                        <Store className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Verify Pickup</h4>
+                                        <p className="text-xs text-indigo-800/80 font-medium">Personal merchants can complete pickup here. Ask the customer for their PIN, enter it, then release the order.</p>
+                                    </div>
                                 </div>
-                                <p className="text-xs text-indigo-800/80 mb-3 font-medium">Ingiza <strong>Pickup PIN</strong> aliyopewa mteja ili ukabidhi mzigo:</p>
                                 <form onSubmit={verifyPickupPin} className="flex gap-2">
                                     <Input type="text" maxLength={4} placeholder="PIN..." value={pickupPinInput} onChange={e => setPickupPinInput(e.target.value)} className="w-24 text-center font-black tracking-widest h-12 rounded-xl border-indigo-200" />
                                     <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
@@ -1604,673 +2113,693 @@ export default function Chat({
                         </div>
                     ) : (
                         <form onSubmit={sendMessage} className="flex items-center gap-2">
-                        <Drawer open={isActionDrawerOpen} onOpenChange={setIsActionDrawerOpen}>
-                            <DrawerTrigger asChild>
-                                <Button type="button" variant="ghost" size="icon" onClick={() => setIsActionDrawerOpen(true)} className="shrink-0 h-12 w-12 rounded-full bg-brand-50 text-brand-600 hover:bg-brand-100">
-                                    <Plus className="h-6 w-6" />
-                                </Button>
-                            </DrawerTrigger>
-                            <DrawerContent className="rounded-t-[3rem] bg-white dark:bg-slate-950 border-t-2 border-brand-100 dark:border-brand-900/50">
-                                <div className="mx-auto w-full max-w-lg flex flex-col h-[70vh]">
-                                    {activeAction === null ? (
-                                        <>
-                                            <DrawerHeader className="text-left pb-2 pt-6 shrink-0">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <DrawerTitle className="text-2xl font-black tracking-tight text-brand-900">Njia Za Mkato</DrawerTitle>
-                                                        <DrawerDescription className="font-bold text-brand-600/60 uppercase text-[10px] tracking-widest mt-0.5">Salama & Haraka kwa Oda #{publicId?.substring(0, 8)}</DrawerDescription>
+                            <Drawer open={isActionDrawerOpen} onOpenChange={setIsActionDrawerOpen}>
+                                <DrawerTrigger asChild>
+                                    <Button type="button" variant="ghost" size="icon" onClick={() => setIsActionDrawerOpen(true)} className="shrink-0 h-12 w-12 rounded-full bg-brand-50 text-brand-600 hover:bg-brand-100">
+                                        <Plus className="h-6 w-6" />
+                                    </Button>
+                                </DrawerTrigger>
+                                <DrawerContent className="rounded-t-[3rem] bg-white dark:bg-slate-950 border-t-2 border-brand-100 dark:border-brand-900/50">
+                                    <div className="mx-auto w-full max-w-lg flex flex-col h-[70vh]">
+                                        {activeAction === null ? (
+                                            <>
+                                                <DrawerHeader className="text-left pb-2 pt-6 shrink-0">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <DrawerTitle className="text-2xl font-black tracking-tight text-brand-900">Njia Za Mkato</DrawerTitle>
+                                                            <DrawerDescription className="font-bold text-brand-600/60 uppercase text-[10px] tracking-widest mt-0.5">Salama & Haraka kwa Oda #{publicId?.substring(0, 8)}</DrawerDescription>
+                                                        </div>
+                                                        <DrawerClose asChild>
+                                                            <Button variant="ghost" size="icon" className="rounded-full h-10 w-10 bg-accent/50"><X className="h-5 w-5 text-muted-foreground" /></Button>
+                                                        </DrawerClose>
                                                     </div>
-                                                    <DrawerClose asChild>
-                                                        <Button variant="ghost" size="icon" className="rounded-full h-10 w-10 bg-accent/50"><X className="h-5 w-5 text-muted-foreground" /></Button>
-                                                    </DrawerClose>
-                                                </div>
-                                            </DrawerHeader>
-                                            <div className="p-4 grid grid-cols-2 gap-3 pb-12 overflow-y-auto">
-                                                {(actingAs === 'merchant' ? [
-                                                    { id: 'shipping_cost', label: 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' },
-                                                    { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda' },
-                                                    { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' },
-                                                    { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' },
-                                                    { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa' },
-                                                    { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari', disabled: order?.delivery?.delivery_type === 'self_pickup' },
-                                                ] : [
-                                                    { id: 'shop_locations', label: 'Shop Locations', icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ona duka lilipo' },
-                                                    { id: 'order_delivery', label: 'Usafirishaji', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Badili delivery vs pickup' },
-                                                    { id: 'order_items', label: 'Vitu vya Oda', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona na badili vitu' },
-                                                    { id: 'upsell', label: 'Bidhaa Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Vitu vingine vya duka hili' },
-                                                    { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
-                                                    { id: 'unboxing_video', label: 'Unboxing Video', icon: Video, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa kupokea' },
-                                                    { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
-                                                ]).map((action) => {
-                                                    const Icon = action.icon;
-                                                    const isDisabled = action.disabled;
-                                                    return (
-                                                        <button
-                                                            key={action.id}
-                                                            disabled={isDisabled}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (action.id === 'shop_locations') {
-                                                                    setIsShopModalOpen(true);
-                                                                    setIsActionDrawerOpen(false);
-                                                                } else if (action.id === 'extend_lock' || action.id === 'release_stock') {
-                                                                    handleMerchantLockAction(action.id);
-                                                                    setIsActionDrawerOpen(false);
-                                                                } else {
-                                                                    setActiveAction(action.id);
-                                                                    setActionPayload({
-                                                                        title: action.label,
-                                                                        amount: action.id === 'discount' ? 5000 : action.id === 'shipping_cost' ? 7000 : 0,
-                                                                        quantity: order?.quantity || 1
-                                                                    });
-                                                                    if (action.id === 'upsell') handleSearchProducts('');
-                                                                    if (action.id === 'order_delivery') {
-                                                                        const profileId = order?.product?.shipping_profile_id;
-                                                                        if (profileId) {
-                                                                            setLoadingZones(true);
-                                                                            fetch(`/api/merchant/shipping-profiles/${profileId}/zones`, { headers: { Accept: 'application/json' } })
-                                                                                .then(res => res.json())
-                                                                                .then(json => {
-                                                                                    if (json.data) setShippingZones(json.data);
-                                                                                })
-                                                                                .finally(() => setLoadingZones(false));
+                                                </DrawerHeader>
+                                                <div className="p-4 grid grid-cols-2 gap-3 pb-12 overflow-y-auto">
+                                                    {(actingAs === 'merchant' ? [
+                                                        { id: 'shipping_cost', label: 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' },
+                                                        { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda' },
+                                                        { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' },
+                                                        { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' },
+                                                        { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa' },
+                                                        { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari', disabled: order?.delivery?.delivery_type === 'self_pickup' },
+                                                    ] : [
+                                                        { id: 'shop_locations', label: 'Shop Locations', icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ona duka lilipo' },
+                                                        { id: 'order_delivery', label: 'Usafirishaji', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Badili delivery vs pickup' },
+                                                        { id: 'order_items', label: 'Vitu vya Oda', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona na badili vitu' },
+                                                        { id: 'upsell', label: 'Bidhaa Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Vitu vingine vya duka hili' },
+                                                        { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
+                                                        { id: 'unboxing_video', label: 'Unboxing Video', icon: Video, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa kupokea' },
+                                                        { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
+                                                    ]).map((action) => {
+                                                        const Icon = action.icon;
+                                                        const isDisabled = action.disabled;
+                                                        return (
+                                                            <button
+                                                                key={action.id}
+                                                                disabled={isDisabled}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (action.id === 'shop_locations') {
+                                                                        setIsShopModalOpen(true);
+                                                                        setIsActionDrawerOpen(false);
+                                                                    } else if (action.id === 'extend_lock' || action.id === 'release_stock') {
+                                                                        handleMerchantLockAction(action.id);
+                                                                        setIsActionDrawerOpen(false);
+                                                                    } else {
+                                                                        setActiveAction(action.id);
+                                                                        setActionPayload({
+                                                                            title: action.label,
+                                                                            amount: action.id === 'discount' ? 5000 : action.id === 'shipping_cost' ? 7000 : 0,
+                                                                            quantity: order?.quantity || 1
+                                                                        });
+                                                                        if (action.id === 'upsell') handleSearchProducts('');
+                                                                        if (action.id === 'order_delivery') {
+                                                                            const profileId = order?.product?.shipping_profile_id;
+                                                                            if (profileId) {
+                                                                                setLoadingZones(true);
+                                                                                fetch(`/api/merchant/shipping-profiles/${profileId}/zones`, { headers: { Accept: 'application/json' } })
+                                                                                    .then(res => res.json())
+                                                                                    .then(json => {
+                                                                                        if (json.data) setShippingZones(json.data);
+                                                                                    })
+                                                                                    .finally(() => setLoadingZones(false));
+                                                                            }
                                                                         }
                                                                     }
-                                                                }
-                                                            }}
-                                                            className={cn(
-                                                                "group relative flex flex-col items-start p-4 rounded-3xl border transition-all duration-300 text-left bg-white/50 hover:bg-white hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-md overflow-hidden",
-                                                                action.border,
-                                                                isDisabled && "opacity-50 grayscale cursor-not-allowed"
-                                                            )}
-                                                        >
-                                                            {isDisabled && (
-                                                                <div className="absolute inset-0 bg-slate-50/40 flex items-center justify-center backdrop-blur-[1px]">
-                                                                    <span className="bg-slate-900 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase">PICKUP ONLY</span>
-                                                                </div>
-                                                            )}
-                                                            <div className={cn("p-3 rounded-2xl mb-3 transition-transform group-hover:scale-110", action.color)}><Icon className="h-6 w-6" /></div>
-                                                            <span className="font-black text-sm text-brand-900 tracking-tight leading-tight mb-1">{action.label}</span>
-                                                            <span className="text-[10px] font-bold text-muted-foreground line-clamp-2">{action.desc}</span>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="p-6 flex flex-col min-h-[400px] animate-in slide-in-from-right-4 duration-300">
-                                            <div className="flex items-center justify-between mb-8">
-                                                <div className="flex items-center gap-3">
-                                                    <Button variant="ghost" size="icon" onClick={() => setActiveAction(null)} className="rounded-full h-10 w-10 bg-accent/50 hover:bg-accent"><ArrowLeft className="h-5 w-5 text-brand-900" /></Button>
-                                                    <div>
-                                                        <h3 className="text-xl font-black text-brand-900 dark:text-brand-100 flex items-center gap-2">{actionPayload.title}</h3>
-                                                    </div>
-                                                </div>
-                                                <DrawerClose asChild><Button variant="ghost" size="icon" className="rounded-full h-10 w-10 bg-accent/20"><X className="h-4 w-4 text-muted-foreground" /></Button></DrawerClose>
-                                            </div>
-
-                                            <div className="flex-1 space-y-6 overflow-y-auto pr-1">
-                                                {activeAction === 'order_delivery' && actingAs === 'buyer' && (
-                                                    <div className="space-y-6">
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            <button 
-                                                                onClick={() => setIsSelfPickupChoice(true)}
-                                                                className={cn(
-                                                                    "p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2",
-                                                                    isSelfPickupChoice ? "border-brand-600 bg-brand-50" : "border-slate-100 bg-slate-50 opacity-60"
-                                                                )}
-                                                            >
-                                                                <Store className={cn("h-8 w-8", isSelfPickupChoice ? "text-brand-600" : "text-slate-400")} />
-                                                                <span className={cn("font-black text-[10px] uppercase tracking-widest", isSelfPickupChoice ? "text-brand-600" : "text-slate-500")}>Kuchukua</span>
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => setIsSelfPickupChoice(false)}
-                                                                className={cn(
-                                                                    "p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2",
-                                                                    !isSelfPickupChoice ? "border-brand-600 bg-brand-50" : "border-slate-100 bg-slate-50 opacity-60"
-                                                                )}
-                                                            >
-                                                                <Truck className={cn("h-8 w-8", !isSelfPickupChoice ? "text-brand-600" : "text-slate-400")} />
-                                                                <span className={cn("font-black text-[10px] uppercase tracking-widest", !isSelfPickupChoice ? "text-brand-600" : "text-slate-500")}>Kuletewa</span>
-                                                            </button>
-                                                        </div>
-
-                                                        {isSelfPickupChoice ? (
-                                                            <div className="p-6 rounded-[2.5rem] bg-indigo-50 border border-indigo-100 space-y-4">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                                                                        <MapPin className="h-5 w-5" />
-                                                                    </div>
-                                                                    <div>
-                                                                        <h4 className="font-black text-indigo-900 uppercase text-[11px] tracking-widest">Maeneo ya Kuchukua</h4>
-                                                                        <p className="text-[10px] font-bold text-indigo-600/70">Oda yako itachukuliwa dukan mwa muuzaji</p>
-                                                                    </div>
-                                                                </div>
-                                                                <Button 
-                                                                    onClick={() => setIsShopModalOpen(true)}
-                                                                    variant="outline" 
-                                                                    className="w-full h-12 rounded-2xl border-indigo-200 text-indigo-700 font-bold text-[11px] uppercase tracking-widest bg-white hover:bg-indigo-50"
-                                                                >
-                                                                    Ona Maduka ya Muuzaji
-                                                                </Button>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="space-y-4">
-                                                                <div className="p-6 rounded-[2.5rem] bg-emerald-50 border border-emerald-100 space-y-4">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-                                                                            <Navigation className="h-5 w-5" />
-                                                                        </div>
-                                                                        <div>
-                                                                            <h4 className="font-black text-emerald-900 uppercase text-[11px] tracking-widest">Eneo la Kufikisha</h4>
-                                                                            <p className="text-[10px] font-bold text-emerald-600/70">Chagua eneo ili tujuwe gharama ya usafiri</p>
-                                                                        </div>
-                                                                    </div>
-                                                                    
-                                                                    <button 
-                                                                        onClick={() => setIsAddressPickerOpen(true)}
-                                                                        className="w-full p-4 rounded-2xl bg-white border border-emerald-200 text-left hover:border-emerald-400 transition-colors group"
-                                                                    >
-                                                                        {(physicalAddress || order?.delivery?.physical_address) ? (
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className="text-xs font-bold text-emerald-900 line-clamp-1">{physicalAddress || order?.delivery?.physical_address}</span>
-                                                                                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 ml-2" />
-                                                                            </div>
-                                                                        ) : (
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className="text-xs font-bold text-emerald-600/50 uppercase tracking-widest">Chagua kwenye Ramani (Zone Matching)</span>
-                                                                                <ChevronRight className="h-4 w-4 text-emerald-300 group-hover:translate-x-1 transition-transform" />
-                                                                            </div>
-                                                                        )}
-                                                                    </button>
-
-                                                                    <div className="space-y-2">
-                                                                        <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 ml-1">Address ya Kufikisha (Manual)</label>
-                                                                        <textarea 
-                                                                            value={physicalAddress || order?.delivery?.physical_address || ''}
-                                                                            onChange={e => setPhysicalAddress(e.target.value)}
-                                                                            placeholder="Mfano: Mtaa wa Uhuru, Jengo la China Plaza, Room 402..."
-                                                                            className="w-full min-h-[80px] p-4 rounded-2xl bg-white border border-emerald-100 focus:border-emerald-400 outline-none text-xs font-bold text-emerald-900 resize-none transition-colors"
-                                                                        />
-                                                                        <p className="text-[9px] font-bold text-emerald-600/60 leading-relaxed italic px-1">
-                                                                            * Tumia sehemu hii kuweka maelezo ya ziada au address ya wakala (freight agent).
-                                                                        </p>
-                                                                    </div>
-
-                                                                    {selectedZoneId && (
-                                                                        <div className="pt-2 flex items-center justify-between border-t border-emerald-100">
-                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Gharama ya Usafiri</span>
-                                                                            <span className="text-sm font-black text-emerald-900">
-                                                                                TZS {Number(shippingZones.find(z => String(z.id) === String(selectedZoneId))?.flat_rate_fee || 0).toLocaleString()}
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        <Button 
-                                                            onClick={() => {
-                                                                const activeZone = shippingZones.find(z => String(z.id) === String(selectedZoneId));
-                                                                submitAction('update_delivery', {
-                                                                    delivery_type: isSelfPickupChoice ? 'self_pickup' : 'shipping',
-                                                                    delivery_zone_id: isSelfPickupChoice ? null : selectedZoneId,
-                                                                    shipping_fee: isSelfPickupChoice ? 0 : (activeZone?.flat_rate_fee || 0),
-                                                                    physical_address: physicalAddress || order?.delivery?.physical_address,
-                                                                    latitude: customerLat || order?.delivery?.latitude,
-                                                                    longitude: customerLng || order?.delivery?.longitude,
-                                                                    shipping_hotspot_id: selectedHotspot?.id,
-                                                                    title: isSelfPickupChoice ? 'NIMECHAGUA PICKUP' : `NIMECHAGUA DELIVERY: ${physicalAddress || order?.delivery?.physical_address}`
-                                                                });
-                                                            }}
-                                                            disabled={!isSelfPickupChoice && !selectedZoneId && !physicalAddress && !order?.delivery?.physical_address}
-                                                            className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl shadow-brand-600/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
-                                                        >
-                                                            Thibitisha Usafirishaji
-                                                        </Button>
-                                                    </div>
-                                                )}
-
-                                                {activeAction === 'shipping_cost' && actingAs === 'merchant' && (
-                                                    <div className="p-4 rounded-2xl bg-brand-50 border border-brand-100 space-y-3">
-                                                        <p className="text-[10px] font-black uppercase text-brand-600 tracking-widest flex items-center gap-2"><MapPin className="h-3 w-3" /> Taarifa za Usafirishaji</p>
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs font-black text-brand-900">{order?.delivery?.physical_address || (order?.delivery?.latitude ? `${order.delivery.latitude}, ${order.delivery.longitude}` : 'Address Haijawekwa')}</p>
-                                                            {(() => {
-                                                                const closest = findClosestLocation();
-                                                                return closest ? (
-                                                                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-                                                                        <Navigation className="h-3 w-3" />
-                                                                        <span>{closest.distance}km kutoka duka lako la {closest.name}</span>
-                                                                    </div>
-                                                                ) : null;
-                                                            })()}
-                                                        </div>
-                                                        {order?.delivery?.latitude && (
-                                                            <a href={`https://www.google.com/maps/search/?api=1&query=${order.delivery.latitude},${order.delivery.longitude}`} target="_blank" className="block text-center py-2 bg-white rounded-xl border border-brand-200 text-[10px] font-black text-brand-700 hover:bg-brand-50 transition-colors">FUNGUA RAMANI (MAPS)</a>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {activeAction === 'discount' && (
-                                                    <div className="space-y-6">
-                                                        {Number(order.discount_amount) > 0 && (
-                                                            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                <p className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-2 tracking-widest">Punguzo la Sasa</p>
-                                                                {showDiscountResetConfirm ? (
-                                                                    <div className="p-4 rounded-2xl bg-red-50 border-2 border-red-100 flex items-center justify-between gap-4 animate-in zoom-in-95 duration-200">
-                                                                        <p className="text-[10px] font-black text-red-900 uppercase">Futa punguzo hili?</p>
-                                                                        <div className="flex gap-2">
-                                                                            <Button onClick={() => { submitAction('discount', { mode: 'reset', title: 'FUTA PUNGUZO' }); setShowDiscountResetConfirm(false); }} className="h-8 px-4 rounded-xl bg-red-600 text-white font-black text-[10px] uppercase">NDIYO</Button>
-                                                                            <Button onClick={() => setShowDiscountResetConfirm(false)} variant="ghost" className="h-8 px-4 rounded-xl font-black text-[10px] uppercase">RUDI</Button>
-                                                                        </div>
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="p-5 rounded-[2rem] bg-amber-50 border border-amber-100 flex items-center justify-between shadow-sm group">
-                                                                        <div>
-                                                                            <p className="text-xl font-black text-amber-600">TZS {Number(order.discount_amount || 0).toLocaleString()}</p>
-                                                                        </div>
-                                                                        <button
-                                                                            onClick={() => setShowDiscountResetConfirm(true)}
-                                                                            className="h-10 w-10 rounded-xl bg-white border border-amber-200 text-amber-400 flex items-center justify-center hover:bg-red-500 hover:border-red-600 hover:text-white transition-all active:scale-95 shadow-sm"
-                                                                        >
-                                                                            <X className="h-5 w-5" />
-                                                                        </button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-
-                                                        <div className="space-y-3">
-                                                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Ongeza Punguzo</label>
-                                                            <div className="relative group">
-                                                                <Input
-                                                                    type="number"
-                                                                    value={actionPayload.amount || ''}
-                                                                    onChange={e => setActionPayload(p => ({ ...p, amount: Number(e.target.value) }))}
-                                                                    className="h-16 rounded-2xl text-2xl font-black bg-slate-50 border-2 border-transparent transition-all focus:bg-white focus:border-amber-200 outline-none pl-6 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                                    placeholder="0.00"
-                                                                />
-                                                                <div className="absolute right-6 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-amber-300 transition-colors">TZS</div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="pt-4">
-                                                            <Button
-                                                                onClick={() => {
-                                                                    submitAction('discount', { ...actionPayload, mode: 'add', title: `WEKA PUNGUZO TZS ${Number(actionPayload.amount).toLocaleString()}` });
-                                                                    setActionPayload({ ...actionPayload, amount: '' });
                                                                 }}
-                                                                disabled={!actionPayload.amount || actionPayload.amount <= 0}
-                                                                className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-600/30 transition-all active:scale-[0.98]"
+                                                                className={cn(
+                                                                    "group relative flex flex-col items-start p-4 rounded-3xl border transition-all duration-300 text-left bg-white/50 hover:bg-white hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-md overflow-hidden",
+                                                                    action.border,
+                                                                    isDisabled && "opacity-50 grayscale cursor-not-allowed"
+                                                                )}
                                                             >
-                                                                WEKA PUNGUZO
-                                                            </Button>
+                                                                {isDisabled && (
+                                                                    <div className="absolute inset-0 bg-slate-50/40 flex items-center justify-center backdrop-blur-[1px]">
+                                                                        <span className="bg-slate-900 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase">PICKUP ONLY</span>
+                                                                    </div>
+                                                                )}
+                                                                <div className={cn("p-3 rounded-2xl mb-3 transition-transform group-hover:scale-110", action.color)}><Icon className="h-6 w-6" /></div>
+                                                                <span className="font-black text-sm text-brand-900 tracking-tight leading-tight mb-1">{action.label}</span>
+                                                                <span className="text-[10px] font-bold text-muted-foreground line-clamp-2">{action.desc}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="p-6 flex flex-col min-h-[400px] animate-in slide-in-from-right-4 duration-300">
+                                                <div className="flex items-center justify-between mb-8">
+                                                    <div className="flex items-center gap-3">
+                                                        <Button variant="ghost" size="icon" onClick={() => setActiveAction(null)} className="rounded-full h-10 w-10 bg-accent/50 hover:bg-accent"><ArrowLeft className="h-5 w-5 text-brand-900" /></Button>
+                                                        <div>
+                                                            <h3 className="text-xl font-black text-brand-900 dark:text-brand-100 flex items-center gap-2">{actionPayload.title}</h3>
                                                         </div>
                                                     </div>
-                                                )}
+                                                    <DrawerClose asChild><Button variant="ghost" size="icon" className="rounded-full h-10 w-10 bg-accent/20"><X className="h-4 w-4 text-muted-foreground" /></Button></DrawerClose>
+                                                </div>
 
-                                                {activeAction === 'shipping_cost' && (
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Ushaji wa TZS Gani?</label>
-                                                        <div className="relative group">
-                                                            <Input type="number" value={actionPayload.amount} onChange={e => setActionPayload(p => ({ ...p, amount: Number(e.target.value) }))} className="h-16 rounded-2xl text-2xl font-black bg-slate-50 border-2 border-transparent transition-all focus:bg-white focus:border-brand-200 outline-none pl-6 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="0.00" />
-                                                            <div className="absolute right-6 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-brand-200 transition-colors">TZS</div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {activeAction === 'quantity' && (
-                                                    <div className="space-y-4">
-                                                        <div className="p-6 rounded-3xl bg-blue-50/50 border border-blue-100 flex flex-col items-center gap-4">
-                                                            <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Idadi ya {order?.product?.title || 'Bidhaa'}</p>
-                                                            <div className="flex items-center gap-6">
-                                                                <button onClick={() => setActionPayload(p => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))} className="h-12 w-12 rounded-2xl bg-white border-2 border-blue-100 text-blue-600 flex items-center justify-center text-2xl font-black active:scale-90 transition-transform shadow-sm">-</button>
-                                                                <span className="text-4xl font-black text-brand-900">{actionPayload.quantity}</span>
-                                                                <button onClick={() => setActionPayload(p => ({ ...p, quantity: p.quantity + 1 }))} className="h-12 w-12 rounded-2xl bg-white border-2 border-blue-100 text-blue-600 flex items-center justify-center text-2xl font-black active:scale-90 transition-transform shadow-sm">+</button>
+                                                <div className="flex-1 space-y-6 overflow-y-auto pr-1">
+                                                    {activeAction === 'order_delivery' && actingAs === 'buyer' && (
+                                                        <div className="space-y-6">
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                <button
+                                                                    onClick={() => setIsSelfPickupChoice(true)}
+                                                                    className={cn(
+                                                                        "p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2",
+                                                                        isSelfPickupChoice ? "border-brand-600 bg-brand-50" : "border-slate-100 bg-slate-50 opacity-60"
+                                                                    )}
+                                                                >
+                                                                    <Store className={cn("h-8 w-8", isSelfPickupChoice ? "text-brand-600" : "text-slate-400")} />
+                                                                    <span className={cn("font-black text-[10px] uppercase tracking-widest", isSelfPickupChoice ? "text-brand-600" : "text-slate-500")}>Kuchukua</span>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setIsSelfPickupChoice(false)}
+                                                                    className={cn(
+                                                                        "p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2",
+                                                                        !isSelfPickupChoice ? "border-brand-600 bg-brand-50" : "border-slate-100 bg-slate-50 opacity-60"
+                                                                    )}
+                                                                >
+                                                                    <Truck className={cn("h-8 w-8", !isSelfPickupChoice ? "text-brand-600" : "text-slate-400")} />
+                                                                    <span className={cn("font-black text-[10px] uppercase tracking-widest", !isSelfPickupChoice ? "text-brand-600" : "text-slate-500")}>Kuletewa</span>
+                                                                </button>
                                                             </div>
-                                                        </div>
-                                                        <p className="text-[10px] font-bold text-center text-slate-400 px-4 italic leading-relaxed">Unapobadilisha idadi, jumla ya gharama ya oda itabadilika kulingana na bei ya bidhaa hii.</p>
-                                                    </div>
-                                                )}
 
-                                                {activeAction === 'complaint' && (
-                                                    <div className="space-y-6">
-                                                        {getActiveComplaint() ? (
-                                                            <div className="space-y-6">
-                                                                <div className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-900 border-2 border-brand-100 dark:border-brand-900/50">
-                                                                    <div className="flex items-center gap-3 mb-4">
-                                                                        <div className="h-10 w-10 rounded-2xl bg-red-500 flex items-center justify-center text-white">
-                                                                            <AlertTriangle className="h-6 w-6" />
+                                                            {isSelfPickupChoice ? (
+                                                                <div className="p-6 rounded-[2.5rem] bg-indigo-50 border border-indigo-100 space-y-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                                                            <MapPin className="h-5 w-5" />
                                                                         </div>
                                                                         <div>
-                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hali ya Malalamiko</p>
-                                                                            <h4 className="text-lg font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">INAPELELEZWA</h4>
+                                                                            <h4 className="font-black text-indigo-900 uppercase text-[11px] tracking-widest">Maeneo ya Kuchukua</h4>
+                                                                            <p className="text-[10px] font-bold text-indigo-600/70">Oda yako itachukuliwa dukan mwa muuzaji</p>
                                                                         </div>
                                                                     </div>
-
-                                                                    <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-brand-50 dark:border-brand-900/40">
-                                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Maelezo Yako</p>
-                                                                        <p className="text-sm font-bold text-brand-900 dark:text-brand-100 leading-relaxed italic">"{getActiveComplaint().payload?.reason}"</p>
-                                                                    </div>
-
-                                                                    {actingAs === 'merchant' && (
-                                                                        <div className="grid grid-cols-2 gap-3 mt-6">
-                                                                            <Button onClick={() => submitAction('complaint_resolved', { title: 'MALALAMIKO YAMETATULIWA' })} className="h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[10px] shadow-lg shadow-emerald-600/20">SETI RESOLVED</Button>
-                                                                            <Button onClick={() => submitAction('complaint_appealed', { title: 'RUFAA IMEKATWA (APPEAL)' })} variant="outline" className="h-14 rounded-2xl border-red-200 text-red-600 hover:bg-red-50 font-black uppercase tracking-widest text-[10px]">KATA RUFAA</Button>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-
-                                                                <p className="text-[10px] font-bold text-center text-slate-400 px-6 leading-relaxed uppercase italic">
-                                                                    {actingAs === 'buyer'
-                                                                        ? "Tayari una malalamiko ya oda hii yanayofanyiwa kazi. Huwezi kufungua mapya mpaka yaliyopo yatatuliwe."
-                                                                        : "Kama muuzaji, unaweza kumaliza mgogoro huu kwa kukubaliana na mteja au kukata rufaa kwa platform."}
-                                                                </p>
-                                                            </div>
-                                                        ) : (
-                                                            actingAs === 'buyer' ? (
-                                                                <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
-                                                                    <div className="p-4 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs font-bold leading-relaxed space-y-2">
-                                                                        <p className="font-black uppercase text-[10px] tracking-widest text-red-600 flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> TANBIHI MUHIMU</p>
-                                                                        <p>Malalamiko yatatumwa moja kwa moja kwenye platform ya Takeer kwa ajili ya utatuzi.</p>
-                                                                        <p className="italic underline">Tuma malalamiko ikiwa bidhaa uliyopokea sio yenyewe au kuna dalili zozote za utapeli.</p>
-                                                                    </div>
-                                                                    <div className="space-y-2">
-                                                                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Maelezo Kamili</label>
-                                                                        <textarea className="w-full h-32 rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-red-200 focus:ring-4 ring-red-500/5 transition-all" placeholder="Elezea kwa kifupi kilichotokea..." onChange={e => setActionPayload(p => ({ ...p, reason: e.target.value }))} />
-                                                                    </div>
+                                                                    <Button
+                                                                        onClick={() => setIsShopModalOpen(true)}
+                                                                        variant="outline"
+                                                                        className="w-full h-12 rounded-2xl border-indigo-200 text-indigo-700 font-bold text-[11px] uppercase tracking-widest bg-white hover:bg-indigo-50"
+                                                                    >
+                                                                        Ona Maduka ya Muuzaji
+                                                                    </Button>
                                                                 </div>
                                                             ) : (
-                                                                <div className="p-12 flex flex-col items-center text-center space-y-4">
-                                                                    <div className="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center">
-                                                                        <ShieldCheck className="h-10 w-10 text-slate-200" />
-                                                                    </div>
-                                                                    <div>
-                                                                        <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Hakuna Malalamiko</h4>
-                                                                        <p className="text-[11px] font-bold text-slate-300 mt-1 uppercase">Mteja hajafungua mgogoro wowote kuhusu oda hii.</p>
-                                                                    </div>
-                                                                </div>
-                                                            )
-                                                        )}
-                                                    </div>
-                                                )}
+                                                                <div className="space-y-4">
+                                                                    <div className="p-6 rounded-[2.5rem] bg-emerald-50 border border-emerald-100 space-y-4">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                                                                                <Navigation className="h-5 w-5" />
+                                                                            </div>
+                                                                            <div>
+                                                                                <h4 className="font-black text-emerald-900 uppercase text-[11px] tracking-widest">Eneo la Kufikisha</h4>
+                                                                                <p className="text-[10px] font-bold text-emerald-600/70">Chagua eneo ili tujuwe gharama ya usafiri</p>
+                                                                            </div>
+                                                                        </div>
 
-                                                {activeAction === 'upsell' && (
-                                                    <div className="space-y-6">
-                                                        <div className="relative group mx-4">
-                                                            <Input
-                                                                type="text"
-                                                                placeholder="Tafuta bidhaa za duka hili..."
-                                                                className="h-14 rounded-[1.25rem] pl-12 bg-white border-2 border-slate-100 focus:border-brand-300 outline-none transition-all shadow-sm font-bold"
-                                                                value={searchQuery}
-                                                                onChange={(e) => handleSearchProducts(e.target.value)}
-                                                            />
-                                                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-brand-500 transition-colors" />
-                                                            {isSearching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-brand-500" />}
-                                                        </div>
-
-                                                        {/* Horizontal Scroll List */}
-                                                        <div className="flex gap-4 overflow-x-auto pb-4 px-4 no-scrollbar scroll-smooth">
-                                                            {searchResults.length > 0 ? searchResults.map(p => (
-                                                                <button
-                                                                    key={p.id}
-                                                                    onClick={() => {
-                                                                        setSelectedProduct(p);
-                                                                        setSelectedVariant(p.has_variants && p.variants?.length ? p.variants[0] : null);
-                                                                    }}
-                                                                    className="flex flex-col w-44 shrink-0 p-3 rounded-[2.5rem] bg-white border border-slate-100 hover:border-brand-200 transition-all shadow-sm hover:shadow-md group text-left"
-                                                                >
-                                                                    <div className="h-36 w-full rounded-[2rem] bg-slate-50 flex-shrink-0 overflow-hidden mb-3">
-                                                                        <img src={p.image_url || p.url} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
-                                                                    </div>
-                                                                    <div className="px-1 min-w-0">
-                                                                        <h4 className="font-black text-brand-900 text-xs truncate mb-1">{p.title}</h4>
-                                                                        <span className="text-[10px] font-black text-brand-600 block">{getPriceRange(p)}</span>
-                                                                    </div>
-                                                                </button>
-                                                            )) : searchQuery && !isSearching ? (
-                                                                <div className="w-full py-12 flex flex-col items-center justify-center opacity-40">
-                                                                    <Search className="h-12 w-12 mb-4" />
-                                                                    <p className="font-black uppercase text-xs tracking-widest">Hakuna matokeo</p>
-                                                                </div>
-                                                            ) : null}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {activeAction === 'order_items' && (
-                                                    <div className="space-y-8 px-4 pb-12">
-                                                        <div className="flex flex-col gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-                                                            {[
-                                                                { id: order.product_id, variant_id: order.variant_id, title: order.product?.title, price: order.unit_price, quantity: order.quantity, requested_quantity: order.requested_quantity, unit_snapshot: order.unit_snapshot, image: order.product?.image_url || order.product?.url, isMain: true },
-                                                                ...(order.extra_items || [])
-                                                            ].map((item, idx) => (
-                                                                <div key={`${item.id}-${item.variant_id || idx}`} className="flex items-center gap-4 p-5 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm group">
-                                                                    <div className="h-16 w-16 rounded-2xl bg-slate-50 flex-shrink-0 overflow-hidden">
-                                                                        <img src={item.image} className="h-full w-full object-cover" alt="" />
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <h4 className="font-black text-brand-900 text-sm truncate uppercase tracking-tighter">{item.title}</h4>
-                                                                        <div className="flex items-center justify-between mt-2">
-                                                                            <span className="text-xs font-bold text-brand-600">
-                                                                                {item.isMain ? orderUnitPriceLabel(order) : `TZS ${Number(item.price).toLocaleString()}`}
-                                                                            </span>
-                                                                            {item.isMain && item.unit_snapshot ? (
-                                                                                <span className="rounded-2xl bg-slate-50 border border-slate-100 px-3 py-1.5 text-xs font-black text-brand-900">
-                                                                                    {orderQuantityLabel(order)}
-                                                                                </span>
-                                                                            ) : order.payment_status !== 'paid' ? (
-                                                                                <div className="flex items-center gap-3 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-100">
-                                                                                    <button
-                                                                                        onClick={() => {
-                                                                                            if (item.quantity > 1) {
-                                                                                                submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.quantity - 1, title: `PUNGUZA ${item.title.toUpperCase()}` });
-                                                                                            } else {
-                                                                                                submitAction('remove_item', { id: item.id, variant_id: item.variant_id, title: `ONDOA ${item.title.toUpperCase()}` });
-                                                                                            }
-                                                                                        }}
-                                                                                        className="text-slate-400 hover:text-brand-600 transition-colors"
-                                                                                    >
-                                                                                        <X className="h-3.5 w-3.5" />
-                                                                                    </button>
-                                                                                    <span className="text-xs font-black text-brand-900">
-                                                                                        {item.isMain ? orderQuantityLabel(order) : item.quantity}
-                                                                                    </span>
-                                                                                    <button
-                                                                                        onClick={() => submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.quantity + 1, title: `ONGEZA ${item.title.toUpperCase()}` })}
-                                                                                        className="text-slate-400 hover:text-brand-600 transition-colors"
-                                                                                    >
-                                                                                        <Plus className="h-3.5 w-3.5" />
-                                                                                    </button>
+                                                                        <button
+                                                                            onClick={() => setIsAddressPickerOpen(true)}
+                                                                            className="w-full p-4 rounded-2xl bg-white border border-emerald-200 text-left hover:border-emerald-400 transition-colors group"
+                                                                        >
+                                                                            {(physicalAddress || order?.delivery?.physical_address) ? (
+                                                                                <div className="flex items-center justify-between">
+                                                                                    <span className="text-xs font-bold text-emerald-900 line-clamp-1">{physicalAddress || order?.delivery?.physical_address}</span>
+                                                                                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 ml-2" />
                                                                                 </div>
                                                                             ) : (
-                                                                                <span className="text-xs font-black text-slate-400">
-                                                                                    {item.isMain ? orderQuantityLabel(order) : `Qty: ${item.quantity}`}
-                                                                                </span>
+                                                                                <div className="flex items-center justify-between">
+                                                                                    <span className="text-xs font-bold text-emerald-600/50 uppercase tracking-widest">Chagua kwenye Ramani (Zone Matching)</span>
+                                                                                    <ChevronRight className="h-4 w-4 text-emerald-300 group-hover:translate-x-1 transition-transform" />
+                                                                                </div>
                                                                             )}
+                                                                        </button>
+
+                                                                        <div className="space-y-2">
+                                                                            <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 ml-1">Address ya Kufikisha (Manual)</label>
+                                                                            <textarea
+                                                                                value={physicalAddress || order?.delivery?.physical_address || ''}
+                                                                                onChange={e => setPhysicalAddress(e.target.value)}
+                                                                                placeholder="Mfano: Mtaa wa Uhuru, Jengo la China Plaza, Room 402..."
+                                                                                className="w-full min-h-[80px] p-4 rounded-2xl bg-white border border-emerald-100 focus:border-emerald-400 outline-none text-xs font-bold text-emerald-900 resize-none transition-colors"
+                                                                            />
+                                                                            <p className="text-[9px] font-bold text-emerald-600/60 leading-relaxed italic px-1">
+                                                                                * Tumia sehemu hii kuweka maelezo ya ziada au address ya wakala (freight agent).
+                                                                            </p>
                                                                         </div>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
 
-                                                        {/* Summary Section */}
-                                                        <div className="p-6 rounded-[2.5rem] bg-slate-50 border border-slate-200/50 space-y-4 shadow-inner">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Subtotal</span>
-                                                                <span className="text-xs font-black text-brand-900">TZS {Number(order.total_paid - (order.shipping_fee || 0) + (Number(order.discount_amount) || 0)).toLocaleString()}</span>
-                                                            </div>
-                                                            {Number(order.shipping_fee) > 0 && (
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <Truck className="h-3 w-3 text-emerald-500" />
-                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Usafirishaji</span>
+                                                                        {selectedZoneId && (
+                                                                            <div className="pt-2 flex items-center justify-between border-t border-emerald-100">
+                                                                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Gharama ya Usafiri</span>
+                                                                                <span className="text-sm font-black text-emerald-900">
+                                                                                    TZS {Number(shippingZones.find(z => String(z.id) === String(selectedZoneId))?.flat_rate_fee || 0).toLocaleString()}
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
-                                                                    <span className="text-xs font-black text-emerald-600">+ TZS {Number(order.shipping_fee).toLocaleString()}</span>
                                                                 </div>
                                                             )}
+
+                                                            <Button
+                                                                onClick={() => {
+                                                                    const activeZone = shippingZones.find(z => String(z.id) === String(selectedZoneId));
+                                                                    submitAction('update_delivery', {
+                                                                        delivery_type: isSelfPickupChoice ? 'self_pickup' : 'shipping',
+                                                                        delivery_zone_id: isSelfPickupChoice ? null : selectedZoneId,
+                                                                        shipping_fee: isSelfPickupChoice ? 0 : (activeZone?.flat_rate_fee || 0),
+                                                                        physical_address: physicalAddress || order?.delivery?.physical_address,
+                                                                        latitude: customerLat || order?.delivery?.latitude,
+                                                                        longitude: customerLng || order?.delivery?.longitude,
+                                                                        shipping_hotspot_id: selectedHotspot?.id,
+                                                                        title: isSelfPickupChoice ? 'NIMECHAGUA PICKUP' : `NIMECHAGUA DELIVERY: ${physicalAddress || order?.delivery?.physical_address}`
+                                                                    });
+                                                                }}
+                                                                disabled={!isSelfPickupChoice && !selectedZoneId && !physicalAddress && !order?.delivery?.physical_address}
+                                                                className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-[0.2em] text-xs shadow-xl shadow-brand-600/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                                                            >
+                                                                Thibitisha Usafirishaji
+                                                            </Button>
+                                                        </div>
+                                                    )}
+
+                                                    {activeAction === 'shipping_cost' && actingAs === 'merchant' && (
+                                                        <div className="p-4 rounded-2xl bg-brand-50 border border-brand-100 space-y-3">
+                                                            <p className="text-[10px] font-black uppercase text-brand-600 tracking-widest flex items-center gap-2"><MapPin className="h-3 w-3" /> Taarifa za Usafirishaji</p>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs font-black text-brand-900">{order?.delivery?.physical_address || (order?.delivery?.latitude ? `${order.delivery.latitude}, ${order.delivery.longitude}` : 'Address Haijawekwa')}</p>
+                                                                {(() => {
+                                                                    const closest = findClosestLocation();
+                                                                    return closest ? (
+                                                                        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
+                                                                            <Navigation className="h-3 w-3" />
+                                                                            <span>{closest.distance}km kutoka duka lako la {closest.name}</span>
+                                                                        </div>
+                                                                    ) : null;
+                                                                })()}
+                                                            </div>
+                                                            {order?.delivery?.latitude && (
+                                                                <a href={`https://www.google.com/maps/search/?api=1&query=${order.delivery.latitude},${order.delivery.longitude}`} target="_blank" className="block text-center py-2 bg-white rounded-xl border border-brand-200 text-[10px] font-black text-brand-700 hover:bg-brand-50 transition-colors">FUNGUA RAMANI (MAPS)</a>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {activeAction === 'discount' && (
+                                                        <div className="space-y-6">
                                                             {Number(order.discount_amount) > 0 && (
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <Tag className="h-3 w-3 text-amber-500" />
-                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Punguzo</span>
-                                                                    </div>
-                                                                    <span className="text-xs font-black text-amber-600">- TZS {Number(order.discount_amount).toLocaleString()}</span>
+                                                                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                    <p className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-2 tracking-widest">Punguzo la Sasa</p>
+                                                                    {showDiscountResetConfirm ? (
+                                                                        <div className="p-4 rounded-2xl bg-red-50 border-2 border-red-100 flex items-center justify-between gap-4 animate-in zoom-in-95 duration-200">
+                                                                            <p className="text-[10px] font-black text-red-900 uppercase">Futa punguzo hili?</p>
+                                                                            <div className="flex gap-2">
+                                                                                <Button onClick={() => { submitAction('discount', { mode: 'reset', title: 'FUTA PUNGUZO' }); setShowDiscountResetConfirm(false); }} className="h-8 px-4 rounded-xl bg-red-600 text-white font-black text-[10px] uppercase">NDIYO</Button>
+                                                                                <Button onClick={() => setShowDiscountResetConfirm(false)} variant="ghost" className="h-8 px-4 rounded-xl font-black text-[10px] uppercase">RUDI</Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="p-5 rounded-[2rem] bg-amber-50 border border-amber-100 flex items-center justify-between shadow-sm group">
+                                                                            <div>
+                                                                                <p className="text-xl font-black text-amber-600">TZS {Number(order.discount_amount || 0).toLocaleString()}</p>
+                                                                            </div>
+                                                                            <button
+                                                                                onClick={() => setShowDiscountResetConfirm(true)}
+                                                                                className="h-10 w-10 rounded-xl bg-white border border-amber-200 text-amber-400 flex items-center justify-center hover:bg-red-500 hover:border-red-600 hover:text-white transition-all active:scale-95 shadow-sm"
+                                                                            >
+                                                                                <X className="h-5 w-5" />
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             )}
-                                                            <div className="h-px bg-slate-200" />
-                                                            <div className="flex items-center justify-between pt-2">
-                                                                <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla Kamili</span>
-                                                                <span className="text-2xl font-black text-brand-900">TZS {Number(order.total_paid).toLocaleString()}</span>
+
+                                                            <div className="space-y-3">
+                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Ongeza Punguzo</label>
+                                                                <div className="relative group">
+                                                                    <Input
+                                                                        type="number"
+                                                                        value={actionPayload.amount || ''}
+                                                                        onChange={e => setActionPayload(p => ({ ...p, amount: Number(e.target.value) }))}
+                                                                        className="h-16 rounded-2xl text-2xl font-black bg-slate-50 border-2 border-transparent transition-all focus:bg-white focus:border-amber-200 outline-none pl-6 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        placeholder="0.00"
+                                                                    />
+                                                                    <div className="absolute right-6 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-amber-300 transition-colors">TZS</div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="pt-4">
+                                                                <Button
+                                                                    onClick={() => {
+                                                                        submitAction('discount', { ...actionPayload, mode: 'add', title: `WEKA PUNGUZO TZS ${Number(actionPayload.amount).toLocaleString()}` });
+                                                                        setActionPayload({ ...actionPayload, amount: '' });
+                                                                    }}
+                                                                    disabled={!actionPayload.amount || actionPayload.amount <= 0}
+                                                                    className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-600/30 transition-all active:scale-[0.98]"
+                                                                >
+                                                                    WEKA PUNGUZO
+                                                                </Button>
                                                             </div>
                                                         </div>
+                                                    )}
 
-                                                        {order.payment_status !== 'paid' && actingAs === 'buyer' && (
-                                                            <div className="text-center">
-                                                                {showCancelConfirm ? (
-                                                                    <div className="p-6 rounded-[2rem] bg-red-50 border-2 border-red-100 animate-in zoom-in-95 duration-200">
-                                                                        <p className="text-xs font-black text-red-900 mb-4">Je, una uhakika unataka kughairi oda hii? Haiwezi kufunguliwa tena.</p>
-                                                                        <div className="grid grid-cols-2 gap-3">
-                                                                            <Button onClick={() => submitAction('cancel_order', { title: 'GHAIRI ODA' })} variant="destructive" className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px]">NDIYO, GHAIRI</Button>
-                                                                            <Button onClick={() => setShowCancelConfirm(false)} variant="ghost" className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px]">HAPANA, RUDI</Button>
+                                                    {activeAction === 'shipping_cost' && (
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Ushaji wa TZS Gani?</label>
+                                                            <div className="relative group">
+                                                                <Input type="number" value={actionPayload.amount} onChange={e => setActionPayload(p => ({ ...p, amount: Number(e.target.value) }))} className="h-16 rounded-2xl text-2xl font-black bg-slate-50 border-2 border-transparent transition-all focus:bg-white focus:border-brand-200 outline-none pl-6 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="0.00" />
+                                                                <div className="absolute right-6 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-brand-200 transition-colors">TZS</div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {activeAction === 'quantity' && (
+                                                        <div className="space-y-4">
+                                                            <div className="p-6 rounded-3xl bg-blue-50/50 border border-blue-100 flex flex-col items-center gap-4">
+                                                                <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Idadi ya {order?.product?.title || 'Bidhaa'}</p>
+                                                                <div className="flex items-center gap-6">
+                                                                    <button onClick={() => setActionPayload(p => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))} className="h-12 w-12 rounded-2xl bg-white border-2 border-blue-100 text-blue-600 flex items-center justify-center text-2xl font-black active:scale-90 transition-transform shadow-sm">-</button>
+                                                                    <span className="text-4xl font-black text-brand-900">{actionPayload.quantity}</span>
+                                                                    <button onClick={() => setActionPayload(p => ({ ...p, quantity: p.quantity + 1 }))} className="h-12 w-12 rounded-2xl bg-white border-2 border-blue-100 text-blue-600 flex items-center justify-center text-2xl font-black active:scale-90 transition-transform shadow-sm">+</button>
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-[10px] font-bold text-center text-slate-400 px-4 italic leading-relaxed">Unapobadilisha idadi, jumla ya gharama ya oda itabadilika kulingana na bei ya bidhaa hii.</p>
+                                                        </div>
+                                                    )}
+
+                                                    {activeAction === 'complaint' && (
+                                                        <div className="space-y-6">
+                                                            {getActiveComplaint() ? (
+                                                                <div className="space-y-6">
+                                                                    <div className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-900 border-2 border-brand-100 dark:border-brand-900/50">
+                                                                        <div className="flex items-center gap-3 mb-4">
+                                                                            <div className="h-10 w-10 rounded-2xl bg-red-500 flex items-center justify-center text-white">
+                                                                                <AlertTriangle className="h-6 w-6" />
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hali ya Malalamiko</p>
+                                                                                <h4 className="text-lg font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">INAPELELEZWA</h4>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-brand-50 dark:border-brand-900/40">
+                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Maelezo Yako</p>
+                                                                            <p className="text-sm font-bold text-brand-900 dark:text-brand-100 leading-relaxed italic">"{getActiveComplaint().payload?.reason}"</p>
+                                                                        </div>
+
+                                                                        {actingAs === 'merchant' && (
+                                                                            <div className="grid grid-cols-2 gap-3 mt-6">
+                                                                                <Button onClick={() => submitAction('complaint_resolved', { title: 'MALALAMIKO YAMETATULIWA' })} className="h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[10px] shadow-lg shadow-emerald-600/20">SETI RESOLVED</Button>
+                                                                                <Button onClick={() => submitAction('complaint_appealed', { title: 'RUFAA IMEKATWA (APPEAL)' })} variant="outline" className="h-14 rounded-2xl border-red-200 text-red-600 hover:bg-red-50 font-black uppercase tracking-widest text-[10px]">KATA RUFAA</Button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+
+                                                                    <p className="text-[10px] font-bold text-center text-slate-400 px-6 leading-relaxed uppercase italic">
+                                                                        {actingAs === 'buyer'
+                                                                            ? "Tayari una malalamiko ya oda hii yanayofanyiwa kazi. Huwezi kufungua mapya mpaka yaliyopo yatatuliwe."
+                                                                            : "Kama muuzaji, unaweza kumaliza mgogoro huu kwa kukubaliana na mteja au kukata rufaa kwa platform."}
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                actingAs === 'buyer' ? (
+                                                                    <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                                                                        <div className="p-4 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs font-bold leading-relaxed space-y-2">
+                                                                            <p className="font-black uppercase text-[10px] tracking-widest text-red-600 flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> TANBIHI MUHIMU</p>
+                                                                            <p>Malalamiko yatatumwa moja kwa moja kwenye platform ya Takeer kwa ajili ya utatuzi.</p>
+                                                                            <p className="italic underline">Tuma malalamiko ikiwa bidhaa uliyopokea sio yenyewe au kuna dalili zozote za utapeli.</p>
+                                                                        </div>
+                                                                        <div className="space-y-2">
+                                                                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Maelezo Kamili</label>
+                                                                            <textarea className="w-full h-32 rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-red-200 focus:ring-4 ring-red-500/5 transition-all" placeholder="Elezea kwa kifupi kilichotokea..." onChange={e => setActionPayload(p => ({ ...p, reason: e.target.value }))} />
                                                                         </div>
                                                                     </div>
                                                                 ) : (
-                                                                    <button
-                                                                        onClick={() => setShowCancelConfirm(true)}
-                                                                        className="text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition-colors underline underline-offset-4"
-                                                                    >
-                                                                        GHAIRI ODA HII
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {activeAction === 'review' && (
-                                                    <div className="space-y-6">
-                                                        {orderStatus !== 'delivered' && orderStatus !== 'completed' ? (
-                                                            <div className="p-8 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center text-center">
-                                                                <X className="h-10 w-10 text-slate-300 mb-4" />
-                                                                <p className="text-sm font-black text-slate-500 uppercase tracking-tight mb-2">Hauwezi kutoa maoni sasa</p>
-                                                                <p className="text-[10px] font-bold text-slate-400 leading-relaxed uppercase">Tafadhali subiri mpaka upokee bidhaa yako ndipo utoe maoni kuhusu huduma hii.</p>
-                                                            </div>
-                                                        ) : (
-                                                            <>
-                                                                <div className="flex flex-col items-center justify-center p-6 bg-amber-50/50 rounded-3xl border border-amber-100 group">
-                                                                    <p className="text-[10px] font-black uppercase text-amber-600 mb-4 tracking-widest">Gusa nyota ili upige kura</p>
-                                                                    <div className="flex items-center gap-2">
-                                                                        {[1, 2, 3, 4, 5].map(s => (
-                                                                            <button key={s} onClick={() => setActionPayload(p => ({ ...p, stars: s }))} className="p-1 transition-transform hover:scale-125 active:scale-90"><Star className={cn("h-10 w-10 transition-colors", s <= (actionPayload.stars || 5) ? "fill-amber-500 text-amber-500" : "text-amber-200")} /></button>
-                                                                        ))}
+                                                                    <div className="p-12 flex flex-col items-center text-center space-y-4">
+                                                                        <div className="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center">
+                                                                            <ShieldCheck className="h-10 w-10 text-slate-200" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Hakuna Malalamiko</h4>
+                                                                            <p className="text-[11px] font-bold text-slate-300 mt-1 uppercase">Mteja hajafungua mgogoro wowote kuhusu oda hii.</p>
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                                <div className="space-y-2">
-                                                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Maoni Yako</label>
-                                                                    <textarea className="w-full h-24 rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-amber-200 focus:ring-4 ring-amber-500/5 transition-all" placeholder="Toa maoni yako hapa..." onChange={e => setActionPayload(p => ({ ...p, comment: e.target.value }))} />
-                                                                </div>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {activeAction === 'shipping_proof' && (
-                                                    <div className="space-y-4">
-                                                        <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Vitu vya Kupakia</p>
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            <button 
-                                                                onClick={() => mediaRef.current?.click()}
-                                                                className="group flex flex-col items-center justify-center gap-3 h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
-                                                            >
-                                                                <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 group-hover:scale-110 transition-transform"><ImageIcon className="h-6 w-6" /></div>
-                                                                <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Waybill Receipt</span>
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => mediaRef.current?.click()}
-                                                                className="group flex flex-col items-center justify-center gap-3 h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
-                                                            >
-                                                                <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 group-hover:scale-110 transition-transform"><Video className="h-6 w-6" /></div>
-                                                                <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Packing Video</span>
-                                                            </button>
+                                                                )
+                                                            )}
                                                         </div>
-                                                        <p className="text-[9px] font-bold text-center text-slate-400 uppercase">Hii video itasaidia kama mteja akifungua mgogoro (Dispute)</p>
-                                                    </div>
-                                                )}
+                                                    )}
 
-                                                {activeAction === 'unboxing_video' && (
-                                                    <div className="space-y-4">
-                                                        <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Video ya Unboxing</p>
-                                                        <button 
-                                                            onClick={() => mediaRef.current?.click()}
-                                                            className="group flex flex-col items-center justify-center gap-3 w-full h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
+                                                    {activeAction === 'upsell' && (
+                                                        <div className="space-y-6">
+                                                            <div className="relative group mx-4">
+                                                                <Input
+                                                                    type="text"
+                                                                    placeholder="Tafuta bidhaa za duka hili..."
+                                                                    className="h-14 rounded-[1.25rem] pl-12 bg-white border-2 border-slate-100 focus:border-brand-300 outline-none transition-all shadow-sm font-bold"
+                                                                    value={searchQuery}
+                                                                    onChange={(e) => handleSearchProducts(e.target.value)}
+                                                                />
+                                                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-brand-500 transition-colors" />
+                                                                {isSearching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 animate-spin text-brand-500" />}
+                                                            </div>
+
+                                                            {/* Horizontal Scroll List */}
+                                                            <div className="flex gap-4 overflow-x-auto pb-4 px-4 no-scrollbar scroll-smooth">
+                                                                {searchResults.length > 0 ? searchResults.map(p => (
+                                                                    <button
+                                                                        key={p.id}
+                                                                        onClick={() => {
+                                                                            setSelectedProduct(p);
+                                                                            setSelectedVariant(p.has_variants && p.variants?.length ? p.variants[0] : null);
+                                                                        }}
+                                                                        className="flex flex-col w-44 shrink-0 p-3 rounded-[2.5rem] bg-white border border-slate-100 hover:border-brand-200 transition-all shadow-sm hover:shadow-md group text-left"
+                                                                    >
+                                                                        <div className="h-36 w-full rounded-[2rem] bg-slate-50 flex-shrink-0 overflow-hidden mb-3">
+                                                                            <img src={p.image_url || p.url} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
+                                                                        </div>
+                                                                        <div className="px-1 min-w-0">
+                                                                            <h4 className="font-black text-brand-900 text-xs truncate mb-1">{p.title}</h4>
+                                                                            <span className="text-[10px] font-black text-brand-600 block">{getPriceRange(p)}</span>
+                                                                        </div>
+                                                                    </button>
+                                                                )) : searchQuery && !isSearching ? (
+                                                                    <div className="w-full py-12 flex flex-col items-center justify-center opacity-40">
+                                                                        <Search className="h-12 w-12 mb-4" />
+                                                                        <p className="font-black uppercase text-xs tracking-widest">Hakuna matokeo</p>
+                                                                    </div>
+                                                                ) : null}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {activeAction === 'order_items' && (
+                                                        <div className="space-y-8 px-4 pb-12">
+                                                            <div className="flex flex-col gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                                                                {[
+                                                                    { id: order.product_id, variant_id: order.variant_id, title: order.product?.title, price: order.unit_price, quantity: order.quantity, requested_quantity: order.requested_quantity, unit_snapshot: order.unit_snapshot, image: order.product?.image_url || order.product?.url, type: order.product?.type, product_type: order.product?.type, digital_delivery_type: order.product?.digital_delivery_type, isMain: true, isExtra: false },
+                                                                    ...(order.extra_items || []).map((item) => ({ ...item, isMain: false, isExtra: true }))
+                                                                ].map((item, idx) => {
+                                                                    const isPhysicalItem = isPhysicalDealItem(item, order);
+                                                                    const quantityState = dealItemQuantityState(item, order);
+                                                                    const quantityNumber = item.isMain ? quantityState.quantityValue : Number(item.quantity || 1);
+                                                                    const canAdjustQuantity = canCancelBeforePayment;
+                                                                    const canShowQuantityControls = isPhysicalItem && canAdjustQuantity;
+
+                                                                    return (
+                                                                        <div key={`${item.id}-${item.variant_id || idx}`} className="flex items-center gap-4 p-5 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm group">
+                                                                            <div className="h-16 w-16 rounded-2xl bg-slate-50 flex-shrink-0 overflow-hidden">
+                                                                                <img src={item.image} className="h-full w-full object-cover" alt="" />
+                                                                            </div>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <h4 className="font-black text-brand-900 text-sm truncate uppercase tracking-tighter">{item.title}</h4>
+                                                                                <div className="flex items-center justify-between mt-2">
+                                                                                    <span className="text-xs font-bold text-brand-600">
+                                                                                        {item.isMain ? orderUnitPriceLabel(order) : `TZS ${Number(item.price).toLocaleString()}`}
+                                                                                    </span>
+                                                                                    {canShowQuantityControls ? (
+                                                                                        <div className="flex items-center gap-3 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-100">
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => {
+                                                                                                    if (item.isMain) {
+                                                                                                        if (quantityState.canDecrease) {
+                                                                                                            submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: quantityState.decreaseQuantity, product_title: item.title, title: `Punguza ${item.title}` });
+                                                                                                        }
+                                                                                                    } else if (item.quantity > 1) {
+                                                                                                        submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.quantity - 1, product_title: item.title, title: `Punguza ${item.title}` });
+                                                                                                    } else {
+                                                                                                        submitAction('remove_item', { id: item.id, variant_id: item.variant_id, product_title: item.title, title: `Ondoa ${item.title}` });
+                                                                                                    }
+                                                                                                }}
+                                                                                                disabled={item.isMain && !quantityState.canDecrease}
+                                                                                                className="text-slate-400 hover:text-brand-600 transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+                                                                                            >
+                                                                                                <Minus className="h-3.5 w-3.5" />
+                                                                                            </button>
+                                                                                            <span className="text-xs font-black text-brand-900">
+                                                                                                {Number(quantityNumber).toLocaleString()}
+                                                                                            </span>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.isMain ? quantityState.increaseQuantity : item.quantity + 1, product_title: item.title, title: `Ongeza ${item.title}` })}
+                                                                                                className="text-slate-400 hover:text-brand-600 transition-colors"
+                                                                                            >
+                                                                                                <Plus className="h-3.5 w-3.5" />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    ) : canAdjustQuantity && !item.isMain ? (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => submitAction('remove_item', { id: item.id, variant_id: item.variant_id, product_title: item.title, title: `Ondoa ${item.title}` })}
+                                                                                            className="flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 text-slate-400 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+                                                                                            aria-label="Remove item"
+                                                                                        >
+                                                                                            <X className="h-4 w-4" />
+                                                                                        </button>
+                                                                                    ) : (
+                                                                                        isPhysicalItem && <span className="text-xs font-black text-slate-400">
+                                                                                            {item.isMain ? orderQuantityLabel(order) : `Qty: ${item.quantity}`}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+
+                                                            {/* Summary Section */}
+                                                            <div className="p-6 rounded-[2.5rem] bg-slate-50 border border-slate-200/50 space-y-4 shadow-inner">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Subtotal</span>
+                                                                    <span className="text-xs font-black text-brand-900">TZS {Number(order.total_paid - (order.shipping_fee || 0) + (Number(order.discount_amount) || 0)).toLocaleString()}</span>
+                                                                </div>
+                                                                {Number(order.shipping_fee) > 0 && (
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Truck className="h-3 w-3 text-emerald-500" />
+                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Usafirishaji</span>
+                                                                        </div>
+                                                                        <span className="text-xs font-black text-emerald-600">+ TZS {Number(order.shipping_fee).toLocaleString()}</span>
+                                                                    </div>
+                                                                )}
+                                                                {Number(order.discount_amount) > 0 && (
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Tag className="h-3 w-3 text-amber-500" />
+                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Punguzo</span>
+                                                                        </div>
+                                                                        <span className="text-xs font-black text-amber-600">- TZS {Number(order.discount_amount).toLocaleString()}</span>
+                                                                    </div>
+                                                                )}
+                                                                <div className="h-px bg-slate-200" />
+                                                                <div className="flex items-center justify-between pt-2">
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla Kamili</span>
+                                                                    <span className="text-2xl font-black text-brand-900">TZS {Number(order.total_paid).toLocaleString()}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {order.payment_status !== 'paid' && actingAs === 'buyer' && (
+                                                                <div className="text-center">
+                                                                    {showCancelConfirm ? (
+                                                                        <div className="p-6 rounded-[2rem] bg-red-50 border-2 border-red-100 animate-in zoom-in-95 duration-200">
+                                                                            <p className="text-xs font-black text-red-900 mb-4">Je, una uhakika unataka kughairi oda hii? Haiwezi kufunguliwa tena.</p>
+                                                                            <div className="grid grid-cols-2 gap-3">
+                                                                                <Button onClick={() => submitAction('cancel_order', { title: 'GHAIRI ODA' })} variant="destructive" className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px]">NDIYO, GHAIRI</Button>
+                                                                                <Button onClick={() => setShowCancelConfirm(false)} variant="ghost" className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px]">HAPANA, RUDI</Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => setShowCancelConfirm(true)}
+                                                                            className="text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition-colors underline underline-offset-4"
+                                                                        >
+                                                                            GHAIRI ODA HII
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {activeAction === 'review' && (
+                                                        <div className="space-y-6">
+                                                            {orderStatus !== 'delivered' && orderStatus !== 'completed' ? (
+                                                                <div className="p-8 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center text-center">
+                                                                    <X className="h-10 w-10 text-slate-300 mb-4" />
+                                                                    <p className="text-sm font-black text-slate-500 uppercase tracking-tight mb-2">Hauwezi kutoa maoni sasa</p>
+                                                                    <p className="text-[10px] font-bold text-slate-400 leading-relaxed uppercase">Tafadhali subiri mpaka upokee bidhaa yako ndipo utoe maoni kuhusu huduma hii.</p>
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <div className="flex flex-col items-center justify-center p-6 bg-amber-50/50 rounded-3xl border border-amber-100 group">
+                                                                        <p className="text-[10px] font-black uppercase text-amber-600 mb-4 tracking-widest">Gusa nyota ili upige kura</p>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {[1, 2, 3, 4, 5].map(s => (
+                                                                                <button key={s} onClick={() => setActionPayload(p => ({ ...p, stars: s }))} className="p-1 transition-transform hover:scale-125 active:scale-90"><Star className={cn("h-10 w-10 transition-colors", s <= (actionPayload.stars || 5) ? "fill-amber-500 text-amber-500" : "text-amber-200")} /></button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="space-y-2">
+                                                                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Maoni Yako</label>
+                                                                        <textarea className="w-full h-24 rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-amber-200 focus:ring-4 ring-amber-500/5 transition-all" placeholder="Toa maoni yako hapa..." onChange={e => setActionPayload(p => ({ ...p, comment: e.target.value }))} />
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {activeAction === 'shipping_proof' && (
+                                                        <div className="space-y-4">
+                                                            <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Vitu vya Kupakia</p>
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                <button
+                                                                    onClick={() => mediaRef.current?.click()}
+                                                                    className="group flex flex-col items-center justify-center gap-3 h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
+                                                                >
+                                                                    <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 group-hover:scale-110 transition-transform"><ImageIcon className="h-6 w-6" /></div>
+                                                                    <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Waybill Receipt</span>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => mediaRef.current?.click()}
+                                                                    className="group flex flex-col items-center justify-center gap-3 h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
+                                                                >
+                                                                    <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 group-hover:scale-110 transition-transform"><Video className="h-6 w-6" /></div>
+                                                                    <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Packing Video</span>
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-[9px] font-bold text-center text-slate-400 uppercase">Hii video itasaidia kama mteja akifungua mgogoro (Dispute)</p>
+                                                        </div>
+                                                    )}
+
+                                                    {activeAction === 'unboxing_video' && (
+                                                        <div className="space-y-4">
+                                                            <p className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Video ya Unboxing</p>
+                                                            <button
+                                                                onClick={() => mediaRef.current?.click()}
+                                                                className="group flex flex-col items-center justify-center gap-3 w-full h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
+                                                            >
+                                                                <div className="p-3 rounded-2xl bg-indigo-50 text-indigo-600 group-hover:scale-110 transition-transform"><Video className="h-6 w-6" /></div>
+                                                                <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Pakia Video ya Unboxing</span>
+                                                            </button>
+                                                            <p className="text-[9px] font-bold text-center text-slate-400 uppercase leading-relaxed px-6">Hii video ni muhimu kama utahitaji kurejeshewa pesa endapo bidhaa imekuja na tatizo au imevunjika.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="pt-6 pb-6 mt-auto">
+                                                    {activeAction !== 'upsell' && activeAction !== 'order_items' && activeAction !== 'discount' && activeAction !== 'order_delivery' && (
+                                                        <Button
+                                                            className="w-full h-16 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-600/30 transition-all active:scale-[0.98]"
+                                                            disabled={
+                                                                (activeAction === 'review' && (orderStatus !== 'delivered' && orderStatus !== 'completed')) ||
+                                                                (activeAction === 'complaint' && (getActiveComplaint() || (actingAs === 'merchant')))
+                                                            }
+                                                            onClick={() => submitAction(activeAction, { ...actionPayload, title: `SETI ${activeAction.toUpperCase()}`, userName: auth.user.name })}
                                                         >
-                                                            <div className="p-3 rounded-2xl bg-indigo-50 text-indigo-600 group-hover:scale-110 transition-transform"><Video className="h-6 w-6" /></div>
-                                                            <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Pakia Video ya Unboxing</span>
-                                                        </button>
-                                                        <p className="text-[9px] font-bold text-center text-slate-400 uppercase leading-relaxed px-6">Hii video ni muhimu kama utahitaji kurejeshewa pesa endapo bidhaa imekuja na tatizo au imevunjika.</p>
-                                                    </div>
-                                                )}
+                                                            SETI {activeAction.toUpperCase()}
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
+                                        )}
+                                    </div>
+                                </DrawerContent>
+                            </Drawer>
 
-                                            <div className="pt-6 pb-6 mt-auto">
-                                                {activeAction !== 'upsell' && activeAction !== 'order_items' && activeAction !== 'discount' && activeAction !== 'order_delivery' && (
-                                                    <Button
-                                                        className="w-full h-16 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-600/30 transition-all active:scale-[0.98]"
-                                                        disabled={
-                                                            (activeAction === 'review' && (orderStatus !== 'delivered' && orderStatus !== 'completed')) ||
-                                                            (activeAction === 'complaint' && (getActiveComplaint() || (actingAs === 'merchant')))
-                                                        }
-                                                        onClick={() => submitAction(activeAction, { ...actionPayload, title: `SETI ${activeAction.toUpperCase()}`, userName: auth.user.name })}
-                                                    >
-                                                        SETI {activeAction.toUpperCase()}
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </DrawerContent>
-                        </Drawer>
+                            <div className="relative flex-1">
+                                <Input type="text" placeholder="Andika ujumbe wako hapa..." value={input} onChange={(e) => setInput(e.target.value)} className="h-12 pl-4 pr-10 rounded-full border-brand-100 focus-visible:ring-brand-500 shadow-sm" />
+                                <input
+                                    type="file"
+                                    ref={mediaRef}
+                                    className="absolute inset-0 opacity-0 cursor-pointer pointer-events-none w-0 h-0"
+                                    accept="image/*,video/*"
+                                    onChange={handleMediaUpload}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => mediaRef.current?.click()}
+                                    disabled={isUploading}
+                                    title="Ambatanisha picha au video"
+                                    className="absolute right-1 top-1 h-10 w-10 text-brand-400 hover:text-brand-600 hover:bg-transparent"
+                                >
+                                    {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-5 w-5" />}
+                                </Button>
+                            </div>
 
-                        <div className="relative flex-1">
-                            <Input type="text" placeholder="Andika ujumbe wako hapa..." value={input} onChange={(e) => setInput(e.target.value)} className="h-12 pl-4 pr-10 rounded-full border-brand-100 focus-visible:ring-brand-500 shadow-sm" />
-                            <input 
-                                type="file" 
-                                ref={mediaRef} 
-                                className="absolute inset-0 opacity-0 cursor-pointer pointer-events-none w-0 h-0" 
-                                accept="image/*,video/*" 
-                                onChange={handleMediaUpload} 
-                            />
-                            <Button 
-                                type="button" 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={() => mediaRef.current?.click()}
-                                disabled={isUploading}
-                                title="Ambatanisha picha au video"
-                                className="absolute right-1 top-1 h-10 w-10 text-brand-400 hover:text-brand-600 hover:bg-transparent"
-                            >
-                                {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-5 w-5" />}
+                            <Button type="submit" size="icon" disabled={!input.trim() || isLoading} className="shrink-0 h-12 w-12 rounded-full bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-600/20">
+                                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                             </Button>
-                        </div>
-
-                        <Button type="submit" size="icon" disabled={!input.trim() || isLoading} className="shrink-0 h-12 w-12 rounded-full bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-600/20">
-                            {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                        </Button>
-                    </form>
+                        </form>
                     )}
                 </div>
 
-                <ShopLocationsModal 
-                    isOpen={isShopModalOpen} 
-                    onOpenChange={setIsShopModalOpen} 
+                <ShopLocationsModal
+                    isOpen={isShopModalOpen}
+                    onOpenChange={setIsShopModalOpen}
                     locations={order?.merchant?.locations || []}
                     productName={order?.product?.title}
                 />
 
-                <AddressPickerModal 
+                <AddressPickerModal
                     isOpen={isAddressPickerOpen}
                     onOpenChange={setIsAddressPickerOpen}
                     onSave={handleAddressSaved}
@@ -2280,224 +2809,262 @@ export default function Chat({
 
                 {/* Product Chat Detail Modal */}
                 <Drawer open={!!selectedProduct} onOpenChange={() => setSelectedProduct(null)}>
-                    <DrawerContent className="max-h-[85vh] rounded-t-[3rem]">
-                        <div className="mx-auto w-full max-w-lg">
-                            <div className="overflow-y-auto no-scrollbar pb-12">
-                                {/* Image Gallery Simulation */}
-                                <div className="p-4">
-                                    <div className="aspect-square rounded-[3rem] bg-slate-50 overflow-hidden relative group">
-                                        <img src={selectedProduct?.image_url || selectedProduct?.url} className="w-full h-full object-cover" alt="" />
-                                        <button onClick={() => setSelectedProduct(null)} className="absolute top-6 right-6 h-12 w-12 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white hover:bg-white/40 transition-all shadow-xl"><X className="h-6 w-6" /></button>
-                                    </div>
+                    <DrawerContent className="mx-auto w-full max-w-xl rounded-t-[1.5rem] border-t border-slate-200 bg-white p-0 dark:border-slate-800 dark:bg-slate-950">
+                        <div className="flex max-h-[82vh] flex-col">
+                            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        {actingAs === 'merchant' ? 'Pendekeza bidhaa' : 'Ongeza kwenye oda'}
+                                    </p>
+                                    <h3 className="mt-0.5 text-base font-black text-slate-950 dark:text-slate-100">
+                                        Hakiki bidhaa kabla ya kutuma
+                                    </h3>
                                 </div>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setSelectedProduct(null)}
+                                    className="h-10 w-10 rounded-full bg-slate-50 text-slate-500 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800"
+                                >
+                                    <X className="h-5 w-5" />
+                                </Button>
+                            </div>
 
-                                <div className="px-8 space-y-6">
-                                    <div>
-                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-400 mb-2">Maelezo ya Bidhaa</p>
-                                        <h2 className="text-2xl font-black text-brand-900 tracking-tight leading-tight mb-2">{selectedProduct?.title}</h2>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-2xl font-black text-brand-600">{getPriceRange(selectedProduct || {})}</span>
-                                            {selectedProduct?.compare_at_price && (
-                                                <span className="text-sm font-bold text-slate-300 line-through">TZS {Number(selectedProduct.compare_at_price).toLocaleString()}</span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Variants Selection */}
-                                    {selectedProduct?.has_variants && selectedProduct?.variants?.length > 0 && (
-                                        <div className="space-y-4">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Chagua Aina (Variants)</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {selectedProduct.variants.map(v => (
-                                                    <button
-                                                        key={v.id}
-                                                        onClick={() => setSelectedVariant(v)}
-                                                        className={cn(
-                                                            "px-4 py-3 rounded-2xl border-2 transition-all font-black text-xs uppercase tracking-widest",
-                                                            selectedVariant?.id === v.id ? "border-brand-600 bg-brand-50 text-brand-600" : "border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200"
-                                                        )}
-                                                    >
-                                                        {v.name}
-                                                    </button>
-                                                ))}
+                            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                                <div className="flex gap-4">
+                                    <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+                                        {selectedProduct?.image_url || selectedProduct?.url ? (
+                                            <img src={selectedProduct.image_url || selectedProduct.url} className="h-full w-full object-cover" alt={selectedProduct?.title || 'Bidhaa'} />
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center text-slate-300">
+                                                <ShoppingBag className="h-8 w-8" />
                                             </div>
-                                        </div>
-                                    )}
-
-                                    {/* Action Button */}
-                                    <div className="pt-4 pb-8 sticky bottom-0 bg-white shadow-[0_-20px_20px_-10px_rgba(255,255,255,0.8)]">
-                                        <Button
-                                            onClick={() => {
-                                                const p = {
-                                                    id: selectedProduct.id,
-                                                    variant_id: selectedVariant?.id,
-                                                    title: selectedVariant ? `${selectedProduct.title} (${selectedVariant.name})` : selectedProduct.title,
-                                                    price: selectedVariant ? selectedVariant.price : selectedProduct.price,
-                                                    image: selectedProduct.image_url || selectedProduct.url,
-                                                    quantity: 1,
-                                                    variant_name: selectedVariant?.name
-                                                };
-                                                submitAction(actingAs === 'merchant' ? 'suggest_product' : 'add_to_order', {
-                                                    product: p,
-                                                    title: actingAs === 'merchant' ? `SUGGEST ${p.title}` : `ADD ${p.title}`
-                                                });
-                                                setSelectedProduct(null);
-                                            }}
-                                            className="w-full h-16 rounded-[2rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-600/30 flex items-center justify-center gap-3"
-                                        >
-                                            {actingAs === 'merchant' ? (
-                                                <><Plus className="h-5 w-5" /> PENDEKEZA KWA MTEJA</>
-                                            ) : (
-                                                <><ShoppingBag className="h-5 w-5" /> ONGEZA KWENYE ODA</>
-                                            )}
-                                        </Button>
+                                        )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <h2 className="line-clamp-2 text-lg font-black leading-snug text-slate-950 dark:text-slate-100">
+                                            {selectedVariant ? `${selectedProduct?.title} (${selectedVariant.name})` : selectedProduct?.title}
+                                        </h2>
+                                        <p className="mt-2 text-2xl font-black text-brand-700">
+                                            TZS {Number(selectedVariant?.price ?? selectedProduct?.price ?? 0).toLocaleString()}
+                                        </p>
+                                        {selectedProduct?.compare_at_price && (
+                                            <p className="mt-0.5 text-xs font-bold text-slate-400 line-through">
+                                                TZS {Number(selectedProduct.compare_at_price).toLocaleString()}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
+
+                                {selectedProduct?.has_variants && selectedProduct?.variants?.length > 0 && (
+                                    <div className="mt-5 space-y-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Chagua aina</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {selectedProduct.variants.map(v => (
+                                                <button
+                                                    key={v.id}
+                                                    type="button"
+                                                    onClick={() => setSelectedVariant(v)}
+                                                    className={cn(
+                                                        "min-h-12 rounded-2xl border px-3 py-2 text-left transition-all",
+                                                        selectedVariant?.id === v.id
+                                                            ? "border-brand-500 bg-brand-50 text-brand-900 ring-1 ring-brand-200"
+                                                            : "border-slate-200 bg-white text-slate-700 hover:border-brand-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                                                    )}
+                                                >
+                                                    <span className="block truncate text-xs font-black">{v.name}</span>
+                                                    <span className="mt-0.5 block text-[10px] font-bold text-slate-500">TZS {Number(v.price || 0).toLocaleString()}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-950">
+                                <Button
+                                    onClick={() => {
+                                        const p = {
+                                            id: selectedProduct.id,
+                                            variant_id: selectedVariant?.id,
+                                            title: selectedVariant ? `${selectedProduct.title} (${selectedVariant.name})` : selectedProduct.title,
+                                            price: selectedVariant ? selectedVariant.price : selectedProduct.price,
+                                            image: selectedProduct.image_url || selectedProduct.url,
+                                            quantity: 1,
+                                            variant_name: selectedVariant?.name,
+                                            type: selectedProduct.type,
+                                            product_type: selectedProduct.type,
+                                            digital_delivery_type: selectedProduct.digital_delivery_type,
+                                            digital_content_type: selectedProduct.digital_content_type,
+                                            service_location_type: selectedProduct.service_location_type
+                                        };
+                                        submitAction(actingAs === 'merchant' ? 'suggest_product' : 'add_to_order', {
+                                            product: p,
+                                            title: actingAs === 'merchant' ? `SUGGEST ${p.title}` : `ADD ${p.title}`
+                                        });
+                                        setSelectedProduct(null);
+                                    }}
+                                    disabled={selectedProduct?.has_variants && selectedProduct?.variants?.length > 0 && !selectedVariant}
+                                    className="h-14 w-full rounded-2xl bg-brand-600 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-brand-600/20 hover:bg-brand-700"
+                                >
+                                    {actingAs === 'merchant' ? (
+                                        <><Plus className="mr-2 h-5 w-5" /> Pendekeza kwa mteja</>
+                                    ) : (
+                                        <><ShoppingBag className="mr-2 h-5 w-5" /> Ongeza kwenye oda</>
+                                    )}
+                                </Button>
                             </div>
                         </div>
                     </DrawerContent>
                 </Drawer>
-            {/* Payment Drawer */}
-            <Drawer open={isPaymentDrawerOpen} onOpenChange={setIsPaymentDrawerOpen}>
-                <DrawerContent className="w-full sm:max-w-xl mx-auto p-0 border-t border-brand-100/50 dark:border-brand-900/50 bg-white dark:bg-slate-950">
-                    <div className="bg-gradient-to-br from-brand-600 to-brand-900 p-8 text-white relative overflow-hidden">
-                        <div className="absolute top-[-20%] right-[-10%] h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-                        <div className="relative z-10 flex flex-col items-center text-center">
-                            <div className="h-20 w-20 rounded-3xl bg-white/20 backdrop-blur-xl flex items-center justify-center mb-4 border border-white/30 shadow-lg">
-                                <Zap className="h-10 w-10 fill-white" />
-                            </div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">Mchakato wa Malipo</p>
-                            <h2 className="text-4xl font-black tracking-tight mb-2">TZS {Number(order?.total_paid).toLocaleString()}</h2>
-                            <div className="px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-                                <ShieldCheck className="h-3 w-3" /> Malipo Salama (Escrow)
+                {/* Payment Drawer */}
+                <Drawer open={isPaymentDrawerOpen} onOpenChange={setIsPaymentDrawerOpen}>
+                    <DrawerContent className="mx-auto flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[2rem] border-t border-brand-100/50 bg-white p-0 dark:border-brand-900/50 dark:bg-slate-950 sm:max-w-xl">
+                        <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-brand-600 to-brand-900 p-8 text-white">
+                            <div className="absolute top-[-20%] right-[-10%] h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+                            <div className="relative z-10 flex flex-col items-center text-center">
+                                <div className="h-20 w-20 rounded-3xl bg-white/20 backdrop-blur-xl flex items-center justify-center mb-4 border border-white/30 shadow-lg">
+                                    <Zap className="h-10 w-10 fill-white" />
+                                </div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">Mchakato wa Malipo</p>
+                                <h2 className="text-4xl font-black tracking-tight mb-2">TZS {Number(order?.total_paid).toLocaleString()}</h2>
+                                <div className="px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                                    <ShieldCheck className="h-3 w-3" /> Malipo Salama (Escrow)
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div className="p-8 space-y-8 pb-12">
-                        {/* Custom Tabs */}
-                        <div className="grid grid-cols-2 gap-3 p-1.5 rounded-[2rem] bg-slate-50 border border-slate-100">
-                            <button 
-                                onClick={() => setPaymentMethod('mobile')}
-                                className={cn(
-                                    "flex items-center justify-center gap-3 py-4 rounded-[1.50rem] font-black text-[11px] uppercase tracking-widest transition-all",
-                                    paymentMethod === 'mobile' ? "bg-white shadow-lg text-brand-600" : "text-slate-400 hover:text-slate-600"
-                                )}
-                            >
-                                <Zap className={cn("h-4 w-4", paymentMethod === 'mobile' ? "fill-brand-600" : "fill-slate-400")} />
-                                Lipa kwa Simu
-                            </button>
-                            <button 
-                                onClick={() => setPaymentMethod('card')}
-                                className={cn(
-                                    "flex items-center justify-center gap-3 py-4 rounded-[1.50rem] font-black text-[11px] uppercase tracking-widest transition-all",
-                                    paymentMethod === 'card' ? "bg-white shadow-lg text-brand-600" : "text-slate-400 hover:text-slate-600"
-                                )}
-                            >
-                                <CreditCard className="h-4 w-4" />
-                                Lipa kwa Kadi
-                            </button>
-                        </div>
+                        <div className="flex-1 space-y-8 overflow-y-auto p-8 pb-12">
+                            {/* Custom Tabs */}
+                            <div className="grid grid-cols-2 gap-3 p-1.5 rounded-[2rem] bg-slate-50 border border-slate-100">
+                                <button
+                                    onClick={() => setPaymentMethod('mobile')}
+                                    className={cn(
+                                        "flex items-center justify-center gap-3 py-4 rounded-[1.50rem] font-black text-[11px] uppercase tracking-widest transition-all",
+                                        paymentMethod === 'mobile' ? "bg-white shadow-lg text-brand-600" : "text-slate-400 hover:text-slate-600"
+                                    )}
+                                >
+                                    <Zap className={cn("h-4 w-4", paymentMethod === 'mobile' ? "fill-brand-600" : "fill-slate-400")} />
+                                    Lipa kwa Simu
+                                </button>
+                                <button
+                                    onClick={() => setPaymentMethod('card')}
+                                    className={cn(
+                                        "flex items-center justify-center gap-3 py-4 rounded-[1.50rem] font-black text-[11px] uppercase tracking-widest transition-all",
+                                        paymentMethod === 'card' ? "bg-white shadow-lg text-brand-600" : "text-slate-400 hover:text-slate-600"
+                                    )}
+                                >
+                                    <CreditCard className="h-4 w-4" />
+                                    Lipa kwa Kadi
+                                </button>
+                            </div>
 
-                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            {paymentMethod === 'mobile' ? (
-                                <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Namba ya Simu ya Malipo</label>
-                                        <div className="relative group">
-                                            <Input 
-                                                value={paymentPhone}
-                                                onChange={e => setPaymentPhone(e.target.value)}
-                                                className="h-20 rounded-3xl text-3xl font-black bg-slate-50 border-2 border-transparent focus:border-brand-300 outline-none pl-8 shadow-inner"
-                                                placeholder="0XXX XXXXXX"
-                                            />
-                                            <div className="absolute right-8 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-brand-300 transition-colors uppercase tracking-widest text-xs">Simu</div>
+                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                {paymentMethod === 'mobile' ? (
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Namba ya Simu ya Malipo</label>
+                                            <div className="relative group">
+                                                <Input
+                                                    value={paymentPhone}
+                                                    onChange={e => setPaymentPhone(e.target.value)}
+                                                    className="h-20 rounded-3xl text-3xl font-black bg-slate-50 border-2 border-transparent focus:border-brand-300 outline-none pl-8 shadow-inner"
+                                                    placeholder="0XXX XXXXXX"
+                                                />
+                                                <div className="absolute right-8 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-brand-300 transition-colors uppercase tracking-widest text-xs">Simu</div>
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] font-bold text-slate-400 leading-relaxed italic px-2">
+                                            Hakikisha simu iko karibu. Utapokea ombi la kuweka PIN ili kukamilisha malipo.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="aspect-video bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center p-8 gap-4">
+                                        <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-300">
+                                            <CreditCard className="h-8 w-8" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <h4 className="font-black text-slate-400 uppercase tracking-widest text-sm">Card Payments Coming Soon</h4>
+                                            <p className="text-[10px] font-bold text-slate-400 leading-relaxed max-w-[200px]">Tunakamilisha ushirikiano na benki ili kukuwezesha kulipa kwa kadi.</p>
                                         </div>
                                     </div>
-                                    <p className="text-[10px] font-bold text-slate-400 leading-relaxed italic px-2">
-                                        Hakikisha simu iko karibu. Utapokea ombi la kuweka PIN ili kukamilisha malipo.
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="aspect-video bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center p-8 gap-4">
-                                    <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-300">
-                                        <CreditCard className="h-8 w-8" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <h4 className="font-black text-slate-400 uppercase tracking-widest text-sm">Card Payments Coming Soon</h4>
-                                        <p className="text-[10px] font-bold text-slate-400 leading-relaxed max-w-[200px]">Tunakamilisha ushirikiano na benki ili kukuwezesha kulipa kwa kadi.</p>
-                                    </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
+
+                            <Button
+                                onClick={async () => {
+                                    if (paymentMethod === 'card') {
+                                        toast.info('Tafadhali tumia malipo ya simu kwa sasa.');
+                                        return;
+                                    }
+                                    setIsPaying(true);
+                                    try {
+                                        const paymentResult = await submitAction('initiate_payment', {
+                                            payment_number: paymentPhone,
+                                            title: `Malipo yameanzishwa — TZS ${Number(order?.total_paid).toLocaleString()}`
+                                        });
+
+                                        const freshOrder = paymentResult?.order;
+                                        if (!freshOrder || freshOrder.payment_status === 'pending') {
+                                            return;
+                                        }
+
+                                        setOrder(freshOrder);
+                                        setIsPaymentDrawerOpen(false);
+                                        toast.success(`Malipo ya TZS ${Number(freshOrder.total_paid || order?.total_paid).toLocaleString()} yamekamilika!`);
+                                    } finally {
+                                        setIsPaying(false);
+                                    }
+                                }}
+                                disabled={isPaying || (paymentMethod === 'mobile' && !paymentPhone)}
+                                className="w-full h-20 rounded-[2.5rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-[0.2em] text-sm shadow-2xl shadow-brand-600/40 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+                            >
+                                {isPaying ? (
+                                    <Loader2 className="h-6 w-6 animate-spin" />
+                                ) : (
+                                    <>
+                                        <ShieldCheck className="h-5 w-5" />
+                                        Kamilisha Malipo
+                                    </>
+                                )}
+                            </Button>
                         </div>
+                    </DrawerContent>
+                </Drawer>
 
-                        <Button 
-                            onClick={async () => {
-                                if (paymentMethod === 'card') {
-                                    toast.info('Tafadhali tumia malipo ya simu kwa sasa.');
-                                    return;
-                                }
-                                setIsPaying(true);
-                                try {
-                                    await submitAction('initiate_payment', { 
-                                        payment_number: paymentPhone, 
-                                        title: `Malipo yameanzishwa — TZS ${Number(order?.total_paid).toLocaleString()}` 
-                                    });
-                                    // Keep the UI aligned with the physical-order lifecycle.
-                                    setOrder(prev => prev ? { ...prev, payment_status: 'awaiting_merchant_confirmation' } : prev);
-                                    toast.success(`Malipo ya TZS ${Number(order?.total_paid).toLocaleString()} yamekamilika!`);
-                                } finally {
-                                    setIsPaying(false);
-                                }
-                            }}
-                            disabled={isPaying || (paymentMethod === 'mobile' && !paymentPhone)}
-                            className="w-full h-20 rounded-[2.5rem] bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-[0.2em] text-sm shadow-2xl shadow-brand-600/40 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
-                        >
-                            {isPaying ? (
-                                <Loader2 className="h-6 w-6 animate-spin" />
-                            ) : (
-                                <>
-                                    <ShieldCheck className="h-5 w-5" />
-                                    Kamilisha Malipo
-                                </>
-                            )}
-                        </Button>
-                    </div>
-                </DrawerContent>
-            </Drawer>
-
-            {/* Dispute Drawer */}
-            <Drawer open={isDisputeDrawerOpen} onOpenChange={setIsDisputeDrawerOpen}>
-                <DrawerContent className="rounded-t-[2rem] bg-white dark:bg-slate-950">
-                    <DrawerHeader>
-                        <DrawerTitle className="text-xl font-black text-red-600 uppercase tracking-tight">Ripoti Tatizo (Dispute)</DrawerTitle>
-                        <DrawerDescription className="text-xs font-bold text-slate-500">Pesa imeshikiliwa kwenye Escrow. Tueleze tatizo na weka ushahidi wa video (Unboxing Video).</DrawerDescription>
-                    </DrawerHeader>
-                    <div className="p-4 space-y-4 pb-10">
-                        <textarea 
-                            value={disputeReason} 
-                            onChange={e => setDisputeReason(e.target.value)} 
-                            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-red-500/20 transition-all" 
-                            placeholder="Eleza tatizo kwa kina..."
-                            rows={4}
-                        />
-                        <button type="button" onClick={() => { const el = document.getElementById('dispute-video-input'); if(el) el.click(); }} className={cn("w-full flex flex-col items-center justify-center p-6 rounded-xl border border-dashed transition-colors", disputeVideo ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20" : "border-slate-300 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800")}>
-                            <Video className={cn("h-8 w-8 mb-3", disputeVideo ? "text-emerald-500" : "text-slate-400")} />
-                            <span className={cn("text-[10px] font-black uppercase tracking-widest", disputeVideo ? "text-emerald-600" : "text-slate-500")}>
-                                {disputeVideo ? 'Video Imechaguliwa' : 'Weka Unboxing Video (MP4/MOV)'}
-                            </span>
-                            <input id="dispute-video-input" type="file" accept="video/*" className="hidden" onChange={e => setDisputeVideo(e.target.files?.[0])} />
-                        </button>
-                        <Button 
-                            onClick={submitDispute} 
-                            disabled={isSubmittingDispute || !disputeReason || !disputeVideo}
-                            className="w-full h-14 rounded-xl bg-red-600 hover:bg-red-700 font-black text-white uppercase tracking-[0.2em] text-xs shadow-lg shadow-red-600/20"
-                        >
-                            {isSubmittingDispute ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : 'TUMA RIPOTI'}
-                        </Button>
-                    </div>
-                </DrawerContent>
-            </Drawer>
+                {/* Dispute Drawer */}
+                <Drawer open={isDisputeDrawerOpen} onOpenChange={setIsDisputeDrawerOpen}>
+                    <DrawerContent className="rounded-t-[2rem] bg-white dark:bg-slate-950">
+                        <DrawerHeader>
+                            <DrawerTitle className="text-xl font-black text-red-600 uppercase tracking-tight">Ripoti Tatizo (Dispute)</DrawerTitle>
+                            <DrawerDescription className="text-xs font-bold text-slate-500">Pesa imeshikiliwa kwenye Escrow. Tueleze tatizo na weka ushahidi wa video (Unboxing Video).</DrawerDescription>
+                        </DrawerHeader>
+                        <div className="p-4 space-y-4 pb-10">
+                            <textarea
+                                value={disputeReason}
+                                onChange={e => setDisputeReason(e.target.value)}
+                                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-red-500/20 transition-all"
+                                placeholder="Eleza tatizo kwa kina..."
+                                rows={4}
+                            />
+                            <button type="button" onClick={() => { const el = document.getElementById('dispute-video-input'); if (el) el.click(); }} className={cn("w-full flex flex-col items-center justify-center p-6 rounded-xl border border-dashed transition-colors", disputeVideo ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20" : "border-slate-300 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800")}>
+                                <Video className={cn("h-8 w-8 mb-3", disputeVideo ? "text-emerald-500" : "text-slate-400")} />
+                                <span className={cn("text-[10px] font-black uppercase tracking-widest", disputeVideo ? "text-emerald-600" : "text-slate-500")}>
+                                    {disputeVideo ? 'Video Imechaguliwa' : 'Weka Unboxing Video (MP4/MOV)'}
+                                </span>
+                                <input id="dispute-video-input" type="file" accept="video/*" className="hidden" onChange={e => setDisputeVideo(e.target.files?.[0])} />
+                            </button>
+                            <Button
+                                onClick={submitDispute}
+                                disabled={isSubmittingDispute || !disputeReason || !disputeVideo}
+                                className="w-full h-14 rounded-xl bg-red-600 hover:bg-red-700 font-black text-white uppercase tracking-[0.2em] text-xs shadow-lg shadow-red-600/20"
+                            >
+                                {isSubmittingDispute ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : 'TUMA RIPOTI'}
+                            </Button>
+                        </div>
+                    </DrawerContent>
+                </Drawer>
             </div>
         </AppLayout>
     );

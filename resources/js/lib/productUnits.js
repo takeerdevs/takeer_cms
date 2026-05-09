@@ -7,7 +7,7 @@ export function productUnitLabel(product) {
     const contentLabel = productPackageContentLabel(product);
 
     if (contentLabel && ['piece', 'pc', 'unit'].includes(String(unit.code || unit.symbol || '').toLowerCase()) && quantity > 1) {
-        return `${formatQuantity(quantity)} x ${contentLabel}`;
+        return `${formatQuantity(quantity)} ${symbol} (${contentLabel})`;
     }
 
     const baseLabel = quantity && quantity !== 1 ? `${formatQuantity(quantity)} ${symbol}` : `1 ${symbol}`;
@@ -112,7 +112,22 @@ export function orderQuantityLabel(order) {
     const quantity = Number(order?.requested_quantity ?? order?.quantity ?? 1);
     if (!snapshot) return `${formatQuantity(quantity)} item${quantity === 1 ? '' : 's'}`;
 
+    if (isPackageSnapshot(snapshot)) {
+        const packageCount = orderPackageCount(order);
+        return `${formatQuantity(packageCount)} package${packageCount === 1 ? '' : 's'}`;
+    }
+
     return `${formatQuantity(quantity)} ${snapshot.symbol || snapshot.name || 'units'}`;
+}
+
+export function orderPackageCount(order) {
+    const snapshot = order?.unit_snapshot;
+    const quantity = Number(order?.requested_quantity ?? order?.quantity ?? 1);
+    if (!snapshot || !isPackageSnapshot(snapshot)) return quantity;
+    if (snapshot.quantity_represents_packages === true) return quantity;
+
+    const sellable = Math.max(0.001, Number(snapshot.sellable_quantity || 1));
+    return quantity / sellable;
 }
 
 export function orderUnitPriceLabel(order) {
@@ -131,15 +146,31 @@ function snapshotUnitLabel(snapshot) {
     const contentUnit = snapshot.package_content_unit_type;
     const contentQuantity = Number(snapshot.package_content_quantity || 0);
 
+    if (isPackageSnapshot(snapshot) && !contentQuantity) {
+        return '1 package';
+    }
+
     if (contentUnit && contentQuantity) {
         const contentLabel = `${formatQuantity(contentQuantity)} ${displayUnitName(contentUnit, contentQuantity)}`;
         if (['piece', 'pc', 'unit'].includes(String(snapshot.code || snapshot.symbol || '').toLowerCase()) && sellable > 1) {
-            return `${formatQuantity(sellable)} x ${contentLabel}`;
+            return `${formatQuantity(sellable)} ${baseUnit} (${contentLabel})`;
         }
-        return `${formatQuantity(sellable)} ${baseUnit} (${contentLabel})`;
+        return '1 package';
     }
 
     return `${formatQuantity(sellable)} ${baseUnit}`;
+}
+
+function isPackageSnapshot(snapshot) {
+    const code = String(snapshot?.code || '').toLowerCase();
+    const symbol = String(snapshot?.symbol || '').toLowerCase();
+    const name = String(snapshot?.name || '').toLowerCase();
+
+    return Boolean(snapshot?.package_content_quantity)
+        || ['pack', 'package', 'pkg'].includes(code)
+        || ['pack', 'package', 'pkg'].includes(symbol)
+        || name.includes('package')
+        || name.includes('pack');
 }
 
 export function displayUnitName(unit, quantity = 1) {

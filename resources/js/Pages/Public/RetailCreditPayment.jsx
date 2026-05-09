@@ -189,7 +189,7 @@ export default function RetailCreditPayment({ order, merchant, paymentLinksDisab
                                             <p className="text-xs font-bold text-slate-500">{formatCurrency(item.unit_price)} kila moja</p>
                                         </div>
                                         <div className="text-right shrink-0">
-                                            <p className="text-xs font-black text-slate-500">x{item.quantity}</p>
+                                            <p className="text-xs font-black text-slate-500">Qty {item.quantity}</p>
                                             <p className="font-black">{formatCurrency(item.line_total)}</p>
                                         </div>
                                     </div>

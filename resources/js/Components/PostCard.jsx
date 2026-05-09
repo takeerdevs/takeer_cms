@@ -100,6 +100,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         : postData.images?.length
             ? postData.images
             : postData.media_url ? [{ url: postData.media_url, media_type: postData.media_type || 'image' }] : [];
+    const postHotspots = postData.resolved_hotspots || postData.hotspots || {};
     const isText = postData.media_type === 'text' && mediaItems.length === 0;
 
     const hasAccess = postData.has_access ?? true;
@@ -577,7 +578,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             </p>
                         </div>
                     )}
-                    <MediaGrid items={mediaItems} onTap={goToPostDetails} />
+                    <MediaGrid items={mediaItems} onTap={goToPostDetails} hotspots={postHotspots} />
                 </div>
             )}
 
@@ -682,7 +683,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                     router.visit(route('product.show', productRouteKey));
                                 }
                             }}
-                            className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 dark:from-brand-500 dark:to-brand-400 text-white text-base font-extrabold hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-brand-500/25"
+                            className="w-full h-10 rounded-lg bg-brand-600 text-white text-sm font-black hover:bg-brand-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
                         >
                             <ShoppingBag className="h-4 w-4" /> {attachedProductCtaLabel}
                         </button>

@@ -132,6 +132,22 @@ class MerchantPlatformSubscriptionController extends Controller
         }
 
         $paymentMethod = strtolower((string) ($data['payment_method'] ?? 'simulated'));
+        $mode = $this->accessMode($feature);
+
+        if ($mode === 'free' || ($feature === 'retail_ops' && (float) $this->priceFor($merchant, $feature)['amount'] <= 0)) {
+            $this->applyAccess($merchant, $feature);
+
+            return response()->json([
+                'message' => $feature === 'retail_ops'
+                    ? 'Retail Operations access activated.'
+                    : 'Storage access activated.',
+                'payment' => null,
+                'features' => [
+                    'retail_ops' => $this->featurePayload($merchant->fresh(['currency', 'country']), 'retail_ops'),
+                    'storage' => $this->featurePayload($merchant->fresh(['currency', 'country']), 'storage'),
+                ],
+            ], 200);
+        }
 
         $payment = DB::transaction(function () use ($merchant, $feature, $paymentMethod, $data) {
             $price = $this->priceFor($merchant, $feature, $data['fee_policy_id'] ?? null);
