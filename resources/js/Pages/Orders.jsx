@@ -24,23 +24,25 @@ import {
     KeyRound,
     RefreshCcw,
     ReceiptText,
+    X,
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import ContentReportButton from '@/Components/ContentReportButton';
 import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
+import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
 
 const tabs = [
-    { key: 'pulse', label: 'Pulse', icon: Store },
     { key: 'library', label: 'Library', icon: Library },
     { key: 'memberships', label: 'Memberships', icon: Crown },
+    { key: 'pulse', label: 'Pulse', icon: Store },
 ];
 
 export default function Orders() {
     const { auth } = usePage().props;
     const isMerchant = !!auth?.user?.is_merchant;
 
-    const [activeTab, setActiveTab] = useState('pulse');
+    const [activeTab, setActiveTab] = useState('library');
     const [loading, setLoading] = useState(true);
     const [entitlements, setEntitlements] = useState([]);
     const [subscriptions, setSubscriptions] = useState([]);
@@ -569,9 +571,11 @@ function PulseNotification({ item }) {
         crown: Crown,
         download: Download,
         key: KeyRound,
+        message_circle: MessageSquare,
         refresh: RefreshCcw,
         receipt: ReceiptText,
         shield_check: ShieldCheck,
+        smile: Sparkles,
         shopping_bag: ShoppingBag,
         sparkles: Sparkles,
         truck: Truck,
@@ -686,6 +690,7 @@ function OwnedCard({ entry }) {
     const [showPin, setShowPin] = useState(false);
     const [showReceiptConfirmModal, setShowReceiptConfirmModal] = useState(false);
     const [confirmingReceipt, setConfirmingReceipt] = useState(false);
+    const [showDescriptionModal, setShowDescriptionModal] = useState(false);
     const [revisionMessage, setRevisionMessage] = useState('');
     const [revisionSubmitting, setRevisionSubmitting] = useState(false);
 
@@ -744,11 +749,21 @@ function OwnedCard({ entry }) {
         toast.error('Fungua order chat ili kukamilisha malipo.');
     };
     const orderId = entry.source_type === 'order' ? entry.source_id : null;
+    const orderChatUrl = orderDetails?.public_id ? `/chat/${orderDetails.public_id}?acting_as=buyer` : null;
     const targetUrl = String(item.url || item.download_link || '').trim();
     const isLinkDigital = isDigitalProduct && /^[a-z][a-z0-9+\-.]*:\/\//i.test(targetUrl);
     const shouldOpenProtectedStreamInModal = isDigitalProduct
         && ['video_stream', 'audio_stream'].includes(item.digital_delivery_type)
         && !item.allow_download;
+    const isTemporaryAccess = Boolean(entry.is_temporary_access || entry.expires_at);
+    const accessTimeLeft = useSubscriptionCountdown(entry.expires_at);
+    const accessExpiresLabel = entry.expires_at
+        ? new Date(entry.expires_at).toLocaleString('sw-TZ', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : null;
+    const sourceLabel = entry.access_label || String(entry.source_type || 'access').replaceAll('_', ' ');
+    const isSubscriptionDigitalAccess = isDigitalProduct && !orderId;
+    const fullDescription = String(item.description || item.excerpt || item.body || '').trim();
+    const canShowDescription = fullDescription.length > 0;
 
     const confirmReceiptCopy = (() => {
         if (isCustomDeliveryProduct) {
@@ -839,7 +854,7 @@ function OwnedCard({ entry }) {
             label: item.is_course ? 'Course' : 'Bundle',
             href: item.is_course && item.slug ? `/learn/bundles/${item.slug}` : (item.slug ? route('bundle.show', item.slug) : null),
         },
-        subscription_plan: { icon: Crown, label: 'Post Content', href: item.slug || item.id ? `/plan/${item.slug || item.id}` : null },
+        subscription_plan: { icon: Crown, label: 'Membership', href: item.slug || item.id ? `/plan/${item.slug || item.id}` : null },
         product: { icon: ShoppingBag, label: 'Physical Product', href: item.slug ? route('product.show', item.slug) : null },
     };
 
@@ -862,15 +877,11 @@ function OwnedCard({ entry }) {
     const handleDownload = async () => {
         if (!isDigitalProduct) return;
 
-        if (!orderId) {
-            toast.error('Pakua inapatikana kwa manunuzi ya moja kwa moja ya bidhaa hii.');
-            return;
-        }
-
-        if (shouldOpenProtectedStreamInModal) {
+        if (entry.id || orderId) {
             window.dispatchEvent(new CustomEvent('takeer:digital-ready', {
                 detail: {
-                    orderId,
+                    entitlementId: entry.id || null,
+                    orderId: entry.id ? null : orderId,
                     productTitle: item.title || item.name || 'Premium media',
                     itemId: item.id || entry.item_id,
                 },
@@ -905,7 +916,7 @@ function OwnedCard({ entry }) {
     };
 
     return (
-        <Card className="rounded-[24px] overflow-hidden border-border/70">
+        <Card className="relative overflow-hidden rounded-[24px] border-border/70">
             {/* Card Header — show product image if available, else gradient */}
             {(() => {
                 const imgUrl = item.image_url || item.url || item.cover_image || item.thumbnail;
@@ -923,6 +934,17 @@ function OwnedCard({ entry }) {
                     <div className="h-28 bg-gradient-to-br from-brand-50 via-sky-50 to-emerald-50" />
                 );
             })()}
+            {orderChatUrl && (
+                <button
+                    type="button"
+                    onClick={() => router.visit(orderChatUrl)}
+                    className="absolute right-4 top-4 z-20 flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-white/90 text-brand-700 shadow-lg shadow-slate-900/10 backdrop-blur transition hover:-translate-y-0.5 hover:bg-brand-600 hover:text-white focus:outline-none focus:ring-4 focus:ring-brand-200"
+                    title="Fungua order chat"
+                    aria-label="Fungua order chat"
+                >
+                    <MessageSquare className="h-5 w-5" strokeWidth={2.8} />
+                </button>
+            )}
             <CardContent className="p-5 -mt-10 relative">
                 <div className="h-14 w-14 bg-background border shadow-sm flex items-center justify-center rounded-2xl">
                     <Icon className="h-6 w-6 text-brand-600" />
@@ -930,17 +952,38 @@ function OwnedCard({ entry }) {
                 <div className="mt-4">
                     <div className="flex items-center justify-between gap-3">
                         <span className="text-[11px] font-black uppercase tracking-[0.16em] text-brand-700">{config.label}</span>
-                        <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{entry.source_type}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${isTemporaryAccess ? 'bg-emerald-50 text-emerald-700' : 'bg-muted text-muted-foreground'}`}>
+                            {sourceLabel}
+                        </span>
                     </div>
-                    <h3 className="mt-2 text-lg font-black leading-tight">{item.title || item.name || 'Owned item'}</h3>
-                    {(item.excerpt || item.description) && (
-                        <p className="mt-2 text-sm text-muted-foreground leading-6 line-clamp-2">
-                            {item.excerpt || item.description}
-                        </p>
-                    )}
+                    <button
+                        type="button"
+                        onClick={() => canShowDescription && setShowDescriptionModal(true)}
+                        disabled={!canShowDescription}
+                        className="mt-2 block w-full text-left disabled:cursor-default"
+                    >
+                        <h3 className="text-lg font-black leading-tight transition-colors hover:text-brand-700">
+                            {item.title || item.name || 'Owned item'}
+                        </h3>
+                        {canShowDescription && (
+                            <p className="mt-2 text-sm text-muted-foreground leading-6 line-clamp-2">
+                                {fullDescription}
+                            </p>
+                        )}
+                    </button>
                     <p className="mt-2 text-xs font-semibold text-muted-foreground">
                         Added {formatDate(entry.granted_at || entry.starts_at)}
                     </p>
+                    <div className={`mt-3 rounded-2xl border px-3 py-2 text-xs leading-5 ${isTemporaryAccess ? 'border-emerald-100 bg-emerald-50 text-emerald-800' : 'border-sky-100 bg-sky-50 text-sky-800'}`}>
+                        <p className="font-black uppercase tracking-widest">
+                            {isTemporaryAccess ? 'Membership item' : 'Owned item'}
+                        </p>
+                        <p className="mt-1">
+                            {isTemporaryAccess
+                                ? `Available here while your membership is active${accessTimeLeft ? `: ${accessTimeLeft}` : ''}${accessExpiresLabel ? ` (ends ${accessExpiresLabel})` : ''}.`
+                                : 'This access came from a direct purchase or permanent grant and will remain in your library.'}
+                        </p>
+                    </div>
                 </div>
 
                 <div className="mt-5 flex items-center justify-between gap-3 text-xs text-muted-foreground">
@@ -1033,6 +1076,11 @@ function OwnedCard({ entry }) {
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Preparing...
+                                </>
+                            ) : isSubscriptionDigitalAccess ? (
+                                <>
+                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                    Open Access
                                 </>
                             ) : isLinkDigital ? (
                                 <>
@@ -1434,31 +1482,95 @@ function OwnedCard({ entry }) {
                         </div>
                     </div>
                 )}
+
+                <DescriptionModal
+                    open={showDescriptionModal}
+                    onClose={() => setShowDescriptionModal(false)}
+                    title={item.title || item.name || 'Owned item'}
+                    label={config.label}
+                    description={fullDescription}
+                />
             </CardContent>
         </Card>
+    );
+}
+
+function DescriptionModal({ open, onClose, title, label, description }) {
+    if (!open) return null;
+
+    return (
+        <div
+            className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+            onClick={onClose}
+        >
+            <div
+                className="w-full max-w-lg overflow-hidden rounded-t-[28px] border border-white/70 bg-white shadow-2xl sm:rounded-[28px]"
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-brand-700">{label}</p>
+                        <h2 className="mt-1 text-xl font-black leading-tight text-slate-950">{title}</h2>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100"
+                        aria-label="Close description"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
+                <div className="max-h-[62vh] overflow-y-auto px-5 py-5">
+                    <p className="whitespace-pre-line break-words text-base leading-8 text-slate-700">
+                        {description}
+                    </p>
+                </div>
+                <div className="border-t border-slate-100 px-5 py-4">
+                    <Button type="button" className="w-full rounded-2xl" onClick={onClose}>
+                        Okay
+                    </Button>
+                </div>
+            </div>
+        </div>
     );
 }
 
 function MembershipCard({ subscription, onCancel }) {
     const plan = subscription.plan || {};
     const merchant = subscription.merchant || {};
-    const statusTone = ['active', 'pending', 'past_due'].includes(subscription.status)
+    const periodEnd = subscription.current_period_end ? new Date(subscription.current_period_end) : null;
+    const isExpiredByTime = periodEnd && !Number.isNaN(periodEnd.valueOf()) && periodEnd.getTime() <= Date.now();
+    const displayStatus = isExpiredByTime ? 'expired' : (subscription.status || 'active');
+    const isActiveStatus = ['active', 'pending', 'past_due'].includes(displayStatus);
+    const statusTone = isActiveStatus
         ? 'bg-emerald-100 text-emerald-700'
-        : 'bg-muted text-muted-foreground';
+        : 'bg-rose-50 text-rose-700';
+    const iconTone = isActiveStatus
+        ? 'border-emerald-100 bg-emerald-50 text-emerald-700 shadow-emerald-900/5'
+        : 'border-rose-100 bg-rose-50 text-rose-700 shadow-rose-900/5';
+    const periodTone = isActiveStatus
+        ? 'border-emerald-100 bg-emerald-50/80 text-emerald-900'
+        : 'border-rose-100 bg-rose-50/80 text-rose-900';
+    const periodLabel = isExpiredByTime ? 'Membership expired' : 'Membership active';
+    const periodStartLabel = formatDateTime(subscription.current_period_start || subscription.started_at);
+    const periodEndLabel = formatDateTime(subscription.current_period_end);
+    const billingCadence = formatBillingCadence(plan.billing_interval, plan.interval_count);
+    const durationLabel = formatMembershipDuration(plan.billing_interval, plan.interval_count);
 
     return (
         <Card className="rounded-[24px] border-border/70 overflow-hidden">
-            <div className="bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 border-b">
+            <div className="bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 border-b border-border/70">
                 <div className="flex items-start justify-between gap-4">
-                    <div>
+                    <div className="min-w-0">
                         <span className={`inline-flex rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] ${statusTone}`}>
-                            {subscription.status}
+                            {displayStatus}
                         </span>
                         <h3 className="mt-4 text-2xl font-black">{plan.name || 'Membership plan'}</h3>
                         <p className="mt-2 text-sm text-muted-foreground leading-6">{plan.description || 'Recurring access to premium items.'}</p>
                     </div>
-                    <div className="h-14 w-14 bg-white border flex items-center justify-center shadow-sm">
-                        <Crown className="h-6 w-6 text-emerald-600" />
+                    <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border shadow-sm ${iconTone}`}>
+                        <Crown className="h-6 w-6" strokeWidth={2.5} />
                     </div>
                 </div>
             </div>
@@ -1466,19 +1578,38 @@ function MembershipCard({ subscription, onCancel }) {
             <CardContent className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                     <InfoChip icon={Store} label="Merchant" value={merchant.display_name || merchant.name || 'Takeer merchant'} />
-                    <InfoChip icon={CalendarClock} label="Billing" value={`${plan.interval_count || 1} ${plan.billing_interval || 'month'}`} />
+                    <InfoChip icon={CalendarClock} label="Duration" value={durationLabel} />
                 </div>
 
-                <div className="rounded-2xl bg-accent/40 px-4 py-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Current period ends</p>
-                    <p className="mt-2 text-sm font-bold">{formatDate(subscription.current_period_end)}</p>
+                <div className={`rounded-2xl border px-4 py-4 ${periodTone}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-black uppercase tracking-widest">{periodLabel}</p>
+                        <span className="rounded-full bg-white/70 px-3 py-1 text-[11px] font-black uppercase tracking-widest">
+                            {billingCadence}
+                        </span>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-widest opacity-70">Started</p>
+                            <p className="mt-1 text-sm font-black">{periodStartLabel}</p>
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-widest opacity-70">{isExpiredByTime ? 'Expired' : 'Ends'}</p>
+                            <p className="mt-1 text-sm font-black">{periodEndLabel}</p>
+                        </div>
+                    </div>
+                    <p className="mt-4 text-xs font-semibold leading-5 opacity-80">
+                        {isActiveStatus
+                            ? 'Subscription items stay available in Orders until this period ends.'
+                            : 'Subscription access has ended. Direct purchases remain in your Library.'}
+                    </p>
                 </div>
 
                 <div className="flex gap-3">
                     <Button variant="outline" className="flex-1 rounded-2xl" onClick={() => router.visit(`/plan/${plan.slug || plan.id}`)}>
                         View plan
                     </Button>
-                    {['active', 'pending', 'past_due'].includes(subscription.status) && (
+                    {isActiveStatus && (
                         <Button className="rounded-2xl bg-red-600 hover:bg-red-700 text-white" onClick={onCancel}>
                             Cancel
                         </Button>
@@ -1532,4 +1663,45 @@ function formatDate(value) {
     } catch {
         return value;
     }
+}
+
+function formatDateTime(value) {
+    if (!value) return 'Not set';
+    try {
+        return new Date(value).toLocaleString('sw-TZ', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    } catch {
+        return value;
+    }
+}
+
+function formatBillingCadence(interval = 'month', count = 1) {
+    const safeCount = Math.max(1, Number(count || 1));
+    const unit = membershipIntervalUnit(interval);
+    const plural = safeCount === 1 ? unit : `${unit}s`;
+
+    return safeCount === 1 ? `Every ${unit}` : `Every ${safeCount} ${plural}`;
+}
+
+function formatMembershipDuration(interval = 'month', count = 1) {
+    const safeCount = Math.max(1, Number(count || 1));
+    const unit = membershipIntervalUnit(interval);
+    const plural = safeCount === 1 ? unit : `${unit}s`;
+
+    return `${safeCount} ${plural}`;
+}
+
+function membershipIntervalUnit(interval = 'month') {
+    return {
+        hourly: 'hour',
+        daily: 'day',
+        weekly: 'week',
+        monthly: 'month',
+        month: 'month',
+    }[String(interval || 'month')] || String(interval || 'month');
 }

@@ -4,7 +4,10 @@ namespace App\Services;
 
 use App\Models\Delivery;
 use App\Models\Entitlement;
+use App\Models\Comment;
 use App\Models\Order;
+use App\Models\Post;
+use App\Models\PostReaction;
 use App\Models\ProductReview;
 use App\Models\PulseNotification;
 use App\Models\SubscriptionPlan;
@@ -306,6 +309,90 @@ class PulseNotificationService
         ]);
     }
 
+    public function postCommentCreated(Comment $comment): void
+    {
+        $comment->loadMissing(['user', 'post.merchant.user']);
+        $post = $comment->post;
+        $merchant = $post?->merchant;
+
+        if (!$post || !$merchant?->user_id || (int) $merchant->user_id === (int) $comment->user_id) {
+            return;
+        }
+
+        $actor = $comment->user?->name ?: 'Customer';
+        $title = $this->postTitle($post);
+        $text = trim((string) $comment->text);
+
+        $this->record([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'subject' => $comment,
+            'event_type' => 'merchant_post_comment_created',
+            'dedupe_key' => "merchant-post-comment:{$comment->id}",
+            'icon' => 'message_circle',
+            'tone' => 'sky',
+            'eyebrow' => $comment->parent_id ? 'New reply' : 'New comment',
+            'title' => $title,
+            'body' => $text !== '' ? "{$actor}: \"".str($text)->limit(140)."\"" : "{$actor} commented on your post.",
+            'meta' => $actor,
+            'href' => $this->postHref($post),
+            'status' => 'comment',
+            'payload' => [
+                'post_id' => $post->id,
+                'public_id' => $post->public_id,
+                'comment_id' => $comment->id,
+                'actor' => $actor,
+                'text' => $text,
+            ],
+            'occurred_at' => $comment->created_at ?: now(),
+        ]);
+    }
+
+    public function postReactionUpdated(PostReaction $reaction): void
+    {
+        $reaction->loadMissing(['user', 'post.merchant.user']);
+        $post = $reaction->post;
+        $merchant = $post?->merchant;
+
+        if (!$post || !$merchant?->user_id || (int) $merchant->user_id === (int) $reaction->user_id) {
+            return;
+        }
+
+        $actor = $reaction->user?->name ?: 'Customer';
+        $emoji = trim((string) $reaction->emoji);
+
+        $this->record([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'subject' => $reaction,
+            'event_type' => 'merchant_post_reaction_updated',
+            'dedupe_key' => "merchant-post-reaction:{$post->id}:{$reaction->user_id}",
+            'icon' => 'smile',
+            'tone' => 'violet',
+            'eyebrow' => 'Post reaction',
+            'title' => $this->postTitle($post),
+            'body' => "{$actor} reacted {$emoji} to your post.",
+            'meta' => $actor,
+            'href' => $this->postHref($post),
+            'status' => 'reaction',
+            'payload' => [
+                'post_id' => $post->id,
+                'public_id' => $post->public_id,
+                'reaction_id' => $reaction->id,
+                'actor' => $actor,
+                'emoji' => $emoji,
+            ],
+            'occurred_at' => $reaction->updated_at ?: $reaction->created_at ?: now(),
+        ]);
+    }
+
+    public function postReactionCleared(Post $post, int $userId): void
+    {
+        PulseNotification::query()
+            ->where('dedupe_key', "merchant-post-reaction:{$post->id}:{$userId}")
+            ->delete();
+    }
+
     private function paymentStatusChanged(Order $order): void
     {
         $earned = number_format((float) $order->total_paid);
@@ -458,6 +545,16 @@ class PulseNotificationService
     private function orderHref(Order $order): string
     {
         return $order->public_id ? "/chat/{$order->public_id}" : '/orders';
+    }
+
+    private function postTitle(Post $post): string
+    {
+        return $post->title ?: 'Post #'.($post->public_id ?: $post->id);
+    }
+
+    private function postHref(Post $post): string
+    {
+        return '/p/'.($post->public_id ?: $post->id);
     }
 
     private function planHref(?SubscriptionPlan $plan): string

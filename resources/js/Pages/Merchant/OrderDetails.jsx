@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
+import { Input } from '@/Components/ui/Input';
 import {
     ArrowLeft,
     BookOpenText,
@@ -90,6 +91,51 @@ function deliveryStatusLabel(delivery) {
     return status || 'N/A';
 }
 
+function paymentOverview(order) {
+    const total = Number(order?.total_paid || 0);
+    const explicitPaid = order?.amount_paid ?? order?.paid_amount ?? null;
+    const paidStatuses = ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed', 'resolved_merchant_paid'];
+    const paid = explicitPaid !== null
+        ? Number(explicitPaid || 0)
+        : (paidStatuses.includes(order?.payment_status) ? total : 0);
+    const left = Math.max(0, total - paid);
+    const isComplete = paid >= total && total > 0;
+    const isPartial = paid > 0 && paid < total;
+
+    if (isComplete) {
+        return {
+            label: order?.payment_status === 'resolved_merchant_paid' ? 'Completed' : 'Paid',
+            body: order?.payment_status === 'resolved_merchant_paid'
+                ? 'Payment has been released to the merchant.'
+                : 'Payment is received and protected until fulfilment is completed.',
+            tone: 'border-emerald-100 bg-emerald-50 text-emerald-800',
+            paid,
+            left,
+            total,
+        };
+    }
+
+    if (isPartial) {
+        return {
+            label: 'Partially paid',
+            body: 'Customer has paid part of the order. Do not release until the remaining amount is cleared.',
+            tone: 'border-amber-100 bg-amber-50 text-amber-800',
+            paid,
+            left,
+            total,
+        };
+    }
+
+    return {
+        label: 'Not paid',
+        body: 'Payment has not been completed yet. Wait for payment before releasing goods or services.',
+        tone: 'border-red-100 bg-red-50 text-red-800',
+        paid,
+        left,
+        total,
+    };
+}
+
 export default function MerchantOrderDetails({ merchantUsername, merchantName, orderId }) {
     const [loading, setLoading] = useState(true);
     const [order, setOrder] = useState(null);
@@ -132,6 +178,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     const kind = typeMeta(order?.display_kind);
     const status = statusMeta(order?.payment_status, !!order?.is_escrow_order);
+    const paymentState = paymentOverview(order);
     const KindIcon = kind.icon;
 
     const flowCopy = useMemo(() => {
@@ -489,6 +536,40 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
+                            <Card className="rounded-2xl md:col-span-2 overflow-hidden border-slate-100">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                                        <ReceiptText className="h-4 w-4 text-brand-600" />
+                                        Payment Status
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="p-5">
+                                    <div className={`rounded-[1.75rem] border p-5 ${paymentState.tone}`}>
+                                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.22em] opacity-70">Payment state</p>
+                                                <h3 className="mt-1 text-2xl font-black">{paymentState.label}</h3>
+                                                <p className="mt-1 max-w-2xl text-sm font-semibold opacity-80">{paymentState.body}</p>
+                                            </div>
+                                            <div className="grid min-w-full gap-2 sm:grid-cols-3 md:min-w-[420px]">
+                                                <div className="rounded-2xl bg-white/75 px-4 py-3">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Total</p>
+                                                    <p className="mt-1 text-lg font-black text-slate-950">TZS {paymentState.total.toLocaleString()}</p>
+                                                </div>
+                                                <div className="rounded-2xl bg-white/75 px-4 py-3">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Paid</p>
+                                                    <p className="mt-1 text-lg font-black text-emerald-700">TZS {paymentState.paid.toLocaleString()}</p>
+                                                </div>
+                                                <div className="rounded-2xl bg-white/75 px-4 py-3">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Left</p>
+                                                    <p className="mt-1 text-lg font-black text-amber-700">TZS {paymentState.left.toLocaleString()}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
                             {isCustomDigitalDelivery && (
                                 <Card className="rounded-2xl md:col-span-2 border-indigo-200 bg-indigo-50/20">
                                     <CardHeader className="pb-2">
@@ -566,26 +647,36 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                             )}
 
                             {order.is_escrow_order && order.delivery?.delivery_type === 'self_pickup' && order.payment_status === 'awaiting_merchant_confirmation' && (
-                                <Card className="rounded-2xl md:col-span-2 border-brand-200 bg-brand-50/30">
+                                <Card className="rounded-[2rem] md:col-span-2 overflow-hidden border-brand-100 bg-white shadow-xl shadow-brand-100/40">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <ShieldCheck className="h-4 w-4 text-brand-600" />
                                             Verification: Customer Pickup (Self Delivery)
                                         </CardTitle>
                                     </CardHeader>
-                                    <CardContent className="p-5">
-                                        <div className="flex flex-col gap-4">
-                                            <p className="text-sm font-medium">Mteja umechagua kutuma dereva wake kuchukua mzigo. Unapomkabidhi mzigo huyo dereva, omba aakupe <strong>Pickup PIN</strong> aliyopewa na Mteja.</p>
-                                            <form onSubmit={verifyPickupPin} className="flex gap-2 max-w-sm">
+                                    <CardContent className="p-6">
+                                        <div className="mx-auto flex max-w-xl flex-col items-center gap-5 text-center">
+                                            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-brand-600 text-white shadow-xl shadow-brand-600/25">
+                                                <Store className="h-8 w-8" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-2xl font-black tracking-tight text-slate-950">Confirm customer pickup</h3>
+                                                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
+                                                    Mteja akifika, omba <strong>Pickup PIN</strong> aliyopewa kwenye chat yake. Ukithibitisha PIN, order itatolewa na escrow itaendelea kukamilishwa.
+                                                </p>
+                                            </div>
+                                            <form onSubmit={verifyPickupPin} className="w-full space-y-3">
                                                 <Input
-                                                    placeholder="Weka 4-Digit PIN..."
+                                                    inputMode="numeric"
+                                                    placeholder="0000"
                                                     value={pickupPinInput}
-                                                    onChange={e => setPickupPinInput(e.target.value)}
+                                                    onChange={e => setPickupPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
                                                     maxLength={4}
-                                                    className="font-bold text-center tracking-[0.5em] text-lg"
+                                                    className="mx-auto h-20 max-w-60 rounded-3xl border-2 border-brand-100 bg-brand-50/50 text-center text-3xl font-black tracking-[0.35em] text-brand-900 shadow-inner focus:border-brand-400"
                                                 />
-                                                <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4}>
-                                                    {pinVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'KABIDHI MZIGO'}
+                                                <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="mx-auto h-14 w-full max-w-80 rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
+                                                    {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                                                    Kabidhi Mzigo
                                                 </Button>
                                             </form>
                                         </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
 import { Button } from '@/Components/ui/Button';
 import { Card, CardContent } from '@/Components/ui/Card';
+import SeoHead from '@/Components/SeoHead';
 import { 
     ShieldCheck, Zap, ArrowRight, Package, 
     CheckCircle2, Star, Share2, Info 
@@ -37,6 +38,7 @@ export default function PublicPaymentPage({ page, merchant }) {
                 <title>{page.title} | Secured by Takeer</title>
                 <meta name="description" content={page.description || 'Quick checkout on Takeer.'} />
             </Head>
+            <SeoHead />
 
             {/* Premium Header */}
             <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200">

@@ -37,9 +37,10 @@ class MerchantSubscriptionPlanController extends Controller
         return response()->json(['plans' => $plans, 'data' => $plans]);
     }
 
-    public function show(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
+    public function show(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
 
         $subscriptionPlan->load('items');
@@ -51,9 +52,10 @@ class MerchantSubscriptionPlanController extends Controller
         return response()->json(['subscription_plan' => $subscriptionPlan, 'data' => $subscriptionPlan]);
     }
 
-    public function store(Request $request, EntitlementService $entitlementService): JsonResponse
+    public function store(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $entitlementService = app(EntitlementService::class);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -113,9 +115,11 @@ class MerchantSubscriptionPlanController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, SubscriptionPlan $subscriptionPlan, EntitlementService $entitlementService): JsonResponse
+    public function update(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
+        $entitlementService = app(EntitlementService::class);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
 
         $validated = $request->validate([
@@ -174,9 +178,10 @@ class MerchantSubscriptionPlanController extends Controller
         ]);
     }
 
-    public function destroy(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
+    public function destroy(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
 
         $subscriptionPlan->delete();
@@ -184,9 +189,10 @@ class MerchantSubscriptionPlanController extends Controller
         return response()->json(['message' => 'Subscription plan deleted.']);
     }
 
-    public function members(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
+    public function members(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
 
         $members = UserSubscription::query()
@@ -206,9 +212,12 @@ class MerchantSubscriptionPlanController extends Controller
         ]);
     }
 
-    public function updateMember(Request $request, SubscriptionPlan $subscriptionPlan, UserSubscription $userSubscription, EntitlementService $entitlementService): JsonResponse
+    public function updateMember(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
+        $userSubscription = $this->userSubscriptionFromRequest($request);
+        $entitlementService = app(EntitlementService::class);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
         abort_unless((int) $userSubscription->subscription_plan_id === (int) $subscriptionPlan->id, 404);
         abort_unless((int) $userSubscription->merchant_id === (int) $merchant->id, 404);
@@ -244,9 +253,10 @@ class MerchantSubscriptionPlanController extends Controller
         ]);
     }
 
-    public function communityPosts(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
+    public function communityPosts(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
 
         $posts = $this->communityPostQuery($subscriptionPlan)
@@ -260,9 +270,10 @@ class MerchantSubscriptionPlanController extends Controller
         ]);
     }
 
-    public function storeCommunityPost(Request $request, SubscriptionPlan $subscriptionPlan): JsonResponse
+    public function storeCommunityPost(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
 
         $validated = $request->validate([
@@ -313,9 +324,11 @@ class MerchantSubscriptionPlanController extends Controller
         ], 201);
     }
 
-    public function destroyCommunityPost(Request $request, SubscriptionPlan $subscriptionPlan, Post $post): JsonResponse
+    public function destroyCommunityPost(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
+        $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
+        $post = $this->postFromRequest($request);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
         abort_unless((int) $post->merchant_id === (int) $merchant->id, 404);
 
@@ -410,6 +423,22 @@ class MerchantSubscriptionPlanController extends Controller
         }
 
         $user = $request->user();
+        if ($routeMerchant) {
+            $merchant = $user->merchantProfiles()
+                ->where(function ($query) use ($routeMerchant) {
+                    $query->where('merchants.username', $routeMerchant);
+
+                    if (is_numeric($routeMerchant)) {
+                        $query->orWhere('merchants.id', (int) $routeMerchant);
+                    }
+                })
+                ->first();
+
+            if ($merchant) {
+                return $merchant;
+            }
+        }
+
         $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
         if ($merchantId) {
             $merchant = $user->merchantProfiles()->where('merchants.id', (int) $merchantId)->first();
@@ -424,6 +453,39 @@ class MerchantSubscriptionPlanController extends Controller
         abort_unless($merchant, 403, 'Merchant profile not found.');
 
         return $merchant;
+    }
+
+    private function subscriptionPlanFromRequest(Request $request): SubscriptionPlan
+    {
+        $routePlan = $request->route('subscriptionPlan') ?? $request->route('plan');
+
+        if ($routePlan instanceof SubscriptionPlan) {
+            return $routePlan;
+        }
+
+        return SubscriptionPlan::query()->findOrFail($routePlan);
+    }
+
+    private function userSubscriptionFromRequest(Request $request): UserSubscription
+    {
+        $routeSubscription = $request->route('userSubscription');
+
+        if ($routeSubscription instanceof UserSubscription) {
+            return $routeSubscription;
+        }
+
+        return UserSubscription::query()->findOrFail($routeSubscription);
+    }
+
+    private function postFromRequest(Request $request): Post
+    {
+        $routePost = $request->route('post');
+
+        if ($routePost instanceof Post) {
+            return $routePost;
+        }
+
+        return Post::query()->findOrFail($routePost);
     }
 
     private function ensureOwnership(int $merchantId, int $planMerchantId): void

@@ -256,6 +256,146 @@ class DownloadController extends Controller
         return response()->json(['message' => 'Faili halikupatikana kwenye mfumo.'], 404);
     }
 
+    public function entitlementAccess(Request $request, Entitlement $entitlement): JsonResponse
+    {
+        $authorization = $this->authorizeEntitlementDigitalAccess($request, $entitlement);
+        if ($authorization instanceof JsonResponse) {
+            return $authorization;
+        }
+
+        $product = Product::find($entitlement->item_id);
+        if (!$product || !$product->isDigital()) {
+            return response()->json(['message' => 'Bidhaa hii ya digital haikupatikana.'], 404);
+        }
+
+        $order = null;
+        if ($entitlement->source_type === 'order' && $entitlement->source_id) {
+            $order = Order::with('product')->find($entitlement->source_id);
+            if ($order && (int) $order->buyer_id === (int) $request->user()->id) {
+                return $this->download($request, $order);
+            }
+        }
+
+        $deliveryType = $product->digital_delivery_type ?? 'file';
+        $isVideoStream = $deliveryType === 'video_stream';
+        $isAudioStream = $deliveryType === 'audio_stream';
+        $isGalleryPack = $deliveryType === 'gallery_pack';
+        $isLiveEvent = $deliveryType === 'live_event';
+
+        if ($deliveryType === 'custom_delivery') {
+            return response()->json([
+                'type' => 'custom_pending',
+                'digital_content_type' => $product->digital_content_type,
+                'digital_usage_license' => $product->digital_usage_license,
+                'digital_access_instructions' => $product->digital_access_instructions,
+                'message' => 'Custom delivery inapatikana kwa manunuzi ya moja kwa moja ya bidhaa hii.',
+            ], 422, ['Cache-Control' => 'no-store, private']);
+        }
+
+        if ($isLiveEvent) {
+            return response()->json([
+                'type' => 'live_event',
+                'url' => route('product.show', ['product' => $product->slug ?: $product->id]),
+                'digital_content_type' => $product->digital_content_type,
+                'digital_usage_license' => $product->digital_usage_license,
+                'digital_access_instructions' => $product->digital_access_instructions,
+                'message' => 'Live event/webinar yako ipo tayari ndani ya Takeer.',
+            ], 200, ['Cache-Control' => 'no-store, private']);
+        }
+
+        if ($isGalleryPack) {
+            return response()->json([
+                'type' => 'gallery',
+                'url' => route('product.show', ['product' => $product->slug ?: $product->id]),
+                'digital_content_type' => $product->digital_content_type,
+                'digital_usage_license' => $product->digital_usage_license,
+                'digital_access_instructions' => $product->digital_access_instructions,
+                'message' => 'Gallery pack yako ipo tayari ndani ya Takeer.',
+            ], 200, ['Cache-Control' => 'no-store, private']);
+        }
+
+        if (($isVideoStream || $isAudioStream) && !($product->allow_download ?? false)) {
+            $hlsUrl = (!$isAudioStream && $product->premium_video_hls_path)
+                ? route('product.video.hls', [
+                    'product' => $product->slug ?: $product->id,
+                    'path' => basename($product->premium_video_hls_path),
+                ])
+                : null;
+
+            return response()->json([
+                'type' => 'stream',
+                'stream_kind' => $isAudioStream ? 'audio' : 'video',
+                'url' => $isAudioStream
+                    ? route('product.audio.stream', ['product' => $product->slug ?: $product->id])
+                    : route('product.video.stream', ['product' => $product->slug ?: $product->id]),
+                'hls_url' => $hlsUrl,
+                'stream_status' => $isAudioStream ? null : $product->premium_video_status,
+                'digital_content_type' => $product->digital_content_type,
+                'digital_usage_license' => $product->digital_usage_license,
+                'digital_access_instructions' => $product->digital_access_instructions,
+                'message' => $isAudioStream ? 'Audio hii inasikilizwa ndani ya Takeer.' : 'Video hii inatazamwa ndani ya Takeer.',
+            ], 200, ['Cache-Control' => 'no-store, private']);
+        }
+
+        $url = (string) ($isVideoStream
+            ? $product->paid_video_url
+            : ($isAudioStream ? $product->paid_audio_url : ($product->download_link ?: $product->url)));
+
+        if (!$url) {
+            return response()->json(['message' => 'Link ya bidhaa haikupatikana.'], 404);
+        }
+
+        [$isPrivateReference, $resolvedTarget] = $this->resolveDigitalTarget($url);
+
+        if (!$isPrivateReference) {
+            return response()->json([
+                'type' => 'external',
+                'url' => $resolvedTarget,
+                'digital_content_type' => $product->digital_content_type,
+                'digital_usage_license' => $product->digital_usage_license,
+                'digital_access_instructions' => $product->digital_access_instructions,
+                'message' => 'Hii ni link ya nje. Ihifadhiwe kwa uangalifu kwa kuwa mfumo wa nje unaweza kuruhusu kushirikishwa.',
+            ], 200, ['Cache-Control' => 'no-store, private']);
+        }
+
+        try {
+            $disk = Storage::disk('s3');
+            if ($disk->exists($resolvedTarget)) {
+                return response()->json([
+                    'type' => 'signed',
+                    'url' => $disk->temporaryUrl($resolvedTarget, now()->addMinutes(10), [
+                        'ResponseContentDisposition' => 'attachment; filename="' . basename($resolvedTarget) . '"',
+                    ]),
+                    'size' => $disk->size($resolvedTarget),
+                    'is_course' => false,
+                    'digital_content_type' => $product->digital_content_type,
+                    'digital_usage_license' => $product->digital_usage_license,
+                    'digital_access_instructions' => $product->digital_access_instructions,
+                    'message' => 'Link yako ya kupakua imeandaliwa (itadumu kwa dakika 10).',
+                ], 200, ['Cache-Control' => 'no-store, private']);
+            }
+        } catch (\Exception $e) {
+            // S3 might not be configured or we are in local dev.
+        }
+
+        if (Storage::disk('local')->exists($resolvedTarget)) {
+            return response()->json([
+                'type' => 'direct',
+                'url' => URL::temporarySignedRoute('web.download.entitlement-local', now()->addMinutes(10), [
+                    'entitlement' => $entitlement->id,
+                    'user' => $request->user()->id,
+                ]),
+                'size' => Storage::disk('local')->size($resolvedTarget),
+                'digital_content_type' => $product->digital_content_type,
+                'digital_usage_license' => $product->digital_usage_license,
+                'digital_access_instructions' => $product->digital_access_instructions,
+                'message' => 'Link yako ya kupakua imeandaliwa.',
+            ], 200, ['Cache-Control' => 'no-store, private']);
+        }
+
+        return response()->json(['message' => 'Faili halikupatikana kwenye mfumo.'], 404);
+    }
+
     /**
      * Local development fallback to stream the file directly.
      * GET /api/orders/{order}/download/local
@@ -318,6 +458,37 @@ class DownloadController extends Controller
 
         return Storage::disk('local')->download($resolvedTarget, $order->custom_delivery_file_name ?: basename($resolvedTarget), [
             'Content-Type' => $order->custom_delivery_file_mime ?: Storage::disk('local')->mimeType($resolvedTarget),
+            'Cache-Control' => 'no-store, private',
+            'Pragma' => 'no-cache',
+        ]);
+    }
+
+    public function downloadEntitlementLocal(Request $request, Entitlement $entitlement): StreamedResponse|JsonResponse
+    {
+        if (!$request->hasValidSignature() || (int) $request->query('user') !== (int) $request->user()->id) {
+            return response()->json(['message' => 'Kiungo hiki si halali au muda wake umeisha.'], 403);
+        }
+
+        $authorization = $this->authorizeEntitlementDigitalAccess($request, $entitlement);
+        if ($authorization instanceof JsonResponse) {
+            return $authorization;
+        }
+
+        $product = Product::find($entitlement->item_id);
+        $deliveryType = $product?->digital_delivery_type ?? 'file';
+        $url = (string) ($deliveryType === 'video_stream'
+            ? $product?->paid_video_url
+            : ($deliveryType === 'audio_stream' ? $product?->paid_audio_url : ($product?->download_link ?: $product?->url)));
+        [$isPrivateReference, $resolvedTarget] = $this->resolveDigitalTarget($url);
+
+        if (!$url || !$isPrivateReference || !Storage::disk('local')->exists($resolvedTarget)) {
+            abort(404);
+        }
+
+        $mimeType = Storage::disk('local')->mimeType($resolvedTarget);
+
+        return Storage::disk('local')->download($resolvedTarget, basename($resolvedTarget), [
+            'Content-Type' => $mimeType,
             'Cache-Control' => 'no-store, private',
             'Pragma' => 'no-cache',
         ]);
@@ -695,12 +866,7 @@ class DownloadController extends Controller
 
         $product->loadMissing('merchant');
         $isOwner = (int) ($product->merchant?->user_id ?? 0) === (int) $user->id;
-        $hasEntitlement = Entitlement::query()
-            ->where('user_id', $user->id)
-            ->where('item_type', 'product')
-            ->where('item_id', $product->id)
-            ->where('status', 'active')
-            ->exists();
+        $hasEntitlement = $this->hasActiveProductEntitlement((int) $user->id, (int) $product->id);
 
         if (!$isOwner && !$hasEntitlement) {
             return response()->json(['message' => 'Nunua video hii kwanza ili kuitazama.'], 403);
@@ -722,12 +888,7 @@ class DownloadController extends Controller
 
         $product->loadMissing('merchant');
         $isOwner = (int) ($product->merchant?->user_id ?? 0) === (int) $user->id;
-        $hasEntitlement = Entitlement::query()
-            ->where('user_id', $user->id)
-            ->where('item_type', 'product')
-            ->where('item_id', $product->id)
-            ->where('status', 'active')
-            ->exists();
+        $hasEntitlement = $this->hasActiveProductEntitlement((int) $user->id, (int) $product->id);
 
         if (!$isOwner && !$hasEntitlement) {
             return response()->json(['message' => 'Nunua audio hii kwanza ili kuisikiliza.'], 403);
@@ -749,12 +910,7 @@ class DownloadController extends Controller
 
         $product->loadMissing('merchant');
         $isOwner = (int) ($product->merchant?->user_id ?? 0) === (int) $user->id;
-        $hasEntitlement = Entitlement::query()
-            ->where('user_id', $user->id)
-            ->where('item_type', 'product')
-            ->where('item_id', $product->id)
-            ->where('status', 'active')
-            ->exists();
+        $hasEntitlement = $this->hasActiveProductEntitlement((int) $user->id, (int) $product->id);
 
         if (!$isOwner && !$hasEntitlement) {
             return response()->json(['message' => 'Nunua gallery pack hii kwanza.'], 403);
@@ -776,12 +932,7 @@ class DownloadController extends Controller
 
         $product->loadMissing('merchant');
         $isOwner = (int) ($product->merchant?->user_id ?? 0) === (int) $user->id;
-        $hasEntitlement = Entitlement::query()
-            ->where('user_id', $user->id)
-            ->where('item_type', 'product')
-            ->where('item_id', $product->id)
-            ->where('status', 'active')
-            ->exists();
+        $hasEntitlement = $this->hasActiveProductEntitlement((int) $user->id, (int) $product->id);
 
         if (!$isOwner && !$hasEntitlement) {
             return response()->json(['message' => 'Nunua bidhaa hii kwanza ili kuifungua.'], 403);
@@ -815,5 +966,42 @@ class DownloadController extends Controller
 
         // Legacy behavior: raw storage paths were persisted directly for private uploads.
         return [true, ltrim($trimmed, '/')];
+    }
+
+    private function authorizeEntitlementDigitalAccess(Request $request, Entitlement $entitlement): JsonResponse|true
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Tafadhali ingia kwanza.'], 401);
+        }
+
+        if ((int) $entitlement->user_id !== (int) $user->id) {
+            return response()->json(['message' => 'Hauruhusiwi kufungua bidhaa hii.'], 403);
+        }
+
+        if ($entitlement->item_type !== 'product' || !$this->entitlementIsActive($entitlement)) {
+            return response()->json(['message' => 'Access ya bidhaa hii haipo active kwa sasa.'], 403);
+        }
+
+        return true;
+    }
+
+    private function hasActiveProductEntitlement(int $userId, int $productId): bool
+    {
+        return Entitlement::query()
+            ->where('user_id', $userId)
+            ->where('item_type', 'product')
+            ->where('item_id', $productId)
+            ->where('status', 'active')
+            ->where(fn ($query) => $query->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
+            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->exists();
+    }
+
+    private function entitlementIsActive(Entitlement $entitlement): bool
+    {
+        return $entitlement->status === 'active'
+            && (!$entitlement->starts_at || $entitlement->starts_at->lte(now()))
+            && (!$entitlement->expires_at || $entitlement->expires_at->gt(now()));
     }
 }

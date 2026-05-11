@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageCircle, MoreHorizontal, ShoppingBag, Clock, BadgeCheck, Crown, Unlock, Lock, X, Boxes, Loader2, ShieldCheck, AlertTriangle, Trash2, Eye, MessageSquare, SmilePlus } from 'lucide-react';
 import { Link, router, usePage } from '@inertiajs/react';
 import PostManagementMenu from './PostManagementMenu';
@@ -8,6 +9,7 @@ import LinkPreviewCard from './LinkPreviewCard';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
 import { productCardPriceLabel, productPriceLabel, productPriceRangeLabel, productUnitLabel } from '@/lib/productUnits';
 import { trackPlatformEvent } from '@/lib/attribution';
+import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
 import { toast } from 'sonner';
 import axios from 'axios';
 
@@ -20,13 +22,77 @@ const timeAgo = (ts) => {
     return `${Math.floor(s / 86400)}d`;
 };
 
+const emptyGuestEngagement = {
+    open: false,
+    step: 'compose',
+    action: 'comment',
+    text: '',
+    emoji: '',
+    name: '',
+    phone: '',
+    otp: '',
+    sending: false,
+    verifying: false,
+    error: '',
+};
+
+const buildRankedReactionEmojis = ({ summary = [], selected = null, fallback = [], limit = null }) => {
+    const seen = new Set();
+    const ranked = [];
+    const push = (emoji) => {
+        if (!emoji || seen.has(emoji)) return;
+        seen.add(emoji);
+        ranked.push(emoji);
+    };
+
+    push(selected);
+    [...summary]
+        .sort((a, b) => Number(b.count || 0) - Number(a.count || 0))
+        .forEach((entry) => push(entry.emoji));
+    fallback.forEach(push);
+
+    return limit ? ranked.slice(0, limit) : ranked;
+};
+
+const formatCompactCount = (value) => {
+    const count = Number(value || 0);
+    if (count < 1000) return String(count);
+    if (count < 1000000) {
+        const formatted = (count / 1000).toFixed(count >= 10000 ? 0 : 1).replace(/\.0$/, '');
+        return `${formatted}K`;
+    }
+    const formatted = (count / 1000000).toFixed(count >= 10000000 ? 0 : 1).replace(/\.0$/, '');
+    return `${formatted}M`;
+};
+
 export default function PostCard({ post, readOnly = false, detailHref = null, adminMode = false }) {
     const { auth } = usePage().props;
     const [reactionSummary, setReactionSummary] = useState(post.reaction_summary || []);
     const [myReaction, setMyReaction] = useState(post.my_reaction || null);
     const [showReactionPicker, setShowReactionPicker] = useState(false);
+    const [portalReady, setPortalReady] = useState(false);
     const [localPost, setLocalPost] = useState(post);
     const [isUnlocking, setIsUnlocking] = useState(false);
+    const [guestUser, setGuestUser] = useState(null);
+    const [guestEngagement, setGuestEngagement] = useState(emptyGuestEngagement);
+    const isAuthenticated = Boolean(auth?.user || guestUser);
+
+    useEffect(() => {
+        setPortalReady(true);
+    }, []);
+
+    useEffect(() => {
+        if (!showReactionPicker || typeof document === 'undefined') {
+            return undefined;
+        }
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [showReactionPicker]);
 
     // Listen for payment unlock events
     useEffect(() => {
@@ -120,8 +186,25 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
     const promotableItem = firstPromotable?.item || null;
     const isSubscriptionPromotable = promotableType === 'subscription_plan' && Boolean(promotableItem?.slug || firstPromotable?.id);
     const subscriptionRouteKey = promotableItem?.slug || firstPromotable?.id;
-    const subscriptionItemsCount = Number(promotableItem?.items_count || 0);
-    const subscriptionCadence = `${promotableItem?.interval_count || 1} ${promotableItem?.billing_interval || 'month'}`;
+    const subscriptionMembership = promotableItem?.viewer_subscription || null;
+    const hasActiveSubscriptionMembership = Boolean(subscriptionMembership?.current_period_end);
+    const subscriptionTimeLeft = useSubscriptionCountdown(subscriptionMembership?.current_period_end);
+    const subscriptionEndsLabel = subscriptionMembership?.current_period_end
+        ? new Date(subscriptionMembership.current_period_end).toLocaleString('sw-TZ', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : null;
+    const subscriptionCadence = (() => {
+        const interval = promotableItem?.billing_interval || 'monthly';
+        const count = Number(promotableItem?.interval_count || 1);
+        const labels = {
+            hourly: ['Hour', 'Hours'],
+            daily: ['Day', 'Days'],
+            weekly: ['Week', 'Weeks'],
+            monthly: ['Month', 'Months'],
+        };
+        const [single, plural] = labels[interval] || [interval, `${interval}s`];
+
+        return count <= 1 ? single : `Every ${count} ${plural}`;
+    })();
     const promotableBundleRouteKey = promotableItem?.slug || firstPromotable?.id;
     const isBundlePromotable = promotableType === 'bundle' && Boolean(promotableBundleRouteKey);
     const bundleItems = Array.isArray(promotableItem?.bundle_items) ? promotableItem.bundle_items : [];
@@ -266,7 +349,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         bgStyle: postData.bg_style,
         hasMedia,
     });
-    const feedSummaryText = String(((isBundlePromotable || isSubscriptionPromotable) ? (promotableItem?.description || postData.excerpt) : (postData.excerpt || postData.caption)) || '')
+    const feedSummaryText = String((postData.excerpt || postData.caption) || '')
         .replace(/\s+/g, ' ')
         .trim();
     const normalizeDisplayText = (value) => String(value || '')
@@ -360,21 +443,50 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         }
     };
 
+    const handleSubscriptionRenewClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        openCheckout({
+            id: firstPromotable?.id || promotableItem?.id,
+            title: promotableItem?.name || promotableItem?.title || 'Membership',
+            price: Number(promotableItem?.price || 0),
+            checkoutType: 'subscription_plan',
+        });
+    };
+
     const reactionPickerEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '👋', '🔥', '👏', '🎉', '💯', '🤝', '👌', '😍', '🤔', '🥹', '💔', '😡', '😴', '🌟', '✅', '💪', '🫶', '🙌'];
     const quickReactionEmojis = ['👍', '❤️', '🔥'];
     const quickReactionChips = useMemo(() => {
         const reactionCounts = Object.fromEntries((reactionSummary || []).map((entry) => [entry.emoji, Number(entry.count || 0)]));
-        return quickReactionEmojis.map((emoji) => ({
+        const rankedQuickReactionEmojis = buildRankedReactionEmojis({
+            summary: reactionSummary,
+            selected: myReaction,
+            fallback: quickReactionEmojis,
+            limit: 3,
+        });
+
+        return rankedQuickReactionEmojis.map((emoji) => ({
             emoji,
             count: reactionCounts[emoji] || 0,
         }));
-    }, [reactionSummary]);
+    }, [myReaction, reactionSummary]);
+    const rankedReactionPickerEmojis = useMemo(() => buildRankedReactionEmojis({
+        summary: reactionSummary,
+        selected: myReaction,
+        fallback: reactionPickerEmojis,
+    }), [myReaction, reactionSummary]);
 
     const handleReact = async (emoji) => {
         if (readOnly || !canUseReactions) return;
 
         const prevReaction = myReaction;
         const next = prevReaction === emoji ? null : emoji;
+        if (!isAuthenticated) {
+            if (!next) return;
+            openGuestEngagement({ action: 'reaction', emoji: next, step: 'identity' });
+            return;
+        }
         setMyReaction(next);
 
         try {
@@ -384,6 +496,94 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         } catch (e) {
             setMyReaction(prevReaction);
             toast.error(e.response?.data?.message || 'Imeshindwa kuweka reaction.');
+        }
+    };
+
+    const openGuestEngagement = ({ action, text = '', emoji = '', step = 'compose' }) => {
+        setGuestEngagement({
+            ...emptyGuestEngagement,
+            open: true,
+            action,
+            text,
+            emoji,
+            step,
+        });
+    };
+
+    const closeGuestEngagement = () => {
+        setGuestEngagement(emptyGuestEngagement);
+    };
+
+    const updateGuestEngagement = (changes) => {
+        setGuestEngagement((current) => ({
+            ...current,
+            ...changes,
+            error: changes.error ?? current.error,
+        }));
+    };
+
+    const sendGuestOtp = async () => {
+        if (guestEngagement.action === 'comment' && !guestEngagement.text.trim()) {
+            updateGuestEngagement({ error: 'Andika maoni yako kwanza.' });
+            return;
+        }
+        if (!guestEngagement.name.trim() || !guestEngagement.phone.trim()) {
+            updateGuestEngagement({ error: 'Andika jina na namba ya simu kuendelea.' });
+            return;
+        }
+
+        updateGuestEngagement({ sending: true, error: '' });
+        try {
+            await axios.post('/auth/otp/send', {
+                phone_number: guestEngagement.phone.trim(),
+            });
+            updateGuestEngagement({ sending: false, step: 'otp', error: '' });
+        } catch (e) {
+            updateGuestEngagement({
+                sending: false,
+                error: e.response?.data?.message || 'Imeshindwa kutuma OTP. Hakiki namba na ujaribu tena.',
+            });
+        }
+    };
+
+    const completeGuestEngagement = async () => {
+        if (!guestEngagement.otp.trim()) {
+            updateGuestEngagement({ error: 'Weka OTP iliyotumwa kwenye simu yako.' });
+            return;
+        }
+
+        updateGuestEngagement({ verifying: true, error: '' });
+        try {
+            const res = await axios.post(`/posts/${postData.id}/guest-engagement`, {
+                name: guestEngagement.name.trim(),
+                phone_number: guestEngagement.phone.trim(),
+                otp: guestEngagement.otp.trim(),
+                action: guestEngagement.action,
+                text: guestEngagement.text.trim(),
+                emoji: guestEngagement.emoji,
+            });
+
+            setGuestUser(res.data?.user || { name: guestEngagement.name.trim() });
+
+            if (guestEngagement.action === 'comment') {
+                setLocalPost((current) => ({
+                    ...current,
+                    comment_count: res.data?.comment_count ?? ((current.comment_count || 0) + 1),
+                }));
+                toast.success(res.data?.message || 'Maoni yako yamewekwa.');
+            } else {
+                setMyReaction(res.data?.my_reaction || guestEngagement.emoji);
+                setReactionSummary(res.data?.reaction_summary || []);
+                toast.success(res.data?.message || 'Reaction imewekwa.');
+            }
+
+            router.reload({ only: ['auth'], preserveScroll: true, preserveState: true });
+            closeGuestEngagement();
+        } catch (e) {
+            updateGuestEngagement({
+                verifying: false,
+                error: e.response?.data?.message || 'Imeshindwa kukamilisha. Jaribu tena.',
+            });
         }
     };
 
@@ -488,7 +688,11 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                 )}
 
                 {(postData.excerpt || postData.caption) && (
-                    <div className={isLongForm ? 'text-[14px] leading-[1.5] text-foreground/80 font-medium line-clamp-3' : `${shortPresentation.textClass} leading-[1.4] line-clamp-3`}>
+                    <div className={
+                        isLongForm
+                            ? 'text-[14px] leading-[1.5] text-foreground/80 font-medium line-clamp-3'
+                            : `${shortPresentation.textClass} leading-[1.4] ${isSubscriptionPromotable ? '' : 'line-clamp-3'}`
+                    }>
                         <LinkifiedText
                             text={feedSummaryText}
                             maxLinkLength={40}
@@ -710,32 +914,51 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             </div>
                         </div>
 
-                        <div className="mt-4 grid grid-cols-2 gap-2">
-                            <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2">
-                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Access</p>
-                                <p className="mt-1 text-sm font-black">{subscriptionItemsCount > 0 ? `${subscriptionItemsCount} items` : 'Member content'}</p>
-                            </div>
-                            <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2">
-                                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Renewal</p>
-                                <p className="mt-1 text-sm font-black capitalize">{subscriptionCadence}</p>
-                            </div>
+                        <div className="mt-4">
+                            {hasActiveSubscriptionMembership ? (
+                                <div className="rounded-xl border border-emerald-200 bg-white px-3 py-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">Membership active</p>
+                                    <p className="mt-1 text-lg font-black tabular-nums">{subscriptionTimeLeft}</p>
+                                    {subscriptionEndsLabel && (
+                                        <p className="mt-1 text-xs font-semibold text-muted-foreground">Ends {subscriptionEndsLabel}</p>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="rounded-xl border border-emerald-100 bg-white px-3 py-2">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Renewal</p>
+                                    <p className="mt-1 text-sm font-black">{subscriptionCadence}</p>
+                                </div>
+                            )}
                         </div>
-
-                        <p className="mt-3 text-sm leading-6 text-muted-foreground line-clamp-2">
-                            {promotableItem?.description || 'Jiunge kupata maudhui ya wanachama na updates mpya kadri zinavyoongezwa.'}
-                        </p>
                     </div>
                     <div className="px-4 pb-4">
                         <button
                             onClick={(e) => {
+                                if (hasActiveSubscriptionMembership) {
+                                    handleSubscriptionRenewClick(e);
+                                    return;
+                                }
+
                                 e.preventDefault();
                                 e.stopPropagation();
                                 router.visit(`/plan/${subscriptionRouteKey}`);
                             }}
                             className="w-full h-11 rounded-xl bg-emerald-600 text-white text-base font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20"
                         >
-                            <Crown className="h-4 w-4" /> View Membership
+                            <Crown className="h-4 w-4" /> {hasActiveSubscriptionMembership ? 'Renew access' : 'View Membership'}
                         </button>
+                        {hasActiveSubscriptionMembership && (
+                            <button
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    router.visit(`/plan/${subscriptionRouteKey}`);
+                                }}
+                                className="mt-2 w-full h-10 rounded-xl border border-emerald-200 bg-white text-sm font-black text-emerald-800 hover:bg-emerald-50 transition-colors"
+                            >
+                                Open membership
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
@@ -864,6 +1087,15 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                     <MessageCircle className="h-5 w-5" strokeWidth={1.5} />
                                     <span className="text-sm font-semibold">{postData.comment_count ?? 0}</span>
                                 </button>
+                            ) : !isAuthenticated && hasAccess ? (
+                                <button
+                                    type="button"
+                                    onClick={() => openGuestEngagement({ action: 'comment' })}
+                                    className="flex items-center gap-1.5 py-2 px-3 rounded-xl hover:bg-accent transition-colors text-muted-foreground w-fit"
+                                >
+                                    <MessageCircle className="h-5 w-5" strokeWidth={1.5} />
+                                    <span className="text-sm font-semibold">{postData.comment_count ?? 0}</span>
+                                </button>
                             ) : (
                                 <Link
                                     href={route('post.show', postRouteKey)}
@@ -889,7 +1121,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                 >
                                     <span>{entry.emoji}</span>
                                     {entry.count > 0 && (
-                                        <span className="text-xs font-black text-muted-foreground">{entry.count}</span>
+                                        <span className="text-xs font-black text-muted-foreground">{formatCompactCount(entry.count)}</span>
                                     )}
                                 </button>
                             ))}
@@ -913,7 +1145,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                 >
                                     <span>{entry.emoji}</span>
                                     {entry.count > 0 && (
-                                        <span className="text-xs font-black text-muted-foreground">{entry.count}</span>
+                                        <span className="text-xs font-black text-muted-foreground">{formatCompactCount(entry.count)}</span>
                                     )}
                                 </div>
                             ))}
@@ -929,7 +1161,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                     {shouldShowLockedReactionPreview && (
                         <div className="relative">
                             <div className="flex items-center gap-1.5 opacity-45">
-                                {quickReactionEmojis.map((emoji) => (
+                                {quickReactionChips.map(({ emoji }) => (
                                     <div
                                         key={`locked-preview-${emoji}`}
                                         className="inline-flex items-center justify-center rounded-full h-8 min-w-8 px-2 border border-border bg-muted/70 text-sm"
@@ -952,41 +1184,196 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                 </div>
             )}
 
-            {canUseReactions && showReactionPicker && (
+            {portalReady && createPortal(
+                canUseReactions && showReactionPicker ? (
+                    <div
+                        className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-4"
+                        onClick={() => setShowReactionPicker(false)}
+                    >
+                        <div
+                            className="w-full max-w-md rounded-3xl border border-border bg-background shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+                                <h3 className="font-black text-sm uppercase tracking-wider">Choose Reaction</h3>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowReactionPicker(false)}
+                                    className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+                            <div className="p-4">
+                                <div className="grid grid-cols-8 gap-2">
+                                    {rankedReactionPickerEmojis.map((emoji) => (
+                                        <button
+                                            key={emoji}
+                                            type="button"
+                                            onClick={() => {
+                                                handleReact(emoji);
+                                                setShowReactionPicker(false);
+                                            }}
+                                            className={`h-10 rounded-xl border text-xl transition-colors ${myReaction === emoji ? 'bg-brand-100 border-brand-300' : 'border-border hover:bg-accent'}`}
+                                        >
+                                            {emoji}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null,
+                document.body
+            )}
+
+            {guestEngagement.open && (
                 <div
-                    className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-4"
-                    onClick={() => setShowReactionPicker(false)}
+                    className="fixed inset-0 z-[80] bg-black/45 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+                    onClick={closeGuestEngagement}
                 >
                     <div
-                        className="w-full max-w-md rounded-3xl border border-border bg-background shadow-2xl"
+                        className="w-full max-w-md rounded-3xl border border-border bg-background shadow-2xl overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                            <h3 className="font-black text-sm uppercase tracking-wider">Choose Reaction</h3>
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-brand-600">
+                                    {guestEngagement.action === 'comment' ? 'Weka maoni yako' : 'Weka reaction'}
+                                </p>
+                                <h3 className="text-lg font-black tracking-tight">Thibitisha kwa simu</h3>
+                            </div>
                             <button
                                 type="button"
-                                onClick={() => setShowReactionPicker(false)}
-                                className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center"
+                                onClick={closeGuestEngagement}
+                                className="h-9 w-9 rounded-full hover:bg-accent flex items-center justify-center"
                             >
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
-                        <div className="p-4">
-                            <div className="grid grid-cols-8 gap-2">
-                                {reactionPickerEmojis.map((emoji) => (
+
+                        <div className="p-5 space-y-4">
+                            {guestEngagement.action === 'comment' && guestEngagement.step === 'compose' && (
+                                <div className="space-y-3">
+                                    <textarea
+                                        value={guestEngagement.text}
+                                        onChange={(e) => updateGuestEngagement({ text: e.target.value, error: '' })}
+                                        placeholder="Andika maoni yako..."
+                                        maxLength={1000}
+                                        className="min-h-28 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm font-semibold outline-none focus:border-brand-400"
+                                    />
                                     <button
-                                        key={emoji}
                                         type="button"
                                         onClick={() => {
-                                            handleReact(emoji);
-                                            setShowReactionPicker(false);
+                                            if (!guestEngagement.text.trim()) {
+                                                updateGuestEngagement({ error: 'Andika maoni yako kwanza.' });
+                                                return;
+                                            }
+                                            updateGuestEngagement({ step: 'identity', error: '' });
                                         }}
-                                        className={`h-10 rounded-xl border text-xl transition-colors ${myReaction === emoji ? 'bg-brand-100 border-brand-300' : 'border-border hover:bg-accent'}`}
+                                        className="h-12 w-full rounded-2xl bg-brand-600 text-sm font-black text-white hover:bg-brand-700"
                                     >
-                                        {emoji}
+                                        Endelea
                                     </button>
-                                ))}
-                            </div>
+                                </div>
+                            )}
+
+                            {(guestEngagement.step === 'identity' || guestEngagement.step === 'otp') && (
+                                <>
+                                    <div className="rounded-2xl border border-border bg-accent/40 p-4">
+                                        {guestEngagement.action === 'comment' ? (
+                                            <>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Maoni yako</p>
+                                                <p className="text-sm font-semibold leading-relaxed text-foreground break-words">
+                                                    {guestEngagement.text}
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-12 w-12 rounded-2xl bg-background border border-border flex items-center justify-center text-2xl">
+                                                    {guestEngagement.emoji}
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Reaction yako</p>
+                                                    <p className="text-sm font-bold">Thibitisha kuiweka kwenye chapisho.</p>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {guestEngagement.step === 'identity' ? (
+                                        <div className="space-y-3">
+                                            <input
+                                                type="text"
+                                                value={guestEngagement.name}
+                                                onChange={(e) => updateGuestEngagement({ name: e.target.value, error: '' })}
+                                                className="w-full h-12 rounded-2xl border border-border bg-background px-4 text-sm font-semibold outline-none focus:border-brand-400"
+                                                placeholder="Jina lako"
+                                                maxLength={80}
+                                            />
+                                            <input
+                                                type="tel"
+                                                value={guestEngagement.phone}
+                                                onChange={(e) => updateGuestEngagement({ phone: e.target.value, error: '' })}
+                                                className="w-full h-12 rounded-2xl border border-border bg-background px-4 text-sm font-semibold outline-none focus:border-brand-400"
+                                                placeholder="Namba ya simu"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div className="flex items-start gap-3 rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-brand-900">
+                                                <ShieldCheck className="h-5 w-5 mt-0.5 shrink-0" />
+                                                <p className="text-xs font-semibold leading-relaxed">
+                                                    Tumetuma OTP kwenye <span className="font-black">{guestEngagement.phone}</span>.
+                                                </p>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={guestEngagement.otp}
+                                                onChange={(e) => updateGuestEngagement({ otp: e.target.value.replace(/\D/g, '').slice(0, 6), error: '' })}
+                                                onKeyDown={(e) => e.key === 'Enter' && completeGuestEngagement()}
+                                                className="w-full h-14 rounded-2xl border border-border bg-background px-4 text-center text-2xl font-black tracking-[0.35em] outline-none focus:border-brand-400"
+                                                placeholder="000000"
+                                                maxLength={6}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {guestEngagement.error && (
+                                        <p className="rounded-2xl bg-red-50 border border-red-100 px-4 py-3 text-sm font-semibold text-red-700">
+                                            {guestEngagement.error}
+                                        </p>
+                                    )}
+
+                                    <div className="flex items-center gap-3">
+                                        {guestEngagement.action === 'comment' && guestEngagement.step !== 'compose' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => updateGuestEngagement({ step: 'compose', otp: '', error: '' })}
+                                                className="h-12 px-4 rounded-2xl border border-border text-sm font-black hover:bg-accent"
+                                            >
+                                                Hariri
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={guestEngagement.step === 'identity' ? sendGuestOtp : completeGuestEngagement}
+                                            disabled={guestEngagement.sending || guestEngagement.verifying}
+                                            className="flex-1 h-12 rounded-2xl bg-brand-600 text-white text-sm font-black hover:bg-brand-700 disabled:opacity-60 flex items-center justify-center gap-2"
+                                        >
+                                            {(guestEngagement.sending || guestEngagement.verifying) && <Loader2 className="h-4 w-4 animate-spin" />}
+                                            {guestEngagement.step === 'identity' ? 'Tuma OTP' : 'Thibitisha'}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
+                            {guestEngagement.step === 'compose' && guestEngagement.error && (
+                                <p className="rounded-2xl bg-red-50 border border-red-100 px-4 py-3 text-sm font-semibold text-red-700">
+                                    {guestEngagement.error}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>

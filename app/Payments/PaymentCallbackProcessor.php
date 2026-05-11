@@ -4,12 +4,12 @@ namespace App\Payments;
 
 use App\Models\Order;
 use App\Models\RetailAuditLog;
-use App\Models\SubscriptionInvoice;
 use App\Models\Transaction;
 use App\Models\UserSubscription;
 use App\Services\EntitlementService;
 use App\Services\PayoutPolicyService;
 use App\Services\SmsService;
+use App\Services\SubscriptionRenewalService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -172,39 +172,7 @@ class PaymentCallbackProcessor
 
     private function createOrRenewSubscription(Order $order): UserSubscription
     {
-        $plan  = $order->resolved_purchasable;
-        $start = now();
-        $end   = match ($plan->billing_interval) {
-            'hourly'  => now()->addHours((int) $plan->interval_count),
-            'daily'   => now()->addDays((int) $plan->interval_count),
-            'weekly'  => now()->addWeeks((int) $plan->interval_count),
-            default   => now()->addMonths((int) $plan->interval_count),
-        };
-
-        $subscription = UserSubscription::create([
-            'user_id'              => $order->buyer_id,
-            'merchant_id'         => $order->merchant_id,
-            'subscription_plan_id' => $plan->id,
-            'status'              => 'active',
-            'auto_renew'          => true,
-            'started_at'          => $start,
-            'current_period_start' => $start,
-            'current_period_end'   => $end,
-            'next_billing_at'     => $end,
-        ]);
-
-        SubscriptionInvoice::create([
-            'user_subscription_id' => $subscription->id,
-            'order_id'            => $order->id,
-            'amount'              => $order->total_paid,
-            'status'              => 'paid',
-            'billed_for_start'    => $start,
-            'billed_for_end'      => $end,
-            'paid_at'             => now(),
-            'reference'           => 'SUB-' . $order->transaction_ref,
-        ]);
-
-        return $subscription;
+        return app(SubscriptionRenewalService::class)->createOrExtendFromOrder($order);
     }
 
     private function sendDigitalAccessSms(Order $order): void

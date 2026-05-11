@@ -1,15 +1,18 @@
 import React from 'react';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, CalendarClock, CheckCircle2, Crown, FileText, Lock, MessageCircle, MoreHorizontal, ShieldCheck, Sparkles, Store, Users, Zap } from 'lucide-react';
+import { ArrowLeft, CalendarClock, CheckCircle2, Crown, Lock, ShieldCheck, Store, Zap } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
 import PostCard from '@/Components/PostCard';
+import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
 
-export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = false, communityPosts = [], communityStats = {}, contentPreview = [], totalLinkedContent = 0 }) {
+export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = false, viewerSubscription = null, communityPosts = [], totalLinkedContent = 0 }) {
     const merchant = subscriptionPlan?.merchant || {};
     const items = Array.isArray(subscriptionPlan?.items) ? subscriptionPlan.items : [];
+    const hasAssignedItems = items.length > 0;
     const memberPosts = Array.isArray(communityPosts) ? communityPosts : [];
-    const cadenceLabel = `${subscriptionPlan.interval_count || 1} ${subscriptionPlan.billing_interval || 'monthly'}`;
+    const cadenceLabel = formatBillingCadence(subscriptionPlan.billing_interval, subscriptionPlan.interval_count);
+    const durationLabel = formatMembershipDuration(subscriptionPlan.billing_interval, subscriptionPlan.interval_count);
     const trialDays = Number(subscriptionPlan.trial_days || 0);
     const checkoutItem = {
         ...subscriptionPlan,
@@ -17,19 +20,12 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
         checkoutType: 'subscription_plan',
         merchant,
     };
-    const remainingCount = Math.max(0, totalLinkedContent - contentPreview.length);
-    const hasPreviewContent = contentPreview.length > 0;
-    const recentMembers = Array.isArray(communityStats?.recent_members) ? communityStats.recent_members : [];
-
-    const timeAgo = (dateStr) => {
-        if (!dateStr) return '';
-        const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
-        if (diff < 60) return 'sasa hivi';
-        if (diff < 3600) return `dakika ${Math.floor(diff / 60)} zilizopita`;
-        if (diff < 86400) return `saa ${Math.floor(diff / 3600)} zilizopita`;
-        if (diff < 2592000) return `siku ${Math.floor(diff / 86400)} zilizopita`;
-        return new Date(dateStr).toLocaleDateString('sw-TZ', { month: 'short', day: 'numeric' });
-    };
+    const hasMembership = Boolean(viewerSubscription?.current_period_end);
+    const membershipEndsAt = viewerSubscription?.current_period_end ? new Date(viewerSubscription.current_period_end) : null;
+    const membershipEndsLabel = membershipEndsAt
+        ? membershipEndsAt.toLocaleString('sw-TZ', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : null;
+    const timeLeftLabel = useSubscriptionCountdown(viewerSubscription?.current_period_end);
 
     return (
         <AppLayout hideTabBar>
@@ -41,98 +37,86 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                     Rudi dukani
                 </Link>
 
-                <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr] items-start">
+                <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)] items-start">
                     <div className="space-y-6">
-                        <section className="rounded-[28px] border bg-card p-6 md:p-8 shadow-sm">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-widest text-emerald-700">
-                                <Crown className="h-3.5 w-3.5" />
-                                Uanachama
-                            </div>
-                            <h1 className="mt-4 text-3xl md:text-5xl font-black tracking-tight leading-tight">{subscriptionPlan.name}</h1>
-                            <p className="mt-4 text-base md:text-lg leading-8 text-muted-foreground">
-                                {subscriptionPlan.description || 'Jiunge kupata maudhui ya wanachama, masomo, downloads, na updates mpya kadri zinavyoongezwa.'}
-                            </p>
-
-                            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                                <div className="rounded-2xl border bg-background px-4 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">Maudhui</p>
-                                    <p className="mt-1 text-2xl font-black">{totalLinkedContent || items.length}</p>
-                                </div>
-                                <div className="rounded-2xl border bg-background px-4 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">Wanachama</p>
-                                    <p className="mt-1 text-2xl font-black">{Number(communityStats.active_members || 0).toLocaleString()}</p>
-                                </div>
-                                <div className="rounded-2xl border bg-background px-4 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">Malipo</p>
-                                    <p className="mt-1 text-xl font-black capitalize">{cadenceLabel}</p>
-                                </div>
-                            </div>
-
-                            {items.length > 0 && (
-                                <div className="mt-8 space-y-3">
-                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Utakachopata</p>
-                                    {items.map((item, index) => (
-                                        <div key={`${item.item_type}-${item.item_id}-${index}`} className="rounded-2xl border px-4 py-4 flex items-center justify-between gap-3">
-                                            <div>
-                                                <p className="font-black text-sm">{item.title || item.item_type.replace('_', ' ')}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {item.unlock_after_days > 0
-                                                        ? `Unlock after ${item.unlock_after_days} day(s)`
-                                                        : item.item_type === 'bundle'
-                                                            ? (item.is_course ? 'Course content included' : 'Bundle content included')
-                                                            : 'Member content included'}
-                                                </p>
-                                            </div>
-                                            <Lock className="h-4 w-4 text-emerald-600" />
+                        <section className="overflow-hidden rounded-[28px] border border-border/70 bg-card shadow-sm">
+                            <div className="border-b border-border/60 bg-gradient-to-br from-emerald-50 via-white to-sky-50 px-6 py-7 md:px-8 md:py-8">
+                                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
+                                        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1 text-xs font-black uppercase tracking-widest text-emerald-700 shadow-sm">
+                                            <Crown className="h-3.5 w-3.5" />
+                                            Membership
                                         </div>
-                                    ))}
+                                        <h1 className="mt-4 text-3xl font-black leading-tight tracking-tight text-slate-950 md:text-4xl">
+                                            {subscriptionPlan.name}
+                                        </h1>
+                                    </div>
+                                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-700 shadow-sm">
+                                        <Crown className="h-6 w-6" strokeWidth={2.5} />
+                                    </div>
+                                </div>
+
+                                <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">
+                                    {subscriptionPlan.description || 'Jiunge kupata maudhui ya wanachama, masomo, downloads, na updates mpya kadri zinavyoongezwa.'}
+                                </p>
+
+                                <div className="mt-6 flex flex-wrap gap-2">
+                                    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-slate-700">
+                                        <CalendarClock className="h-4 w-4 text-brand-600" />
+                                        {durationLabel}
+                                    </span>
+                                    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-slate-700">
+                                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                                        Safe checkout
+                                    </span>
+                                </div>
+                            </div>
+
+                            {hasAssignedItems && (
+                                <div className="px-6 py-6 md:px-8">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Utakachopata</p>
+                                            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">Included access</h2>
+                                        </div>
+                                        <p className="max-w-sm text-xs font-semibold leading-5 text-muted-foreground sm:text-right">
+                                            Available in <Link href="/orders" className="font-black text-brand-600 hover:underline">Orders</Link> while your membership is active.
+                                        </p>
+                                    </div>
+
+                                    <div className="mt-4 divide-y divide-border overflow-hidden rounded-2xl border bg-background">
+                                        {items.map((item, index) => (
+                                            <div key={`${item.item_type}-${item.item_id}-${index}`} className="flex items-center justify-between gap-4 px-4 py-4">
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-black text-slate-950">{item.title || item.item_type.replace('_', ' ')}</p>
+                                                    <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
+                                                        {item.unlock_after_days > 0
+                                                            ? `Unlocks after ${item.unlock_after_days} day(s), then stays in Orders while active.`
+                                                            : item.item_type === 'bundle'
+                                                                ? (item.is_course ? 'Course access in Orders while active.' : 'Bundle access in Orders while active.')
+                                                                : 'Access in Orders while active.'}
+                                                    </p>
+                                                </div>
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                                                    {hasMembership ? (
+                                                        <CheckCircle2 className="h-5 w-5" />
+                                                    ) : (
+                                                        <Lock className="h-5 w-5" />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-600">
+                                        Membership ikiisha, subscription access inaisha. Items ulizonunua moja kwa moja hubaki zako.
+                                    </p>
                                 </div>
                             )}
                         </section>
 
                         {hasAccess && (
                             <section id="community" className="space-y-4">
-                                <div className="rounded-[28px] border bg-card p-6 md:p-8 shadow-sm">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div>
-                                            <div className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs font-black uppercase tracking-widest text-brand-700">
-                                                <Crown className="h-3.5 w-3.5" />
-                                                Member community
-                                            </div>
-                                            <h2 className="mt-4 text-2xl md:text-3xl font-black tracking-tight">Subscriber-only feed</h2>
-                                            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                                Updates, drops, discussions, and premium posts attached to this membership.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-6 grid gap-3 sm:grid-cols-4">
-                                        <CommunityStat icon={Users} label="Active members" value={communityStats.active_members || 0} />
-                                        <CommunityStat icon={Sparkles} label="New 30d" value={communityStats.new_members_30d || 0} />
-                                        <CommunityStat icon={Crown} label="Member posts" value={communityStats.posts_count || memberPosts.length} />
-                                        <CommunityStat icon={MessageCircle} label="Comments" value={communityStats.comments_count || 0} />
-                                    </div>
-
-                                    {recentMembers.length > 0 && (
-                                        <div className="mt-6 rounded-2xl border bg-background p-4">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Recent members</p>
-                                                <p className="text-[11px] font-bold text-muted-foreground">Private to subscribers</p>
-                                            </div>
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                                {recentMembers.map((member) => (
-                                                    <div key={member.id} className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-2">
-                                                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-xs font-black text-brand-700">
-                                                            {initials(member.name)}
-                                                        </span>
-                                                        <span className="text-xs font-black">{member.name}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
                                 {memberPosts.length > 0 ? (
                                     <div className="space-y-4">
                                         {memberPosts.map((post) => (
@@ -154,116 +138,75 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
                                 )}
                             </section>
                         )}
-
-                        {hasPreviewContent && (
-                            <section className="rounded-[28px] border bg-card p-6 md:p-8 shadow-sm">
-                                <div className="flex items-center gap-2 mb-5">
-                                    <div className="h-8 w-8 rounded-xl bg-emerald-100 flex items-center justify-center">
-                                        <FileText className="h-4 w-4 text-emerald-700" />
-                                    </div>
-                                    <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Preview ya wanachama</p>
-                                </div>
-
-                                <div className="space-y-3">
-                                    {contentPreview.map((post) => (
-                                        <div
-                                            key={post.id}
-                                            className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-white dark:from-emerald-950/20 dark:to-slate-900 px-4 py-4"
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="font-black text-sm leading-tight truncate">
-                                                        {post.title || 'Maudhui ya wanachama'}
-                                                    </p>
-                                                    {post.excerpt && (
-                                                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
-                                                            {post.excerpt}
-                                                        </p>
-                                                    )}
-                                                    <p className="text-[10px] text-muted-foreground/70 mt-2">
-                                                        {timeAgo(post.created_at)}
-                                                    </p>
-                                                </div>
-                                                <div className="h-9 w-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
-                                                    <Lock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-
-                                    {remainingCount > 0 && (
-                                        <div className="rounded-2xl border border-dashed border-emerald-200 px-4 py-4 flex items-center justify-center gap-2 text-emerald-700">
-                                            <MoreHorizontal className="h-4 w-4" />
-                                            <p className="text-sm font-black">
-                                                + {remainingCount} zaidi
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <p className="text-[11px] text-muted-foreground mt-4 text-center">
-                                    Jiunge kufungua maudhui yote yaliyopo na mapya yatakayoongezwa kwenye subscription hii.
-                                </p>
-                            </section>
-                        )}
-
-                        {!hasPreviewContent && (
-                            <section className="rounded-[28px] border border-dashed bg-card p-6 md:p-8 text-center">
-                                <CalendarClock className="mx-auto h-9 w-9 text-emerald-600" />
-                                <p className="mt-3 font-black">Maudhui yataendelea kuongezwa</p>
-                                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                                    Mtoa huduma anaweza kuongeza posts, downloads, au course bundles mpya kadri subscription inavyoendelea.
-                                </p>
-                            </section>
-                        )}
                     </div>
 
                     <aside className="space-y-4 lg:sticky lg:top-6">
-                        <div className="rounded-[28px] border bg-card p-6 shadow-sm">
-                            <div className="flex items-center gap-3">
-                                <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center">
-                                    <Store className="h-5 w-5 text-emerald-600" />
+                        <div className="overflow-hidden rounded-[28px] border border-border/70 bg-card shadow-sm">
+                            <div className="p-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                                        <Store className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="truncate font-black text-slate-950">{merchant.display_name || merchant.name}</p>
+                                        <p className="truncate text-sm text-muted-foreground">@{merchant.slug || merchant.username || 'merchant'}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="font-black">{merchant.display_name || merchant.name}</p>
-                                    <p className="text-sm text-muted-foreground">@{merchant.slug || merchant.username || 'merchant'}</p>
+
+                                <div className="mt-6 rounded-[24px] bg-slate-50 px-5 py-5">
+                                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Bei ya subscription</p>
+                                    <p className="mt-2 text-4xl font-black tracking-tight text-brand-600">
+                                        TZS {Number(subscriptionPlan.price || 0).toLocaleString()}
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-500">{cadenceLabel}</p>
                                 </div>
+
+                                {hasMembership && (
+                                    <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700">
+                                                <Crown className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Membership active</p>
+                                                <p className="mt-1 text-sm font-black tabular-nums text-foreground">{timeLeftLabel}</p>
+                                                <p className="mt-1 text-xs font-semibold text-muted-foreground">Ends {membershipEndsLabel}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <Button className="mt-5 h-12 w-full rounded-2xl font-black shadow-lg shadow-brand-600/15" onClick={() => window.__openCheckout?.(checkoutItem)}>
+                                    <Zap className="mr-2 h-4 w-4" />
+                                    {hasMembership ? 'Renew access' : (hasAccess ? 'Renew / Manage Access' : 'Jiunge Sasa')}
+                                </Button>
+
+                                {hasAccess && (
+                                    <a
+                                        href="#community"
+                                        className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl border text-sm font-black transition-colors hover:bg-accent"
+                                    >
+                                        Open member feed
+                                    </a>
+                                )}
                             </div>
 
-                            <div className="mt-6 rounded-2xl bg-accent/40 px-4 py-4">
-                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Bei ya subscription</p>
-                                <p className="mt-2 text-3xl font-black text-brand-600">TZS {Number(subscriptionPlan.price || 0).toLocaleString()}</p>
-                                <p className="mt-1 text-sm text-muted-foreground">
-                                    Kila {cadenceLabel}
-                                </p>
-                            </div>
-
-                            <Button className="w-full mt-5 h-12 rounded-2xl font-black" onClick={() => window.__openCheckout?.(checkoutItem)}>
-                                <Zap className="mr-2 h-4 w-4" />
-                                {hasAccess ? 'Renew / Manage Access' : 'Jiunge Sasa'}
-                            </Button>
-
-                            {hasAccess && (
-                                <a
-                                    href="#community"
-                                    className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl border text-sm font-black hover:bg-accent transition-colors"
-                                >
-                                    Open member feed
-                                </a>
-                            )}
-
-                            <div className="mt-5 space-y-3 text-sm text-muted-foreground">
-                                <div className="flex items-center gap-2">
-                                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                    <span>Access hufunguka baada ya malipo kukamilika.</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                                    <span>Malipo yanalindwa na Takeer checkout.</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <CalendarClock className="h-4 w-4 text-emerald-600" />
-                                    <span>Maudhui mapya yanaweza kuongezwa baadaye.</span>
+                            <div className="border-t border-border/70 bg-slate-50/70 px-6 py-5">
+                                <div className="space-y-3 text-sm font-semibold leading-6 text-slate-600">
+                                    <div className="flex items-start gap-3">
+                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                        <span>Access hufunguka baada ya malipo kukamilika.</span>
+                                    </div>
+                                    <div className="flex items-start gap-3">
+                                        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                        <span>Malipo yanalindwa na Takeer checkout.</span>
+                                    </div>
+                                    {hasAssignedItems && (
+                                        <div className="flex items-start gap-3">
+                                            <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                            <span>Subscription items stay in Orders until membership ends.</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -274,19 +217,28 @@ export default function SubscriptionPlanDetail({ subscriptionPlan, hasAccess = f
     );
 }
 
-function CommunityStat({ icon: Icon, label, value }) {
-    return (
-        <div className="rounded-2xl border bg-background px-4 py-3">
-            <div className="flex items-center gap-2 text-brand-700">
-                <Icon className="h-4 w-4" />
-                <p className="text-[10px] font-black uppercase tracking-widest">{label}</p>
-            </div>
-            <p className="mt-2 text-2xl font-black">{Number(value || 0).toLocaleString()}</p>
-        </div>
-    );
+function formatBillingCadence(interval = 'month', count = 1) {
+    const safeCount = Math.max(1, Number(count || 1));
+    const unit = membershipIntervalUnit(interval);
+    const plural = safeCount === 1 ? unit : `${unit}s`;
+
+    return safeCount === 1 ? `Every ${unit}` : `Every ${safeCount} ${plural}`;
 }
 
-function initials(name = '') {
-    const parts = String(name || 'Member').trim().split(/\s+/).filter(Boolean);
-    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'M';
+function formatMembershipDuration(interval = 'month', count = 1) {
+    const safeCount = Math.max(1, Number(count || 1));
+    const unit = membershipIntervalUnit(interval);
+    const plural = safeCount === 1 ? unit : `${unit}s`;
+
+    return `${safeCount} ${plural}`;
+}
+
+function membershipIntervalUnit(interval = 'month') {
+    return {
+        hourly: 'hour',
+        daily: 'day',
+        weekly: 'week',
+        monthly: 'month',
+        month: 'month',
+    }[String(interval || 'month')] || String(interval || 'month');
 }

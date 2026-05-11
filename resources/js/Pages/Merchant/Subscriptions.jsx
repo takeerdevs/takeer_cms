@@ -34,6 +34,30 @@ const initialCommunityForm = {
     reactions_enabled_override: true,
 };
 
+function planCadenceLabel(plan) {
+    const interval = plan.billing_interval || 'monthly';
+    const count = Number(plan.interval_count || 1);
+    const intervalLabels = {
+        hourly: ['Hour', 'Hours'],
+        daily: ['Day', 'Days'],
+        weekly: ['Week', 'Weeks'],
+        monthly: ['Month', 'Months'],
+    };
+    const [single, plural] = intervalLabels[interval] || [interval, `${interval}s`];
+
+    if (count <= 1) {
+        return single;
+    }
+
+    return `Every ${count} ${plural}`;
+}
+
+function planStatusClasses(status) {
+    if (status === 'active') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    if (status === 'draft') return 'border-amber-200 bg-amber-50 text-amber-700';
+    return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
 export default function MerchantSubscriptions({ merchantUsername = '', itemPickerDefaultLimit = 5 }) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -534,30 +558,52 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                             {plans.length === 0 ? (
                                 <EmptyState icon={Crown} title="Hakuna tiers bado" body="Create your first subscription level for recurring revenue." />
                             ) : plans.map((item) => (
-                                <div key={item.id} className="rounded-2xl border border-border/70 bg-background px-4 py-4 flex items-start gap-3">
-                                    <div className="h-11 w-11 rounded-2xl bg-muted flex items-center justify-center shrink-0">
-                                        <Crown className="h-5 w-5 text-brand-600" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-black text-foreground">{item.name}</p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            {item.status} · {item.billing_interval} every {item.interval_count} · {Number(item.active_members_count || 0).toLocaleString()} active members
-                                        </p>
-                                        <p className="text-xs font-bold uppercase tracking-widest text-brand-700 mt-2">TZS {Number(item.price || 0).toLocaleString()}</p>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9" onClick={() => loadCommunityPosts(item)}>
-                                            <MessageCircle className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9" onClick={() => loadMembers(item)}>
-                                            <Users className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9" onClick={() => startEditPlan(item)}>
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="rounded-xl h-9 w-9 text-red-600 hover:text-red-700" onClick={() => destroyPlan(item.id)}>
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                <div key={item.id} className="rounded-2xl border border-border/70 bg-background p-4 shadow-sm transition hover:border-brand-200 hover:shadow-md">
+                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                        <div className="flex min-w-0 items-start gap-3">
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+                                                <Crown className="h-5 w-5" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="max-w-[220px] truncate text-sm font-black text-foreground sm:max-w-[280px]">{item.name}</p>
+                                                    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black capitalize leading-none ${planStatusClasses(item.status)}`}>
+                                                        {item.status}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-muted-foreground">
+                                                    <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 px-2.5 py-1">
+                                                        <Clock3 className="mr-1.5 h-3.5 w-3.5" />
+                                                        {planCadenceLabel(item)}
+                                                    </span>
+                                                    <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 px-2.5 py-1">
+                                                        <Users className="mr-1.5 h-3.5 w-3.5" />
+                                                        {Number(item.active_members_count || 0).toLocaleString()} active
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+                                            <div className="text-left sm:text-right">
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Price</p>
+                                                <p className="mt-1 whitespace-nowrap text-base font-black text-brand-700">TZS {Number(item.price || 0).toLocaleString()}</p>
+                                            </div>
+                                            <div className="flex items-center gap-1 rounded-xl border border-border/70 bg-muted/30 p-1">
+                                                <Button title="Member feed" aria-label="Member feed" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => loadCommunityPosts(item)}>
+                                                    <MessageCircle className="h-4 w-4" />
+                                                </Button>
+                                                <Button title="Members" aria-label="Members" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => loadMembers(item)}>
+                                                    <Users className="h-4 w-4" />
+                                                </Button>
+                                                <Button title="Edit tier" aria-label="Edit tier" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => startEditPlan(item)}>
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                                <Button title="Delete tier" aria-label="Delete tier" variant="ghost" size="icon" className="h-9 w-9 rounded-lg text-red-600 hover:text-red-700" onClick={() => destroyPlan(item.id)}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ))}

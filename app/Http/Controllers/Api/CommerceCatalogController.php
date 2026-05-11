@@ -18,25 +18,26 @@ class CommerceCatalogController extends Controller
 {
     public function showContentItem(Request $request, ContentItem $contentItem, EntitlementService $entitlementService): JsonResponse
     {
-        $internalShortTitle = '__short_locked__';
         abort_if($contentItem->visibility !== 'published', 404);
 
         $user = $request->user();
         $isOwner = $user?->merchantProfiles()->where('id', $contentItem->merchant_id)->exists() ?? false;
         $isFree = $contentItem->price === null;
         $hasAccess = $isOwner || $isFree || ($user && $entitlementService->hasAccess($user->id, 'content_item', $contentItem->id));
-        $previewLimit = $contentItem->format === 'plain_text' ? 90 : 220;
         $previewBody = null;
         if (!$hasAccess) {
-            if ($contentItem->format === 'plain_text' && trim((string) $contentItem->title) === $internalShortTitle) {
+            if ($contentItem->format === 'plain_text') {
                 $previewBody = 'Unlock this short post to read the full text.';
             } else {
-                $previewBody = Str::limit(trim(strip_tags((string) $contentItem->body)), $previewLimit);
+                $previewBody = Str::limit(trim(strip_tags((string) $contentItem->body)), 220);
             }
         }
 
         $payload = ContentItemResource::make($contentItem->loadMissing('merchant'))->resolve($request);
         $payload['excerpt'] = trim((string) preg_replace('/\s*Tap unlock to continue\.\s*$/i', '', (string) ($payload['excerpt'] ?? '')));
+        if (!$hasAccess && $contentItem->price !== null && $contentItem->format === 'plain_text') {
+            $payload['excerpt'] = null;
+        }
         $payload['body'] = $hasAccess ? $contentItem->body : null;
 
         return response()->json([

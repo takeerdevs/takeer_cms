@@ -10,6 +10,7 @@ import SearchOverlay from '@/Components/SearchOverlay';
 import CheckoutModal from '@/Components/CheckoutModal';
 import DigitalDownloadModal from '@/Components/DigitalDownloadModal';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
+import SeoHead from '@/Components/SeoHead';
 import axios from 'axios';
 import { trackPlatformEvent } from '@/lib/attribution';
 
@@ -32,7 +33,10 @@ export default function AppLayout({ children, hideTabBar = false }) {
 
     useEffect(() => {
         if (flash?.success) toast.success(flash.success);
-        if (flash?.error) toast.error(flash.error);
+        const normalizedFlashError = String(flash?.error || '').trim().toLowerCase();
+        if (flash?.error && !['unauthenticated.', 'unauthorized'].includes(normalizedFlashError)) {
+            toast.error(flash.error);
+        }
     }, [flash]);
 
     useEffect(() => {
@@ -124,6 +128,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
             <main className={cn('min-h-screen', hideTabBar ? 'pb-0' : 'pb-20')}>
                 {children}
             </main>
+            <SeoHead />
 
             {/* ── Super Fluid Floating Tab Bar (Mobile) ──────────────────────── */}
             {/* ── Floating Tab Bar (all screen sizes) ─────────────────── */}
@@ -205,8 +210,10 @@ export default function AppLayout({ children, hideTabBar = false }) {
                 isOpen={downloadModalOpen}
                 onClose={() => setDownloadModalOpen(false)}
                 orderId={downloadModalData?.orderId}
+                entitlementId={downloadModalData?.entitlementId}
                 productTitle={downloadModalData?.productTitle}
                 productId={downloadModalData?.itemId}
+                accessProduct={downloadModalData?.accessProduct}
             />
         </div>
     );

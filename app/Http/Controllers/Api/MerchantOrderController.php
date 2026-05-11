@@ -568,7 +568,9 @@ class MerchantOrderController extends Controller
             'Order must be paid before pickup can be released.'
         );
 
-        DB::transaction(function () use ($order, $merchant, $request) {
+        $chatMessage = null;
+
+        DB::transaction(function () use ($order, $merchant, $request, &$chatMessage) {
             $order->delivery->update(['delivery_status' => 'delivered']);
 
             app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
@@ -599,6 +601,7 @@ class MerchantOrderController extends Controller
 
             $message->load('sender:id,name,role');
             broadcast(new MessageSent($message, $order))->toOthers();
+            $chatMessage = $message;
         });
 
         $freshOrder = $order->fresh(['buyer:id,name,phone_number', 'product:id,title,type,url,download_link', 'product.images', 'variant:id,name,swatch_image_url', 'delivery']);
@@ -606,6 +609,7 @@ class MerchantOrderController extends Controller
         return response()->json([
             'message' => 'Mzigo umekabidhiwa kikamilifu! Malipo yameidhinishwa.',
             'order' => $this->checkupPayload($freshOrder),
+            'chat_message' => $chatMessage,
         ]);
     }
 

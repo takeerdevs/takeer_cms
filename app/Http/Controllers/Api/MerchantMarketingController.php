@@ -31,6 +31,7 @@ use App\Models\UserSubscription;
 use App\Services\MetaSocialConnectorService;
 use App\Services\SocialDmAutomationService;
 use App\Services\WhatsappCommerceService;
+use App\Support\SeoMeta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -185,10 +186,12 @@ class MerchantMarketingController extends Controller
             ->where('slug', $slug)
             ->with(['merchant:id,username,display_name,avatar_url', 'product.unitType:id,name,code,symbol,allows_decimal', 'product.images'])
             ->firstOrFail();
+        $seo = SeoMeta::groupSale($campaign);
 
         return \Inertia\Inertia::render('GroupSaleCampaign', [
             'campaign' => $this->serializePublicGroupSaleCampaign($campaign),
-        ]);
+            'seo' => $seo,
+        ])->withViewData('seo', $seo);
     }
 
     public function joinGroupSale(Request $request, string $slug): JsonResponse
@@ -275,12 +278,17 @@ class MerchantMarketingController extends Controller
         $targetPath = $this->campaignTargetPath($merchant, $targetType, $targetId);
         $ctaUrl = $this->appendCampaignParams($targetPath, $coupon, $referral);
 
+        $campaignTitle = $coupon?->name ?: $referral?->label ?: ($coupon ? 'Special offer' : 'Creator campaign');
+        $campaignDescription = $coupon?->description ?: 'A focused campaign from this creator on Takeer.';
+
+        $seo = SeoMeta::campaign($merchant, $campaignTitle, $campaignDescription, $normalizedCode);
+
         return \Inertia\Inertia::render('CampaignLanding', [
             'campaign' => [
                 'code' => $normalizedCode,
                 'kind' => $coupon ? 'coupon' : 'referral',
-                'title' => $coupon?->name ?: $referral?->label ?: ($coupon ? 'Special offer' : 'Creator campaign'),
-                'description' => $coupon?->description ?: 'A focused campaign from this creator on Takeer.',
+                'title' => $campaignTitle,
+                'description' => $campaignDescription,
                 'discount_label' => $coupon ? $this->discountLabel($coupon) : null,
                 'coupon' => $coupon ? $this->serializeCoupon($coupon) : null,
                 'referral' => $referral ? $this->serializeReferralLink($referral) : null,
@@ -297,7 +305,8 @@ class MerchantMarketingController extends Controller
                     'storefront_url' => url('/m/'.$merchant->username),
                 ],
             ],
-        ]);
+            'seo' => $seo,
+        ])->withViewData('seo', $seo);
     }
 
     public function followSmsLink(Request $request, string $code)

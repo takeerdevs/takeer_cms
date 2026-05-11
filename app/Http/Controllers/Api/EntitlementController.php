@@ -73,6 +73,8 @@ class EntitlementController extends Controller
             'merchant_issue_reported',
             'merchant_order_cancelled',
             'merchant_review_created',
+            'merchant_post_comment_created',
+            'merchant_post_reaction_updated',
         ];
 
         $events = PulseNotification::query()
@@ -119,6 +121,10 @@ class EntitlementController extends Controller
             ->with('merchant')
             ->where('status', 'active')
             ->where(function ($query) {
+                $query->where('item_type', '!=', 'subscription_plan')
+                    ->orWhere('source_type', '!=', 'order');
+            })
+            ->where(function ($query) {
                 $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
             })
             ->where(function ($query) {
@@ -136,6 +142,7 @@ class EntitlementController extends Controller
         }
 
         $items = $itemsQuery->latest()->get();
+        $items = $this->deduplicateLibraryEntitlements($items);
         $unfilteredTotal = (int) $items->count();
 
         $entitlements = $items->map(function (Entitlement $entitlement) use ($request) {
@@ -150,6 +157,9 @@ class EntitlementController extends Controller
                 'library_type' => $libraryType,
                 'source_type' => $entitlement->source_type,
                 'source_id' => $entitlement->source_id,
+                'access_kind' => $this->accessKind($entitlement),
+                'access_label' => $this->accessLabel($entitlement),
+                'is_temporary_access' => $entitlement->expires_at !== null,
                 'status' => $entitlement->status,
                 'starts_at' => $entitlement->starts_at?->toISOString(),
                 'expires_at' => $entitlement->expires_at?->toISOString(),
@@ -296,6 +306,94 @@ class EntitlementController extends Controller
                     : null,
             ],
         ]);
+    }
+
+    private function deduplicateLibraryEntitlements($items)
+    {
+        $dedupeTypes = ['product', 'content_item', 'post', 'bundle', 'subscription_plan'];
+
+        return $items
+            ->groupBy(function (Entitlement $entitlement) use ($dedupeTypes) {
+                if (in_array($entitlement->item_type, $dedupeTypes, true)) {
+                    return "{$entitlement->item_type}:{$entitlement->item_id}";
+                }
+
+                return "entitlement:{$entitlement->id}";
+            })
+            ->map(function ($group) {
+                return $group
+                    ->sort(function (Entitlement $a, Entitlement $b) {
+                        $rank = $this->entitlementAccessRank($b) <=> $this->entitlementAccessRank($a);
+                        if ($rank !== 0) {
+                            return $rank;
+                        }
+
+                        $expiry = $this->entitlementExpiryScore($b) <=> $this->entitlementExpiryScore($a);
+                        if ($expiry !== 0) {
+                            return $expiry;
+                        }
+
+                        return ($b->created_at?->timestamp ?? 0) <=> ($a->created_at?->timestamp ?? 0);
+                    })
+                    ->first();
+            })
+            ->filter()
+            ->sortByDesc(fn (Entitlement $entitlement) => $entitlement->created_at?->timestamp ?? 0)
+            ->values();
+    }
+
+    private function entitlementAccessRank(Entitlement $entitlement): int
+    {
+        return match ($entitlement->source_type) {
+            'order' => 40,
+            'admin_grant' => 30,
+            'bundle' => 20,
+            'subscription' => 10,
+            default => 0,
+        };
+    }
+
+    private function entitlementExpiryScore(Entitlement $entitlement): int
+    {
+        return $entitlement->expires_at?->timestamp ?? PHP_INT_MAX;
+    }
+
+    private function accessKind(Entitlement $entitlement): string
+    {
+        if ($entitlement->source_type === 'subscription') {
+            return 'subscription';
+        }
+
+        if ($entitlement->source_type === 'bundle') {
+            return 'bundle';
+        }
+
+        if ($entitlement->source_type === 'order') {
+            return 'purchase';
+        }
+
+        return $entitlement->source_type ?: 'access';
+    }
+
+    private function accessLabel(Entitlement $entitlement): string
+    {
+        if ($entitlement->source_type === 'subscription') {
+            return 'Membership access';
+        }
+
+        if ($entitlement->source_type === 'bundle') {
+            return 'Bundle access';
+        }
+
+        if ($entitlement->source_type === 'order') {
+            return 'Purchased';
+        }
+
+        if ($entitlement->source_type === 'admin_grant') {
+            return 'Granted access';
+        }
+
+        return 'Active access';
     }
 
     public function canAccess(Request $request, EntitlementService $entitlementService): JsonResponse

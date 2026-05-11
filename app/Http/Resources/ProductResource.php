@@ -24,6 +24,7 @@ class ProductResource extends JsonResource
         $merchantRating = $this->relationLoaded('merchant') && $this->merchant
             ? $this->merchantRatingSummary($this->merchant)
             : null;
+        $productRating = $this->productRatingSummary();
         $groupSaleOffer = $this->getAttribute('group_sale_offer');
         if (! $groupSaleOffer && $this->type === 'physical' && ($this->fulfillment_mode ?: 'own_stock') === 'group_sale') {
             $autoGroupSale = MerchantGroupSaleCampaign::query()
@@ -58,18 +59,27 @@ class ProductResource extends JsonResource
             : (bool) ($user && (int) ($this->merchant?->user_id ?? 0) === (int) $user->id);
         
         if ($user && ($this->type === 'digital' || $this->type === 'service')) {
-            $entitlement = \App\Models\Entitlement::where('user_id', $user->id)
+            $entitlementQuery = \App\Models\Entitlement::where('user_id', $user->id)
                 ->where('item_type', 'product')
                 ->where('item_id', $this->id)
                 ->where('status', 'active')
+                ->where(function ($query) {
+                    $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+                })
+                ->where(function ($query) {
+                    $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                });
+
+            $entitlement = (clone $entitlementQuery)
                 ->latest()
                 ->first();
                 
             if ($entitlement) {
                 $hasAccess = true;
-                if ($entitlement->source_type === 'order') {
-                    $latestOrderId = $entitlement->source_id;
-                }
+                $latestOrderId = (clone $entitlementQuery)
+                    ->where('source_type', 'order')
+                    ->latest()
+                    ->value('source_id');
             }
         }
         $canExposeDigitalDelivery = $this->type !== 'digital' || $hasAccess || $isOwner;
@@ -228,6 +238,8 @@ class ProductResource extends JsonResource
             ] : null,
             'available_stock' => $this->available_stock,
             'in_stock' => $this->isInStock(),
+            'rating_average' => $productRating['average'],
+            'ratings_count' => $productRating['count'],
             'image_url' => $publicImageUrl,
             'url' => $canExposeDigitalDelivery ? $this->url : null,
             'download_link' => $canExposeDigitalDelivery && ($this->allow_download ?? true) ? $this->download_link : null,
@@ -613,6 +625,19 @@ class ProductResource extends JsonResource
     {
         $query = \App\Models\ProductReview::query()
             ->whereHas('product', fn ($productQuery) => $productQuery->where('merchant_id', $merchant->id));
+
+        $count = (clone $query)->count();
+
+        return [
+            'average' => $count > 0 ? round((float) (clone $query)->avg('rating'), 1) : null,
+            'count' => $count,
+        ];
+    }
+
+    private function productRatingSummary(): array
+    {
+        $query = \App\Models\ProductReview::query()
+            ->where('product_id', $this->id);
 
         $count = (clone $query)->count();
 

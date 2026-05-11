@@ -26,6 +26,10 @@ class EntitlementService
             return;
         }
 
+        if ($type === 'subscription_plan') {
+            return;
+        }
+
         $isFullBundlePurchase = $type === 'bundle'
             && $bundleSelection->isNotEmpty()
             && $bundleSelection->every(fn ($item) => ($item['selection_mode'] ?? null) === 'full_bundle');
@@ -70,6 +74,17 @@ class EntitlementService
 
     public function grantForSubscription(UserSubscription $subscription, bool $notifyNewItems = false): void
     {
+        $this->grantSingle(
+            userId: $subscription->user_id,
+            merchantId: $subscription->merchant_id,
+            itemType: 'subscription_plan',
+            itemId: $subscription->subscription_plan_id,
+            sourceType: 'subscription',
+            sourceId: $subscription->id,
+            startsAt: $subscription->current_period_start ?: $subscription->started_at ?: now(),
+            expiresAt: $subscription->current_period_end
+        );
+
         $items = SubscriptionPlanItem::where('subscription_plan_id', $subscription->subscription_plan_id)
             ->whereIn('item_type', ['content_item', 'bundle', 'product'])
             ->get();
@@ -125,6 +140,9 @@ class EntitlementService
             ->where('item_type', $itemType)
             ->where('item_id', $itemId)
             ->where('status', 'active')
+            ->when($itemType === 'subscription_plan', function ($query) {
+                $query->where('source_type', '!=', 'order');
+            })
             ->where(function ($query) {
                 $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
             })
@@ -144,6 +162,9 @@ class EntitlementService
             ->whereIn('status', ['pending', 'active', 'past_due'])
             ->where(function ($query) {
                 $query->whereNull('ended_at')->orWhere('ended_at', '>', now());
+            })
+            ->where(function ($query) {
+                $query->whereNull('current_period_end')->orWhere('current_period_end', '>', now());
             })
             ->get();
 

@@ -31,7 +31,7 @@ function formatBytes(bytes) {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export default function DigitalDownloadModal({ isOpen, onClose, orderId, productTitle, productId }) {
+export default function DigitalDownloadModal({ isOpen, onClose, orderId, entitlementId, productTitle, productId, accessProduct = null }) {
     const [fileUrl, setFileUrl] = useState(null);
     const [fileSize, setFileSize] = useState(null);
     const [hlsUrl, setHlsUrl] = useState(null);
@@ -47,8 +47,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
     const [loading, setLoading] = useState(false);
     const [downloaded, setDownloaded] = useState(false);
 
-    useEffect(() => {
-        if (!isOpen || !orderId) return;
+    const resetState = () => {
         setFileUrl(null);
         setFileSize(null);
         setHlsUrl(null);
@@ -61,13 +60,90 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
         setSoftwareLicenseKey(null);
         setIsCourse(false);
         setDownloaded(false);
-        fetchDownloadUrl();
-    }, [isOpen, orderId]);
+        setDownloadMessage(null);
+    };
+
+    useEffect(() => {
+        if (!isOpen) return;
+        resetState();
+
+        if (entitlementId || orderId) {
+            fetchDownloadUrl();
+            return;
+        }
+
+        if (accessProduct) {
+            hydrateAccessProduct(accessProduct);
+        }
+    }, [isOpen, orderId, entitlementId, accessProduct?.id]);
+
+    const hydrateAccessProduct = (product) => {
+        const delivery = product?.digital_delivery_type || 'file';
+        const video = product?.premium_video || null;
+        const audio = product?.premium_audio || null;
+        const gallery = product?.gallery_pack || null;
+        const liveEvent = product?.live_event || null;
+        const documentReader = product?.document_reader || null;
+
+        setDigitalContentType(product?.digital_content_type || null);
+        setDigitalUsageLicense(product?.digital_usage_license || null);
+        setDigitalAccessInstructions(product?.digital_access_instructions || null);
+
+        if (delivery === 'video_stream' && video?.url) {
+            setFileUrl(video.url);
+            setHlsUrl(video.hls_url || null);
+            setStreamStatus(video.status || null);
+            setFileSize(video.size || null);
+            setDeliveryType('stream');
+            setStreamKind('video');
+            return;
+        }
+
+        if (delivery === 'audio_stream' && audio?.url) {
+            setFileUrl(audio.url);
+            setFileSize(audio.size || null);
+            setDeliveryType('stream');
+            setStreamKind('audio');
+            return;
+        }
+
+        if (delivery === 'gallery_pack' && gallery?.items?.length) {
+            setFileUrl(product?.slug || product?.id ? route('product.show', product.slug || product.id) : gallery.items[0]?.url);
+            setDeliveryType('gallery');
+            return;
+        }
+
+        if (delivery === 'live_event' && liveEvent?.access_url) {
+            setFileUrl(liveEvent.access_url);
+            setDeliveryType('live_event');
+            return;
+        }
+
+        if (documentReader?.url) {
+            setFileUrl(documentReader.url);
+            setDeliveryType('document');
+            return;
+        }
+
+        const directUrl = product?.download_link || product?.url || null;
+        if (directUrl && !String(directUrl).startsWith('private://')) {
+            setFileUrl(directUrl);
+            setDeliveryType('download');
+            return;
+        }
+
+        setDeliveryType('access_page');
+        setDownloadMessage('Tumia access ya Orders kufungua item hii.');
+        setFileUrl(product?.slug || product?.id ? route('product.show', product.slug || product.id) : null);
+    };
 
     const fetchDownloadUrl = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`/api/orders/${orderId}/download`);
+            const endpoint = entitlementId
+                ? `/orders/data/entitlements/${entitlementId}/access`
+                : `/api/orders/${orderId}/download`;
+            const res = await axios.get(endpoint);
             setFileUrl(res.data?.url || null);
             setFileSize(res.data?.size || null);
             setHlsUrl(res.data?.hls_url || null);
@@ -103,6 +179,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                 source: 'digital_download_modal',
                 metadata: {
                     order_id: orderId,
+                    entitlement_id: entitlementId || null,
                     delivery_type: deliveryType,
                     stream_kind: streamKind,
                     digital_content_type: digitalContentType,
@@ -303,9 +380,10 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                                         entity_type: 'product',
                                         entity_id: productId || null,
                                         source: 'digital_download_modal',
-                                        metadata: {
-                                            order_id: orderId,
-                                            license_key_id: softwareLicenseKey.id || null,
+                        metadata: {
+                            order_id: orderId,
+                            entitlement_id: entitlementId || null,
+                            license_key_id: softwareLicenseKey.id || null,
                                         },
                                     })}
                                     className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-800 border border-emerald-100"
@@ -318,7 +396,9 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, product
                     )}
 
                     <p className="text-[10px] text-center leading-relaxed">
-                        Faili lako litapatikana pia kwenye <strong>Orders</strong> zako wakati wote.
+                        {orderId
+                            ? <>Faili lako litapatikana pia kwenye <strong>Orders</strong> zako wakati wote.</>
+                            : <>Access hii inapatikana kwenye <strong>Orders</strong> wakati membership yako iko active.</>}
                     </p>
                 </div>
 

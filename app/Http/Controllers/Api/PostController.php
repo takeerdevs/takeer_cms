@@ -15,13 +15,24 @@ use App\Models\Product;
 use App\Models\PostReaction;
 use App\Models\PostLike;
 use App\Models\SubscriptionPlan;
+use App\Models\User;
+use App\Models\Wallet;
 use App\Services\EntitlementService;
 use App\Services\LinkPreviewService;
+use App\Services\PhoneService;
+use App\Services\PulseNotificationService;
+use App\Support\SeoMeta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 class PostController extends Controller
 {
@@ -67,11 +78,14 @@ class PostController extends Controller
                 abort(404);
             }
 
+            $seo = SeoMeta::post($post);
+
             return Inertia::render('PostDetail', [
                 'post' => PostResource::make($post)->resolve($request),
                 'postId' => $post->id,
                 'initialComments' => [],
-            ]);
+                'seo' => $seo,
+            ])->withViewData('seo', $seo);
         }
 
         // Track traffic
@@ -82,9 +96,12 @@ class PostController extends Controller
             ? $this->canViewDeletedPost($viewer, $post)
             : ($commentsEnabled && $this->canAccessPostComments($viewer, $post));
 
+        $seo = SeoMeta::post($post);
+
         return Inertia::render('PostDetail', [
             'post' => PostResource::make($post)->resolve($request),
             'postId' => $post->id,
+            'seo' => $seo,
             'initialComments' => Inertia::defer(
                 fn() => $canAccessComments
                     ? CommentResource::collection(
@@ -96,7 +113,7 @@ class PostController extends Controller
                     )->resolve()
                     : []
             ),
-        ]);
+        ])->withViewData('seo', $seo);
     }
 
     /**
@@ -422,7 +439,8 @@ class PostController extends Controller
 
         $post->increment('comment_count');
 
-        broadcast(new PostEngagementUpdated($post, 'comment'));
+        $this->broadcastEngagementUpdated($post, 'comment');
+        app(PulseNotificationService::class)->postCommentCreated($comment);
 
         return response()->json([
             'message' => 'Maoni yamechapishwa!',
@@ -460,14 +478,17 @@ class PostController extends Controller
         if (!$emoji) {
             if ($existing) {
                 $existing->delete();
+                app(PulseNotificationService::class)->postReactionCleared($post, (int) $user->id);
             }
         } elseif ($existing) {
             $existing->update(['emoji' => $emoji]);
+            app(PulseNotificationService::class)->postReactionUpdated($existing->fresh());
         } else {
-            $post->reactions()->create([
+            $reaction = $post->reactions()->create([
                 'user_id' => $user->id,
                 'emoji' => $emoji,
             ]);
+            app(PulseNotificationService::class)->postReactionUpdated($reaction);
         }
 
         $summary = $post->reactions()
@@ -479,7 +500,7 @@ class PostController extends Controller
                 'count' => (int) ($row->total ?? 0),
             ])->values();
 
-        broadcast(new PostEngagementUpdated($post, 'reaction'));
+        $this->broadcastEngagementUpdated($post, 'reaction');
 
         return response()->json([
             'message' => 'Reaction updated.',
@@ -488,9 +509,184 @@ class PostController extends Controller
         ]);
     }
 
+    public function guestEngagement(Request $request, Post $post): JsonResponse
+    {
+        if ($post->trashed()) {
+            return response()->json(['message' => 'This content is no longer publicly available.'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:80'],
+            'phone_number' => ['required', 'string', 'max:20'],
+            'otp' => ['required', 'string', 'digits:6'],
+            'country_id' => ['nullable', 'exists:countries,id'],
+            'action' => ['required', 'in:comment,reaction'],
+            'text' => ['required_if:action,comment', 'nullable', 'string', 'max:1000'],
+            'parent_id' => ['nullable', 'exists:comments,id'],
+            'emoji' => ['required_if:action,reaction', 'nullable', 'string', 'max:16'],
+        ]);
+
+        $country = $request->filled('country_id') ? \App\Models\Country::find($request->input('country_id')) : null;
+        $rawPhone = trim($validated['phone_number']);
+        $formattedPhone = PhoneService::formatToE164($rawPhone, $country?->iso_alpha2 ?: $this->sessionRegion());
+        $otpPhones = array_values(array_unique(array_filter([$formattedPhone, $rawPhone])));
+
+        $throttleKey = 'guest-engagement-otp:' . sha1($request->ip() . '|' . ($formattedPhone ?: $rawPhone));
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            return response()->json([
+                'message' => 'Too many attempts. Please wait a bit and try again.',
+                'retry_after_seconds' => RateLimiter::availableIn($throttleKey),
+            ], 429);
+        }
+
+        $cacheKey = null;
+        $hashedOtp = null;
+        foreach ($otpPhones as $candidatePhone) {
+            $candidateKey = "otp:{$candidatePhone}";
+            $candidateOtp = Cache::get($candidateKey);
+            if ($candidateOtp) {
+                $cacheKey = $candidateKey;
+                $hashedOtp = $candidateOtp;
+                break;
+            }
+        }
+
+        if (!$hashedOtp || !Hash::check($validated['otp'], $hashedOtp)) {
+            RateLimiter::hit($throttleKey, 600);
+
+            return response()->json(['message' => 'The OTP is incorrect or has expired.'], 422);
+        }
+
+        $phone = $formattedPhone ?: $rawPhone;
+
+        if ($validated['action'] === 'comment' && !$this->commentsEnabled($post)) {
+            return response()->json(['message' => 'Comments are disabled for this post by the merchant.'], 403);
+        }
+
+        if ($validated['action'] === 'reaction' && !$this->reactionsEnabled($post)) {
+            return response()->json(['message' => 'Reactions are disabled for this post by the merchant.'], 403);
+        }
+
+        $user = User::whereIn('phone_number', PhoneService::variantsForLookup($phone, $country))->first();
+        $name = trim($validated['name']);
+        if (!$user && !$this->canAccessPostComments(null, $post)) {
+            return response()->json(['message' => 'Unlock this post first to engage.'], 403);
+        }
+
+        if (!$user) {
+            $user = User::create([
+                'name' => $name,
+                'phone_number' => $phone,
+                'phone_verified_at' => now(),
+                'role' => 'buyer',
+            ]);
+        } else {
+            $updates = ['phone_verified_at' => $user->phone_verified_at ?: now()];
+            if (trim((string) $user->name) === '' || str_starts_with((string) $user->name, 'User ')) {
+                $updates['name'] = $name;
+            }
+            $user->forceFill($updates)->save();
+        }
+
+        if (!$user->wallet) {
+            Wallet::create(['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]);
+        }
+
+        if (!$this->canAccessPostComments($user, $post)) {
+            return response()->json(['message' => 'Unlock this post first to engage.'], 403);
+        }
+
+        Cache::forget($cacheKey);
+        RateLimiter::clear($throttleKey);
+        Auth::guard('web')->login($user, true);
+        $request->session()->regenerate();
+
+        if ($validated['action'] === 'comment') {
+            $resolvedParentId = null;
+            if ($request->filled('parent_id')) {
+                $parent = $post->comments()
+                    ->where('id', $request->integer('parent_id'))
+                    ->first();
+
+                if (!$parent) {
+                    return response()->json(['message' => 'Invalid reply target for this post.'], 422);
+                }
+
+                $resolvedParentId = $parent->parent_id ?: $parent->id;
+            }
+
+            $comment = $post->comments()->create([
+                'user_id' => $user->id,
+                'parent_id' => $resolvedParentId,
+                'text' => $validated['text'],
+            ]);
+            $post->increment('comment_count');
+            $this->broadcastEngagementUpdated($post, 'comment');
+            app(PulseNotificationService::class)->postCommentCreated($comment);
+
+            return response()->json([
+                'message' => 'Your comment has been posted.',
+                'user' => \App\Http\Resources\UserResource::make($user),
+                'comment' => CommentResource::make($comment->load('user')),
+                'comment_count' => $post->fresh()->comment_count,
+            ]);
+        }
+
+        $emoji = $validated['emoji'];
+        $existing = $post->reactions()->where('user_id', $user->id)->first();
+        if ($existing) {
+            $existing->update(['emoji' => $emoji]);
+            app(PulseNotificationService::class)->postReactionUpdated($existing->fresh());
+        } else {
+            $reaction = $post->reactions()->create([
+                'user_id' => $user->id,
+                'emoji' => $emoji,
+            ]);
+            app(PulseNotificationService::class)->postReactionUpdated($reaction);
+        }
+
+        $summary = $post->reactions()
+            ->selectRaw('emoji, COUNT(*) as total')
+            ->groupBy('emoji')
+            ->get()
+            ->map(fn($row) => [
+                'emoji' => $row->emoji,
+                'count' => (int) ($row->total ?? 0),
+            ])->values();
+
+        $this->broadcastEngagementUpdated($post, 'reaction');
+
+        return response()->json([
+            'message' => 'Reaction added.',
+            'user' => \App\Http\Resources\UserResource::make($user),
+            'my_reaction' => $post->reactions()->where('user_id', $user->id)->value('emoji'),
+            'reaction_summary' => $summary,
+        ]);
+    }
+
     private function canAccessPostComments($user, Post $post): bool
     {
         return $this->userCanAccessPost($user, $post, true);
+    }
+
+    private function broadcastEngagementUpdated(Post $post, string $type): void
+    {
+        try {
+            broadcast(new PostEngagementUpdated($post, $type));
+        } catch (Throwable $exception) {
+            Log::warning('Post engagement broadcast failed.', [
+                'post_id' => $post->id,
+                'type' => $type,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function sessionRegion(): string
+    {
+        $sessionCountry = session('user_session_country');
+
+        return $sessionCountry['iso_alpha2'] ?? 'TZ';
     }
 
     private function commentsEnabled(Post $post): bool

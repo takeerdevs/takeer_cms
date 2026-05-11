@@ -92,7 +92,7 @@ class PostResource extends JsonResource
             ? ($linkedContentItem?->body ?? $this->body)
             : null;
         $displayTitle = $canViewDeletedContent ? ($linkedContentItem?->title ?: ($this->title ?: $resolvedProduct?->title)) : null;
-        $displayExcerpt = $canViewDeletedContent ? ($this->excerpt
+        $displayExcerpt = ($hasAccess && $canViewDeletedContent) ? ($this->excerpt
             ?: $linkedContentItem?->excerpt
             ?: (is_string($resolvedProduct?->description ?? null) ? trim((string) $resolvedProduct->description) : null)) : null;
         $isLongFormPost = !empty($displayBody) || !empty($displayExcerpt);
@@ -157,8 +157,8 @@ class PostResource extends JsonResource
                 ] : null,
             ] : null,
             
-            'promotables' => $this->when($this->promotables->isNotEmpty(), function() {
-                return $this->promotables->map(function ($promotable) {
+            'promotables' => $this->when($this->promotables->isNotEmpty(), function () use ($user) {
+                return $this->promotables->map(function ($promotable) use ($user) {
                     $typeMap = [
                         \App\Models\Product::class => 'product',
                         \App\Models\Bundle::class => 'bundle',
@@ -168,6 +168,10 @@ class PostResource extends JsonResource
                     $item = $promotable;
 
                     if ($promotable instanceof \App\Models\SubscriptionPlan) {
+                        $viewerSubscription = $user
+                            ? app(\App\Services\SubscriptionRenewalService::class)->activeSubscriptionFor((int) $user->id, (int) $promotable->id)
+                            : null;
+
                         $item = [
                             'id' => $promotable->id,
                             'slug' => $promotable->slug,
@@ -181,6 +185,14 @@ class PostResource extends JsonResource
                             'items_count' => $promotable->relationLoaded('items')
                                 ? $promotable->items->count()
                                 : $promotable->items()->count(),
+                            'viewer_subscription' => $viewerSubscription ? [
+                                'id' => $viewerSubscription->id,
+                                'status' => $viewerSubscription->status,
+                                'current_period_start' => $viewerSubscription->current_period_start?->toISOString(),
+                                'current_period_end' => $viewerSubscription->current_period_end?->toISOString(),
+                                'next_billing_at' => $viewerSubscription->next_billing_at?->toISOString(),
+                                'auto_renew' => (bool) $viewerSubscription->auto_renew,
+                            ] : null,
                         ];
                     }
 

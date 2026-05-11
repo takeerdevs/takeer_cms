@@ -11,8 +11,8 @@ class CommentResource extends JsonResource
     {
         $user = $this->user;
         $publicIdentifier = $this->maskedPublicPhone($user?->phone_number);
-        $displayName = $publicIdentifier
-            ?: trim((string) ($user?->name ?? ''))
+        $displayName = trim((string) ($user?->name ?? ''))
+            ?: $publicIdentifier
             ?: 'User';
 
         return [

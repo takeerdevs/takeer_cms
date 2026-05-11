@@ -2,15 +2,173 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, Link } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
+import { Input } from '@/Components/ui/Input';
 import {
     ShoppingBag, ArrowRight, ShieldCheck, Zap,
     User, Store, CheckCircle2, ChevronRight,
-    Globe, Lock, Sparkles, TrendingUp
+    Globe, Lock, Sparkles, TrendingUp, Loader2,
+    Smartphone, KeyRound
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from "@/lib/utils";
+import { useState } from 'react';
+import axios from 'axios';
 
-export default function Welcome({ auth }) {
+function PasswordlessEntry({ intended }) {
+    const [step, setStep] = useState('phone');
+    const [phone, setPhone] = useState('');
+    const [otp, setOtp] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const safeRedirect = intended && intended.startsWith('/') && !intended.startsWith('//') ? intended : '/feed';
+
+    const sendOtp = async (event) => {
+        event.preventDefault();
+        if (!phone.trim()) {
+            setError('Andika namba yako ya simu.');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+            await axios.post('/auth/otp/send', { phone_number: phone.trim() });
+            setStep('otp');
+        } catch (e) {
+            setError(e.response?.data?.message || 'Imeshindwa kutuma OTP. Jaribu tena.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const verifyOtp = async (event) => {
+        event.preventDefault();
+        if (otp.trim().length !== 6) {
+            setError('Weka OTP yenye tarakimu 6.');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const res = await axios.post('/auth/otp/verify', {
+                phone_number: phone.trim(),
+                otp: otp.trim(),
+            });
+
+            if (res.data?.token) {
+                localStorage.setItem('takeer_token', res.data.token);
+            }
+
+            router.visit(safeRedirect);
+        } catch (e) {
+            setError(e.response?.data?.message || 'OTP si sahihi au imeisha muda wake.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+            className="rounded-[2rem] border border-brand-100 bg-white/95 p-5 shadow-2xl shadow-brand-900/10 dark:border-brand-900/60 dark:bg-slate-950/90"
+        >
+            <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+                    {step === 'phone' ? <Smartphone className="h-6 w-6" /> : <KeyRound className="h-6 w-6" />}
+                </div>
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">Ingia Haraka</p>
+                    <h2 className="mt-2 text-2xl font-black tracking-tight text-foreground">
+                        {step === 'phone' ? 'Karibu Takeer' : 'Thibitisha namba'}
+                    </h2>
+                    <p className="mt-1 text-sm font-semibold leading-6 text-muted-foreground">
+                        {step === 'phone'
+                            ? 'Tumia namba yako kuingia, kununua, kuuza, au kuendelea ulipoishia.'
+                            : `Tumeituma OTP kwenye ${phone}.`}
+                    </p>
+                </div>
+            </div>
+
+            <form onSubmit={step === 'phone' ? sendOtp : verifyOtp} className="space-y-3">
+                {step === 'phone' ? (
+                    <Input
+                        value={phone}
+                        onChange={(e) => {
+                            setPhone(e.target.value);
+                            setError('');
+                        }}
+                        type="tel"
+                        inputMode="tel"
+                        placeholder="07XX XXX XXX"
+                        className="h-14 rounded-2xl border-brand-100 px-5 text-lg font-black shadow-sm"
+                    />
+                ) : (
+                    <Input
+                        value={otp}
+                        onChange={(e) => {
+                            setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                            setError('');
+                        }}
+                        inputMode="numeric"
+                        placeholder="000000"
+                        className="h-14 rounded-2xl border-brand-100 px-5 text-center text-2xl font-black tracking-[0.35em] shadow-sm"
+                    />
+                )}
+
+                {error && (
+                    <p className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                        {error}
+                    </p>
+                )}
+
+                <Button
+                    type="submit"
+                    disabled={loading}
+                    className="h-14 w-full rounded-2xl bg-brand-600 text-base font-black text-white shadow-xl shadow-brand-600/20 hover:bg-brand-700"
+                >
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (step === 'phone' ? 'Tuma OTP' : 'Ingia Takeer')}
+                    {!loading && <ChevronRight className="ml-2 h-5 w-5" />}
+                </Button>
+            </form>
+
+            {step === 'otp' && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        setStep('phone');
+                        setOtp('');
+                        setError('');
+                    }}
+                    className="mt-3 w-full text-center text-xs font-black uppercase tracking-widest text-brand-600"
+                >
+                    Badilisha namba
+                </button>
+            )}
+
+            <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">au</span>
+                <div className="h-px flex-1 bg-border" />
+            </div>
+
+            <a
+                href="/auth/google/redirect"
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-border bg-background text-sm font-black text-foreground shadow-sm transition hover:bg-accent"
+            >
+                <span className="text-lg font-black text-blue-500">G</span>
+                Endelea na Google
+            </a>
+        </motion.div>
+    );
+}
+
+export default function Welcome({ auth, intended }) {
     const heroImage = "/images/welcome/hero.png";
 
     const containerVariants = {
@@ -53,11 +211,6 @@ export default function Welcome({ auth }) {
                             animate="visible"
                             className="space-y-8"
                         >
-                            <motion.div variants={itemVariants} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800">
-                                <Sparkles className="h-4 w-4 text-brand-600" />
-                                <span className="text-xs font-bold text-brand-700 dark:text-brand-400 uppercase tracking-widest">New: Multi-Profile Identity</span>
-                            </motion.div>
-
                             <motion.h1 variants={itemVariants} className="text-5xl md:text-7xl font-black text-foreground tracking-tighter leading-[1.1]">
                                 Uza na Ununue <br />
                                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-orange-500">
@@ -67,7 +220,7 @@ export default function Welcome({ auth }) {
                             </motion.h1>
 
                             <motion.p variants={itemVariants} className="text-lg md:text-xl text-muted-foreground max-w-lg leading-relaxed">
-                                Jukwaa Maalum linalounganisha wauzaji binafsi na biashara kubwa kwenye mfumo mmoja salama wa Escrow.
+                                Jukwaa Maalum linalounganisha wauzaji binafsi na biashara kubwa kwenye mfumo mmoja salama.
                             </motion.p>
 
                             <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4 pt-4">
@@ -116,39 +269,45 @@ export default function Welcome({ auth }) {
                             </motion.div>
                         </motion.div>
 
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.8, rotate: 5 }}
-                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                            transition={{ duration: 1, ease: "easeOut" }}
-                            className="relative hidden lg:block"
-                        >
-                            <div className="absolute inset-0 bg-brand-500/20 blur-[100px] rounded-full" />
-                            <div className="relative z-10 p-8 glass-card border-white/20 dark:border-white/10 rounded-[3rem] shadow-2xl overflow-hidden group">
-                                <img
-                                    src={heroImage}
-                                    alt="Takeer Ecosystem"
-                                    className="w-full h-auto rounded-[2rem] transition-transform duration-700 group-hover:scale-105"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+                        {!auth?.user ? (
+                            <div className="relative mx-auto w-full max-w-md lg:ml-auto">
+                                <PasswordlessEntry intended={intended} />
                             </div>
-
-                            {/* Floating Stats */}
+                        ) : (
                             <motion.div
-                                animate={{ y: [0, -10, 0] }}
-                                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                                className="absolute -top-6 -right-6 p-4 glass-card rounded-2xl shadow-xl z-20 border-white/20"
+                                initial={{ opacity: 0, scale: 0.8, rotate: 5 }}
+                                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                transition={{ duration: 1, ease: "easeOut" }}
+                                className="relative hidden lg:block"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-600">
-                                        <TrendingUp className="h-5 w-5" />
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">Growth</p>
-                                        <p className="text-xl font-black text-foreground">+142%</p>
-                                    </div>
+                                <div className="absolute inset-0 bg-brand-500/20 blur-[100px] rounded-full" />
+                                <div className="relative z-10 p-8 glass-card border-white/20 dark:border-white/10 rounded-[3rem] shadow-2xl overflow-hidden group">
+                                    <img
+                                        src={heroImage}
+                                        alt="Takeer Ecosystem"
+                                        className="w-full h-auto rounded-[2rem] transition-transform duration-700 group-hover:scale-105"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
                                 </div>
+
+                                {/* Floating Stats */}
+                                <motion.div
+                                    animate={{ y: [0, -10, 0] }}
+                                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                                    className="absolute -top-6 -right-6 p-4 glass-card rounded-2xl shadow-xl z-20 border-white/20"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-600">
+                                            <TrendingUp className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">Growth</p>
+                                            <p className="text-xl font-black text-foreground">+142%</p>
+                                        </div>
+                                    </div>
+                                </motion.div>
                             </motion.div>
-                        </motion.div>
+                        )}
                     </section>
 
                     {/* ── Account Types Section ── */}

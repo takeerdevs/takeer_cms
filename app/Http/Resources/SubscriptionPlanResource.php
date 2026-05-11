@@ -24,7 +24,8 @@ class SubscriptionPlanResource extends JsonResource
             ->keyBy('id');
         $productLookup = Product::query()
             ->whereIn('id', $items->where('item_type', 'product')->pluck('item_id')->filter()->unique()->values())
-            ->get(['id', 'slug', 'title', 'description', 'price', 'type', 'digital_delivery_type', 'digital_content_type'])
+            ->with('attributes:id,product_id,suggested_description')
+            ->get(['id', 'slug', 'title', 'price', 'type', 'digital_delivery_type', 'digital_content_type'])
             ->keyBy('id');
 
         return [

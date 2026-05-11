@@ -9,6 +9,7 @@ use App\Models\RetailAuditLog;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Payments\PaymentCallbackProcessor;
+use App\Support\SeoMeta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,12 +27,20 @@ class RetailCreditPaymentController extends Controller
     {
         $order = $this->findCreditOrder($publicId);
         $merchant = $order->merchant?->loadMissing(['currency', 'storefrontSetting']);
+        $merchantName = $merchant?->display_name ?: 'Takeer merchant';
+        $seo = SeoMeta::make([
+            'title' => 'Pay Outstanding Balance | '.$merchantName,
+            'description' => 'Secure payment page for an outstanding retail balance on Takeer.',
+            'canonical' => route('retail-credit-payment.show', $publicId),
+            'robots' => 'noindex,nofollow',
+        ]);
 
         return Inertia::render('Public/RetailCreditPayment', [
             'order' => $this->serializeCreditOrder($order),
             'merchant' => $merchant,
             'paymentLinksDisabled' => $this->posPaymentLinksDisabled($merchant),
-        ]);
+            'seo' => $seo,
+        ])->withViewData('seo', $seo);
     }
 
     public function pay(Request $request, string $publicId): JsonResponse

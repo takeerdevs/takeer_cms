@@ -125,6 +125,8 @@ export default function ProductDetail({ product }) {
     const merchantSlug = merchantProfile?.username || merchant?.username || merchantProfile?.id || merchant?.id;
     const merchantRatingAverage = Number(merchant?.rating_average || 0);
     const merchantRatingsCount = Number(merchant?.ratings_count || 0);
+    const productRatingAverage = Number(product?.rating_average || 0);
+    const productRatingsCount = Number(product?.ratings_count || 0);
     const merchantPhone = product?.merchant?.phone_number
         || product?.merchant?.user?.phone_number
         || merchantProfile?.phone_number
@@ -1634,6 +1636,27 @@ export default function ProductDetail({ product }) {
                         <h1 className="text-2xl font-black leading-tight mb-2 text-foreground break-words">
                             {product.title}
                         </h1>
+                        {productRatingsCount > 0 && (
+                            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                                <div className="flex items-center gap-0.5 text-amber-500">
+                                    {Array.from({ length: 5 }).map((_, index) => (
+                                        <Star
+                                            key={index}
+                                            className={cn(
+                                                'h-4 w-4',
+                                                index < Math.round(productRatingAverage)
+                                                    ? 'fill-amber-500'
+                                                    : 'fill-transparent text-muted-foreground/40'
+                                            )}
+                                        />
+                                    ))}
+                                </div>
+                                <span className="font-black text-foreground">{productRatingAverage.toFixed(1)}</span>
+                                <span className="font-semibold text-muted-foreground">
+                                    ({compactCount(productRatingsCount)} product {productRatingsCount === 1 ? 'review' : 'reviews'})
+                                </span>
+                            </div>
+                        )}
                         <div className="flex items-end gap-3">
                             <div className="text-3xl font-extrabold text-brand-600 leading-none">
                                 {product.type === 'service' ? (

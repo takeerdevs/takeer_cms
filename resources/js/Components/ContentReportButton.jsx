@@ -9,7 +9,6 @@ const DEFAULT_REASONS = [
     { value: 'download_abuse', label: 'Download or file problem' },
     { value: 'license_abuse', label: 'License or key abuse' },
     { value: 'custom_work_issue', label: 'Custom work issue' },
-    { value: 'adult_content', label: 'Adult content' },
     { value: 'harassment', label: 'Harassment or abuse' },
     { value: 'spam', label: 'Spam' },
     { value: 'other', label: 'Other' },
@@ -91,19 +90,19 @@ export default function ContentReportButton({
 
                         <div className="space-y-4 p-4">
                             <div className="space-y-2">
-                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Reason</p>
-                                <div className="grid grid-cols-1 gap-2">
+                                <label htmlFor="content-report-reason" className="text-xs font-black uppercase tracking-wider text-muted-foreground">Reason</label>
+                                <select
+                                    id="content-report-reason"
+                                    value={reason}
+                                    onChange={(e) => setReason(e.target.value)}
+                                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-semibold outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-100"
+                                >
                                     {reasons.map((entry) => (
-                                        <button
-                                            key={entry.value}
-                                            type="button"
-                                            onClick={() => setReason(entry.value)}
-                                            className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition-colors ${reason === entry.value ? 'border-brand-300 bg-brand-100' : 'border-border hover:bg-accent'}`}
-                                        >
+                                        <option key={entry.value} value={entry.value}>
                                             {entry.label}
-                                        </button>
+                                        </option>
                                     ))}
-                                </div>
+                                </select>
                             </div>
 
                             <div className="space-y-2">

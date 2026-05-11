@@ -243,6 +243,11 @@ class Product extends Model
         return $this->hasMany(ProductFaq::class)->orderBy('sort_order')->orderBy('id');
     }
 
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(ProductReview::class);
+    }
+
     public function softwareReleases(): HasMany
     {
         return $this->hasMany(ProductRelease::class)->latest('published_at')->latest('id');

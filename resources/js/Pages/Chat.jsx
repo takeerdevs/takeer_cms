@@ -676,7 +676,21 @@ export default function Chat({
 
             toast.success('Pickup imethibitishwa! Malipo yameidhinishwa.');
             setPickupPinInput('');
-            if (data.order) setOrder(data.order);
+            if (data.order) {
+                setOrder(prev => ({
+                    ...prev,
+                    payment_status: data.order.payment_status || 'resolved_merchant_paid',
+                    delivery: {
+                        ...(prev?.delivery || {}),
+                        delivery_status: data.order.delivery_status || 'delivered',
+                    },
+                }));
+            }
+            if (data.chat_message) {
+                setMessages(prev => prev.some(message => message.id === data.chat_message.id)
+                    ? prev
+                    : [...prev, data.chat_message]);
+            }
         } catch (error) {
             toast.error(error.message);
         } finally {
@@ -1039,7 +1053,31 @@ export default function Chat({
         }
     };
 
-    const groupedMessages = messages.reduce((acc, msg) => {
+    const visibleMessages = [...messages].reverse().reduce((acc, msg) => {
+        const isPaymentNotice = msg.type === 'action'
+            && msg.payload?.action_type === 'initiate_payment';
+        const shouldHideCompletedMerchantPaymentNotice = isPaymentNotice
+            && actingAs === 'merchant'
+            && order?.payment_status === 'resolved_merchant_paid';
+        const key = isPaymentNotice ? 'payment-initiation' : null;
+
+        if (shouldHideCompletedMerchantPaymentNotice) {
+            return acc;
+        }
+
+        if (key && acc.seen.has(key)) {
+            return acc;
+        }
+
+        if (key) {
+            acc.seen.add(key);
+        }
+
+        acc.items.push(msg);
+        return acc;
+    }, { items: [], seen: new Set() }).items.reverse();
+
+    const groupedMessages = visibleMessages.reduce((acc, msg) => {
         const dateObj = new Date(msg.created_at);
         const today = new Date();
         const yesterday = new Date(today);
@@ -1164,11 +1202,11 @@ export default function Chat({
                                     </span>
                                     <span className={cn(
                                         "text-[10px] font-black py-0.5 px-2 rounded-full uppercase tracking-tighter border",
-                                        order?.payment_status === 'completed' || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                                        ['resolved_merchant_paid', 'awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) || orderStatus === 'delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
                                             order?.payment_status === 'failed' ? "bg-red-50 text-red-600 border-red-100" :
                                                 "bg-amber-50 text-amber-600 border-amber-100"
                                     )}>
-                                        {order?.payment_status === 'failed' ? 'IMESITISHWA' : orderStatus}
+                                        {currentStatus.label}
                                     </span>
                                 </div>
                             </div>
@@ -1614,6 +1652,73 @@ export default function Chat({
                                                     </div>
                                                 );
                                             }
+
+                                            return (
+                                                <div key={msg.id} className="flex justify-center my-2">
+                                                    <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl border border-brand-100/70 bg-white px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-800 shadow-sm dark:border-brand-900/40 dark:bg-slate-900 dark:text-brand-100">
+                                                        <CreditCard className="h-3.5 w-3.5 shrink-0 text-brand-600" />
+                                                        <span>Malipo yameanzishwa · TZS {paymentAmount.toLocaleString()}</span>
+                                                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (actionType === 'discount') {
+                                            const amount = Number(msg.payload?.amount || 0);
+
+                                            return (
+                                                <div key={msg.id} className={cn("flex w-full my-4", isMe ? "justify-end" : "justify-start")}>
+                                                    <div className={cn("flex w-full max-w-[540px] flex-col gap-1", isMe ? "items-end" : "items-start")}>
+                                                        <span className="px-1 text-[9px] font-semibold text-slate-400">{renderedName}</span>
+                                                        <div className={cn(
+                                                            "flex w-full items-center justify-between gap-4 rounded-[2rem] border border-amber-100 bg-amber-50/70 px-5 py-4 shadow-sm dark:border-amber-900/40 dark:bg-amber-950/20",
+                                                            isMe ? "rounded-tr-xl" : "rounded-tl-xl"
+                                                        )}>
+                                                            <div className="min-w-0">
+                                                                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-600">Punguzo</p>
+                                                                <p className="mt-1 text-2xl font-black text-amber-950 dark:text-amber-100">- TZS {amount.toLocaleString()}</p>
+                                                            </div>
+                                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-500 shadow-sm dark:bg-slate-950">
+                                                                <Tag className="h-5 w-5" />
+                                                            </div>
+                                                        </div>
+                                                        <span className="px-1 text-[9px] font-bold text-slate-300">
+                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        if (actionType === 'review') {
+                                            const stars = Number(msg.payload?.stars || 5);
+                                            const comment = msg.payload?.comment || 'Hakuna maoni ya ziada.';
+
+                                            return (
+                                                <div key={msg.id} className={cn("flex w-full my-4", isMe ? "justify-end" : "justify-start")}>
+                                                    <div className={cn("flex w-full max-w-[540px] flex-col gap-1", isMe ? "items-end" : "items-start")}>
+                                                        <span className="px-1 text-[9px] font-semibold text-slate-400">{renderedName}</span>
+                                                        <div className={cn(
+                                                            "flex w-full items-center justify-between gap-4 rounded-[2rem] border border-amber-100 bg-amber-50/50 px-5 py-4 shadow-sm dark:border-amber-900/40 dark:bg-amber-950/20",
+                                                            isMe ? "rounded-tr-xl" : "rounded-tl-xl"
+                                                        )}>
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    {[...Array(Math.max(1, Math.min(stars, 5)))].map((_, i) => (
+                                                                        <Star key={i} className="h-5 w-5 fill-amber-500 text-amber-500" />
+                                                                    ))}
+                                                                </div>
+                                                                <p className="mt-3 break-words text-sm font-bold italic leading-relaxed text-amber-950 dark:text-amber-100">"{comment}"</p>
+                                                            </div>
+                                                            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+                                                        </div>
+                                                        <span className="px-1 text-[9px] font-bold text-slate-300">
+                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
                                         }
 
                                         return (
@@ -2081,20 +2186,30 @@ export default function Chat({
                         )}
 
                         {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
-                            <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
-                                <div className="flex items-start gap-3 mb-3">
-                                    <div className="h-10 w-10 rounded-2xl bg-white text-indigo-600 shadow-sm flex items-center justify-center shrink-0">
+                            <div className="rounded-[2rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-100/50">
+                                <div className="mb-4 flex items-start gap-3">
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
                                         <Store className="h-5 w-5" />
                                     </div>
-                                    <div>
-                                        <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Verify Pickup</h4>
-                                        <p className="text-xs text-indigo-800/80 font-medium">Personal merchants can complete pickup here. Ask the customer for their PIN, enter it, then release the order.</p>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">Pickup Verification</p>
+                                        <h4 className="mt-1 text-lg font-black leading-tight text-slate-950">Confirm & release</h4>
+                                        <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">Ask the customer for the 4-digit PIN shown in their chat, then release the order.</p>
                                     </div>
                                 </div>
-                                <form onSubmit={verifyPickupPin} className="flex gap-2">
-                                    <Input type="text" maxLength={4} placeholder="PIN..." value={pickupPinInput} onChange={e => setPickupPinInput(e.target.value)} className="w-24 text-center font-black tracking-widest h-12 rounded-xl border-indigo-200" />
-                                    <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
-                                        {pinVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'KABIDHI MZIGO'}
+                                <form onSubmit={verifyPickupPin} className="space-y-3">
+                                    <Input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={4}
+                                        placeholder="0000"
+                                        value={pickupPinInput}
+                                        onChange={e => setPickupPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                        className="mx-auto h-16 w-full max-w-44 rounded-2xl border-2 border-brand-100 bg-brand-50/40 text-center text-2xl font-black tracking-[0.35em] text-brand-900 shadow-inner focus:border-brand-400"
+                                    />
+                                    <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="h-14 w-full rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
+                                        {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                                        Kabidhi Mzigo
                                     </Button>
                                 </form>
                             </div>

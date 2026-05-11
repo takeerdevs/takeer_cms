@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Image, ShoppingBag, BookOpenText, Lock } from 'lucide-react';
+import { X, Image, ShoppingBag, BookOpenText, Lock, Crown, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import LongFormBlockEditor from '@/Components/LongFormBlockEditor';
 import PolicyNotice from '@/Components/PolicyNotice';
@@ -19,6 +19,12 @@ const BG_OPTIONS = [
     { key: 'solid_brand', label: '🔵 Brand', preview: '#0284c7' },
 ];
 const SHORT_LOCKED_INTERNAL_TITLE = '__short_locked__';
+
+function AccessGateIcon({ type, className = '' }) {
+    const Icon = type === 'bundle' ? Package : Crown;
+
+    return <Icon className={cn('h-5 w-5 text-brand-600', className)} />;
+}
 
 function MediaGrid({ files, onRemove }) {
     const [viewerOpen, setViewerOpen] = useState(false);
@@ -202,7 +208,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const parsedShortPrice = parsePriceValue(shortPrice);
     const hasSingleUnlockPrice = parsedShortPrice !== null && !Number.isNaN(parsedShortPrice);
     const isPaidShortUnlock = hasSingleUnlockPrice && parsedShortPrice > 0;
-    const shouldShowShortTitleInput = composerMode === 'short' && isRestricted;
+    const shouldShowShortTitleInput = composerMode === 'short' && isPaidShortUnlock;
     const shouldRequireShortTitle = shouldShowShortTitleInput;
     const selectedProfileKycComplete = ['verified', 'approved'].includes(String(selectedProfile?.kyc_status || '').toLowerCase())
         || Boolean(selectedProfile?.is_verified);
@@ -680,12 +686,8 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                     <div className="flex flex-col gap-2 mb-4 mt-2">
                                         {selectedPromotables.map((item, idx) => (
                                             <div key={idx} className="relative group border border-brand-200/50 bg-gradient-to-r from-brand-50 to-brand-100/50 dark:from-brand-900/20 dark:to-brand-800/10 rounded-2xl p-3 flex items-center gap-4 shadow-sm backdrop-blur-md">
-                                                <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 shadow-sm border border-white/20">
-                                                    <img
-                                                        src={item.type === 'bundle' ? '/images/bundle-icon.png' : '/images/subscription-icon.png'}
-                                                        className="h-full w-full object-cover"
-                                                        alt=""
-                                                    />
+                                                <div className="h-10 w-10 rounded-xl shrink-0 shadow-sm border border-white/20 bg-background flex items-center justify-center">
+                                                    <AccessGateIcon type={item.type} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-1.5">
@@ -854,8 +856,8 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                                             isSelected ? "bg-brand-50/50 border-brand-200" : "bg-background/20 border-transparent hover:bg-background/40 hover:border-border/50"
                                                                         )}
                                                                     >
-                                                                        <div className="h-10 w-10 rounded-lg bg-background shadow-sm overflow-hidden shrink-0">
-                                                                            <img src={activePromotionTab === 'bundle' ? '/images/bundle-icon.png' : '/images/subscription-icon.png'} className="h-full w-full object-cover" alt="" />
+                                                                        <div className="h-10 w-10 rounded-lg bg-background shadow-sm shrink-0 flex items-center justify-center border border-border/50">
+                                                                            <AccessGateIcon type={mappedType === 'bundle' ? 'bundle' : 'subscription_plan'} />
                                                                         </div>
                                                                         <div className="min-w-0 flex-1">
                                                                             <p className="font-bold text-[13px] truncate text-foreground leading-tight">{item.title || item.name}</p>

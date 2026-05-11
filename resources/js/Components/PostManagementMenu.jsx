@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MoreHorizontal, Trash2, Link as LinkIcon, AlertTriangle, X } from 'lucide-react';
 import { router } from '@inertiajs/react';
@@ -26,7 +27,12 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
     const [reportReason, setReportReason] = useState('misleading');
     const [reportNotes, setReportNotes] = useState('');
     const [isReporting, setIsReporting] = useState(false);
+    const [portalReady, setPortalReady] = useState(false);
     const menuRef = useRef(null);
+
+    useEffect(() => {
+        setPortalReady(true);
+    }, []);
 
     useEffect(() => {
         function handleClickOutside(event) {
@@ -39,6 +45,19 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
         }
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isOpen]);
+
+    useEffect(() => {
+        if (!showReportModal || typeof document === 'undefined') {
+            return undefined;
+        }
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [showReportModal]);
 
     const handleDelete = async () => {
         if (!window.confirm('Una uhakika unataka kufuta chapisho hili? Hatua hii haiwezi kurudiwa.')) return;
@@ -166,80 +185,97 @@ export default function PostManagementMenu({ post, isOwner, canReport = false })
                 </AnimatePresence>
             </div>
 
-            <AnimatePresence>
-                {showReportModal && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[80] bg-black/35 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-4"
-                        onClick={() => setShowReportModal(false)}
-                    >
+            {portalReady && createPortal(
+                <AnimatePresence>
+                    {showReportModal && (
                         <motion.div
-                            initial={{ y: 20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: 20, opacity: 0 }}
-                            className="w-full max-w-md rounded-3xl border border-border bg-background shadow-2xl"
-                            onClick={(e) => e.stopPropagation()}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[100] bg-black/35 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-4"
+                            onClick={() => setShowReportModal(false)}
                         >
-                            <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                                <h3 className="font-black text-sm uppercase tracking-wider">Report Content</h3>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowReportModal(false)}
-                                    className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center"
-                                >
-                                    <X className="h-4 w-4" />
-                                </button>
-                            </div>
-                            <div className="p-4 space-y-4">
-                                <div className="space-y-2">
-                                    <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Reason</p>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {REPORT_REASONS.map((reason) => (
-                                            <button
-                                                key={reason.value}
-                                                type="button"
-                                                onClick={() => setReportReason(reason.value)}
-                                                className={`w-full text-left rounded-xl border px-3 py-2 text-sm transition-colors ${reportReason === reason.value ? 'bg-brand-100 border-brand-300' : 'border-border hover:bg-accent'}`}
-                                            >
-                                                {reason.label}
-                                            </button>
-                                        ))}
+                            <motion.div
+                                initial={{ y: 20, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 20, opacity: 0 }}
+                                className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto rounded-3xl border border-border bg-background shadow-2xl"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+                                    <div>
+                                        <h3 className="font-black text-sm uppercase tracking-wider">Report Content</h3>
+                                        <p className="mt-1 text-sm text-muted-foreground">Takeer will review this post.</p>
                                     </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Notes (Optional)</p>
-                                    <textarea
-                                        value={reportNotes}
-                                        onChange={(e) => setReportNotes(e.target.value)}
-                                        className="w-full min-h-[96px] rounded-xl border border-border px-3 py-2 text-sm"
-                                        placeholder="Tell us more..."
-                                        maxLength={2000}
-                                    />
-                                </div>
-                                <div className="flex items-center justify-end gap-2">
                                     <button
                                         type="button"
                                         onClick={() => setShowReportModal(false)}
-                                        className="h-10 px-4 rounded-xl border border-border text-sm font-bold hover:bg-accent"
+                                        className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center"
                                     >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={submitReport}
-                                        disabled={isReporting}
-                                        className="h-10 px-4 rounded-xl bg-brand-600 text-white text-sm font-bold hover:bg-brand-700 disabled:opacity-60"
-                                    >
-                                        {isReporting ? 'Submitting...' : 'Submit Report'}
+                                        <X className="h-4 w-4" />
                                     </button>
                                 </div>
-                            </div>
+                                <div className="p-4 space-y-4">
+                                    <div className="space-y-2">
+                                        <label
+                                            htmlFor={`post-report-reason-${post.id}`}
+                                            className="block text-xs font-black uppercase tracking-wider text-muted-foreground"
+                                        >
+                                            Reason
+                                        </label>
+                                        <select
+                                            id={`post-report-reason-${post.id}`}
+                                            value={reportReason}
+                                            onChange={(e) => setReportReason(e.target.value)}
+                                            className="w-full h-12 rounded-xl border border-border bg-background px-3 text-sm font-semibold outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                                        >
+                                            {REPORT_REASONS.map((reason) => (
+                                                <option key={reason.value} value={reason.value}>
+                                                    {reason.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label
+                                            htmlFor={`post-report-notes-${post.id}`}
+                                            className="block text-xs font-black uppercase tracking-wider text-muted-foreground"
+                                        >
+                                            Notes (Optional)
+                                        </label>
+                                        <textarea
+                                            id={`post-report-notes-${post.id}`}
+                                            value={reportNotes}
+                                            onChange={(e) => setReportNotes(e.target.value)}
+                                            className="w-full min-h-[96px] rounded-xl border border-border px-3 py-2 text-sm outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                                            placeholder="Tell us more..."
+                                            maxLength={2000}
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowReportModal(false)}
+                                            className="h-10 px-4 rounded-xl border border-border text-sm font-bold hover:bg-accent"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={submitReport}
+                                            disabled={isReporting}
+                                            className="h-10 px-4 rounded-xl bg-brand-600 text-white text-sm font-bold hover:bg-brand-700 disabled:opacity-60"
+                                        >
+                                            {isReporting ? 'Submitting...' : 'Submit Report'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
                         </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
         </>
     );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, router } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
@@ -8,16 +8,21 @@ import { Store, ArrowRight, CheckCircle2, User } from 'lucide-react';
 import axios from 'axios';
 
 export default function MerchantRegister({ countries = [], currencies = [] }) {
-    const [step, setStep] = useState(1);
+    const { auth } = usePage().props;
+    const hasVerifiedPhone = Boolean(auth?.user?.phone_number && auth?.user?.phone_verified_at);
+    const hasVerifiedEmail = Boolean(auth?.user?.email && auth?.user?.email_verified_at);
+    const existingUserName = auth?.user?.name && !String(auth.user.name).startsWith('User ') ? auth.user.name : '';
+    const [step, setStep] = useState(hasVerifiedPhone ? 2 : 1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [isExisting, setIsExisting] = useState(false);
+    const [useVerifiedPhone, setUseVerifiedPhone] = useState(hasVerifiedPhone);
 
     const [form, setForm] = useState({
-        phone_number: '',
+        phone_number: auth?.user?.phone_number || '',
         otp: '',
-        store_name: '', // This will be the Personal Profile Username
-        display_name: '', // This will be the Personal Profile Full Name
+        store_name: existingUserName ? existingUserName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : '', // This will be the Personal Profile Username
+        display_name: existingUserName, // This will be the Personal Profile Full Name
         country_id: '',
         currency_id: '',
         timezone: ''
@@ -66,6 +71,7 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
         setError('');
 
         try {
+            setUseVerifiedPhone(false);
             const checkRes = await axios.post('/auth/merchant/check', {
                 phone_number: form.phone_number,
                 country_id: form.country_id
@@ -118,15 +124,40 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                     </p>
                 </div>
 
+                {auth?.user && !hasVerifiedEmail ? (
+                    <Card className="glass-card overflow-hidden border-none shadow-2xl">
+                        <div className="bg-amber-500 h-1.5 w-full" />
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-xl font-bold">Unganisha Google Kwanza</CardTitle>
+                            <CardDescription>
+                                Tunahitaji email iliyothibitishwa kabla ya kuanza kuuza ili utumie risiti, taarifa muhimu na usalama wa akaunti.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <a
+                                href="/auth/google/redirect"
+                                className="w-full h-14 rounded-2xl bg-white border border-slate-200 text-slate-900 text-lg font-black shadow-sm hover:bg-slate-50 flex items-center justify-center gap-3"
+                            >
+                                <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-5 w-5" alt="Google" />
+                                Unganisha Google
+                            </a>
+                            <p className="text-xs text-muted-foreground text-center">
+                                Ukimaliza, utarudi kuendelea na kufungua personal profile yako.
+                            </p>
+                        </CardContent>
+                    </Card>
+                ) : (
                 <Card className="glass-card overflow-hidden border-none shadow-2xl">
                     <div className="bg-brand-600 h-1.5 w-full" />
                     <CardHeader className="pb-4">
                         <CardTitle className="text-xl font-bold">
-                            {step === 1 ? 'Nambari ya Simu' : isExisting ? 'Karibu Tena' : 'Maelezo ya Wasifu'}
+                            {step === 1 ? 'Nambari ya Simu' : useVerifiedPhone ? 'Simu Imethibitishwa' : isExisting ? 'Karibu Tena' : 'Maelezo ya Wasifu'}
                         </CardTitle>
                         <CardDescription>
                             {step === 1
                                 ? 'Ingiza nambari yako ya simu kupokea nambari ya siri (OTP).'
+                                : useVerifiedPhone
+                                    ? 'Tutatumia nambari ya simu ambayo tayari umethibitisha.'
                                 : isExisting
                                     ? 'Ingiza nambari ya siri kukamilisha mchakato huu.'
                                     : 'Kamilisha usajili wa wasifu wako wa binafsi.'}
@@ -167,7 +198,10 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                             type="tel"
                                             placeholder="07XX XXX XXX"
                                             value={form.phone_number}
-                                            onChange={e => setForm({ ...form, phone_number: e.target.value })}
+	                                            onChange={e => {
+                                                    setUseVerifiedPhone(false);
+                                                    setForm({ ...form, phone_number: e.target.value });
+                                                }}
                                             required
                                             className="h-14 px-5 text-lg font-bold rounded-2xl border-2 focus:border-brand-500 transition-all shadow-sm"
                                         />
@@ -183,19 +217,29 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                             </form>
                         ) : (
                             <form onSubmit={handleRegister} className="space-y-5">
-                                <div className="space-y-3">
-                                    <label htmlFor="otp" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nambari ya Siri (OTP)</label>
-                                    <Input
-                                        id="otp"
-                                        type="tel"
-                                        maxLength={6}
-                                        placeholder="••••••"
-                                        value={form.otp}
-                                        onChange={e => setForm({ ...form, otp: e.target.value })}
-                                        required
-                                        className="h-16 text-center text-3xl font-black tracking-[1rem] rounded-2xl border-2 focus:border-brand-500 shadow-sm"
-                                    />
-                                </div>
+                                {useVerifiedPhone ? (
+                                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4 flex items-start gap-3">
+                                        <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-black text-emerald-900">Nambari ya simu imethibitishwa</p>
+                                            <p className="text-xs font-semibold text-emerald-700 mt-1">{form.phone_number}</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <label htmlFor="otp" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Nambari ya Siri (OTP)</label>
+                                        <Input
+                                            id="otp"
+                                            type="tel"
+                                            maxLength={6}
+                                            placeholder="••••••"
+                                            value={form.otp}
+                                            onChange={e => setForm({ ...form, otp: e.target.value })}
+                                            required
+                                            className="h-16 text-center text-3xl font-black tracking-[1rem] rounded-2xl border-2 focus:border-brand-500 shadow-sm"
+                                        />
+                                    </div>
+                                )}
 
                                 {!isExisting && (
                                     <div className="space-y-5 pt-2 animate-in fade-in duration-700">
@@ -279,17 +323,21 @@ export default function MerchantRegister({ countries = [], currencies = [] }) {
                                 )}
 
                                 <Button type="submit" className="w-full h-16 text-xl font-black rounded-2xl bg-brand-600 hover:bg-brand-700 shadow-xl shadow-brand-600/20 mt-4 active:scale-95 transition-all" disabled={loading}>
-                                    {loading ? 'Inasubiri...' : isExisting ? 'Ingia Ndani' : 'Kamilisha Usajili'}
+                                    {loading ? 'Inasubiri...' : useVerifiedPhone ? 'Endelea' : isExisting ? 'Ingia Ndani' : 'Kamilisha Usajili'}
                                     {!loading && <CheckCircle2 className="ml-2 h-6 w-6" />}
                                 </Button>
 
-                                <button type="button" onClick={() => setStep(1)} className="w-full text-center text-sm text-brand-600 font-bold hover:underline transition-all">
+                                <button type="button" onClick={() => {
+                                    setUseVerifiedPhone(false);
+                                    setStep(1);
+                                }} className="w-full text-center text-sm text-brand-600 font-bold hover:underline transition-all">
                                     Badili nambari ya simu
                                 </button>
                             </form>
                         )}
                     </CardContent>
                 </Card>
+                )}
             </div>
         </AppLayout>
     );

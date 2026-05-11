@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PaymentPage;
+use App\Support\SeoMeta;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -21,10 +22,12 @@ class PublicPaymentPageController extends Controller
 
         // Track traffic (Unified system)
         $page->recordImpression($request);
+        $seo = SeoMeta::paymentPage($page);
 
         return Inertia::render('Public/PaymentPage', [
             'page' => $page,
             'merchant' => $page->merchant,
-        ]);
+            'seo' => $seo,
+        ])->withViewData('seo', $seo);
     }
 }

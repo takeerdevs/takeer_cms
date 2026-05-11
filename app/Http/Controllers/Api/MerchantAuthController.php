@@ -25,23 +25,43 @@ class MerchantAuthController extends Controller
     {
         $validated = $request->validated();
         $phone = $validated['phone_number'];
-        $otp = $validated['otp'];
-
-        $cacheKey = "otp:{$phone}";
-        $hashedOtp = Cache::get($cacheKey);
-
-        if (!$hashedOtp || !Hash::check($otp, $hashedOtp)) {
+        $otp = $validated['otp'] ?? null;
+        $country = Country::find($validated['country_id'] ?? null);
+        $currentUser = $request->user() ?: Auth::guard('web')->user();
+        if ($currentUser && !$currentUser->email_verified_at) {
             return response()->json([
-                'message' => 'OTP si sahihi au imeisha muda wake.',
-            ], 422);
+                'message' => 'Tafadhali unganisha Google kwanza ili kuthibitisha email yako kabla ya kuanza kuuza.',
+            ], 403);
         }
 
-        // Consume OTP (one-time use)
-        Cache::forget($cacheKey);
+        $verifiedCurrentUser = $currentUser
+            && $currentUser->phone_number
+            && $currentUser->phone_verified_at
+            && in_array($currentUser->phone_number, PhoneService::variantsForLookup($phone, $country), true);
+
+        if (!$verifiedCurrentUser) {
+            if (!$otp) {
+                return response()->json([
+                    'message' => 'Nambari ya siri inahitajika.',
+                ], 422);
+            }
+
+            $cacheKey = "otp:{$phone}";
+            $hashedOtp = Cache::get($cacheKey);
+
+            if (!$hashedOtp || !Hash::check($otp, $hashedOtp)) {
+                return response()->json([
+                    'message' => 'OTP si sahihi au imeisha muda wake.',
+                ], 422);
+            }
+
+            // Consume OTP (one-time use)
+            Cache::forget($cacheKey);
+        }
 
         // Check if phone number is already registered. Older accounts may store
         // local numbers (062...) while new auth requests are normalized to E.164.
-        $existingUser = $this->findUserByPhone($phone, Country::find($validated['country_id'] ?? null));
+        $existingUser = $verifiedCurrentUser ? $currentUser : $this->findUserByPhone($phone, $country);
 
         if ($existingUser) {
             $user = $existingUser;
@@ -51,12 +71,18 @@ class MerchantAuthController extends Controller
                 if (empty($user->name) || Str::startsWith($user->name, 'User ')) {
                     $user->name = $validated['display_name'] ?? 'Merchant';
                 }
+                if (!$user->phone_verified_at) {
+                    $user->phone_verified_at = now();
+                }
                 $user->save();
+            } elseif (!$user->phone_verified_at) {
+                $user->forceFill(['phone_verified_at' => now()])->save();
             }
         } else {
             // Create new merchant
             $user = User::create([
                 'phone_number' => $phone,
+                'phone_verified_at' => now(),
                 'name' => $validated['display_name'] ?? 'Merchant',
                 'role' => 'merchant',
             ]);

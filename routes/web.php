@@ -40,6 +40,8 @@ use App\Models\SubscriptionPlan;
 use App\Models\Country;
 use App\Models\Currency;
 use App\Services\EntitlementService;
+use App\Services\SubscriptionRenewalService;
+use App\Support\SeoMeta;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -88,12 +90,19 @@ Route::get('/', function (Request $request) {
     $posts = app(\App\Services\DiscoveryRankingService::class)->rankPostQuery($query)->simplePaginate(8);
 
     $initialFeed = PostResource::collection($posts)->response()->getData(true);
+    $seo = SeoMeta::home();
+
     return Inertia::render('Feed', [
         'initialFeed' => $initialFeed,
-    ]);
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 });
 
 Route::get('/p/{postPublicId}', [PostController::class, 'showByPublicId'])->name('post.show');
+Route::get('/posts/{post}/comments', [PostController::class, 'comments'])->withTrashed();
+Route::post('/posts/{post}/guest-engagement', [PostController::class, 'guestEngagement'])
+    ->withTrashed()
+    ->middleware('throttle:6,10');
 Route::get('/sms/t/{code}', [MerchantMarketingController::class, 'followSmsLink'])->name('sms.track');
 Route::get('/dm/t/{event}', [MerchantMarketingController::class, 'followSocialDmLink'])->name('social-dm.track');
 Route::get('/wa/t/{event}', [MerchantMarketingController::class, 'followWhatsappLink'])->name('whatsapp.track');
@@ -171,10 +180,12 @@ Route::get('/product/{product}', function (Product $product) {
 
     // Track traffic
     $product->recordImpression(request());
+    $seo = SeoMeta::product($product);
 
     return Inertia::render('ProductDetail', [
-        'product' => ProductResource::make($product)->resolve()
-    ]);
+        'product' => ProductResource::make($product)->resolve(),
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('product.show');
 
 Route::get('/service-requests/{publicId}/pay/{token}', function (string $publicId, string $token) {
@@ -222,9 +233,12 @@ Route::get('/service-requests/{publicId}/pay/{token}', function (string $publicI
         'expires_at' => $serviceRequest->payment_link_expires_at?->toISOString(),
     ]);
 
+    $seo = SeoMeta::product($product);
+
     return Inertia::render('ProductDetail', [
         'product' => ProductResource::make($product)->resolve(),
-    ]);
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('service-request.pay');
 
 Route::get('/search', function (Request $request) {
@@ -232,6 +246,8 @@ Route::get('/search', function (Request $request) {
     $detectedCountryId = $detectedCountryIso
         ? Country::query()->where('iso_alpha2', strtoupper((string) $detectedCountryIso))->value('id')
         : null;
+
+    $seo = SeoMeta::search(trim((string) $request->query('q', '')));
 
     return Inertia::render('Search', [
         'initialQuery' => trim((string) $request->query('q', '')),
@@ -269,7 +285,8 @@ Route::get('/search', function (Request $request) {
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get(['id', 'parent_id', 'name', 'slug']),
-    ]);
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('search.page');
 
 Route::get('/content/{contentItem}', function (Request $request, string $contentItem, EntitlementService $entitlementService) {
@@ -331,7 +348,7 @@ Route::get('/content/{contentItem}', function (Request $request, string $content
 
         $isLockedPaid = $contentItem->price !== null;
         if ($isLockedPaid) {
-            if ($contentItem->format === 'plain_text' && trim((string) $contentItem->title) === $internalShortTitle) {
+            if ($contentItem->format === 'plain_text') {
                 $previewBody = 'Unlock this short post to read the full text.';
             } else {
                 $limit = $contentItem->format === 'plain_text' ? 90 : 220;
@@ -343,6 +360,8 @@ Route::get('/content/{contentItem}', function (Request $request, string $content
         }
     }
 
+    $seo = SeoMeta::content($contentItem);
+
     return Inertia::render('ContentItemDetail', [
         'contentItem' => [
             'id' => $contentItem->id,
@@ -350,7 +369,9 @@ Route::get('/content/{contentItem}', function (Request $request, string $content
                 ? null
                 : $contentItem->title,
             'slug' => $contentItem->slug,
-            'excerpt' => trim((string) preg_replace('/\s*Tap unlock to continue\.\s*$/i', '', (string) $contentItem->excerpt)),
+            'excerpt' => (!$hasAccess && $contentItem->price !== null && $contentItem->format === 'plain_text')
+                ? null
+                : trim((string) preg_replace('/\s*Tap unlock to continue\.\s*$/i', '', (string) $contentItem->excerpt)),
             'format' => $contentItem->format,
             'visibility' => $contentItem->visibility,
             'price' => $contentItem->price !== null ? (float) $contentItem->price : null,
@@ -363,7 +384,8 @@ Route::get('/content/{contentItem}', function (Request $request, string $content
         ],
         'hasAccess' => (bool) $hasAccess,
         'previewBody' => $previewBody,
-    ]);
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('content.show');
 
 Route::get('/bundle/{bundle}', function (Bundle $bundle) {
@@ -542,9 +564,12 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
         ])->values()->all(),
     ];
 
+    $seo = SeoMeta::bundle($bundle);
+
     return Inertia::render('BundleDetail', [
         'bundle' => $bundlePayload,
-    ]);
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('bundle.show');
 
 Route::get('/plan/{subscriptionPlan}', function (SubscriptionPlan $subscriptionPlan) {
@@ -573,6 +598,10 @@ Route::get('/plan/{subscriptionPlan}', function (SubscriptionPlan $subscriptionP
             })
             ->exists();
     }
+
+    $viewerSubscription = $viewer
+        ? app(SubscriptionRenewalService::class)->activeSubscriptionFor((int) $viewer->id, (int) $subscriptionPlan->id)
+        : null;
 
     $contentItemIds = $subscriptionPlan->items
         ->where('item_type', 'content_item')
@@ -607,7 +636,7 @@ Route::get('/plan/{subscriptionPlan}', function (SubscriptionPlan $subscriptionP
             'type' => 'post',
             'public_id' => $post->public_id,
             'title' => $post->title,
-            'excerpt' => $post->excerpt ?: \Illuminate\Support\Str::limit($post->caption, 120),
+            'excerpt' => 'Unlock this premium post to read the full content.',
             'created_at' => $post->created_at,
         ]);
 
@@ -619,14 +648,6 @@ Route::get('/plan/{subscriptionPlan}', function (SubscriptionPlan $subscriptionP
     $communityPosts = collect();
     $communityPostBase = Post::query()
         ->whereHas('promotableSubscriptions', fn ($query) => $query->whereKey($subscriptionPlan->id));
-    $activeMemberBase = \App\Models\UserSubscription::query()
-        ->where('subscription_plan_id', $subscriptionPlan->id)
-        ->where('status', 'active')
-        ->where(function ($query) {
-            $query->whereNull('current_period_end')->orWhere('current_period_end', '>', now());
-        });
-
-    $recentMembers = collect();
     if ($hasPlanAccess) {
         $communityPosts = Post::query()
             ->with([
@@ -652,55 +673,76 @@ Route::get('/plan/{subscriptionPlan}', function (SubscriptionPlan $subscriptionP
             ->latest()
             ->take(20)
             ->get();
-
-        $recentMembers = (clone $activeMemberBase)
-            ->with('user:id,name')
-            ->latest('started_at')
-            ->take(8)
-            ->get()
-            ->map(fn ($subscription) => [
-                'id' => $subscription->id,
-                'name' => $subscription->user?->name ?: 'Member',
-                'joined_at' => $subscription->started_at?->toISOString() ?: $subscription->created_at?->toISOString(),
-            ]);
     }
+
+    $seo = SeoMeta::subscriptionPlan($subscriptionPlan);
 
     return Inertia::render('SubscriptionPlanDetail', [
         'subscriptionPlan' => SubscriptionPlanResource::make($subscriptionPlan)->resolve(request()),
         'hasAccess' => $hasPlanAccess,
+        'viewerSubscription' => $viewerSubscription ? [
+            'id' => $viewerSubscription->id,
+            'status' => $viewerSubscription->status,
+            'current_period_start' => $viewerSubscription->current_period_start?->toISOString(),
+            'current_period_end' => $viewerSubscription->current_period_end?->toISOString(),
+            'next_billing_at' => $viewerSubscription->next_billing_at?->toISOString(),
+            'auto_renew' => (bool) $viewerSubscription->auto_renew,
+        ] : null,
         'communityPosts' => PostResource::collection($communityPosts)->resolve(request()),
         'communityStats' => [
-            'active_members' => (clone $activeMemberBase)->count(),
-            'new_members_30d' => (clone $activeMemberBase)->where('started_at', '>=', now()->subDays(30))->count(),
             'posts_count' => (clone $communityPostBase)->count(),
             'posts_30d' => (clone $communityPostBase)->where('posts.created_at', '>=', now()->subDays(30))->count(),
             'comments_count' => (int) (clone $communityPostBase)->sum('comment_count'),
             'reactions_count' => (int) (clone $communityPostBase)->sum('likes_count'),
-            'recent_members' => $recentMembers->values()->all(),
         ],
         'contentPreview' => $allPreviewContent->take(3)->values()->all(),
         'totalLinkedContent' => $allPreviewContent->count(),
-    ]);
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('subscription-plan.show');
 
-// Onboarding landing (for users who aren't logged in yet)
-Route::get('/welcome', function () {
-    return Inertia::render('Welcome');
-})->name('login');
+// Onboarding/login landing (passwordless entry for users who aren't logged in yet)
+$welcomePage = function (Request $request) {
+    $seo = SeoMeta::home();
+
+    return Inertia::render('Welcome', [
+        'intended' => $request->session()->get('url.intended'),
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
+};
+
+Route::get('/welcome', $welcomePage)->name('login');
+Route::get('/login', $welcomePage)->name('login.page');
 
 Route::get('/terms', function () {
-    return Inertia::render('Terms');
+    $seo = SeoMeta::staticPage('Terms of Service', 'Read the Takeer terms of service for buyers, sellers, creators, and businesses.', '/terms');
+
+    return Inertia::render('Terms', [
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('terms');
 
 Route::get('/privacy', function () {
-    return Inertia::render('Privacy');
+    $seo = SeoMeta::staticPage('Privacy Policy', 'Learn how Takeer handles personal data, privacy, and account information.', '/privacy');
+
+    return Inertia::render('Privacy', [
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('privacy');
 
 Route::get('/{merchantSlug}/terminal', function (string $merchantSlug) {
     $merchant = \App\Models\Merchant::where('username', $merchantSlug)->firstOrFail();
-    return Inertia::render('Auth/StaffPinLogin', [
-        'merchant' => $merchant
+    $seo = SeoMeta::make([
+        'title' => 'Staff Terminal | '.$merchant->display_name,
+        'description' => 'Staff sign-in terminal for '.$merchant->display_name.'.',
+        'canonical' => url('/'.$merchantSlug.'/terminal'),
+        'robots' => 'noindex,nofollow',
     ]);
+
+    return Inertia::render('Auth/StaffPinLogin', [
+        'merchant' => $merchant,
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 })->name('retail.terminal');
 
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
@@ -747,9 +789,12 @@ Route::get('/feed', function (Request $request) {
     $posts = app(\App\Services\DiscoveryRankingService::class)->rankPostQuery($query)->simplePaginate(8);
 
     $initialFeed = PostResource::collection($posts)->response()->getData(true);
+    $seo = SeoMeta::feed();
+
     return Inertia::render('Feed', [
         'initialFeed' => $initialFeed,
-    ]);
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 });
 
 // ─── AUTH (Stateful) ───────────────────────────────────────────────────────
@@ -763,35 +808,70 @@ Route::prefix('auth')->group(function () {
 });
 
 // ─── GOOGLE OAUTH ───────────────────────────────────────────────────────────
-Route::middleware('auth')->group(function () {
-    Route::get('/auth/google/redirect', function () {
-        return \Laravel\Socialite\Facades\Socialite::driver('google')->redirect();
-    });
+Route::get('/auth/google/redirect', function () {
+    return \Laravel\Socialite\Facades\Socialite::driver('google')->redirect();
+});
 
-    Route::get('/auth/google/callback', function (\Illuminate\Http\Request $request) {
-        try {
-            $googleUser = \Laravel\Socialite\Facades\Socialite::driver('google')->user();
-            $user = $request->user();
-            
-            if ($user && $googleUser->getEmail()) {
-                $user->email = $googleUser->getEmail();
-                $user->email_verified_at = now();
-                $user->save();
-                return redirect('/profile/settings')->with('success', 'Akaunti yako ya Google imeunganishwa kikamilifu!');
-            }
-            return redirect('/profile/settings')->with('error', 'Imeshindwa kupata barua pepe (email).');
-        } catch (\Exception $e) {
-            return redirect('/profile/settings')->with('error', 'Kuna tatizo wakati wa kuunganisha na Google.');
+Route::get('/auth/google/callback', function (\Illuminate\Http\Request $request) {
+    try {
+        $googleUser = \Laravel\Socialite\Facades\Socialite::driver('google')->user();
+        $email = $googleUser->getEmail();
+
+        if (! $email) {
+            $fallback = $request->user() ? '/profile/settings' : '/welcome';
+            return redirect($fallback)->with('error', 'Imeshindwa kupata barua pepe (email).');
         }
-    });
+
+        $currentUser = $request->user();
+
+        if ($currentUser) {
+            $currentUser->email = $email;
+            $currentUser->email_verified_at = now();
+            $currentUser->save();
+
+            return redirect('/profile/settings')->with('success', 'Akaunti yako ya Google imeunganishwa kikamilifu!');
+        }
+
+        $user = \App\Models\User::where('email', $email)->first();
+
+        if (! $user) {
+            $user = \App\Models\User::create([
+                'name' => $googleUser->getName() ?: explode('@', $email)[0],
+                'email' => $email,
+                'email_verified_at' => now(),
+                'role' => 'buyer',
+            ]);
+        } elseif (! $user->email_verified_at) {
+            $user->forceFill(['email_verified_at' => now()])->save();
+        }
+
+        if (! $user->wallet) {
+            \App\Models\Wallet::create(['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]);
+        }
+
+        \Illuminate\Support\Facades\Auth::guard('web')->login($user, true);
+        $request->session()->regenerate();
+
+        return redirect($request->session()->pull('url.intended', '/feed'))->with('success', 'Karibu Takeer!');
+    } catch (\Exception $e) {
+        $fallback = $request->user() ? '/profile/settings' : '/welcome';
+        return redirect($fallback)->with('error', 'Kuna tatizo wakati wa kuunganisha na Google.');
+    }
 });
 
 // ─── MERCHANT ───────────────────────────────────────────────────────────────
 Route::get('/merchant/register', function () {
+    $seo = SeoMeta::staticPage(
+        'Create Your Takeer Business Profile',
+        'Create a Takeer profile to sell services, physical products, digital products, accept bookings, and manage customer interactions online.',
+        '/merchant/register'
+    );
+
     return Inertia::render('Auth/MerchantRegister', [
         'countries' => Country::select('id', 'name', 'iso_alpha2 as code', 'default_currency_id', 'timezone', 'settings')->get(),
         'currencies' => Currency::select('id', 'code', 'symbol', 'name')->get(),
-    ]);
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 });
 
 Route::middleware('auth')->group(function () {
@@ -809,6 +889,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/orders/data/pulse', [EntitlementController::class, 'myPulse']);
     Route::get('/orders/data/entitlements', [EntitlementController::class, 'myLibrary']);
     Route::get('/orders/data/subscriptions', [SubscriptionController::class, 'mySubscriptions']);
+    Route::get('/orders/data/entitlements/{entitlement}/access', [\App\Http\Controllers\Api\DownloadController::class, 'entitlementAccess']);
+    Route::get('/orders/data/entitlements/{entitlement}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadEntitlementLocal'])->name('web.download.entitlement-local');
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
     Route::get('/orders/{order}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadLocal'])->name('web.download.local');
     Route::get('/orders/{order}/download/custom-local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadCustomLocal'])->name('web.download.custom-local');
@@ -1637,38 +1719,154 @@ Route::middleware('auth')->group(function () {
 });
 
 Route::get('/m/{slug}', function (string $slug) {
-    return Inertia::render('MiniStore', ['merchantSlug' => $slug]);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant);
+
+    return Inertia::render('MiniStore', [
+        'merchantSlug' => $slug,
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 });
 Route::get('/u/{slug}/catalog', function (string $slug) {
-    return Inertia::render('PublicCatalog', ['merchantSlug' => $slug]);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'catalog');
+
+    return Inertia::render('PublicCatalog', [
+        'merchantSlug' => $slug,
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 });
 Route::get('/u/{slug}', function (string $slug) {
-    return Inertia::render('PublicMerchantProfile', ['merchantSlug' => $slug]);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'profile');
+
+    return Inertia::render('PublicMerchantProfile', [
+        'merchantSlug' => $slug,
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 });
 Route::get('/m/{slug}/feed', function (string $slug) {
-    return Inertia::render('MiniStoreFeed', ['merchantSlug' => $slug]);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'feed');
+
+    return Inertia::render('MiniStoreFeed', [
+        'merchantSlug' => $slug,
+        'seo' => $seo,
+    ])->withViewData('seo', $seo);
 });
 Route::get('/m/{slug}/products', function (string $slug) {
-    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'products']);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'products');
+
+    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'products', 'seo' => $seo])->withViewData('seo', $seo);
 });
 Route::get('/m/{slug}/downloads', function (string $slug) {
-    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'downloads']);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'downloads');
+
+    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'downloads', 'seo' => $seo])->withViewData('seo', $seo);
 });
 Route::get('/m/{slug}/services', function (string $slug) {
-    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'services']);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'services');
+
+    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'services', 'seo' => $seo])->withViewData('seo', $seo);
 });
 Route::get('/m/{slug}/content', function (string $slug) {
-    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'content']);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'content');
+
+    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'content', 'seo' => $seo])->withViewData('seo', $seo);
 });
 Route::get('/m/{slug}/bundles', function (string $slug) {
-    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'bundles']);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'bundles');
+
+    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'bundles', 'seo' => $seo])->withViewData('seo', $seo);
 });
 Route::get('/m/{slug}/courses', function (string $slug) {
-    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'courses']);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'courses');
+
+    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'courses', 'seo' => $seo])->withViewData('seo', $seo);
 });
 Route::get('/m/{slug}/memberships', function (string $slug) {
-    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'memberships']);
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, 'memberships');
+
+    return Inertia::render('MiniStoreSection', ['merchantSlug' => $slug, 'sectionType' => 'memberships', 'seo' => $seo])->withViewData('seo', $seo);
 });
+
+Route::get('/sitemap.xml', function () {
+    $urls = collect([
+        url('/'),
+        url('/feed'),
+        url('/welcome'),
+        route('search.page'),
+        route('terms'),
+        route('privacy'),
+    ]);
+
+    Merchant::query()
+        ->where('is_active', true)
+        ->select(['username', 'updated_at'])
+        ->latest('updated_at')
+        ->chunk(500, function ($merchants) use (&$urls) {
+            foreach ($merchants as $merchant) {
+                foreach ([
+                    "/m/{$merchant->username}",
+                    "/u/{$merchant->username}",
+                    "/u/{$merchant->username}/catalog",
+                    "/m/{$merchant->username}/products",
+                    "/m/{$merchant->username}/downloads",
+                    "/m/{$merchant->username}/services",
+                    "/m/{$merchant->username}/content",
+                    "/m/{$merchant->username}/bundles",
+                    "/m/{$merchant->username}/courses",
+                    "/m/{$merchant->username}/memberships",
+                ] as $path) {
+                    $urls->push(url($path));
+                }
+            }
+        });
+
+    Product::query()
+        ->whereNull('deleted_at')
+        ->select(['id', 'slug', 'updated_at'])
+        ->latest('updated_at')
+        ->chunk(500, fn ($products) => $products->each(fn ($product) => $urls->push(route('product.show', $product->slug ?: $product->id))));
+
+    ContentItem::query()
+        ->where('visibility', 'published')
+        ->where('moderation_status', 'approved')
+        ->select(['slug', 'updated_at'])
+        ->latest('updated_at')
+        ->chunk(500, fn ($items) => $items->each(fn ($item) => $urls->push(route('content.show', $item))));
+
+    Bundle::query()
+        ->where('status', 'published')
+        ->select(['slug', 'updated_at'])
+        ->latest('updated_at')
+        ->chunk(500, fn ($bundles) => $bundles->each(fn ($bundle) => $urls->push(route('bundle.show', $bundle))));
+
+    SubscriptionPlan::query()
+        ->where('status', 'active')
+        ->select(['slug', 'updated_at'])
+        ->latest('updated_at')
+        ->chunk(500, fn ($plans) => $plans->each(fn ($plan) => $urls->push(route('subscription-plan.show', $plan))));
+
+    Post::query()
+        ->whereNotNull('public_id')
+        ->select(['public_id', 'updated_at'])
+        ->latest('updated_at')
+        ->chunk(500, fn ($posts) => $posts->each(fn ($post) => $urls->push(route('post.show', $post->public_id))));
+
+    $xml = view('sitemap', [
+        'urls' => $urls->unique()->values(),
+    ])->render();
+
+    return response($xml, 200)->header('Content-Type', 'application/xml');
+})->name('sitemap');
 
 // ─── ADMIN PANEL ────────────────────────────────────────────────────────────
 Route::middleware(['auth', 'admin'])->group(function () {

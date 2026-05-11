@@ -843,7 +843,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                             <div className="bg-white/15 p-2 rounded-xl backdrop-blur-md inline-flex border border-white/25 shadow-sm">
                                 <Zap className="h-5 w-5 fill-white" />
                             </div>
-                            <span className="font-black text-xs uppercase tracking-[0.2em] text-white/90">Quick Checkout</span>
+                            <span className="font-black text-xs uppercase tracking-[0.2em] text-white/90">Malipo ya Haraka</span>
                         </div>
                         <DrawerTitle className="text-[28px] sm:text-3xl font-[900] leading-tight mb-1">
                             {itemTitle}
@@ -993,48 +993,33 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                 </div>
 
                                 {isGuest && (
-                                    <div className="p-4 rounded-2xl bg-brand-50/50 border border-brand-100 space-y-4">
-                                        <p className="text-xs font-black uppercase tracking-widest text-brand-900">Taarifa Zako</p>
-                                        <div className="space-y-3">
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-bold text-brand-700/80 ml-1">Jina Lako Kamili</label>
-                                                <Input
-                                                    value={name}
-                                                    onChange={(e) => setName(e.target.value)}
-                                                    placeholder="Andika jina lako..."
-                                                    className="h-12 bg-white border-brand-100 focus:border-brand-400 rounded-xl px-4 font-bold text-brand-900 shadow-sm"
-                                                />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-bold text-brand-700/80 ml-1">Namba ya Simu</label>
-                                                <Input
-                                                    value={accountPhone}
-                                                    onChange={(e) => setAccountPhone(e.target.value)}
-                                                    placeholder="Mfano: 07XX..."
-                                                    type="tel"
-                                                    inputMode="numeric"
-                                                    className="h-12 bg-white border-brand-100 focus:border-brand-400 rounded-xl px-4 font-bold text-brand-900 shadow-sm"
-                                                />
-                                            </div>
-                                        </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <Input
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            placeholder="Andika jina lako..."
+                                            className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
+                                        />
+                                        <Input
+                                            value={accountPhone}
+                                            onChange={(e) => setAccountPhone(e.target.value)}
+                                            placeholder="Namba ya simu"
+                                            type="tel"
+                                            inputMode="numeric"
+                                            className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
+                                        />
                                     </div>
                                 )}
                             </div>
                         ) : (
                             <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                                 {isGuest && (
-                                    <div className="p-4 rounded-2xl bg-brand-50/50 border border-brand-100 space-y-3">
-                                        <p className="text-xs font-black uppercase tracking-widest text-brand-900">Taarifa Zako</p>
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-brand-700/80 ml-1">Jina Lako Kamili</label>
-                                            <Input
-                                                value={name}
-                                                onChange={(e) => setName(e.target.value)}
-                                                placeholder="Andika jina lako..."
-                                                className="h-12 bg-white border-brand-100 focus:border-brand-400 rounded-xl px-4 font-bold text-brand-900 shadow-sm"
-                                            />
-                                        </div>
-                                    </div>
+                                    <Input
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        placeholder="Andika jina lako..."
+                                        className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
+                                    />
                                 )}
 
                                 {/* Digital: Payment Selection Tabs */}
@@ -1046,7 +1031,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'mobile' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-md ring-1 ring-brand-100' : 'text-slate-400 hover:text-slate-600'}`}
                                         >
                                             <Zap className={`h-3.5 w-3.5 ${paymentMethod === 'mobile' ? 'fill-current' : ''}`} />
-                                            Mobile Pay
+                                            Lipa kwa Simu
                                         </button>
                                         <button
                                             type="button"
@@ -1054,12 +1039,12 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'card' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-md ring-1 ring-brand-100' : 'text-slate-400 hover:text-slate-600'}`}
                                         >
                                             <Briefcase className="h-3.5 w-3.5" />
-                                            Card Pay
+                                            Lipa kwa Kadi
                                         </button>
                                     </div>
 
                                     {paymentMethod === 'mobile' && (
-                                        <div className="p-5 rounded-3xl bg-brand-50/30 border border-brand-100 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                        <div className="p-4 rounded-3xl bg-brand-50/30 border border-brand-100 space-y-3 animate-in fade-in slide-in-from-top-2">
                                             <div className="space-y-2">
                                                 <div className="flex items-center justify-between px-1">
                                                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">Namba ya Kulipia</label>
@@ -1076,9 +1061,6 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                     inputMode="numeric"
                                                     className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-black text-brand-900 text-lg shadow-sm"
                                                 />
-                                                <p className="text-[9px] text-brand-700/60 ml-1 leading-relaxed">
-                                                    Ingiza namba ya M-Pesa, TigoPesa, Airtel Money au HaloPesa. Utapata ujumbe wa kuweka PIN kwenye simu yako.
-                                                </p>
                                             </div>
                                         </div>
                                     )}
@@ -1206,7 +1188,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                         className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
                                     >
                                         <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">
-                                            {couponCode ? 'Promo code added' : 'Have a promo code?'}
+                                            {couponCode ? 'Punguzo limeongezwa' : 'Una kodi ya punguzo?'}
                                         </span>
                                         <ChevronRight className={`h-4 w-4 text-brand-500 transition-transform ${isCouponExpanded ? 'rotate-90' : ''}`} />
                                     </button>
@@ -1220,7 +1202,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                 className="h-11 rounded-xl bg-white font-black tracking-wide"
                                             />
                                             <p className="mt-1 text-[10px] font-semibold text-brand-700/70">
-                                                Discount will be verified when payment starts.
+                                                Punguzo litahakikiwa unapoanza malipo.
                                             </p>
                                         </div>
                                     )}
@@ -1269,7 +1251,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                     <Loader2 className="h-6 w-6 animate-spin" />
                                 ) : (
                                     <>
-                                        {isPhysicalProduct ? 'ANZISHA ODA' : 'Kamilisha Malipo'}
+                                        {isPhysicalProduct ? 'Anzisha Oda' : 'Kamilisha Malipo'}
                                         <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                                     </>
                                 )}
@@ -1278,7 +1260,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                             {!isPhysicalProduct && (
                                 <div className="flex items-center gap-2 justify-center py-1">
                                     <ShieldCheck className="h-3.5 w-3.5 text-green-600" />
-                                    <p className="text-[10px] font-bold text-slate-500">Malipo Yako Ni Salama (Secure Checkout)</p>
+                                    <p className="text-[10px] font-bold text-slate-500">Malipo Yako Ni Salama</p>
                                 </div>
                             )}
                         </form>

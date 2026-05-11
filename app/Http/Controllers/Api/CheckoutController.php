@@ -21,6 +21,7 @@ use App\Models\SubscriptionPlan;
 use App\Payments\GatewayRegistry;
 use App\Services\EntitlementService;
 use App\Services\SmsService;
+use App\Services\SubscriptionRenewalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -469,24 +470,7 @@ class CheckoutController extends Controller
                     }
 
                     if ($validated['purchasable_type'] === 'subscription_plan') {
-                        $plan = $newOrder->resolved_purchasable;
-                        $end = match ($plan->billing_interval) {
-                            'hourly' => now()->addHours((int) $plan->interval_count),
-                            'daily' => now()->addDays((int) $plan->interval_count),
-                            'weekly' => now()->addWeeks((int) $plan->interval_count),
-                            default => now()->addMonths((int) $plan->interval_count),
-                        };
-                        $subscription = \App\Models\UserSubscription::create([
-                            'user_id' => $newOrder->buyer_id,
-                            'merchant_id' => $newOrder->merchant_id,
-                            'subscription_plan_id' => $plan->id,
-                            'status' => 'active',
-                            'auto_renew' => true,
-                            'started_at' => now(),
-                            'current_period_start' => now(),
-                            'current_period_end' => $end,
-                            'next_billing_at' => $end,
-                        ]);
+                        $subscription = app(SubscriptionRenewalService::class)->createOrExtendFromOrder($newOrder);
                         app(\App\Services\EntitlementService::class)->grantForSubscription($subscription);
                     }
                 }

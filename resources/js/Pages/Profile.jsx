@@ -53,6 +53,10 @@ export default function Profile({
     const [retailDashboard, setRetailDashboard] = useState(null);
     const retailEligible = isRetailEligible(activeMerchant, merchantKyc, merchantKycStatus);
     const retailActive = retailEligible && activeMerchant?.active_modules?.includes('retail_ops');
+    const hasVerifiedEmail = Boolean(auth?.user?.email && auth?.user?.email_verified_at);
+    const profileLabel = activeMerchant
+        ? (activeMerchant.type === 'personal' ? 'Personal Profile' : activeMerchant.type?.replace('_', ' ').toUpperCase())
+        : 'Personal Profile';
 
     useEffect(() => {
         if (retailActive) {
@@ -316,7 +320,7 @@ export default function Profile({
                         <div>
                             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Akaunti Yangu</h1>
                             <p className="text-slate-500 font-medium text-sm">
-                                {activeMerchant?.type === 'personal' ? 'Personal Profile' : (activeMerchant?.type?.replace('_', ' ').toUpperCase() || 'Business Profile')}
+                                {profileLabel}
                             </p>
                         </div>
                     </div>
@@ -1217,12 +1221,45 @@ export default function Profile({
                                 )}
 
                                 {!auth?.user?.is_merchant && (
-                                    <div className="p-8 rounded-2xl border border-dashed border-brand-200 bg-brand-50/10 flex flex-col items-center text-center space-y-4">
-                                        <h2 className="text-xl font-bold text-slate-900">Anzisha Biashara Yako</h2>
-                                        <p className="text-slate-600 font-medium text-sm max-w-sm">Anza kuuza bidhaa, huduma au maudhui leo na Takeer Instant Checkout.</p>
-                                        <Link href="/merchant/register" className="h-11 px-6 rounded-xl bg-brand-600 text-white font-bold text-sm flex items-center justify-center hover:bg-brand-700 transition-all active:scale-95">
-                                            Jiunge Sasa <ChevronRight className="ml-1 h-4 w-4" />
-                                        </Link>
+                                    <div className="p-8 rounded-2xl border border-dashed border-brand-200 bg-brand-50/10 flex flex-col items-center text-center space-y-5">
+                                        <div className="space-y-2">
+                                            <h2 className="text-xl font-bold text-slate-900">Anzisha Biashara Yako</h2>
+                                            <p className="text-slate-600 font-medium text-sm max-w-2xl mx-auto">
+                                                Tengeneza kipato cha ziada kwa kuuza bidhaa za kawaida, digital downloads, huduma za booking, au maarifa yako kama paid content, bundles, courses na memberships.
+                                            </p>
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full max-w-2xl">
+                                            {[
+                                                { icon: Package, label: 'Physical products' },
+                                                { icon: DownloadCloud, label: 'Digital downloads' },
+                                                { icon: Briefcase, label: 'Services' },
+                                                { icon: BookOpenText, label: 'Paid knowledge' },
+                                            ].map((item) => {
+                                                const Icon = item.icon;
+
+                                                return (
+                                                    <div key={item.label} className="rounded-xl border border-brand-100 bg-white px-3 py-3 flex flex-col items-center gap-2">
+                                                        <Icon className="h-5 w-5 text-brand-600" />
+                                                        <span className="text-[11px] font-black text-slate-700">{item.label}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        {!hasVerifiedEmail && (
+                                            <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-3 py-1.5">
+                                                Unganisha Google kwanza ili tupate email iliyothibitishwa kwa risiti, notifications na usalama wa akaunti.
+                                            </p>
+                                        )}
+                                        {hasVerifiedEmail ? (
+                                            <Link href="/merchant/register" className="h-11 px-6 rounded-xl bg-brand-600 text-white font-bold text-sm flex items-center justify-center hover:bg-brand-700 transition-all active:scale-95">
+                                                Jiunge Sasa <ChevronRight className="ml-1 h-4 w-4" />
+                                            </Link>
+                                        ) : (
+                                            <a href="/auth/google/redirect" className="h-11 px-6 rounded-xl bg-white border border-slate-200 text-slate-900 font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
+                                                <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-4 w-4" alt="Google" />
+                                                Unganisha Google
+                                            </a>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -1251,7 +1288,20 @@ export default function Profile({
                                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-slate-50 overflow-hidden">
                                         <div className="p-6 space-y-4">
                                             <DetailRow label="Namba ya Simu" value={auth?.user?.phone_number ? `${auth.user.phone_number.slice(0, 4)} ••• ••• ${auth.user.phone_number.slice(-3)}` : '+255 ••• ••• ***'} />
-                                            <DetailRow label="Barua Pepe" value={maskEmail(auth?.user?.email) || 'Hujajaza'} />
+                                            <DetailRow
+                                                label="Barua Pepe"
+                                                value={auth?.user?.email_verified_at ? (
+                                                    maskEmail(auth?.user?.email)
+                                                ) : (
+                                                    <a
+                                                        href="/auth/google/redirect"
+                                                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
+                                                    >
+                                                        <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-3.5 w-3.5" alt="Google" />
+                                                        {auth?.user?.email ? 'Thibitisha kwa Google' : 'Unganisha Google'}
+                                                    </a>
+                                                )}
+                                            />
                                             <DetailRow label="Jina la Mtumiaji" value={`@${activeMerchant?.username || 'user'}`} />
                                             <div className="flex items-center justify-between py-3">
                                                 <span className="text-slate-500 font-medium text-sm">Hali ya Akaunti</span>

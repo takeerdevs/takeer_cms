@@ -27,6 +27,12 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $flashError = $request->session()->get('error');
+        if (in_array($flashError, ['Unauthenticated.', 'Unauthorized'], true)) {
+            $flashError = null;
+            $request->session()->forget('error');
+        }
+
         return [
             ...parent::share($request),
             'auth' => [
@@ -38,7 +44,7 @@ class HandleInertiaRequests extends Middleware
             ],
             'flash' => [
                 'success' => $request->session()->get('success'),
-                'error' => $request->session()->get('error'),
+                'error' => $flashError,
             ],
         ];
     }
@@ -83,7 +89,9 @@ class HandleInertiaRequests extends Middleware
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'email_verified_at' => $user->email_verified_at?->toISOString(),
             'phone_number' => $user->phone_number,
+            'phone_verified_at' => $user->phone_verified_at?->toISOString(),
             'role' => $user->role,
             'is_admin' => (bool) $user->is_admin,
             'is_banned' => (bool) $user->is_banned,

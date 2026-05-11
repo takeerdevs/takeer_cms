@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -13,6 +14,7 @@ import LinkPreviewCard from '@/Components/LinkPreviewCard';
 import VideoPlayer from '@/Components/VideoPlayer';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
 import { trackAttributionEvent } from '@/lib/attribution';
+import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
 import { toast } from 'sonner';
 
 function CommentItem({ comment, onReply }) {
@@ -149,6 +151,47 @@ function sanitizeHtml(html) {
 
 const reactionPickerEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '👋', '🔥', '👏', '🎉', '💯', '🤝', '👌', '😍', '🤔', '🥹', '💔', '😡', '😴', '🌟', '✅', '💪', '🫶', '🙌'];
 const quickReactionEmojis = ['👍', '❤️', '🔥'];
+const buildRankedReactionEmojis = ({ summary = [], selected = null, fallback = [], limit = null }) => {
+    const seen = new Set();
+    const ranked = [];
+    const push = (emoji) => {
+        if (!emoji || seen.has(emoji)) return;
+        seen.add(emoji);
+        ranked.push(emoji);
+    };
+
+    push(selected);
+    [...summary]
+        .sort((a, b) => Number(b.count || 0) - Number(a.count || 0))
+        .forEach((entry) => push(entry.emoji));
+    fallback.forEach(push);
+
+    return limit ? ranked.slice(0, limit) : ranked;
+};
+const formatCompactCount = (value) => {
+    const count = Number(value || 0);
+    if (count < 1000) return String(count);
+    if (count < 1000000) {
+        const formatted = (count / 1000).toFixed(count >= 10000 ? 0 : 1).replace(/\.0$/, '');
+        return `${formatted}K`;
+    }
+    const formatted = (count / 1000000).toFixed(count >= 10000000 ? 0 : 1).replace(/\.0$/, '');
+    return `${formatted}M`;
+};
+const emptyGuestEngagement = {
+    open: false,
+    step: 'identity',
+    action: 'comment',
+    text: '',
+    emoji: '',
+    parentId: null,
+    name: '',
+    phone: '',
+    otp: '',
+    sending: false,
+    verifying: false,
+    error: '',
+};
 const moderationReasons = [
     { value: 'spam', label: 'Spam or repetitive content' },
     { value: 'scam', label: 'Misleading or scam activity' },
@@ -188,6 +231,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const [reactionSummary, setReactionSummary] = useState(initialPost?.reaction_summary || []);
     const [myReaction, setMyReaction] = useState(initialPost?.my_reaction || null);
     const [showReactionPicker, setShowReactionPicker] = useState(false);
+    const [portalReady, setPortalReady] = useState(false);
     const [customReaction, setCustomReaction] = useState('');
     const [commentsNextUrl, setCommentsNextUrl] = useState(null);
     const [loadingMoreComments, setLoadingMoreComments] = useState(false);
@@ -199,6 +243,26 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const [moderationPublicReason, setModerationPublicReason] = useState('Takeer policy violation');
     const [moderationInternalNote, setModerationInternalNote] = useState('');
     const [showPublicNotice, setShowPublicNotice] = useState(true);
+    const [guestUser, setGuestUser] = useState(null);
+    const [guestEngagement, setGuestEngagement] = useState(emptyGuestEngagement);
+    const isAuthenticated = Boolean(auth?.user || guestUser);
+
+    useEffect(() => {
+        setPortalReady(true);
+    }, []);
+
+    useEffect(() => {
+        if (!showReactionPicker || typeof document === 'undefined') {
+            return undefined;
+        }
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [showReactionPicker]);
 
     useEffect(() => {
         if (!initialPost?.id || readOnly) return;
@@ -341,7 +405,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
             }
             setCommentsNextUrl(normalized.next);
         } catch (e) {
-            if (e.response?.status !== 403) {
+            if (![401, 403].includes(e.response?.status)) {
                 toast.error(e.response?.data?.message || 'Imeshindwa kupakia maoni.');
             }
         } finally {
@@ -372,6 +436,94 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         return () => observer.disconnect();
     }, [commentsNextUrl, loadingComments, loadingMoreComments, canShowComments, isLocked]);
 
+    const openGuestEngagement = ({ action, text = '', emoji = '', parentId = null }) => {
+        setGuestEngagement({
+            ...emptyGuestEngagement,
+            open: true,
+            action,
+            text,
+            emoji,
+            parentId,
+        });
+    };
+
+    const closeGuestEngagement = () => {
+        setGuestEngagement(emptyGuestEngagement);
+    };
+
+    const updateGuestEngagement = (changes) => {
+        setGuestEngagement((current) => ({ ...current, ...changes, error: changes.error ?? current.error }));
+    };
+
+    const sendGuestOtp = async () => {
+        if (!guestEngagement.name.trim() || !guestEngagement.phone.trim()) {
+            updateGuestEngagement({ error: 'Enter your name and phone number to continue.' });
+            return;
+        }
+
+        updateGuestEngagement({ sending: true, error: '' });
+        try {
+            await axios.post('/auth/otp/send', {
+                phone_number: guestEngagement.phone.trim(),
+            });
+            updateGuestEngagement({ sending: false, step: 'otp', error: '' });
+        } catch (e) {
+            updateGuestEngagement({
+                sending: false,
+                error: e.response?.data?.message || 'Could not send OTP. Please check the phone number and try again.',
+            });
+        }
+    };
+
+    const completeGuestEngagement = async () => {
+        if (!guestEngagement.otp.trim()) {
+            updateGuestEngagement({ error: 'Enter the OTP sent to your phone.' });
+            return;
+        }
+
+        updateGuestEngagement({ verifying: true, error: '' });
+        try {
+            const res = await axios.post(`/posts/${initialPost.id}/guest-engagement`, {
+                name: guestEngagement.name.trim(),
+                phone_number: guestEngagement.phone.trim(),
+                otp: guestEngagement.otp.trim(),
+                action: guestEngagement.action,
+                text: guestEngagement.text,
+                parent_id: guestEngagement.parentId,
+                emoji: guestEngagement.emoji,
+            });
+
+            setGuestUser(res.data?.user || { name: guestEngagement.name.trim() });
+
+            if (guestEngagement.action === 'comment') {
+                if (guestEngagement.parentId) {
+                    fetchComments({ append: false });
+                } else if (res.data?.comment) {
+                    setComments((prev) => [res.data.comment, ...prev]);
+                }
+                setCommentText('');
+                setReplyingTo(null);
+                setPost((prev) => ({
+                    ...prev,
+                    comment_count: res.data?.comment_count ?? ((prev.comment_count || 0) + 1),
+                }));
+                toast.success(res.data?.message || 'Your comment has been posted.');
+            } else {
+                setMyReaction(res.data?.my_reaction || guestEngagement.emoji);
+                setReactionSummary(res.data?.reaction_summary || []);
+                toast.success(res.data?.message || 'Reaction added.');
+            }
+
+            router.reload({ only: ['auth'], preserveScroll: true, preserveState: true });
+            closeGuestEngagement();
+        } catch (e) {
+            updateGuestEngagement({
+                verifying: false,
+                error: e.response?.data?.message || 'Could not finish this action. Please try again.',
+            });
+        }
+    };
+
     const handleSendComment = async () => {
         if (readOnly) return;
         if (isDeleted) {
@@ -380,6 +532,14 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         }
         if (!commentsEnabled) return;
         if (!commentText.trim()) return;
+        if (!isAuthenticated) {
+            openGuestEngagement({
+                action: 'comment',
+                text: commentText.trim(),
+                parentId: replyingTo?.id || null,
+            });
+            return;
+        }
         setSubmitting(true);
         try {
             const res = await axios.post(`/posts/${initialPost.id}/comment`, {
@@ -412,6 +572,11 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         if (!reactionsEnabled) return;
 
         const next = myReaction === emoji ? null : emoji;
+        if (!isAuthenticated) {
+            if (!next) return;
+            openGuestEngagement({ action: 'reaction', emoji: next });
+            return;
+        }
         setMyReaction(next);
 
         try {
@@ -504,8 +669,25 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const promotableItem = firstPromotable?.item || null;
     const isSubscriptionPromotable = promotableType === 'subscription_plan' && Boolean(promotableItem?.slug || firstPromotable?.id);
     const subscriptionRouteKey = promotableItem?.slug || firstPromotable?.id;
-    const subscriptionItemsCount = Number(promotableItem?.items_count || 0);
-    const subscriptionCadence = `${promotableItem?.interval_count || 1} ${promotableItem?.billing_interval || 'month'}`;
+    const subscriptionMembership = promotableItem?.viewer_subscription || null;
+    const hasActiveSubscriptionMembership = Boolean(subscriptionMembership?.current_period_end);
+    const subscriptionTimeLeft = useSubscriptionCountdown(subscriptionMembership?.current_period_end);
+    const subscriptionEndsLabel = subscriptionMembership?.current_period_end
+        ? new Date(subscriptionMembership.current_period_end).toLocaleString('sw-TZ', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : null;
+    const subscriptionCadence = (() => {
+        const interval = promotableItem?.billing_interval || 'monthly';
+        const count = Number(promotableItem?.interval_count || 1);
+        const labels = {
+            hourly: ['Hour', 'Hours'],
+            daily: ['Day', 'Days'],
+            weekly: ['Week', 'Weeks'],
+            monthly: ['Month', 'Months'],
+        };
+        const [single, plural] = labels[interval] || [interval, `${interval}s`];
+
+        return count <= 1 ? single : `Every ${count} ${plural}`;
+    })();
     const hasSingleUnlockOption = isRestricted && post.restricted_price !== null;
     const hasPromotableOption = isRestricted && promotables.length > 0;
     const linkPreview = post.link_preview || null;
@@ -655,10 +837,34 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         : false;
     const sortedReactions = [...reactionSummary].sort((a, b) => (b.count || 0) - (a.count || 0));
     const reactionCounts = Object.fromEntries((reactionSummary || []).map((entry) => [entry.emoji, Number(entry.count || 0)]));
-    const quickReactionChips = quickReactionEmojis.map((emoji) => ({
+    const rankedQuickReactionEmojis = buildRankedReactionEmojis({
+        summary: reactionSummary,
+        selected: myReaction,
+        fallback: quickReactionEmojis,
+        limit: 3,
+    });
+    const rankedReactionPickerEmojis = buildRankedReactionEmojis({
+        summary: reactionSummary,
+        selected: myReaction,
+        fallback: reactionPickerEmojis,
+    });
+    const quickReactionChips = rankedQuickReactionEmojis.map((emoji) => ({
         emoji,
         count: reactionCounts[emoji] || 0,
     }));
+
+    const handleSubscriptionRenewClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        window.__openCheckout?.({
+            id: firstPromotable?.id || promotableItem?.id,
+            title: promotableItem?.name || promotableItem?.title || 'Membership',
+            price: Number(promotableItem?.price || 0),
+            checkoutType: 'subscription_plan',
+            merchant: post.merchant || null,
+        });
+    };
 
     const renderProductAttachmentCard = (className = '') => {
         if (!attachedProduct) return null;
@@ -1061,32 +1267,51 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 </div>
                             </div>
 
-                            <div className="mt-4 grid grid-cols-2 gap-3">
-                                <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Access</p>
-                                    <p className="mt-1 text-base font-black">{subscriptionItemsCount > 0 ? `${subscriptionItemsCount} items` : 'Member content'}</p>
-                                </div>
-                                <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Renewal</p>
-                                    <p className="mt-1 text-base font-black capitalize">{subscriptionCadence}</p>
-                                </div>
+                            <div className="mt-4">
+                                {hasActiveSubscriptionMembership ? (
+                                    <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">Membership active</p>
+                                        <p className="mt-1 text-lg font-black tabular-nums">{subscriptionTimeLeft}</p>
+                                        {subscriptionEndsLabel && (
+                                            <p className="mt-1 text-xs font-semibold text-muted-foreground">Ends {subscriptionEndsLabel}</p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-emerald-100 bg-white px-4 py-3">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Renewal</p>
+                                        <p className="mt-1 text-base font-black">{subscriptionCadence}</p>
+                                    </div>
+                                )}
                             </div>
-
-                            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                                {promotableItem?.description || 'Jiunge kupata maudhui ya wanachama na updates mpya kadri zinavyoongezwa.'}
-                            </p>
                         </div>
                         <div className="px-5 pb-5">
                             <button
                                 onClick={(e) => {
+                                    if (hasActiveSubscriptionMembership) {
+                                        handleSubscriptionRenewClick(e);
+                                        return;
+                                    }
+
                                     e.preventDefault();
                                     e.stopPropagation();
                                     router.visit(`/plan/${subscriptionRouteKey}`);
                                 }}
                                 className="w-full h-12 rounded-xl bg-emerald-600 text-white text-base font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20"
                             >
-                                <Crown className="h-5 w-5" /> View Membership
+                                <Crown className="h-5 w-5" /> {hasActiveSubscriptionMembership ? 'Renew access' : 'View Membership'}
                             </button>
+                            {hasActiveSubscriptionMembership && (
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        router.visit(`/plan/${subscriptionRouteKey}`);
+                                    }}
+                                    className="mt-2 w-full h-10 rounded-xl border border-emerald-200 bg-white text-sm font-black text-emerald-800 hover:bg-emerald-50 transition-colors"
+                                >
+                                    Open membership
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}
@@ -1323,7 +1548,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                             >
                                                 <span>{entry.emoji}</span>
                                                 {entry.count > 0 && (
-                                                    <span className="text-xs font-black text-muted-foreground">{entry.count}</span>
+                                                    <span className="text-xs font-black text-muted-foreground">{formatCompactCount(entry.count)}</span>
                                                 )}
                                             </button>
                                         ))}
@@ -1346,7 +1571,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                                 >
                                                     <span>{entry.emoji}</span>
                                                     {entry.count > 0 && (
-                                                        <span className="text-[10px] font-black text-muted-foreground">{entry.count}</span>
+                                                        <span className="text-[10px] font-black text-muted-foreground">{formatCompactCount(entry.count)}</span>
                                                     )}
                                                 </div>
                                             ))}
@@ -1367,66 +1592,69 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     </div>
                 )}
 
-                <AnimatePresence>
-                    {showReactionPicker && !readOnly && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[70] bg-black/35 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-4"
-                            onClick={() => setShowReactionPicker(false)}
-                        >
+                {portalReady && createPortal(
+                    <AnimatePresence>
+                        {showReactionPicker && !readOnly && (
                             <motion.div
-                                initial={{ y: 20, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                exit={{ y: 20, opacity: 0 }}
-                                className="w-full max-w-md rounded-3xl border border-border bg-background shadow-2xl"
-                                onClick={(e) => e.stopPropagation()}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-[100] bg-black/35 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-4"
+                                onClick={() => setShowReactionPicker(false)}
                             >
-                                <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                                    <h3 className="font-black text-sm uppercase tracking-wider">Choose Reaction</h3>
-                                    <button type="button" onClick={() => setShowReactionPicker(false)} className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center">
-                                        <X className="h-4 w-4" />
-                                    </button>
-                                </div>
-                                <div className="p-4 space-y-4">
-                                    <div className="grid grid-cols-8 gap-2">
-                                        {reactionPickerEmojis.map((emoji) => (
-                                            <button
-                                                key={emoji}
-                                                type="button"
-                                                onClick={() => {
-                                                    handleReact(emoji);
-                                                    setShowReactionPicker(false);
-                                                }}
-                                                className={`h-10 rounded-xl border text-xl transition-colors ${myReaction === emoji ? 'bg-brand-100 border-brand-300' : 'border-border hover:bg-accent'}`}
-                                            >
-                                                {emoji}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    {/*<div className="flex items-center gap-2">
-                                        <input
-                                            type="text"
-                                            value={customReaction}
-                                            onChange={(e) => setCustomReaction(e.target.value)}
-                                            placeholder="Use any emoji"
-                                            className="flex-1 h-10 rounded-xl border border-border px-3 text-sm"
-                                            maxLength={16}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={handleCustomReaction}
-                                            className="h-10 px-4 rounded-xl bg-brand-600 text-white text-sm font-bold hover:bg-brand-700"
-                                        >
-                                            Set
+                                <motion.div
+                                    initial={{ y: 20, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    exit={{ y: 20, opacity: 0 }}
+                                    className="w-full max-w-md rounded-3xl border border-border bg-background shadow-2xl"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+                                        <h3 className="font-black text-sm uppercase tracking-wider">Choose Reaction</h3>
+                                        <button type="button" onClick={() => setShowReactionPicker(false)} className="h-8 w-8 rounded-full hover:bg-accent flex items-center justify-center">
+                                            <X className="h-4 w-4" />
                                         </button>
-                                    </div>*/}
-                                </div>
+                                    </div>
+                                    <div className="p-4 space-y-4">
+                                        <div className="grid grid-cols-8 gap-2">
+                                            {rankedReactionPickerEmojis.map((emoji) => (
+                                                <button
+                                                    key={emoji}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        handleReact(emoji);
+                                                        setShowReactionPicker(false);
+                                                    }}
+                                                    className={`h-10 rounded-xl border text-xl transition-colors ${myReaction === emoji ? 'bg-brand-100 border-brand-300' : 'border-border hover:bg-accent'}`}
+                                                >
+                                                    {emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {/*<div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={customReaction}
+                                                onChange={(e) => setCustomReaction(e.target.value)}
+                                                placeholder="Use any emoji"
+                                                className="flex-1 h-10 rounded-xl border border-border px-3 text-sm"
+                                                maxLength={16}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleCustomReaction}
+                                                className="h-10 px-4 rounded-xl bg-brand-600 text-white text-sm font-bold hover:bg-brand-700"
+                                            >
+                                                Set
+                                            </button>
+                                        </div>*/}
+                                    </div>
+                                </motion.div>
                             </motion.div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
 
                 {/* Comments Section */}
                 {canShowComments && (
@@ -1526,6 +1754,136 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     </div>
                 </div>
             )}
+
+            <AnimatePresence>
+                {guestEngagement.open && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[80] bg-black/45 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+                        onClick={closeGuestEngagement}
+                    >
+                        <motion.div
+                            initial={{ y: 24, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: 24, opacity: 0 }}
+                            className="w-full max-w-md rounded-3xl border border-border bg-background shadow-2xl overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-600">
+                                        {guestEngagement.action === 'comment' ? 'Post your comment' : 'Add your reaction'}
+                                    </p>
+                                    <h3 className="text-lg font-black tracking-tight">Confirm with phone</h3>
+                                </div>
+                                <button type="button" onClick={closeGuestEngagement} className="h-9 w-9 rounded-full hover:bg-accent flex items-center justify-center">
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+
+                            <div className="p-5 space-y-4">
+                                <div className="rounded-2xl border border-border bg-accent/40 p-4">
+                                    {guestEngagement.action === 'comment' ? (
+                                        <>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Your comment</p>
+                                            <p className="text-sm font-semibold leading-relaxed text-foreground break-words">
+                                                {guestEngagement.text}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-12 w-12 rounded-2xl bg-background border border-border flex items-center justify-center text-2xl">
+                                                {guestEngagement.emoji}
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Your reaction</p>
+                                                <p className="text-sm font-bold">Confirm to add this reaction.</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {guestEngagement.step === 'identity' ? (
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">Name</label>
+                                            <input
+                                                type="text"
+                                                value={guestEngagement.name}
+                                                onChange={(e) => updateGuestEngagement({ name: e.target.value, error: '' })}
+                                                className="mt-1 w-full h-12 rounded-2xl border border-border bg-background px-4 text-sm font-semibold outline-none focus:border-brand-400"
+                                                placeholder="Your name"
+                                                maxLength={80}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">Phone number</label>
+                                            <input
+                                                type="tel"
+                                                value={guestEngagement.phone}
+                                                onChange={(e) => updateGuestEngagement({ phone: e.target.value, error: '' })}
+                                                className="mt-1 w-full h-12 rounded-2xl border border-border bg-background px-4 text-sm font-semibold outline-none focus:border-brand-400"
+                                                placeholder="+255..."
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div className="flex items-start gap-3 rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-brand-900">
+                                            <ShieldCheck className="h-5 w-5 mt-0.5 shrink-0" />
+                                            <p className="text-xs font-semibold leading-relaxed">
+                                                We sent a 6-digit OTP to <span className="font-black">{guestEngagement.phone}</span>.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">OTP code</label>
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={guestEngagement.otp}
+                                                onChange={(e) => updateGuestEngagement({ otp: e.target.value.replace(/\D/g, '').slice(0, 6), error: '' })}
+                                                onKeyDown={(e) => e.key === 'Enter' && completeGuestEngagement()}
+                                                className="mt-1 w-full h-14 rounded-2xl border border-border bg-background px-4 text-center text-2xl font-black tracking-[0.35em] outline-none focus:border-brand-400"
+                                                placeholder="000000"
+                                                maxLength={6}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {guestEngagement.error && (
+                                    <p className="rounded-2xl bg-red-50 border border-red-100 px-4 py-3 text-sm font-semibold text-red-700">
+                                        {guestEngagement.error}
+                                    </p>
+                                )}
+
+                                <div className="flex items-center gap-3">
+                                    {guestEngagement.step === 'otp' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => updateGuestEngagement({ step: 'identity', otp: '', error: '' })}
+                                            className="h-12 px-4 rounded-2xl border border-border text-sm font-black hover:bg-accent"
+                                        >
+                                            Edit
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={guestEngagement.step === 'identity' ? sendGuestOtp : completeGuestEngagement}
+                                        disabled={guestEngagement.sending || guestEngagement.verifying}
+                                        className="flex-1 h-12 rounded-2xl bg-brand-600 text-white text-sm font-black hover:bg-brand-700 disabled:opacity-60 flex items-center justify-center gap-2"
+                                    >
+                                        {(guestEngagement.sending || guestEngagement.verifying) && <Loader2 className="h-4 w-4 animate-spin" />}
+                                        {guestEngagement.step === 'identity' ? 'Send OTP' : 'Confirm and post'}
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <AnimatePresence>
                 {showAdminRemoveModal && (

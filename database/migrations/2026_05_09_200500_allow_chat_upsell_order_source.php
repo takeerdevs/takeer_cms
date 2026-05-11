@@ -12,10 +12,12 @@ return new class extends Migration
             return;
         }
 
-        if (DB::getDriverName() === 'pgsql') {
+        $driver = DB::getDriverName();
+
+        if ($driver === 'pgsql') {
             DB::statement('ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_source_check');
             DB::statement("ALTER TABLE orders ADD CONSTRAINT orders_source_check CHECK (source::text = ANY (ARRAY['online'::character varying, 'pos'::character varying, 'chat_upsell'::character varying]::text[]))");
-        } else {
+        } elseif (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE orders MODIFY COLUMN source ENUM('online', 'pos', 'chat_upsell') DEFAULT 'online'");
         }
     }
@@ -30,10 +32,12 @@ return new class extends Migration
             ->where('source', 'chat_upsell')
             ->update(['source' => 'online']);
 
-        if (DB::getDriverName() === 'pgsql') {
+        $driver = DB::getDriverName();
+
+        if ($driver === 'pgsql') {
             DB::statement('ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_source_check');
             DB::statement("ALTER TABLE orders ADD CONSTRAINT orders_source_check CHECK (source::text = ANY (ARRAY['online'::character varying, 'pos'::character varying]::text[]))");
-        } else {
+        } elseif (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE orders MODIFY COLUMN source ENUM('online', 'pos') DEFAULT 'online'");
         }
     }
