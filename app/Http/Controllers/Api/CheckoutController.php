@@ -530,9 +530,9 @@ class CheckoutController extends Controller
                 ->latest()
                 ->value('net_amount')
                 ?? app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['net_amount'];
-            $wallet = $order->merchant->user->wallet()->firstOrCreate(
-                ['user_id' => $order->merchant->user_id],
-                ['balance' => 0, 'frozen_balance' => 0]
+            $wallet = $order->merchant->wallet()->firstOrCreate(
+                ['merchant_id' => $order->merchant_id],
+                ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
             );
             $wallet->increment('balance', $netAmount);
             $wallet->decrement('frozen_balance', $order->total_paid);
@@ -1323,6 +1323,7 @@ class CheckoutController extends Controller
             $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
             \App\Models\Transaction::create([
                 'user_id' => $order->buyer_id,
+                'merchant_id' => $order->merchant_id,
                 'order_id' => $order->id,
                 'type' => 'order_revenue',
                 ...$fee['snapshot'],
@@ -1334,7 +1335,10 @@ class CheckoutController extends Controller
             ]);
 
             // Freeze funds in merchant's wallet simulation
-            $wallet = $order->merchant->user->wallet()->firstOrCreate(['user_id' => $order->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);
+            $wallet = $order->merchant->wallet()->firstOrCreate(
+                ['merchant_id' => $order->merchant_id],
+                ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
+            );
             $wallet->increment('frozen_balance', $order->total_paid);
 
             $order->loadMissing(['buyer', 'merchant.user']);

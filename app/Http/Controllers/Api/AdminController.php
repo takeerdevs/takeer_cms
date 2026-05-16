@@ -211,9 +211,9 @@ class AdminController extends Controller
                         'delivery_status' => 'disputed',
                     ]);
                 // Refund logic (M-Pesa B2C or Wallet) goes here
-                $wallet = $order->merchant->user->wallet()->firstOrCreate(
-                    ['user_id' => $order->merchant->user_id],
-                    ['balance' => 0, 'frozen_balance' => 0]
+                $wallet = $order->merchant->wallet()->firstOrCreate(
+                    ['merchant_id' => $order->merchant_id],
+                    ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
                 );
                 $wallet->decrement('frozen_balance', $order->total_paid);
             } else {
@@ -226,9 +226,9 @@ class AdminController extends Controller
                         'customer_confirmed_at' => now(),
                         'status' => 'completed',
                     ]);
-                $merchantWallet = $order->merchant->user->wallet()->firstOrCreate(
-                    ['user_id' => $order->merchant->user_id],
-                    ['balance' => 0, 'frozen_balance' => 0]
+                $merchantWallet = $order->merchant->wallet()->firstOrCreate(
+                    ['merchant_id' => $order->merchant_id],
+                    ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
                 );
                 $netAmount = \App\Models\Transaction::query()
                     ->where('order_id', $order->id)

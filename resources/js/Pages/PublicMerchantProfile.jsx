@@ -132,19 +132,24 @@ function ProfileSocialLinks({ links }) {
                 const meta = socialLinkMeta(link.url);
                 const Icon = meta?.icon || Globe2;
                 const title = link.title || meta?.label || linkDomain(link.url) || 'Link';
+                const href = link.tracked_url || normalizeLinkUrl(link.url);
+                const unavailable = Boolean(link.link_unavailable || link.tracked_link_status === 'disabled');
 
                 return (
-                    <a
+                    <button
+                        type="button"
                         key={`${link.url}-${index}`}
-                        href={normalizeLinkUrl(link.url)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700"
+                        onClick={() => {
+                            if (!unavailable) window.open(href, '_blank', 'noopener,noreferrer');
+                        }}
+                        disabled={unavailable}
+                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:cursor-not-allowed disabled:border-amber-200 disabled:bg-amber-50 disabled:text-amber-800"
+                        title={unavailable ? 'Link unavailable while Takeer reviews a safety issue.' : title}
                     >
                         {meta?.text ? <span className="text-xs font-black">{meta.text}</span> : <Icon className="h-3.5 w-3.5 shrink-0" />}
                         <span className="truncate">{title}</span>
                         <ExternalLink className="h-3 w-3 shrink-0 text-slate-400" />
-                    </a>
+                    </button>
                 );
             })}
         </div>

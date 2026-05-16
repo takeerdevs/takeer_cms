@@ -138,6 +138,16 @@ class Merchant extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function wallet(): HasOne
+    {
+        return $this->hasOne(Wallet::class, 'merchant_id');
+    }
+
+    public function withdrawals(): HasMany
+    {
+        return $this->hasMany(WithdrawalRequest::class, 'merchant_id');
+    }
+
     /**
      * Get the posts for the merchant profile.
      */
@@ -295,5 +305,30 @@ class Merchant extends Model
     public function retailAuditLogs(): HasMany
     {
         return $this->hasMany(RetailAuditLog::class);
+    }
+
+    public function retailBookkeepingEntries(): HasMany
+    {
+        return $this->hasMany(RetailBookkeepingEntry::class);
+    }
+
+    public function retailBookkeepingPeriodLocks(): HasMany
+    {
+        return $this->hasMany(RetailBookkeepingPeriodLock::class);
+    }
+
+    public function retailBookkeepingOpeningBalance(): HasOne
+    {
+        return $this->hasOne(RetailBookkeepingOpeningBalance::class);
+    }
+
+    public function fiscalIntegrations(): HasMany
+    {
+        return $this->hasMany(MerchantFiscalIntegration::class);
+    }
+
+    public function fiscalReceipts(): HasMany
+    {
+        return $this->hasMany(FiscalReceipt::class);
     }
 }

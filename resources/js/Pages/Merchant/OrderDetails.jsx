@@ -27,6 +27,7 @@ import {
     Truck,
     UserRound,
     Video,
+    Crown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
@@ -47,6 +48,7 @@ function typeMeta(kind) {
         bundle: { label: 'Bundle', icon: Boxes, cls: 'bg-sky-100 text-sky-700' },
         course_bundle: { label: 'Course Bundle', icon: BookOpenText, cls: 'bg-indigo-100 text-indigo-700' },
         post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-100 text-sky-700' },
+        subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-100 text-violet-700' },
         digital_file: { label: 'Digital File', icon: Download, cls: 'bg-indigo-100 text-indigo-700' },
         custom_work: { label: 'Custom Work', icon: FileUp, cls: 'bg-indigo-100 text-indigo-700' },
         service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-100 text-emerald-700' },
@@ -198,6 +200,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const canDispatchNow = !!order
         && order.is_escrow_order
         && ['awaiting_merchant_confirmation', 'escrow_locked'].includes(order.payment_status);
+    const isSubscriptionOrder = order?.purchasable_type === 'subscription_plan';
     const isCustomDigitalDelivery = order?.product?.type === 'digital'
         && order?.product?.digital_delivery_type === 'custom_delivery';
 
@@ -356,14 +359,16 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                             <p className="text-sm text-muted-foreground">{displayId} • {merchantName || 'Biashara'}</p>
                         </div>
                     </div>
-                    <Button
-                        className="rounded-xl font-bold"
-                        onClick={() => router.visit(`/chat/${order?.public_id}?acting_as=merchant`)}
-                        disabled={loading || !order?.public_id}
-                    >
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        Open Chat
-                    </Button>
+                    {!loading && order && !isSubscriptionOrder && (
+                        <Button
+                            className="rounded-xl font-bold"
+                            onClick={() => router.visit(`/chat/${order?.public_id}?acting_as=merchant`)}
+                            disabled={!order?.public_id}
+                        >
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            Open Chat
+                        </Button>
+                    )}
                 </div>
 
                 {loading ? (
@@ -449,7 +454,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-2 text-sm">
-                                    <p className="font-medium text-foreground">{flowCopy}</p>
+                                    <p className="font-medium text-foreground">
+                                        {isSubscriptionOrder
+                                            ? 'Hii ni subscription order: access hutolewa moja kwa moja kulingana na muda wa membership.'
+                                            : flowCopy}
+                                    </p>
                                     {order.delivery && (
                                         <>
                                             <p><span className="text-muted-foreground">Delivery Method:</span> <span className="font-semibold uppercase text-brand-700">{deliveryMethodLabel(order.delivery)}</span></p>

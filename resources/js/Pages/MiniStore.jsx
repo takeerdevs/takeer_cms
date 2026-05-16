@@ -3,9 +3,10 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import { Link, usePage } from '@inertiajs/react';
-import { Loader2, Store, Share2, GripVertical, Star, BookOpenText, Boxes, Crown, Lock, Pencil, Instagram, Youtube, Mail, Music2, MessageCircle, Send, Globe2, UserRound, Plus, Search, X } from 'lucide-react';
+import { Loader2, Store, Share2, GripVertical, Star, BookOpenText, Boxes, Crown, Lock, Pencil, Instagram, Youtube, Mail, Music2, MessageCircle, Send, Globe2, UserRound, Plus, Search, X, Flag } from 'lucide-react';
 import { trackAttributionEvent } from '@/lib/attribution';
 import { productPriceLabel } from '@/lib/productUnits';
+import { toast } from 'sonner';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
@@ -1163,16 +1164,57 @@ function StorefrontItemPicker({
 
 function BioLinkButton({ item }) {
     const href = normalizeLinkUrl(item?.url || '');
+    const outboundHref = item?.tracked_url || href;
     const preview = item?.preview || {};
     const imageUrl = preview.image_url || null;
     const title = item?.title || preview.title || linkDomain(href) || 'Open link';
+    const [reporting, setReporting] = useState(false);
+    const unavailable = Boolean(item?.link_unavailable || item?.tracked_link_status === 'disabled');
+
+    const openLink = () => {
+        if (unavailable) return;
+        window.open(outboundHref, '_blank', 'noopener,noreferrer');
+    };
+
+    const reportLink = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const code = trackedCode(outboundHref);
+        if (!code || reporting) return;
+
+        setReporting(true);
+        try {
+            const response = await fetch(`/go/${code}/report`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.head.querySelector('meta[name="csrf-token"]')?.content || '',
+                },
+                body: JSON.stringify({
+                    reason: 'misleading',
+                    reason_code: 'harmful_or_misleading_link',
+                    notes: `Reported from storefront link: ${title}`,
+                }),
+            });
+            if (!response.ok) throw new Error('Report failed');
+            toast.success('Thanks. Takeer safety will review this link.');
+        } catch {
+            toast.error('Could not report this link.');
+        } finally {
+            setReporting(false);
+        }
+    };
 
     return (
-        <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            className="group flex min-h-[58px] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
+        <div
+            role="link"
+            tabIndex={0}
+            onClick={openLink}
+            onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') openLink();
+            }}
+            className={`group flex min-h-[58px] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition ${unavailable ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md'}`}
         >
             {imageUrl && (
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
@@ -1181,8 +1223,25 @@ function BioLinkButton({ item }) {
             )}
             <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-black text-foreground">{title}</p>
+                {unavailable && (
+                    <p className="mt-1 text-xs font-bold text-amber-700">Link unavailable while Takeer reviews a safety issue.</p>
+                )}
             </div>
-        </a>
+            {unavailable ? (
+                <Flag className="h-4 w-4 shrink-0 text-amber-700" />
+            ) : item?.tracked_url && (
+                <button
+                    type="button"
+                    onClick={reportLink}
+                    disabled={reporting}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                    aria-label="Report link"
+                    title="Report link"
+                >
+                    <Flag className="h-4 w-4" />
+                </button>
+            )}
+        </div>
     );
 }
 
@@ -1205,11 +1264,12 @@ function SocialIconBar({ links, merchantSlug }) {
             {links.map((link, index) => {
                 const meta = socialLinkMeta(link.url);
                 const Icon = meta?.icon || Globe2;
+                const href = link.tracked_url || normalizeLinkUrl(link.url);
 
                 return (
                     <a
                         key={`${link.url}-${index}`}
-                        href={normalizeLinkUrl(link.url)}
+                        href={href}
                         target="_blank"
                         rel="noreferrer"
                         aria-label={meta?.label || link.title || 'Social link'}
@@ -1276,7 +1336,7 @@ function sectionItemKey(sectionKey, item = {}) {
 }
 
 function stripLinkMetadata(link = {}) {
-    const { preview, icon, ...clean } = link || {};
+    const { preview, icon, tracked_url, ...clean } = link || {};
     return clean;
 }
 
@@ -1380,6 +1440,16 @@ function normalizeLinkUrl(url = '') {
     if (!trimmed) return '';
     if (/^(https?:|mailto:|tel:)/i.test(trimmed)) return trimmed;
     return `https://${trimmed}`;
+}
+
+function trackedCode(url = '') {
+    try {
+        const parsed = new URL(url, window.location.origin);
+        const match = parsed.pathname.match(/^\/go\/([^/]+)/);
+        return match?.[1] || '';
+    } catch {
+        return '';
+    }
 }
 
 function socialLinkMeta(url = '') {

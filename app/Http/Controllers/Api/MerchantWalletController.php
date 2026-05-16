@@ -7,7 +7,6 @@ use Illuminate\Http\Request;
 use App\Models\AdminSetting;
 use App\Models\Order;
 use App\Models\Transaction;
-use App\Models\Wallet;
 use App\Models\WithdrawalRequest;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
@@ -33,10 +32,10 @@ class MerchantWalletController extends Controller
     {
         $user = $request->user();
         
-        // Ensure wallet exists
-        $wallet = Wallet::firstOrCreate(
-            ['user_id' => $user->id],
-            ['balance' => 0, 'frozen_balance' => 0]
+        // Merchant wallets are scoped per profile for ledger and audit separation.
+        $wallet = $merchant->wallet()->firstOrCreate(
+            ['merchant_id' => $merchant->id],
+            ['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]
         );
         $retailEligible = $merchant->isRetailEligible();
         $initialLedgerType = $this->normalizeLedgerType($request->query('type'));
@@ -74,8 +73,8 @@ class MerchantWalletController extends Controller
 
         $paginator = match ($type) {
             'escrow', 'non-escrow', 'credit' => $this->paginateSales($merchant, $type, $perPage),
-            'wallet-entry' => $this->paginateWalletEntries($user, $perPage),
-            'withdrawal' => $this->paginateWithdrawals($user, $perPage),
+            'wallet-entry' => $this->paginateWalletEntries($merchant, $perPage),
+            'withdrawal' => $this->paginateWithdrawals($merchant, $perPage),
             default => $this->paginateAllLedger($merchant, $user, $page, $perPage),
         };
 
@@ -132,11 +131,11 @@ class MerchantWalletController extends Controller
         );
     }
 
-    private function paginateWalletEntries($user, int $perPage)
+    private function paginateWalletEntries(Merchant $merchant, int $perPage)
     {
         return $this->throughPaginator(
             Transaction::query()
-                ->where('user_id', $user->id)
+                ->where('merchant_id', $merchant->id)
                 ->whereIn('type', ['order_revenue', 'platform_fee'])
                 ->with(['order.buyer', 'order.product'])
                 ->latest()
@@ -145,11 +144,11 @@ class MerchantWalletController extends Controller
         );
     }
 
-    private function paginateWithdrawals($user, int $perPage)
+    private function paginateWithdrawals(Merchant $merchant, int $perPage)
     {
         return $this->throughPaginator(
             WithdrawalRequest::query()
-                ->where('user_id', $user->id)
+                ->where('merchant_id', $merchant->id)
                 ->latest()
                 ->paginate($perPage),
             fn(WithdrawalRequest $withdrawal) => $this->mapWithdrawal($withdrawal)
@@ -161,7 +160,7 @@ class MerchantWalletController extends Controller
         $items = collect()
             ->merge($this->salesQuery($merchant)->limit(200)->get()->map(fn(Order $order) => $this->mapSale($order)))
             ->merge(WithdrawalRequest::query()
-                ->where('user_id', $user->id)
+                ->where('merchant_id', $merchant->id)
                 ->latest()
                 ->limit(200)
                 ->get()
@@ -190,6 +189,7 @@ class MerchantWalletController extends Controller
         return [
             'id' => $withdrawal->id,
             'amount' => (float) $withdrawal->amount,
+            'method' => $withdrawal->method,
             'status' => $withdrawal->status,
             'created_at' => $withdrawal->created_at->toIso8601String(),
             'type' => 'withdrawal',
@@ -265,9 +265,9 @@ class MerchantWalletController extends Controller
             'method' => 'required|string',
         ]);
 
-        $wallet = Wallet::firstOrCreate(
-            ['user_id' => $user->id],
-            ['balance' => 0, 'frozen_balance' => 0]
+        $wallet = $merchant->wallet()->firstOrCreate(
+            ['merchant_id' => $merchant->id],
+            ['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]
         );
 
         $amount = (float) $request->amount;
@@ -294,7 +294,7 @@ class MerchantWalletController extends Controller
                 ->whereNotIn('payment_status', ['pending', 'failed'])
                 ->count();
             $merchantWithdrawals = (float) WithdrawalRequest::query()
-                ->where('user_id', $user->id)
+                ->where('merchant_id', $merchant->id)
                 ->whereIn('status', ['pending', 'approved'])
                 ->sum('amount');
 
@@ -322,9 +322,10 @@ class MerchantWalletController extends Controller
         // Create the pending withdrawal request
         WithdrawalRequest::create([
             'user_id' => $user->id,
+            'merchant_id' => $merchant->id,
+            'method' => $request->input('method'),
             'amount' => $amount,
             'status' => 'pending',
-            // Eventually add 'method' column if needed, for now we just use the existing schema
             'idempotency_key' => Str::uuid(),
         ]);
 

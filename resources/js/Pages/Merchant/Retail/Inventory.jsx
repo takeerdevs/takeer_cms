@@ -150,7 +150,7 @@ export default function Inventory({ merchant }) {
     return (
         <AppLayout>
             <Head title="Retail Inventory | Takeer" />
-            <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6 pb-24">
+            <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 pb-24">
                 <div className="flex flex-wrap gap-3 items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">

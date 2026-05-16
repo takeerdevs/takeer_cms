@@ -9,6 +9,7 @@ class Transaction extends Model
 {
     protected $fillable = [
         'user_id',
+        'merchant_id',
         'order_id',
         'type',
         'fee_policy_id',
@@ -56,6 +57,12 @@ class Transaction extends Model
     protected static function booted(): void
     {
         static::creating(function (Transaction $transaction): void {
+            if ($transaction->merchant_id === null && $transaction->order_id) {
+                $transaction->merchant_id = Order::query()
+                    ->whereKey($transaction->order_id)
+                    ->value('merchant_id');
+            }
+
             $currencyCode = $transaction->currency_code ?: static::resolveCurrencyCode($transaction);
             $baseCurrencyCode = $transaction->base_currency_code ?: static::resolveBaseCurrencyCode();
             $rate = static::resolveFxRate($currencyCode);
@@ -91,6 +98,16 @@ class Transaction extends Model
 
             if ($order?->merchant?->currency?->code) {
                 return $order->merchant->currency->code;
+            }
+        }
+
+        if ($transaction->merchant_id) {
+            $merchant = Merchant::query()
+                ->with('currency')
+                ->find($transaction->merchant_id);
+
+            if ($merchant?->currency?->code) {
+                return $merchant->currency->code;
             }
         }
 

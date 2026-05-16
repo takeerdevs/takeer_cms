@@ -77,6 +77,7 @@ class PaymentWebhookController extends Controller
                     $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($processedOrder, (float) $processedOrder->total_paid);
                     Transaction::create([
                         'user_id' => $processedOrder->buyer_id,
+                        'merchant_id' => $processedOrder->merchant_id,
                         'order_id' => $processedOrder->id,
                         'type' => 'order_revenue',
                         ...$fee['snapshot'],
@@ -87,7 +88,10 @@ class PaymentWebhookController extends Controller
                         'reference' => $processedOrder->id === $order->id ? $mpesaReceiptNumber : "{$mpesaReceiptNumber}-{$processedOrder->id}",
                     ]);
 
-                    $wallet = $processedOrder->merchant->user->wallet()->firstOrCreate(['user_id' => $processedOrder->merchant->user_id], ['balance' => 0, 'frozen_balance' => 0]);
+                    $wallet = $processedOrder->merchant->wallet()->firstOrCreate(
+                        ['merchant_id' => $processedOrder->merchant_id],
+                        ['user_id' => $processedOrder->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
+                    );
                     if ($processedOrder->requiresPhysicalFulfillment() || $processedOrder->payment_status === 'escrow_locked') {
                         $wallet->increment('frozen_balance', $processedOrder->total_paid);
                     } else {

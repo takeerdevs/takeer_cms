@@ -16,6 +16,7 @@ use App\Models\MerchantStorefrontSetting;
 use App\Models\Product;
 use App\Models\SubscriptionPlan;
 use App\Services\LinkPreviewService;
+use App\Services\TrackedLinkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -126,8 +127,8 @@ class MiniStoreController extends Controller
             ],
             'storefront_settings' => $storefrontSetting ? [
                 'section_order' => $storefrontSetting->section_order,
-                'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService),
-                'custom_sections' => $this->enrichCustomSections($storefrontSetting->custom_sections, $linkPreviewService),
+                'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService, $merchant->id),
+                'custom_sections' => $this->enrichCustomSections($storefrontSetting->custom_sections, $linkPreviewService, $merchant->id),
                 'hidden_sections' => $storefrontSetting->hidden_sections,
                 'featured_product_id' => $storefrontSetting->featured_product_id,
                 'item_layouts' => $storefrontSetting->item_layouts ?? [],
@@ -187,17 +188,19 @@ class MiniStoreController extends Controller
                 'bio' => $merchant->bio,
             ],
             'storefront_settings' => $storefrontSetting ? [
-                'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService),
+                'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService, $merchant->id),
             ] : null,
             'products' => ProductResource::collection($products)->response()->getData(true),
             'product_discovery' => $productDiscovery,
         ]);
     }
 
-    private function enrichStorefrontLinks(?array $links, LinkPreviewService $linkPreviewService): array
+    private function enrichStorefrontLinks(?array $links, LinkPreviewService $linkPreviewService, ?int $merchantId = null): array
     {
+        $trackedLinks = app(TrackedLinkService::class);
+
         return collect($links ?: [])
-            ->map(function ($link) use ($linkPreviewService) {
+            ->map(function ($link) use ($linkPreviewService, $trackedLinks, $merchantId) {
                 if (! is_array($link)) {
                     return null;
                 }
@@ -206,10 +209,24 @@ class MiniStoreController extends Controller
                 $preview = $url && ! $this->isSocialUrl($url)
                     ? $linkPreviewService->previewForUrl($url)
                     : null;
+                $trackedLink = $trackedLinks->trackedLinkFor($url, [
+                    'merchant_id' => $merchantId,
+                    'link_type' => $this->isSocialUrl($url) ? 'social_profile' : 'storefront_link',
+                    'source_surface' => 'storefront',
+                    'entity_type' => 'merchant',
+                    'entity_id' => $merchantId,
+                    'label' => $link['title'] ?? $link['label'] ?? null,
+                    'metadata' => [
+                        'original_link' => $link,
+                    ],
+                ]);
 
                 return [
                     ...$link,
                     'url' => $url ?: ($link['url'] ?? ''),
+                    'tracked_url' => $trackedLink?->isActive() ? route('tracked-links.follow', $trackedLink->code) : null,
+                    'tracked_link_status' => $trackedLink?->status,
+                    'link_unavailable' => $trackedLink ? ! $trackedLink->isActive() : false,
                     'preview' => $preview && $preview->status === 'success' ? [
                         'title' => $preview->title,
                         'description' => $preview->description,
@@ -225,16 +242,16 @@ class MiniStoreController extends Controller
             ->all();
     }
 
-    private function enrichCustomSections(?array $sections, LinkPreviewService $linkPreviewService): array
+    private function enrichCustomSections(?array $sections, LinkPreviewService $linkPreviewService, ?int $merchantId = null): array
     {
         return collect($sections ?: [])
-            ->map(function ($section) use ($linkPreviewService) {
+            ->map(function ($section) use ($linkPreviewService, $merchantId) {
                 if (! is_array($section)) {
                     return null;
                 }
 
                 $items = collect($section['items'] ?? $section['links'] ?? [])
-                    ->map(function ($item) use ($linkPreviewService) {
+                    ->map(function ($item) use ($linkPreviewService, $merchantId) {
                         if (! is_array($item)) {
                             return null;
                         }
@@ -244,7 +261,7 @@ class MiniStoreController extends Controller
                             return $item;
                         }
 
-                        $enriched = $this->enrichStorefrontLinks([$item], $linkPreviewService);
+                        $enriched = $this->enrichStorefrontLinks([$item], $linkPreviewService, $merchantId);
 
                         return $enriched[0] ?? $item;
                     })

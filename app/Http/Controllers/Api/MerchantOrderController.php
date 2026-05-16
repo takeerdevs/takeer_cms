@@ -217,7 +217,12 @@ class MerchantOrderController extends Controller
                 'subscriptions' => [
                     'total_items' => (clone $plansBase)->count(),
                     'active_tiers' => (clone $plansBase)->where('status', 'active')->count(),
-                    'active_members' => UserSubscription::where('merchant_id', $merchant->id)->where('status', 'active')->count(),
+                    'active_members' => UserSubscription::where('merchant_id', $merchant->id)
+                        ->where('status', 'active')
+                        ->where(fn ($query) => $query
+                            ->whereNull('current_period_end')
+                            ->orWhere('current_period_end', '>', now()))
+                        ->count(),
                     ...$sectionTotals($subscriptionOrdersToday),
                 ],
             ],
@@ -454,8 +459,8 @@ class MerchantOrderController extends Controller
         if ($order->purchasable_type === 'subscription_plan') {
             $plan = SubscriptionPlan::find($order->purchasable_id);
             return [
-                'title' => $plan?->name ?: 'Post content',
-                'kind' => 'post_content',
+                'title' => $plan?->name ?: 'Membership plan',
+                'kind' => 'subscription_plan',
                 'icon' => 'crown',
                 'is_escrow_order' => false,
             ];

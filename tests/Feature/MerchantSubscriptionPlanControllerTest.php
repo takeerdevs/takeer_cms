@@ -31,6 +31,140 @@ class MerchantSubscriptionPlanControllerTest extends TestCase
             ->assertJsonPath('stats.total', 0);
     }
 
+    public function test_merchant_members_endpoint_lists_subscribers_across_plans(): void
+    {
+        [$user, $merchant, $plan] = $this->subscriptionPlanFixture();
+        $subscriber = User::factory()->create([
+            'name' => 'Asha Member',
+            'email' => 'asha@example.test',
+        ]);
+
+        UserSubscription::query()->create([
+            'user_id' => $subscriber->id,
+            'merchant_id' => $merchant->id,
+            'subscription_plan_id' => $plan->id,
+            'status' => 'active',
+            'auto_renew' => true,
+            'started_at' => now()->subDay(),
+            'current_period_start' => now()->subDay(),
+            'current_period_end' => now()->addMonth(),
+            'next_billing_at' => now()->addMonth(),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson("/merchant/{$merchant->username}/subscription-members/api")
+            ->assertOk()
+            ->assertJsonPath('stats.total', 1)
+            ->assertJsonPath('stats.active', 1)
+            ->assertJsonPath('members.0.user.name', 'Asha Member')
+            ->assertJsonPath('members.0.plan.name', 'Premium Circle');
+    }
+
+    public function test_merchant_members_endpoint_treats_past_period_as_expired(): void
+    {
+        [$user, $merchant, $plan] = $this->subscriptionPlanFixture();
+        $subscriber = User::factory()->create();
+
+        UserSubscription::query()->create([
+            'user_id' => $subscriber->id,
+            'merchant_id' => $merchant->id,
+            'subscription_plan_id' => $plan->id,
+            'status' => 'active',
+            'auto_renew' => true,
+            'started_at' => now()->subDays(40),
+            'current_period_start' => now()->subDays(40),
+            'current_period_end' => now()->subDay(),
+            'next_billing_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson("/merchant/{$merchant->username}/subscription-members/api")
+            ->assertOk()
+            ->assertJsonPath('stats.active', 0)
+            ->assertJsonPath('stats.cancelled', 1)
+            ->assertJsonPath('members.0.status', 'expired')
+            ->assertJsonPath('members.0.raw_status', 'active');
+    }
+
+    public function test_commerce_summary_active_members_excludes_expired_subscription_periods(): void
+    {
+        [$user, $merchant, $plan] = $this->subscriptionPlanFixture();
+        $subscriber = User::factory()->create();
+
+        UserSubscription::query()->create([
+            'user_id' => $subscriber->id,
+            'merchant_id' => $merchant->id,
+            'subscription_plan_id' => $plan->id,
+            'status' => 'active',
+            'auto_renew' => true,
+            'started_at' => now()->subDays(40),
+            'current_period_start' => now()->subDays(40),
+            'current_period_end' => now()->subDay(),
+            'next_billing_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson("/merchant/{$merchant->username}/orders/api/commerce-summary")
+            ->assertOk()
+            ->assertJsonPath('sections.subscriptions.active_members', 0);
+    }
+
+    public function test_subscription_order_details_use_membership_display_kind(): void
+    {
+        [$user, $merchant, $plan] = $this->subscriptionPlanFixture();
+        $buyer = User::factory()->create();
+
+        $order = Order::query()->create([
+            'buyer_id' => $buyer->id,
+            'merchant_id' => $merchant->id,
+            'purchasable_type' => 'subscription_plan',
+            'purchasable_id' => $plan->id,
+            'unit_price' => 200,
+            'total_paid' => 200,
+            'payment_status' => 'resolved_merchant_paid',
+            'transaction_ref' => 'sub-order-display',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson("/merchant/{$merchant->username}/orders/{$order->id}/api")
+            ->assertOk()
+            ->assertJsonPath('display_title', 'Premium Circle')
+            ->assertJsonPath('display_kind', 'subscription_plan')
+            ->assertJsonPath('display_icon', 'crown')
+            ->assertJsonPath('is_escrow_order', false);
+    }
+
+    public function test_merchant_cannot_directly_pause_or_cancel_paid_subscription_access(): void
+    {
+        [$user, $merchant, $plan] = $this->subscriptionPlanFixture();
+        $subscriber = User::factory()->create();
+        $subscription = UserSubscription::query()->create([
+            'user_id' => $subscriber->id,
+            'merchant_id' => $merchant->id,
+            'subscription_plan_id' => $plan->id,
+            'status' => 'active',
+            'auto_renew' => true,
+            'started_at' => now()->subDay(),
+            'current_period_start' => now()->subDay(),
+            'current_period_end' => now()->addMonth(),
+            'next_billing_at' => now()->addMonth(),
+        ]);
+
+        $this->actingAs($user)
+            ->patchJson("/merchant/{$merchant->username}/subscription-plans/{$plan->id}/members/{$subscription->id}/api", [
+                'status' => 'cancelled',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'Subscription access changes are handled by Takeer support to protect paid subscribers and escrow records.');
+
+        $this->assertDatabaseHas('user_subscriptions', [
+            'id' => $subscription->id,
+            'status' => 'active',
+            'cancelled_at' => null,
+            'ended_at' => null,
+        ]);
+    }
+
     public function test_merchant_scoped_community_posts_endpoint_resolves_subscription_plan_after_merchant_segment(): void
     {
         [$user, $merchant, $plan] = $this->subscriptionPlanFixture();

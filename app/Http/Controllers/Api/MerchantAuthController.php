@@ -146,6 +146,11 @@ class MerchantAuthController extends Controller
             ]);
         }
 
+        $merchant->wallet()->firstOrCreate(
+            ['merchant_id' => $merchant->id],
+            ['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]
+        );
+
 
         // Revoke old tokens
         $user->tokens()->delete();
@@ -253,6 +258,11 @@ class MerchantAuthController extends Controller
             ]);
         }
 
+        $merchant->wallet()->firstOrCreate(
+            ['merchant_id' => $merchant->id],
+            ['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]
+        );
+
         session(['active_merchant_id' => $merchant->id]);
 
         return response()->json([
@@ -302,6 +312,11 @@ class MerchantAuthController extends Controller
             'timezone' => $baseMerchant?->defaultTimezone(),
             'kyc_status' => 'unverified',
         ]);
+
+        $merchant->wallet()->firstOrCreate(
+            ['merchant_id' => $merchant->id],
+            ['user_id' => $user->id, 'balance' => 0, 'frozen_balance' => 0]
+        );
 
         // Switch to the new profile
         session(['active_merchant_id' => $merchant->id]);

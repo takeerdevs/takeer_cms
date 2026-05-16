@@ -134,18 +134,6 @@ export default function MerchantOrders({ merchantUsername, merchantName }) {
                     </div>
                 </div>
 
-                <div className="flex justify-end">
-                    <select
-                        value={perPage}
-                        onChange={(e) => setPerPage(Number(e.target.value))}
-                        className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
-                    >
-                        <option value={12}>12 / page</option>
-                        <option value={24}>24 / page</option>
-                        <option value={48}>48 / page</option>
-                    </select>
-                </div>
-
                 {/* ── Order List ── */}
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -246,12 +234,12 @@ function OrderCard({ order, merchantUsername }) {
 
     const config = statusConfig[order.payment_status] || { label: order.payment_status, classes: 'bg-muted text-muted-foreground' };
     const displayTitle = order.display_title || product.title || 'Order item';
-    
+
     // POS specific display logic
     const isPos = order.source === 'pos';
     const displayId = isPos ? `#POS-${order.public_id}` : `#${order.transaction_ref || order.id}`;
-    const customerIdentifier = isPos 
-        ? (order.customer_name || order.customer_phone || 'Guest') 
+    const customerIdentifier = isPos
+        ? (order.customer_name || order.customer_phone || 'Guest')
         : (buyer.name || maskedBuyerPhone || 'N/A');
 
     const displayIcon = (() => {
@@ -279,7 +267,7 @@ function OrderCard({ order, merchantUsername }) {
                         </div>
                     )}
                 </div>
- 
+
                 {/* ── Order Details ── */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">

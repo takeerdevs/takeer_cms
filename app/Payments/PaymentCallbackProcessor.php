@@ -78,6 +78,7 @@ class PaymentCallbackProcessor
             $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
             Transaction::create([
                 'user_id'      => $order->buyer_id,
+                'merchant_id'  => $order->merchant_id,
                 'order_id'     => $order->id,
                 'type'         => 'order_revenue',
                 ...$fee['snapshot'],
@@ -88,9 +89,9 @@ class PaymentCallbackProcessor
                 'reference'    => $gatewayRef,
             ]);
 
-            $wallet = $order->merchant->user->wallet()->firstOrCreate(
-                ['user_id' => $order->merchant->user_id],
-                ['balance' => 0, 'frozen_balance' => 0]
+            $wallet = $order->merchant->wallet()->firstOrCreate(
+                ['merchant_id' => $order->merchant_id],
+                ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
             );
 
             if ($shouldHoldFunds) {
@@ -248,6 +249,7 @@ class PaymentCallbackProcessor
 
             Transaction::create([
                 'user_id' => $paymentOrder->buyer_id,
+                'merchant_id' => $paymentOrder->merchant_id,
                 'order_id' => $paymentOrder->id,
                 'type' => 'order_revenue',
                 ...$fee['snapshot'],
@@ -258,9 +260,9 @@ class PaymentCallbackProcessor
                 'reference' => $reference,
             ]);
 
-            $wallet = $creditOrder->merchant->user->wallet()->firstOrCreate(
-                ['user_id' => $creditOrder->merchant->user_id],
-                ['balance' => 0, 'frozen_balance' => 0]
+            $wallet = $creditOrder->merchant->wallet()->firstOrCreate(
+                ['merchant_id' => $creditOrder->merchant_id],
+                ['user_id' => $creditOrder->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
             );
             $wallet->increment('balance', $fee['net_amount']);
 

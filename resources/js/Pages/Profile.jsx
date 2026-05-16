@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, usePage, router, useForm } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
@@ -50,23 +50,11 @@ export default function Profile({
     const [checkupOrder, setCheckupOrder] = useState(null);
     const [checkupLoading, setCheckupLoading] = useState(false);
     const [checkupVerifying, setCheckupVerifying] = useState(false);
-    const [retailDashboard, setRetailDashboard] = useState(null);
     const retailEligible = isRetailEligible(activeMerchant, merchantKyc, merchantKycStatus);
-    const retailActive = retailEligible && activeMerchant?.active_modules?.includes('retail_ops');
     const hasVerifiedEmail = Boolean(auth?.user?.email && auth?.user?.email_verified_at);
     const profileLabel = activeMerchant
         ? (activeMerchant.type === 'personal' ? 'Personal Profile' : activeMerchant.type?.replace('_', ' ').toUpperCase())
         : 'Personal Profile';
-
-    useEffect(() => {
-        if (retailActive) {
-            axios.get('/api/retail/dashboard')
-                .then(res => setRetailDashboard(res.data))
-                .catch(err => console.error('Failed to load retail stats', err));
-        } else {
-            setRetailDashboard(null);
-        }
-    }, [activeMerchant, retailActive]);
 
     const isVerified = activeMerchant?.is_verified ?? false;
     const merchantSlug = activeMerchant?.username ?? '';
@@ -150,6 +138,7 @@ export default function Profile({
         const map = {
             physical_product: { label: 'Physical Product', icon: ShoppingBag, cls: 'bg-amber-500/10 text-amber-700' },
             post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-500/10 text-sky-700' },
+            subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-500/10 text-violet-700' },
             digital_file: { label: 'Digital File', icon: DownloadCloud, cls: 'bg-indigo-500/10 text-indigo-700' },
             service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-500/10 text-emerald-700' },
         };
@@ -183,14 +172,6 @@ export default function Profile({
             currency: 'TZS',
             minimumFractionDigits: 0,
         }).format(amount);
-    };
-
-    const fetchDashboard = () => {
-        if (retailActive) {
-            axios.get('/api/retail/dashboard')
-                .then(res => setRetailDashboard(res.data))
-                .catch(err => console.error('Failed to load retail stats', err));
-        }
     };
 
     const lookupOrderCheckup = async (e) => {
@@ -580,47 +561,6 @@ export default function Profile({
                         {isVerified ? (
                             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
 
-                                {retailActive && (
-                                    <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <StatCard
-                                            title="Takeer Balance (Escrow)"
-                                            value={formatMoney(retailDashboard?.metrics?.takeer_balance || 0)}
-                                            icon={Wallet}
-                                            color="text-emerald-600"
-                                            bgColor="bg-emerald-50"
-                                            borderColor="border-emerald-100"
-                                            onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=escrow`)}
-                                        />
-                                        <StatCard
-                                            title="Today's In-Hand Revenue"
-                                            value={formatMoney(retailDashboard?.metrics?.today_in_hand || 0)}
-                                            icon={Banknote}
-                                            color="text-brand-600"
-                                            bgColor="bg-brand-50"
-                                            borderColor="border-brand-100"
-                                            onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=non-escrow`)}
-                                        />
-                                        <StatCard
-                                            title="Outstanding Credit"
-                                            value={formatMoney(retailDashboard?.metrics?.outstanding_credit || 0)}
-                                            icon={TrendingUp}
-                                            color="text-amber-600"
-                                            bgColor="bg-amber-50"
-                                            borderColor="border-amber-100"
-                                            onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger?type=credit`)}
-                                        />
-                                        <StatCard
-                                            title="Total Balance"
-                                            value={formatMoney(thisMonthEarnings)}
-                                            icon={CreditCard}
-                                            color="text-blue-600"
-                                            bgColor="bg-blue-50"
-                                            borderColor="border-blue-100"
-                                            onClick={() => router.visit(`/merchant/${activeMerchant.username}/wallet/ledger`)}
-                                        />
-                                    </div>
-                                )}
-
                                 {creatorMonetization && (
                                     <Card className="min-w-0 border border-brand-100 rounded-2xl overflow-hidden shadow-sm bg-gradient-to-br from-white to-brand-50/40">
                                         <CardHeader className="pb-2">
@@ -643,7 +583,14 @@ export default function Profile({
                                             <div className="grid min-w-0 gap-3 sm:grid-cols-3">
                                                 <MiniMetric label="Revenue" value={formatMoney(creatorMonetization.total_revenue || 0)} icon={BarChart3} tone="brand" />
                                                 <MiniMetric label="Orders" value={Number(creatorMonetization.total_orders || 0).toLocaleString()} icon={ShoppingBag} tone="amber" />
-                                                <MiniMetric label="Members" value={Number(creatorMonetization.active_members || 0).toLocaleString()} icon={User2} tone="sky" />
+                                                <MiniMetric
+                                                    label="Members"
+                                                    value={Number(creatorMonetization.active_members || 0).toLocaleString()}
+                                                    icon={User2}
+                                                    tone="sky"
+                                                    onClick={() => router.visit(`/merchant/${merchantSlug}/subscription-members`)}
+                                                    actionLabel="View subscribers"
+                                                />
                                             </div>
                                             <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-4">
                                                 <MiniMetric label="Released" value={formatMoney(creatorMonetization.released_revenue || 0)} icon={FileCheck} tone="emerald" compact />
@@ -1339,38 +1286,6 @@ function isRetailEligible(merchant, merchantKyc = null, merchantKycStatus = 'unv
 
 // ── Sub-Components ──
 
-function StatCard({ title, value, icon: Icon, color, bgColor, borderColor, trend, onClick }) {
-    const Comp = onClick ? 'button' : 'div';
-    return (
-        <Comp
-            type={onClick ? 'button' : undefined}
-            onClick={onClick}
-            className={cn(
-                `p-5 rounded-2xl border ${borderColor} ${bgColor} space-y-3 shadow-sm text-left w-full`,
-                onClick && 'transition-transform active:scale-[0.99] cursor-pointer'
-            )}
-        >
-            <div className="flex items-center justify-between">
-                <div className={`h-9 w-9 rounded-lg bg-white border ${borderColor} flex items-center justify-center ${color}`}>
-                    <Icon className="h-4.5 w-4.5" />
-                </div>
-                {trend !== undefined && (
-                    <div className={cn(
-                        "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase",
-                        trend >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
-                    )}>
-                        {trend >= 0 ? '+' : ''}{trend}%
-                    </div>
-                )}
-            </div>
-            <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{title}</p>
-                <p className={cn("text-xl font-bold mt-0.5 truncate", color === 'text-slate-900' ? "text-slate-900" : color)}>{value}</p>
-            </div>
-        </Comp>
-    );
-}
-
 function ActionBtn({ icon: Icon, label, href, onClick, color, textColor, borderColor = "" }) {
     const Comp = href ? Link : 'button';
     const props = href ? { href } : { type: 'button', onClick };
@@ -1400,7 +1315,7 @@ function BreakdownRow({ label, count, color, total }) {
     );
 }
 
-function MiniMetric({ label, value, icon: Icon, tone = 'slate', compact = false }) {
+function MiniMetric({ label, value, icon: Icon, tone = 'slate', compact = false, onClick = null, actionLabel = null }) {
     const toneClasses = {
         brand: 'border-brand-100 bg-brand-50/45 text-brand-700',
         amber: 'border-amber-100 bg-amber-50/55 text-amber-700',
@@ -1411,12 +1326,24 @@ function MiniMetric({ label, value, icon: Icon, tone = 'slate', compact = false 
         slate: 'border-slate-200 bg-slate-50/70 text-slate-700',
     }[tone] || 'border-slate-200 bg-slate-50/70 text-slate-700';
 
+    const handleKeyDown = (event) => {
+        if (!onClick || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        onClick();
+    };
+
     return (
         <div className={cn(
             "min-w-0 rounded-2xl border bg-white px-3 shadow-sm ring-1 ring-slate-900/[0.02]",
             compact ? "py-3" : "py-4",
+            onClick && "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40",
             toneClasses
-        )}>
+        )}
+            role={onClick ? 'button' : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            onClick={onClick || undefined}
+            onKeyDown={handleKeyDown}
+        >
             <div className="flex min-w-0 items-center gap-2">
                 {Icon && (
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white/75 shadow-sm">
@@ -1429,6 +1356,9 @@ function MiniMetric({ label, value, icon: Icon, tone = 'slate', compact = false 
                 "mt-2 font-black text-slate-950 truncate",
                 compact ? "text-sm md:text-base" : "text-base md:text-lg"
             )}>{value}</p>
+            {actionLabel && (
+                <p className="mt-1 text-[10px] font-black uppercase tracking-wider text-slate-500">{actionLabel}</p>
+            )}
         </div>
     );
 }

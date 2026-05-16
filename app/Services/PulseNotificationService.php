@@ -11,6 +11,8 @@ use App\Models\PostReaction;
 use App\Models\ProductReview;
 use App\Models\PulseNotification;
 use App\Models\SubscriptionPlan;
+use App\Models\ContentReport;
+use App\Models\TrackedLink;
 use App\Models\UserSubscription;
 use Illuminate\Database\Eloquent\Model;
 
@@ -391,6 +393,42 @@ class PulseNotificationService
         PulseNotification::query()
             ->where('dedupe_key', "merchant-post-reaction:{$post->id}:{$userId}")
             ->delete();
+    }
+
+    public function trackedLinkModerated(TrackedLink $link, string $status, ?string $note = null, ?ContentReport $report = null): void
+    {
+        $link->loadMissing('merchant.user');
+        $merchant = $link->merchant;
+        if (! $merchant?->user_id) {
+            return;
+        }
+
+        $isDisabled = $status === 'disabled';
+        $this->record([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'subject' => $link,
+            'event_type' => $isDisabled ? 'tracked_link_disabled' : 'tracked_link_restored',
+            'dedupe_key' => "tracked-link-moderated:{$link->id}:{$status}:".($report?->id ?: 'manual'),
+            'icon' => $isDisabled ? 'alert' : 'shield_check',
+            'tone' => $isDisabled ? 'amber' : 'emerald',
+            'eyebrow' => $isDisabled ? 'Link unavailable' : 'Link restored',
+            'title' => $link->label ?: $link->destination_host ?: 'Tracked link',
+            'body' => $isDisabled
+                ? 'A link on your Takeer storefront or post is unavailable while Takeer reviews a safety issue. You can appeal from your Content Reports queue.'
+                : 'A previously restricted link has been restored.',
+            'meta' => $link->destination_host ?: 'Tracked link',
+            'href' => "/merchant/{$merchant->username}/posts",
+            'status' => $status,
+            'payload' => [
+                'tracked_link_id' => $link->id,
+                'tracked_link_code' => $link->code,
+                'destination_url' => $link->destination_url,
+                'report_id' => $report?->id,
+                'note' => $note,
+            ],
+            'occurred_at' => now(),
+        ]);
     }
 
     private function paymentStatusChanged(Order $order): void

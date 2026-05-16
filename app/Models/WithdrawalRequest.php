@@ -9,6 +9,8 @@ class WithdrawalRequest extends Model
 {
     protected $fillable = [
         'user_id',
+        'merchant_id',
+        'method',
         'amount',
         'status',
         'mpesa_transaction_id',
@@ -25,5 +27,10 @@ class WithdrawalRequest extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function merchant(): BelongsTo
+    {
+        return $this->belongsTo(Merchant::class);
     }
 }

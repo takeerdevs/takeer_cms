@@ -69,6 +69,35 @@ export default function CountrySettings({ country }) {
         setData('settings', { ...data.settings, kyc: newKyc });
     };
 
+    const taxDefaults = data.settings.tax_calendar_defaults || [];
+
+    const addTaxDefault = () => {
+        setData('settings', {
+            ...data.settings,
+            tax_calendar_defaults: [
+                ...taxDefaults,
+                {
+                    key: Math.random().toString(36).slice(2, 9),
+                    title: '',
+                    type: 'custom',
+                    authority: '',
+                    remind_days_before: 30,
+                    suggested_frequency: '',
+                    description: '',
+                }
+            ]
+        });
+    };
+
+    const updateTaxDefault = (index, updates) => {
+        const next = taxDefaults.map((item, itemIndex) => itemIndex === index ? { ...item, ...updates } : item);
+        setData('settings', { ...data.settings, tax_calendar_defaults: next });
+    };
+
+    const removeTaxDefault = (index) => {
+        setData('settings', { ...data.settings, tax_calendar_defaults: taxDefaults.filter((_, itemIndex) => itemIndex !== index) });
+    };
+
     return (
         <AdminLayout title={`${country.name} Settings`}>
             <Head title={`${country.name} Settings | Takeer Admin`} />
@@ -110,6 +139,12 @@ export default function CountrySettings({ country }) {
                         onClick={() => setActiveTab('gateways')} 
                         icon={CreditCard} 
                         label="Gateways" 
+                    />
+                    <TabButton
+                        active={activeTab === 'tax_calendar'}
+                        onClick={() => setActiveTab('tax_calendar')}
+                        icon={Globe}
+                        label="Tax Calendar"
                     />
                     <TabButton 
                         active={activeTab === 'payouts'} 
@@ -271,6 +306,50 @@ export default function CountrySettings({ country }) {
                             </Card>
                         ))}
                     </div>
+                )}
+
+                {activeTab === 'tax_calendar' && (
+                    <Card className="rounded-3xl border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
+                            <div>
+                                <h3 className="font-bold text-slate-900">Default Business Setup Reminders</h3>
+                                <p className="text-xs text-slate-500 mt-1">These appear in Retail Ops as country-specific setup suggestions for new businesses.</p>
+                            </div>
+                            <Button variant="outline" size="sm" onClick={addTaxDefault} className="h-9 px-4 rounded-xl border-slate-200 text-slate-600 gap-2 hover:bg-white">
+                                <Plus className="h-4 w-4" /> Add Default
+                            </Button>
+                        </div>
+                        <CardContent className="p-6 space-y-4">
+                            {taxDefaults.length === 0 ? (
+                                <div className="text-center py-10 text-slate-400">
+                                    <Globe className="h-10 w-10 mx-auto opacity-20 mb-3" />
+                                    <p className="text-sm font-medium">No country reminder defaults set.</p>
+                                </div>
+                            ) : taxDefaults.map((item, index) => (
+                                <div key={item.key || index} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Input value={item.title || ''} onChange={(e) => updateTaxDefault(index, { title: e.target.value })} placeholder="Title e.g. Annual return estimate" className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.authority || ''} onChange={(e) => updateTaxDefault(index, { authority: e.target.value })} placeholder="Authority e.g. TRA, PDPC, TCRA" className="h-11 rounded-xl border-slate-200" />
+                                        <select value={item.type || 'custom'} onChange={(e) => updateTaxDefault(index, { type: e.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white">
+                                            <option value="annual_return">Annual Return</option>
+                                            <option value="tax_filing">Tax Filing</option>
+                                            <option value="license_renewal">License Renewal</option>
+                                            <option value="payroll_tax">Payroll Tax</option>
+                                            <option value="custom">Custom</option>
+                                        </select>
+                                        <Input type="number" min="0" max="365" value={item.remind_days_before ?? 30} onChange={(e) => updateTaxDefault(index, { remind_days_before: e.target.value })} placeholder="Remind days before" className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.suggested_frequency || ''} onChange={(e) => updateTaxDefault(index, { suggested_frequency: e.target.value })} placeholder="Suggested frequency" className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.description || ''} onChange={(e) => updateTaxDefault(index, { description: e.target.value })} placeholder="Short guidance" className="h-11 rounded-xl border-slate-200" />
+                                    </div>
+                                    <div className="flex justify-end mt-3">
+                                        <Button type="button" variant="outline" size="sm" onClick={() => removeTaxDefault(index)} className="rounded-xl text-red-600 border-red-100">
+                                            <Trash2 className="h-4 w-4 mr-1" /> Remove
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
                 )}
 
                 {activeTab === 'gateways' && (

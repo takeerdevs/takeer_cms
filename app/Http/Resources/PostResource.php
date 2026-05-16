@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Services\EntitlementService;
+use App\Services\TrackedLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -85,6 +86,21 @@ class PostResource extends JsonResource
         $canInteractWithRestricted = !$isRestricted || $hasAccess;
         $reactionSummary = $canInteractWithRestricted ? $this->reactionSummary() : [];
         $myReaction = ($canInteractWithRestricted && $user) ? $this->myReactionForUser((int) $user->id) : null;
+        $trackedLinkService = app(TrackedLinkService::class);
+        $linkPreviewTrackedLink = ($hasAccess && $canViewDeletedContent && $this->linkPreview)
+            ? $trackedLinkService->trackedLinkFor($this->linkPreview->final_url ?: $this->linkPreview->url, [
+                'merchant_id' => $this->merchant_id,
+                'link_type' => 'post_link_preview',
+                'source_surface' => 'post',
+                'entity_type' => 'post',
+                'entity_id' => $this->id,
+                'label' => $this->linkPreview->title,
+                'metadata' => [
+                    'post_public_id' => $this->public_id,
+                    'link_preview_id' => $this->linkPreview->id,
+                ],
+            ])
+            : null;
 
         // ── Masking ──────────────────────────────────────────────────────────
         $displayCaption = ($hasAccess && $canViewDeletedContent) ? $this->caption : null;
@@ -143,6 +159,9 @@ class PostResource extends JsonResource
                 'status' => $this->linkPreview->status,
                 'url' => $this->linkPreview->url,
                 'final_url' => $this->linkPreview->final_url,
+                'tracked_url' => $linkPreviewTrackedLink?->isActive() ? route('tracked-links.follow', $linkPreviewTrackedLink->code) : null,
+                'tracked_link_status' => $linkPreviewTrackedLink?->status,
+                'link_unavailable' => $linkPreviewTrackedLink ? ! $linkPreviewTrackedLink->isActive() : false,
                 'title' => $this->linkPreview->title,
                 'description' => $this->linkPreview->description,
                 'site_name' => $this->linkPreview->site_name,

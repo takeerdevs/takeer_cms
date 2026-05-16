@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, ShieldAlert, Users, ArrowDownToLine,
     Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper,
-    ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell, BarChart3,
+    ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell, BarChart3, LinkIcon,
     Tags, Ruler, WalletCards
 } from 'lucide-react';
 
@@ -15,6 +15,7 @@ const adminNav = [
     { name: 'Safety Reviews', href: '/admin/trust-safety-reviews', icon: ShieldCheck },
     { name: 'Notifications', href: '/admin/notifications', icon: Bell },
     { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
+    { name: 'Tracked Links', href: '/admin/tracked-links', icon: LinkIcon },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Merchants', href: '/admin/merchants', icon: Store },
     { name: 'Verifications', href: '/admin/verifications', icon: ShieldCheck },

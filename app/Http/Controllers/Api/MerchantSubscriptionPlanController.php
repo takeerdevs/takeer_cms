@@ -27,7 +27,11 @@ class MerchantSubscriptionPlanController extends Controller
         $plans = SubscriptionPlan::where('merchant_id', $merchant->id)
             ->with('items')
             ->withCount([
-                'subscriptions as active_members_count' => fn ($query) => $query->where('status', 'active'),
+                'subscriptions as active_members_count' => fn ($query) => $query
+                    ->where('status', 'active')
+                    ->where(fn ($periodQuery) => $periodQuery
+                        ->whereNull('current_period_end')
+                        ->orWhere('current_period_end', '>', now())),
                 'subscriptions as total_members_count',
             ])
             ->orderBy('tier')
@@ -45,7 +49,11 @@ class MerchantSubscriptionPlanController extends Controller
 
         $subscriptionPlan->load('items');
         $subscriptionPlan->loadCount([
-            'subscriptions as active_members_count' => fn ($query) => $query->where('status', 'active'),
+            'subscriptions as active_members_count' => fn ($query) => $query
+                ->where('status', 'active')
+                ->where(fn ($periodQuery) => $periodQuery
+                    ->whereNull('current_period_end')
+                    ->orWhere('current_period_end', '>', now())),
             'subscriptions as total_members_count',
         ]);
 
@@ -205,9 +213,46 @@ class MerchantSubscriptionPlanController extends Controller
             'members' => $members->map(fn (UserSubscription $subscription) => $this->serializeMember($subscription))->values(),
             'stats' => [
                 'total' => $members->count(),
-                'active' => $members->where('status', 'active')->count(),
+                'active' => $members->filter(fn (UserSubscription $subscription) => $this->effectiveMemberStatus($subscription) === 'active')->count(),
                 'paused' => $members->where('status', 'paused')->count(),
-                'cancelled' => $members->whereIn('status', ['cancelled', 'expired'])->count(),
+                'cancelled' => $members->filter(fn (UserSubscription $subscription) => in_array($this->effectiveMemberStatus($subscription), ['cancelled', 'expired'], true))->count(),
+            ],
+        ]);
+    }
+
+    public function merchantMembers(Request $request): JsonResponse
+    {
+        $merchant = $this->merchantFromRequest($request);
+
+        $baseQuery = UserSubscription::query()
+            ->where('merchant_id', $merchant->id);
+
+        $members = UserSubscription::query()
+            ->with(['user:id,name,email,phone_number', 'plan:id,name,price,billing_interval,interval_count'])
+            ->where('merchant_id', $merchant->id)
+            ->latest()
+            ->take(200)
+            ->get();
+
+        return response()->json([
+            'members' => $members->map(fn (UserSubscription $subscription) => $this->serializeMember($subscription))->values(),
+            'stats' => [
+                'total' => (clone $baseQuery)->count(),
+                'active' => (clone $baseQuery)
+                    ->where('status', 'active')
+                    ->where(fn ($periodQuery) => $periodQuery
+                        ->whereNull('current_period_end')
+                        ->orWhere('current_period_end', '>', now()))
+                    ->count(),
+                'paused' => (clone $baseQuery)->where('status', 'paused')->count(),
+                'cancelled' => (clone $baseQuery)
+                    ->where(fn ($statusQuery) => $statusQuery
+                        ->whereIn('status', ['cancelled', 'expired'])
+                        ->orWhere(fn ($expiredQuery) => $expiredQuery
+                            ->where('status', 'active')
+                            ->whereNotNull('current_period_end')
+                            ->where('current_period_end', '<=', now())))
+                    ->count(),
             ],
         ]);
     }
@@ -217,40 +262,11 @@ class MerchantSubscriptionPlanController extends Controller
         $merchant = $this->merchantFromRequest($request);
         $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
         $userSubscription = $this->userSubscriptionFromRequest($request);
-        $entitlementService = app(EntitlementService::class);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
         abort_unless((int) $userSubscription->subscription_plan_id === (int) $subscriptionPlan->id, 404);
         abort_unless((int) $userSubscription->merchant_id === (int) $merchant->id, 404);
 
-        $validated = $request->validate([
-            'status' => 'required|string|in:active,paused,cancelled',
-        ]);
-
-        $status = $validated['status'];
-        $updates = [
-            'status' => $status,
-            'ended_at' => null,
-            'cancelled_at' => null,
-        ];
-
-        if ($status === 'cancelled') {
-            $updates['auto_renew'] = false;
-            $updates['cancelled_at'] = now();
-            $updates['ended_at'] = now();
-        }
-
-        $userSubscription->update($updates);
-
-        if ($status === 'active') {
-            $entitlementService->grantForSubscription($userSubscription->fresh());
-        } else {
-            $entitlementService->revokeForSubscription($userSubscription->fresh());
-        }
-
-        return response()->json([
-            'message' => 'Member access updated.',
-            'member' => $this->serializeMember($userSubscription->fresh('user')),
-        ]);
+        abort(403, 'Subscription access changes are handled by Takeer support to protect paid subscribers and escrow records.');
     }
 
     public function communityPosts(Request $request): JsonResponse
@@ -495,9 +511,12 @@ class MerchantSubscriptionPlanController extends Controller
 
     private function serializeMember(UserSubscription $subscription): array
     {
+        $effectiveStatus = $this->effectiveMemberStatus($subscription);
+
         return [
             'id' => $subscription->id,
-            'status' => $subscription->status,
+            'status' => $effectiveStatus,
+            'raw_status' => $subscription->status,
             'auto_renew' => (bool) $subscription->auto_renew,
             'started_at' => $subscription->started_at?->toISOString(),
             'current_period_start' => $subscription->current_period_start?->toISOString(),
@@ -511,6 +530,26 @@ class MerchantSubscriptionPlanController extends Controller
                 'email' => $subscription->user->email,
                 'phone_number' => $subscription->user->phone_number,
             ] : null,
+            'plan' => $subscription->plan ? [
+                'id' => $subscription->plan->id,
+                'name' => $subscription->plan->name,
+                'price' => (float) $subscription->plan->price,
+                'billing_interval' => $subscription->plan->billing_interval,
+                'interval_count' => (int) ($subscription->plan->interval_count ?? 1),
+            ] : null,
         ];
+    }
+
+    private function effectiveMemberStatus(UserSubscription $subscription): string
+    {
+        if (
+            $subscription->status === 'active'
+            && $subscription->current_period_end
+            && $subscription->current_period_end->isPast()
+        ) {
+            return 'expired';
+        }
+
+        return $subscription->status;
     }
 }

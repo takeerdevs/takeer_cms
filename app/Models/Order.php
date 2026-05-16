@@ -198,6 +198,7 @@ class Order extends Model
             }
 
             if ($order->isReferralCommissionEarnedStatus()) {
+                app(\App\Services\RetailBookkeepingSyncService::class)->syncOnlineOrder($order);
                 $order->ensureReferralCommission();
                 if (! in_array($order->getOriginal('payment_status'), ['escrow_locked', 'resolved_merchant_paid'], true)) {
                     $order->recordGroupSaleConversion();
@@ -207,6 +208,7 @@ class Order extends Model
             }
 
             if ($order->isReferralCommissionVoidStatus()) {
+                app(\App\Services\RetailBookkeepingSyncService::class)->voidOnlineOrder($order);
                 if (in_array($order->getOriginal('payment_status'), ['escrow_locked', 'resolved_merchant_paid', 'disputed'], true)) {
                     $order->reverseGroupSaleConversion();
                 }
@@ -286,6 +288,11 @@ class Order extends Model
     public function posItems(): HasMany
     {
         return $this->hasMany(PosSaleItem::class);
+    }
+
+    public function fiscalReceipts(): HasMany
+    {
+        return $this->hasMany(FiscalReceipt::class);
     }
 
     public function messages(): HasMany

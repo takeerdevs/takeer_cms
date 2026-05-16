@@ -53,6 +53,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
         const map = {
             physical_product: { label: 'Physical Product', icon: ShoppingBag, cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
             post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
+            subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
             digital_file: { label: 'Digital File', icon: Download, cls: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300' },
             service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
         };

@@ -26,7 +26,8 @@ import {
     Phone,
     CreditCard,
     Banknote,
-    Clock
+    Clock,
+    BookOpenCheck
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
@@ -400,6 +401,16 @@ export default function Dashboard({ merchant }) {
                                 <Package className="h-5 w-5" />
                             </span>
                             <span className="text-base font-black">Inventory</span>
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
+                            onClick={() => router.visit(`/merchant/${merchant.username}/retail/bookkeeping`)}
+                        >
+                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
+                                <BookOpenCheck className="h-5 w-5" />
+                            </span>
+                            <span className="text-base font-black">Bookkeeping</span>
                         </Button>
                         <Button
                             variant="outline"

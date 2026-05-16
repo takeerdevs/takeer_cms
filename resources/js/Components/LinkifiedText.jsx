@@ -1,4 +1,5 @@
 import React from 'react';
+import { trackPlatformEvent } from '@/lib/attribution';
 
 const URL_PATTERN = /\b((?:https?:\/\/|www\.)[^\s<]+)/gi;
 const URL_START_PATTERN = /^(?:https?:\/\/|www\.)/i;
@@ -8,6 +9,15 @@ function normalizeUrl(rawUrl) {
     return rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
         ? rawUrl
         : `https://${rawUrl}`;
+}
+
+function isExternalUrl(url) {
+    if (typeof window === 'undefined') return true;
+    try {
+        return new URL(url).hostname !== window.location.hostname;
+    } catch {
+        return false;
+    }
 }
 
 function truncateUrl(rawUrl, maxLength) {
@@ -22,6 +32,7 @@ export default function LinkifiedText({
     linkClassName = '',
     maxLinkLength = 44,
     stopPropagationOnLinkClick = false,
+    analyticsContext = {},
 }) {
     const normalizedText = String(text || '');
     if (!normalizedText) return null;
@@ -39,16 +50,27 @@ export default function LinkifiedText({
                             if (!isUrl) {
                                 return <React.Fragment key={`text-${lineIndex}-${index}`}>{part}</React.Fragment>;
                             }
+                            const href = normalizeUrl(part);
 
                             return (
                                 <a
                                     key={`url-${lineIndex}-${index}`}
-                                    href={normalizeUrl(part)}
+                                    href={href}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={(event) => {
                                         if (stopPropagationOnLinkClick) {
                                             event.stopPropagation();
+                                        }
+                                        if (isExternalUrl(href)) {
+                                            trackPlatformEvent('outbound_click', {
+                                                source: 'linkified_text',
+                                                landing_url: href,
+                                                metadata: {
+                                                    destination_url: href,
+                                                    ...analyticsContext,
+                                                },
+                                            });
                                         }
                                     }}
                                     className={linkClassName || 'underline underline-offset-2 break-all'}

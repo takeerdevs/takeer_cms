@@ -168,8 +168,8 @@ class User extends Authenticatable
         if ($order->purchasable_type === 'subscription_plan') {
             $plan = SubscriptionPlan::find($order->purchasable_id);
             return [
-                'title' => $plan?->name ?: 'Post content',
-                'kind' => 'post_content',
+                'title' => $plan?->name ?: 'Membership plan',
+                'kind' => 'subscription_plan',
                 'icon' => 'crown',
                 'image' => null,
             ];
@@ -220,7 +220,7 @@ class User extends Authenticatable
 
     public function wallet(): HasOne
     {
-        return $this->hasOne(Wallet::class);
+        return $this->hasOne(Wallet::class)->whereNull('merchant_id');
     }
 
     public function transactions(): HasMany

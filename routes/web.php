@@ -23,8 +23,10 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminCatalogController;
 use App\Http\Controllers\Api\AdminFeePolicyController;
 use App\Http\Controllers\Api\AdminSettingsController;
+use App\Http\Controllers\Api\AdminTrackedLinkController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\MerchantProfileController;
+use App\Http\Controllers\TrackedLinkController;
 use App\Http\Resources\PostResource;
 use App\Http\Resources\ProductResource;
 use App\Http\Resources\SubscriptionPlanResource;
@@ -48,6 +50,8 @@ use Illuminate\Support\Str;
 // ─── PUBLIC PAYMENT PAGES (Commerce Pro) ───────────────────────────────────
 Route::get('/pay/retail-credit/{publicId}', [\App\Http\Controllers\Api\RetailCreditPaymentController::class, 'show'])->name('retail-credit-payment.show');
 Route::get('/pay/{slug}', [\App\Http\Controllers\Api\PublicPaymentPageController::class, 'show'])->name('payment-page.show');
+Route::match(['get', 'post'], '/bookkeeping-share/{token}', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'publicShare'])->name('bookkeeping.share');
+Route::get('/bookkeeping-share/{token}/download', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'publicShareDownload'])->name('bookkeeping.share.download');
 
 Route::get('/', function (Request $request) {
     $query = App\Models\Post::with([
@@ -106,6 +110,12 @@ Route::post('/posts/{post}/guest-engagement', [PostController::class, 'guestEnga
 Route::get('/sms/t/{code}', [MerchantMarketingController::class, 'followSmsLink'])->name('sms.track');
 Route::get('/dm/t/{event}', [MerchantMarketingController::class, 'followSocialDmLink'])->name('social-dm.track');
 Route::get('/wa/t/{event}', [MerchantMarketingController::class, 'followWhatsappLink'])->name('whatsapp.track');
+Route::get('/go/{code}', [TrackedLinkController::class, 'follow'])
+    ->middleware('throttle:120,1')
+    ->name('tracked-links.follow');
+Route::post('/go/{code}/report', [TrackedLinkController::class, 'report'])
+    ->middleware('throttle:12,10')
+    ->name('tracked-links.report');
 Route::get('/r/{code}', [MerchantMarketingController::class, 'followReferral'])->name('referral.follow');
 Route::get('/campaign/{merchant:username}/{code}', [MerchantMarketingController::class, 'showCampaignLanding'])->name('campaign.show');
 Route::get('/group-sale/{slug}', [MerchantMarketingController::class, 'showGroupSale'])->name('group-sale.show');
@@ -1075,22 +1085,28 @@ Route::middleware('auth')->group(function () {
 
             $activeMembers = \App\Models\UserSubscription::where('merchant_id', $activeMerchant->id)
                 ->where('status', 'active')
+                ->where(function ($query) {
+                    $query->whereNull('current_period_end')
+                        ->orWhere('current_period_end', '>', now());
+                })
                 ->count();
             $orderIds = $paidOrders->pluck('id')->all();
-            $transactionTotals = \App\Models\Transaction::query()
+            $transactionQuery = \App\Models\Transaction::query()
                 ->whereIn('order_id', $orderIds)
-                ->where('type', 'order_revenue')
+                ->where('type', 'order_revenue');
+            $transactionTotals = (clone $transactionQuery)
                 ->selectRaw('COALESCE(SUM(gross_amount), 0) as gross, COALESCE(SUM(fee_amount), 0) as fees, COALESCE(SUM(net_amount), 0) as net')
                 ->first();
-            $wallet = \App\Models\Wallet::firstOrCreate(
-                ['user_id' => $user->id],
-                ['balance' => 0, 'frozen_balance' => 0]
+            $wallet = $activeMerchant->wallet()->firstOrCreate(
+                ['merchant_id' => $activeMerchant->id],
+                ['user_id' => $activeMerchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
             );
             $pendingWithdrawals = \App\Models\WithdrawalRequest::query()
-                ->where('user_id', $user->id)
+                ->where('merchant_id', $activeMerchant->id)
                 ->where('status', 'pending')
                 ->sum('amount');
             $totalRevenue = (float) $paidOrders->sum(fn ($order) => (float) $order->total_paid);
+            $pendingRevenue = (float) $paidOrders->where('payment_status', 'escrow_locked')->sum('total_paid');
             $previousRevenue = (float) $previousPaidOrders->sum(fn ($order) => (float) $order->total_paid);
             $revenueChange = $previousRevenue > 0
                 ? round((($totalRevenue - $previousRevenue) / $previousRevenue) * 100, 1)
@@ -1102,7 +1118,7 @@ Route::middleware('auth')->group(function () {
                 'total_orders' => $paidOrders->count(),
                 'active_members' => $activeMembers,
                 'released_revenue' => (float) $paidOrders->where('payment_status', 'resolved_merchant_paid')->sum('total_paid'),
-                'pending_revenue' => (float) $paidOrders->where('payment_status', 'escrow_locked')->sum('total_paid'),
+                'pending_revenue' => $pendingRevenue,
                 'estimated_fees' => (float) ($transactionTotals->fees ?? 0),
                 'estimated_net' => (float) (($transactionTotals->net ?? 0) ?: max($totalRevenue - (float) ($transactionTotals->fees ?? 0), 0)),
                 'revenue_change_percent' => $revenueChange,
@@ -1395,6 +1411,22 @@ Route::middleware('auth')->group(function () {
                 'itemPickerDefaultLimit' => (int) AdminSetting::get('catalog_item_picker_default_limit', 5),
             ]);
         });
+        Route::get('/subscription-members', function (Merchant $merchant) {
+            return Inertia::render('Merchant/SubscriptionMembers', [
+                'merchantUsername' => $merchant->username,
+                'merchantName' => $merchant->display_name,
+            ]);
+        });
+        Route::get('/subscription-plans/{subscriptionPlan:id}/members', function (Merchant $merchant, SubscriptionPlan $subscriptionPlan) {
+            abort_unless((int) $subscriptionPlan->merchant_id === (int) $merchant->id, 404);
+
+            return Inertia::render('Merchant/SubscriptionMembers', [
+                'merchantUsername' => $merchant->username,
+                'merchantName' => $merchant->display_name,
+                'subscriptionPlanId' => $subscriptionPlan->id,
+                'subscriptionPlanName' => $subscriptionPlan->name,
+            ]);
+        });
 
         Route::get('/marketing', function (Merchant $merchant) {
             return Inertia::render('Merchant/Marketing', [
@@ -1517,6 +1549,7 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'index']);
         Route::post('/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'store']);
+        Route::get('/subscription-members/api', [MerchantSubscriptionPlanController::class, 'merchantMembers']);
         Route::get('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'show']);
         Route::put('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'update']);
         Route::delete('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy']);
@@ -1610,6 +1643,12 @@ Route::middleware('auth')->group(function () {
 
             Route::get('/trust-safety', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/TrustSafety', [
+                    'merchant' => $merchant->load('currency'),
+                ]);
+            })->middleware('retail_role:MANAGER');
+
+            Route::get('/bookkeeping', function (Merchant $merchant) {
+                return Inertia::render('Merchant/Retail/Bookkeeping', [
                     'merchant' => $merchant->load('currency'),
                 ]);
             })->middleware('retail_role:MANAGER');
@@ -1921,6 +1960,8 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::get('/analytics/journey', [AdminController::class, 'platformAnalyticsJourney']);
         Route::get('/analytics/cohorts', [AdminController::class, 'platformAnalyticsCohorts']);
         Route::get('/analytics/export/{report}.csv', [AdminController::class, 'platformAnalyticsExport']);
+        Route::get('/tracked-links', [AdminTrackedLinkController::class, 'index']);
+        Route::patch('/tracked-links/{trackedLink:id}', [AdminTrackedLinkController::class, 'update']);
 
         Route::get('/content-reports', [ContentReportModerationController::class, 'adminIndex']);
         Route::patch('/content-reports/{contentReport:id}/resolve', [ContentReportModerationController::class, 'adminResolve']);
@@ -1996,6 +2037,9 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     Route::get('/admin/content-reports', function () {
         return Inertia::render('Admin/ContentReports');
+    });
+    Route::get('/admin/tracked-links', function () {
+        return Inertia::render('Admin/TrackedLinks');
     });
 
     Route::get('/admin/categories', function () {

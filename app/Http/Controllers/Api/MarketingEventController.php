@@ -108,6 +108,7 @@ class MarketingEventController extends Controller
             'video_played',
             'audio_played',
             'download_clicked',
+            'outbound_click',
             'download_link_sent',
             'gallery_viewed',
             'gallery_original_downloaded',
@@ -125,7 +126,7 @@ class MarketingEventController extends Controller
 
     private function entityTypes(): array
     {
-        return ['merchant', 'product', 'post', 'content_item', 'bundle', 'subscription_plan'];
+        return ['merchant', 'product', 'post', 'content_item', 'bundle', 'subscription_plan', 'tracked_link'];
     }
 
     private function resolveEntity(?string $type, ?int $id): mixed

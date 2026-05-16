@@ -620,10 +620,10 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 },
             });
             if (res.data?.post) setPost(res.data.post);
-            toast.success(res.data?.message || 'Post deleted.');
+            toast.success(res.data?.message || 'Post removed.');
             setShowAdminRemoveModal(false);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to delete post.');
+            toast.error(error.response?.data?.message || 'Failed to remove post.');
         } finally {
             setAdminAction(null);
         }
@@ -992,11 +992,11 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     <Eye className="h-4 w-4 shrink-0" />
                                 )}
                                 <span className="text-xs font-black uppercase tracking-widest">
-                                    {isDeleted ? 'Deleted post' : 'Live post'}
+                                    {isDeleted ? 'Removed post' : 'Live post'}
                                 </span>
                                 {deletedAtLabel && (
                                     <span className="text-xs font-semibold text-rose-800/80">
-                                        Deleted {deletedAtLabel}
+                                        Removed {deletedAtLabel}
                                     </span>
                                 )}
                             </div>
@@ -1036,7 +1036,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-black uppercase tracking-wider text-rose-800 hover:bg-rose-100 disabled:opacity-60"
                                 >
                                     {adminAction === 'delete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                                    Delete Post
+                                    Remove Post
                                 </button>
                             )}
                             <Link

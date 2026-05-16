@@ -1010,7 +1010,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     return (
         <AppLayout>
             <Head title={`${activeMeta.title} | Takeer`} />
-            <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24 space-y-6">
+            <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
                 <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                     <div>
                         <h1 className="mt-3 text-3xl md:text-4xl font-black tracking-tight">{activeMeta.title}</h1>

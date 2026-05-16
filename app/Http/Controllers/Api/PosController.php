@@ -12,6 +12,7 @@ use App\Models\RetailAuditLog;
 use App\Models\MerchantLocation;
 use App\Models\StockTransfer;
 use App\Models\MerchantStaff;
+use App\Services\RetailBookkeepingSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -204,7 +205,7 @@ class PosController extends Controller
             }
         }
 
-        return DB::transaction(function () use ($merchant, $validated, $isPendingApproval, $existingOrder, $requiresTransferFlow) {
+        return DB::transaction(function () use ($request, $merchant, $validated, $isPendingApproval, $existingOrder, $requiresTransferFlow) {
             $checkoutLocationId = (int) $validated['location_id'];
             $sourceLocationIds = collect($validated['items'])
                 ->map(fn($item) => (int) ($item['source_location_id'] ?? $checkoutLocationId))
@@ -355,6 +356,7 @@ class PosController extends Controller
             RetailAuditLog::create([
                 'merchant_id' => $merchant->id,
                 'staff_id' => $validated['staff_id'],
+                'user_id' => $request->user()?->id,
                 'action' => 'POS_SALE',
                 'description' => "POS Sale completed. Mode: {$validated['payment_mode']}. Items: " . count($validated['items']),
                 'metadata' => [
@@ -366,6 +368,16 @@ class PosController extends Controller
                     'product_title' => $primaryProduct?->title,
                 ]
             ]);
+
+            app(RetailBookkeepingSyncService::class)->syncPosSale(
+                $order->fresh(['merchant.currency', 'posStaff.user', 'posItems.product', 'posItems.variant']),
+                (int) $validated['staff_id'],
+                $request->user()?->id,
+                [
+                    'transfer_requests_count' => $transferCount,
+                    'requires_transfer' => $transferCount > 0,
+                ]
+            );
 
             return response()->json([
                 'message' => $transferCount > 0
@@ -391,7 +403,7 @@ class PosController extends Controller
             'reason' => 'required|string',
         ]);
 
-        return DB::transaction(function () use ($order, $merchant, $validated) {
+        return DB::transaction(function () use ($request, $order, $merchant, $validated) {
             // Restore inventory for each item
             $items = $order->posItems;
             foreach ($items as $item) {
@@ -438,10 +450,18 @@ class PosController extends Controller
             RetailAuditLog::create([
                 'merchant_id' => $merchant->id,
                 'staff_id' => $validated['manager_staff_id'],
+                'user_id' => $request->user()?->id,
                 'action' => 'SALE_VOIDED',
                 'description' => "POS Sale {$order->public_id} voided. Reason: {$validated['reason']}",
                 'metadata' => ['order_id' => $order->id]
             ]);
+
+            app(RetailBookkeepingSyncService::class)->voidPosSale(
+                $order,
+                (int) $validated['manager_staff_id'],
+                $request->user()?->id,
+                $validated['reason']
+            );
 
             return response()->json(['message' => 'Sale voided and inventory restored.']);
         });
@@ -464,16 +484,25 @@ class PosController extends Controller
         $payableTotal = (float) ($validated['counter_total'] ?? $order->counter_total ?? $order->grand_total ?? $order->total_paid ?? 0);
         $paidAmount = (float) ($order->total_paid ?? 0);
 
-        $order->update([
-            'approval_status' => 'approved',
-            'approved_by_staff_id' => $request->user()->staffProfile($merchant->id)?->id,
-            'payment_mode' => $validated['payment_mode'] ?? $order->payment_mode,
-            'counter_total' => $validated['counter_total'] ?? $order->counter_total,
-            'manager_notes' => $validated['manager_notes'] ?? $order->manager_notes,
-            'payment_status' => $paidAmount >= $payableTotal ? 'resolved_merchant_paid' : 'pending',
-        ]);
+        DB::transaction(function () use ($request, $merchant, $order, $validated, $paidAmount, $payableTotal) {
+            $order->update([
+                'approval_status' => 'approved',
+                'approved_by_staff_id' => $request->user()->staffProfile($merchant->id)?->id,
+                'payment_mode' => $validated['payment_mode'] ?? $order->payment_mode,
+                'counter_total' => $validated['counter_total'] ?? $order->counter_total,
+                'manager_notes' => $validated['manager_notes'] ?? $order->manager_notes,
+                'payment_status' => $paidAmount >= $payableTotal ? 'resolved_merchant_paid' : 'pending',
+            ]);
 
-        return response()->json(['message' => 'Oda imekubaliwa kikamilifu!', 'data' => $order]);
+            app(RetailBookkeepingSyncService::class)->syncPosSale(
+                $order->fresh(['merchant.currency', 'posStaff.user', 'posItems.product', 'posItems.variant']),
+                $request->user()->staffProfile($merchant->id)?->id,
+                $request->user()?->id,
+                ['approved_from_pending' => true]
+            );
+        });
+
+        return response()->json(['message' => 'Oda imekubaliwa kikamilifu!', 'data' => $order->fresh()]);
     }
 
     /**
@@ -546,9 +575,15 @@ class PosController extends Controller
         $merchant = $request->attributes->get('active_merchant');
         if ($order->merchant_id !== $merchant->id) abort(403);
 
-        return DB::transaction(function () use ($order, $merchant) {
+        return DB::transaction(function () use ($request, $order, $merchant) {
             $order->update(['approval_status' => 'rejected', 'payment_status' => 'failed']);
             $order->releaseInventory(); // Helper we added earlier
+            app(RetailBookkeepingSyncService::class)->voidPosSale(
+                $order,
+                $request->user()->staffProfile($merchant->id)?->id,
+                $request->user()?->id,
+                'POS sale rejected.'
+            );
             return response()->json(['message' => 'Oda imekataliwa na stock imerudishwa.']);
         });
     }

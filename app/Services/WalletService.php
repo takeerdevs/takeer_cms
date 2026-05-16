@@ -32,9 +32,9 @@ class WalletService
                 throw new \Exception('Order merchant wallet is not available.');
             }
 
-            $wallet = $merchant->user->wallet()->lockForUpdate()->firstOrCreate(
-                ['user_id' => $merchant->user_id],
-                ['balance' => 0, 'frozen_balance' => 0]
+            $wallet = $merchant->wallet()->lockForUpdate()->firstOrCreate(
+                ['merchant_id' => $merchant->id],
+                ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
             );
 
             $grossAmount = $order->total_paid;
@@ -52,6 +52,7 @@ class WalletService
             if (! $existingRevenue) {
                 Transaction::create([
                     'user_id' => $merchant->user_id,
+                    'merchant_id' => $merchant->id,
                     'order_id' => $order->id,
                     'type' => 'order_revenue',
                     ...$fee['snapshot'],
@@ -95,7 +96,10 @@ class WalletService
     public function requestWithdrawal($merchant, float $amount): WithdrawalRequest
     {
         return DB::transaction(function () use ($merchant, $amount) {
-            $wallet = $merchant->user->wallet()->lockForUpdate()->firstOrCreate(['user_id' => $merchant->user_id]);
+            $wallet = $merchant->wallet()->lockForUpdate()->firstOrCreate(
+                ['merchant_id' => $merchant->id],
+                ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
+            );
 
             if ($wallet->balance < $amount) {
                 throw new \Exception('Insufficient wallet balance for this withdrawal.');
@@ -107,6 +111,8 @@ class WalletService
 
             return WithdrawalRequest::create([
                 'user_id' => $merchant->user_id,
+                'merchant_id' => $merchant->id,
+                'method' => 'mobile_money',
                 'amount' => $amount,
                 'status' => 'pending',
             ]);
@@ -126,7 +132,8 @@ class WalletService
             // TODO: Here we would call M-Pesa B2C API
             // $b2cResponse = app(MpesaService::class)->b2c($request->user->phone_number, $request->amount);
             // If B2C fails, throw Exception and DB::transaction rolls back.
-            $merchant = $request->user->merchantProfiles()->with(['country', 'currency'])->where('is_default', true)->first()
+            $merchant = $request->merchant()->with(['country', 'currency'])->first()
+                ?: $request->user->merchantProfiles()->with(['country', 'currency'])->where('is_default', true)->first()
                 ?: $request->user->merchantProfiles()->with(['country', 'currency'])->first();
             $fee = $merchant
                 ? app(FeePolicyService::class)->calculateWithdrawal($merchant, (float) $request->amount)
@@ -134,6 +141,7 @@ class WalletService
 
             Transaction::create([
                 'user_id' => $request->user_id,
+                'merchant_id' => $request->merchant_id,
                 'order_id' => null,
                 'type' => 'withdrawal',
                 ...$fee['snapshot'],

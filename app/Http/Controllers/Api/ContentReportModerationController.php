@@ -12,6 +12,8 @@ use App\Models\Post;
 use App\Models\Product;
 use App\Models\ProductLicenseKey;
 use App\Models\SubscriptionPlan;
+use App\Models\TrackedLink;
+use App\Services\PulseNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -184,6 +186,7 @@ class ContentReportModerationController extends Controller
                 'status' => 'revoked',
                 'revoked_at' => now(),
             ]),
+            'tracked_link' => $this->restrictTrackedLink($contentReport, $note),
             default => null,
         };
     }
@@ -200,6 +203,7 @@ class ContentReportModerationController extends Controller
                 'status' => 'active',
                 'revoked_at' => null,
             ]),
+            'tracked_link' => $this->restoreTrackedLink($contentReport, $note),
             default => null,
         };
     }
@@ -236,6 +240,28 @@ class ContentReportModerationController extends Controller
         ]);
     }
 
+    private function restrictTrackedLink(ContentReport $contentReport, ?string $note = null): void
+    {
+        $link = TrackedLink::find($contentReport->item_id);
+        if (! $link) {
+            return;
+        }
+
+        $link->update(['status' => 'disabled']);
+        app(PulseNotificationService::class)->trackedLinkModerated($link->fresh(['merchant.user']), 'disabled', $note, $contentReport);
+    }
+
+    private function restoreTrackedLink(ContentReport $contentReport, ?string $note = null): void
+    {
+        $link = TrackedLink::find($contentReport->item_id);
+        if (! $link) {
+            return;
+        }
+
+        $link->update(['status' => 'active']);
+        app(PulseNotificationService::class)->trackedLinkModerated($link->fresh(['merchant.user']), 'active', $note, $contentReport);
+    }
+
     private function serializeReport(ContentReport $report): array
     {
         return [
@@ -254,6 +280,7 @@ class ContentReportModerationController extends Controller
             'subscription_plan' => SubscriptionPlan::withTrashed()->find($report->item_id),
             'license_key' => ProductLicenseKey::find($report->item_id),
             'order' => Order::find($report->item_id),
+            'tracked_link' => TrackedLink::find($report->item_id),
             default => null,
         };
 
@@ -264,9 +291,10 @@ class ContentReportModerationController extends Controller
         return [
             'label' => $report->item_type === 'license_key'
                 ? 'License key #' . $report->item_id
-                : ($target->title ?? $target->name ?? $target->public_id ?? ('#' . $report->item_id)),
+                : ($target->title ?? $target->name ?? $target->label ?? $target->destination_host ?? $target->public_id ?? ('#' . $report->item_id)),
             'deleted_at' => $target->deleted_at ?? null,
             'status' => $target->status ?? $target->payment_status ?? $target->visibility ?? null,
+            'url' => $target->destination_url ?? null,
         ];
     }
 

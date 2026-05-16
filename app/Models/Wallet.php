@@ -10,6 +10,7 @@ class Wallet extends Model
 {
     protected $fillable = [
         'user_id',
+        'merchant_id',
         'balance',
         'frozen_balance',
     ];
@@ -27,9 +28,16 @@ class Wallet extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function merchant(): BelongsTo
+    {
+        return $this->belongsTo(Merchant::class);
+    }
+
     public function transactions(): HasMany
     {
-        return $this->hasMany(Transaction::class, 'user_id', 'user_id');
+        return $this->merchant_id
+            ? $this->hasMany(Transaction::class, 'merchant_id', 'merchant_id')
+            : $this->hasMany(Transaction::class, 'user_id', 'user_id');
     }
 
     public function getAvailableBalanceAttribute(): float

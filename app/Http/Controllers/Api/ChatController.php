@@ -459,6 +459,7 @@ class ChatController extends Controller
                 $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($processedOrder, (float) $processedOrder->total_paid);
                 \App\Models\Transaction::create([
                     'user_id' => $processedOrder->buyer_id,
+                    'merchant_id' => $processedOrder->merchant_id,
                     'order_id' => $processedOrder->id,
                     'type' => 'order_revenue',
                     ...$fee['snapshot'],
@@ -470,11 +471,11 @@ class ChatController extends Controller
                 ]);
 
                 // Freeze funds for physical/custom-held work, release immediately for instant digital/access orders.
-                $merchantUser = $processedOrder->merchant->user ?? $processedOrder->product?->merchant?->user ?? null;
-                if ($merchantUser) {
-                    $wallet = $merchantUser->wallet()->firstOrCreate(
-                        ['user_id' => $merchantUser->id],
-                        ['balance' => 0, 'frozen_balance' => 0]
+                $merchant = $processedOrder->merchant ?? $processedOrder->product?->merchant ?? null;
+                if ($merchant?->user) {
+                    $wallet = $merchant->wallet()->firstOrCreate(
+                        ['merchant_id' => $merchant->id],
+                        ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
                     );
 
                     if ($processedOrder->requiresPhysicalFulfillment() || $processedOrder->payment_status === 'escrow_locked') {
