@@ -50,6 +50,9 @@ class MerchantStaffController extends Controller
             'phone_number' => 'required|string', // Format check usually done by middleware or service
             'name' => 'required|string|max:255',
             'role' => ['required', Rule::in(['MANAGER', 'CASHIER', 'STOREKEEPER'])],
+            'job_title' => 'nullable|string|max:120',
+            'display_name' => 'nullable|string|max:160',
+            'avatar_url' => 'nullable|string|max:2048',
             'assigned_location_id' => 'nullable|exists:merchant_locations,id',
             'pin' => 'required|string|size:4',
         ]);
@@ -63,6 +66,8 @@ class MerchantStaffController extends Controller
                 'phone_number' => $validated['phone_number'],
                 'role' => 'buyer', // Default role for guest/shadow users
                 'password' => Hash::make(str()->random(32)), // Random password they'll never use
+                'is_shadow_user' => true,
+                'shadow_source' => 'merchant_staff',
             ]);
         }
 
@@ -81,6 +86,9 @@ class MerchantStaffController extends Controller
             'user_id' => $user->id,
             'assigned_location_id' => $validated['assigned_location_id'],
             'role' => $validated['role'],
+            'job_title' => $validated['job_title'] ?? null,
+            'display_name' => $validated['display_name'] ?? null,
+            'avatar_url' => $validated['avatar_url'] ?? null,
             'pin_hash' => Hash::make($validated['pin']),
             'is_active' => true,
         ]);
@@ -104,6 +112,9 @@ class MerchantStaffController extends Controller
 
         $validated = $request->validate([
             'role' => [Rule::in(['MANAGER', 'CASHIER', 'STOREKEEPER'])],
+            'job_title' => 'nullable|string|max:120',
+            'display_name' => 'nullable|string|max:160',
+            'avatar_url' => 'nullable|string|max:2048',
             'assigned_location_id' => 'nullable|exists:merchant_locations,id',
             'is_active' => 'boolean',
             'pin' => 'nullable|string|size:4',

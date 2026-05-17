@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Country;
+use App\Models\Currency;
 use App\Models\RetailBookkeepingShareAccessLog;
 use App\Models\RetailBookkeepingShareLink;
 use App\Models\RetailAuditLog;
@@ -15,6 +16,7 @@ use App\Models\RetailBookkeepingPeriodLock;
 use App\Models\RetailBookkeepingStatementLine;
 use App\Models\RetailPayrollRecord;
 use App\Models\RetailRecurringBill;
+use App\Models\MerchantStaff;
 use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,6 +38,19 @@ class RetailBookkeepingController extends Controller
     private const REVIEW_STATUSES = ['pending', 'approved', 'rejected'];
     private const RECONCILIATION_STATUSES = ['unmatched', 'matched', 'needs_review'];
     private const ADJUSTMENT_REASONS = ['stock_count', 'bank_charge', 'write_off', 'depreciation', 'opening_correction', 'tax_adjustment', 'rounding', 'other'];
+    private const RECURRENCE_FREQUENCIES = ['none', 'days', 'weeks', 'months', 'years'];
+    private const OBLIGATION_TYPES = [
+        'annual_return' => 'Annual return / registry filing',
+        'tax_filing' => 'Tax filing / payment',
+        'license_renewal' => 'Licence / permit renewal',
+        'payroll_tax' => 'Payroll / statutory employment',
+        'data_protection' => 'Data protection / privacy',
+        'sector_regulator' => 'Sector regulator compliance',
+        'local_government' => 'Municipal / local government levy',
+        'import_export' => 'Import / export / customs',
+        'audit_accounting' => 'Audit / accounting compliance',
+        'custom' => 'Custom',
+    ];
 
     public function index(Request $request): JsonResponse
     {
@@ -779,27 +794,53 @@ class RetailBookkeepingController extends Controller
         $merchant = $request->attributes->get('active_merchant');
         $validated = $request->validate([
             'title' => 'required|string|max:160',
-            'obligation_type' => ['required', Rule::in(['annual_return', 'tax_filing', 'license_renewal', 'payroll_tax', 'custom'])],
+            'obligation_type' => ['required', Rule::in(array_keys(self::OBLIGATION_TYPES))],
             'authority' => 'nullable|string|max:120',
             'due_date' => 'required|date',
+            'recurrence_frequency' => ['nullable', Rule::in(self::RECURRENCE_FREQUENCIES)],
+            'recurrence_interval' => 'nullable|integer|min:1|max:120',
+            'recurrence_ends_at' => 'nullable|date|after_or_equal:due_date',
+            'estimated_amount' => 'nullable|numeric|min:0|max:999999999999.99',
+            'currency_code' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],
             'remind_days_before' => 'nullable|integer|min:0|max:365',
             'sms_reminder_enabled' => 'nullable|boolean',
             'reference_number' => 'nullable|string|max:160',
             'description' => 'nullable|string|max:2000',
+            'suggest_country_template' => 'nullable|boolean',
+            'template_key' => 'nullable|string|max:120',
+            'sector_tags' => 'nullable|array|max:12',
+            'sector_tags.*' => 'string|max:60',
+            'applies_when' => 'nullable|string|max:500',
         ]);
 
-        $obligation = RetailBusinessObligation::create(array_merge($validated, [
+        $metadata = [
+            'suggested_country_template' => $request->boolean('suggest_country_template', false),
+            'template_key' => $validated['template_key'] ?? null,
+            'template_source' => $request->filled('template_key') ? 'country_default' : 'merchant_custom',
+            'sector_tags' => $validated['sector_tags'] ?? [],
+            'applies_when' => $validated['applies_when'] ?? null,
+        ];
+
+        $payload = Arr::except($validated, ['suggest_country_template', 'template_key', 'sector_tags', 'applies_when']);
+
+        $obligation = RetailBusinessObligation::create(array_merge($payload, [
             'merchant_id' => $merchant->id,
             'user_id' => $request->user()?->id,
             'status' => 'open',
             'remind_days_before' => $validated['remind_days_before'] ?? 14,
+            'recurrence_frequency' => $validated['recurrence_frequency'] ?? 'none',
+            'recurrence_interval' => $validated['recurrence_interval'] ?? 1,
+            'currency_code' => $validated['currency_code'] ?? $merchant->currency?->code ?? 'TZS',
             'sms_reminder_enabled' => $request->boolean('sms_reminder_enabled', true),
+            'metadata' => $metadata,
         ]));
 
         $this->writeAuditLog($request, $merchant->id, 'BUSINESS_OBLIGATION_CREATED', 'Business obligation reminder created.', [
             'obligation_id' => $obligation->id,
             'title' => $obligation->title,
             'due_date' => $obligation->due_date?->toDateString(),
+            'estimated_amount' => $obligation->estimated_amount,
+            'currency_code' => $obligation->currency_code,
         ]);
 
         return response()->json(['message' => 'Business reminder saved.', 'data' => $obligation], 201);
@@ -810,14 +851,30 @@ class RetailBookkeepingController extends Controller
         $merchant = $request->attributes->get('active_merchant');
         abort_unless((int) $obligation->merchant_id === (int) $merchant->id, 403);
 
-        $obligation->update([
-            'status' => 'completed',
-            'completed_at' => now(),
-        ]);
+        $nextDueDate = $this->nextObligationDueDate($obligation);
+        $metadata = $obligation->metadata ?? [];
+        $metadata['last_completed_at'] = now()->toISOString();
+        $metadata['completed_count'] = (int) ($metadata['completed_count'] ?? 0) + 1;
+
+        if ($nextDueDate && (! $obligation->recurrence_ends_at || $nextDueDate->lte($obligation->recurrence_ends_at))) {
+            $obligation->update([
+                'due_date' => $nextDueDate,
+                'status' => 'open',
+                'completed_at' => null,
+                'metadata' => $metadata,
+            ]);
+        } else {
+            $obligation->update([
+                'status' => 'completed',
+                'completed_at' => now(),
+                'metadata' => $metadata,
+            ]);
+        }
 
         $this->writeAuditLog($request, $merchant->id, 'BUSINESS_OBLIGATION_COMPLETED', 'Business obligation marked completed.', [
             'obligation_id' => $obligation->id,
             'title' => $obligation->title,
+            'next_due_date' => $nextDueDate?->toDateString(),
         ]);
 
         return response()->json(['message' => 'Reminder completed.', 'data' => $obligation->fresh()]);
@@ -923,6 +980,12 @@ class RetailBookkeepingController extends Controller
             'worker_name' => 'required|string|max:160',
             'worker_type' => ['required', Rule::in(['employee', 'contractor', 'casual'])],
             'role' => 'nullable|string|max:120',
+            'merchant_staff_id' => [
+                'nullable',
+                Rule::exists('merchant_staffs', 'id')
+                    ->where('merchant_id', $merchant->id)
+                    ->where('is_active', true),
+            ],
             'gross_amount' => 'required|numeric|min:0.01|max:999999999999.99',
             'deductions_amount' => 'nullable|numeric|min:0|max:999999999999.99',
             'pay_period' => 'required|string|max:40',
@@ -937,6 +1000,18 @@ class RetailBookkeepingController extends Controller
         $deductions = (float) ($validated['deductions_amount'] ?? 0);
         $gross = (float) $validated['gross_amount'];
         $filePayload = $this->storeAttachment($request, $merchant->id);
+        $staff = !empty($validated['merchant_staff_id'])
+            ? MerchantStaff::query()
+                ->with('user:id,name')
+                ->where('merchant_id', $merchant->id)
+                ->where('is_active', true)
+                ->find($validated['merchant_staff_id'])
+            : null;
+
+        if ($staff) {
+            $validated['worker_name'] = $staff->user?->name ?: $validated['worker_name'];
+            $validated['role'] = $staff->job_title ?: $validated['role'] ?: $staff->role;
+        }
 
         $payroll = RetailPayrollRecord::create(array_merge($validated, $filePayload, [
             'merchant_id' => $merchant->id,
@@ -2254,9 +2329,27 @@ class RetailBookkeepingController extends Controller
 
         $payroll = RetailPayrollRecord::query()
             ->where('merchant_id', $merchantId)
+            ->with('staff.user:id,name')
             ->latest('pay_date')
             ->limit(8)
             ->get();
+
+        $staffDirectory = MerchantStaff::query()
+            ->where('merchant_id', $merchantId)
+            ->where('is_active', true)
+            ->with(['user:id,name,phone_number', 'location:id,name'])
+            ->orderBy('id')
+            ->get(['id', 'user_id', 'assigned_location_id', 'role', 'job_title', 'display_name', 'avatar_url', 'is_active'])
+            ->map(fn (MerchantStaff $staff) => [
+                'id' => $staff->id,
+                'name' => $staff->display_name ?: $staff->user?->name,
+                'legal_name' => $staff->user?->name,
+                'phone_number' => $staff->user?->phone_number,
+                'access_role' => $staff->role,
+                'job_title' => $staff->job_title,
+                'avatar_url' => $staff->avatar_url,
+                'location' => $staff->location?->name,
+            ]);
 
         $shareLinks = RetailBookkeepingShareLink::query()
             ->where('merchant_id', $merchantId)
@@ -2272,6 +2365,9 @@ class RetailBookkeepingController extends Controller
             'summary' => [
                 'obligations_due_soon' => RetailBusinessObligation::query()->where('merchant_id', $merchantId)->where('status', 'open')->whereBetween('due_date', [$today, $soon])->count(),
                 'overdue_obligations' => RetailBusinessObligation::query()->where('merchant_id', $merchantId)->where('status', 'open')->whereDate('due_date', '<', $today)->count(),
+                'estimated_obligations_due_soon' => (float) RetailBusinessObligation::query()->where('merchant_id', $merchantId)->where('status', 'open')->whereBetween('due_date', [$today, $soon])->sum('estimated_amount'),
+                'estimated_bills_due_soon' => (float) RetailRecurringBill::query()->where('merchant_id', $merchantId)->where('status', 'active')->whereBetween('next_due_date', [$today, $soon])->sum('amount'),
+                'estimated_pending_payroll' => (float) RetailPayrollRecord::query()->where('merchant_id', $merchantId)->where('status', 'pending')->sum('net_amount'),
                 'bills_due_soon' => RetailRecurringBill::query()->where('merchant_id', $merchantId)->where('status', 'active')->whereBetween('next_due_date', [$today, $soon])->count(),
                 'pending_payroll' => RetailPayrollRecord::query()->where('merchant_id', $merchantId)->where('status', 'pending')->count(),
                 'active_share_links' => RetailBookkeepingShareLink::query()->where('merchant_id', $merchantId)->where('status', 'active')->count(),
@@ -2279,8 +2375,12 @@ class RetailBookkeepingController extends Controller
             'obligations' => $obligations,
             'recurring_bills' => $bills,
             'payroll' => $payroll,
+            'staff_directory' => $staffDirectory,
             'share_links' => $shareLinks,
             'recommended_setup' => $this->countrySetupTemplates($merchant->country),
+            'compliance_types' => $this->complianceTypes(),
+            'recurrence_frequencies' => $this->recurrenceFrequencies(),
+            'currencies' => $this->currencyOptions($merchant),
         ];
     }
 
@@ -2288,79 +2388,96 @@ class RetailBookkeepingController extends Controller
     {
         $configured = $country?->settings['tax_calendar_defaults'] ?? null;
         if (is_array($configured) && count($configured) > 0) {
-            return array_values($configured);
+            return collect($configured)
+                ->filter(fn ($template) => is_array($template) && ! empty($template['title']))
+                ->map(function (array $template) {
+                    $template['type'] = in_array($template['type'] ?? null, array_keys(self::OBLIGATION_TYPES), true)
+                        ? $template['type']
+                        : 'custom';
+                    $template['sector_tags'] = is_array($template['sector_tags'] ?? null)
+                        ? array_values($template['sector_tags'])
+                        : [];
+                    $template['applies_when'] = $template['applies_when'] ?? '';
+                    $template['recurrence_frequency'] = in_array($template['recurrence_frequency'] ?? 'none', self::RECURRENCE_FREQUENCIES, true)
+                        ? ($template['recurrence_frequency'] ?? 'none')
+                        : 'none';
+                    $template['recurrence_interval'] = max(1, (int) ($template['recurrence_interval'] ?? 1));
+                    $template['estimated_amount'] = isset($template['estimated_amount']) && is_numeric($template['estimated_amount'])
+                        ? (float) $template['estimated_amount']
+                        : null;
+                    $template['currency_code'] = $template['currency_code'] ?? $country?->currency?->code ?? 'TZS';
+
+                    return $template;
+                })
+                ->values()
+                ->all();
         }
 
-        if (strtoupper((string) ($country?->iso_alpha2 ?? '')) === 'TZ') {
-            return [
-                [
-                    'key' => 'annual_return_estimate',
-                    'title' => 'Annual return estimate',
-                    'type' => 'annual_return',
-                    'authority' => 'TRA / Accountant',
-                    'remind_days_before' => 30,
-                    'suggested_frequency' => 'yearly',
-                    'description' => 'Set this once your accountant gives you the expected filing or return date.',
-                ],
-                [
-                    'key' => 'pdpc_registration',
-                    'title' => 'PDPC data protection registration',
-                    'type' => 'license_renewal',
-                    'authority' => 'PDPC',
-                    'remind_days_before' => 90,
-                    'suggested_frequency' => 'every 5 years',
-                    'description' => 'For businesses collecting or processing personal data. Registration validity is generally five years from certificate issue.',
-                ],
-                [
-                    'key' => 'tcra_certificate',
-                    'title' => 'TCRA certificate / licence renewal',
-                    'type' => 'license_renewal',
-                    'authority' => 'TCRA',
-                    'remind_days_before' => 45,
-                    'suggested_frequency' => 'yearly or licence-specific',
-                    'description' => 'Use the due date and fee schedule shown on the issued certificate or licence.',
-                ],
-                [
-                    'key' => 'vat_payment',
-                    'title' => 'VAT filing/payment reminder',
-                    'type' => 'tax_filing',
-                    'authority' => 'TRA',
-                    'remind_days_before' => 7,
-                    'suggested_frequency' => 'monthly where registered',
-                    'description' => 'Enable only if the business is registered or advised to file VAT.',
-                ],
-                [
-                    'key' => 'paye_sdl',
-                    'title' => 'PAYE / SDL payroll tax reminder',
-                    'type' => 'payroll_tax',
-                    'authority' => 'TRA',
-                    'remind_days_before' => 7,
-                    'suggested_frequency' => 'monthly where applicable',
-                    'description' => 'Use when the business has employees or payroll obligations.',
-                ],
-            ];
-        }
+        return [];
+    }
 
+    private function complianceTypes(): array
+    {
+        return collect(self::OBLIGATION_TYPES)
+            ->map(fn (string $label, string $value) => ['value' => $value, 'label' => $label])
+            ->values()
+            ->all();
+    }
+
+    private function recurrenceFrequencies(): array
+    {
         return [
-            [
-                'key' => 'annual_return',
-                'title' => 'Annual return / filing reminder',
-                'type' => 'annual_return',
-                'authority' => 'Tax Authority',
-                'remind_days_before' => 30,
-                'suggested_frequency' => 'yearly',
-                'description' => 'Set the date provided by the accountant or local authority.',
-            ],
-            [
-                'key' => 'business_license',
-                'title' => 'Business licence renewal',
-                'type' => 'license_renewal',
-                'authority' => 'Local Authority',
-                'remind_days_before' => 30,
-                'suggested_frequency' => 'licence-specific',
-                'description' => 'Use the expiry date shown on the issued licence.',
-            ],
+            ['value' => 'none', 'label' => 'Does not repeat'],
+            ['value' => 'days', 'label' => 'Days'],
+            ['value' => 'weeks', 'label' => 'Weeks'],
+            ['value' => 'months', 'label' => 'Months'],
+            ['value' => 'years', 'label' => 'Years'],
         ];
+    }
+
+    private function currencyOptions($merchant): array
+    {
+        $currencies = Currency::query()
+            ->where('is_active', true)
+            ->orderByRaw('code = ? desc', [$merchant->currency?->code ?? 'TZS'])
+            ->orderBy('code')
+            ->get(['code', 'name', 'symbol'])
+            ->map(fn (Currency $currency) => [
+                'code' => $currency->code,
+                'name' => $currency->name,
+                'symbol' => $currency->symbol,
+            ]);
+
+        if ($currencies->isEmpty()) {
+            return [[
+                'code' => $merchant->currency?->code ?? 'TZS',
+                'name' => $merchant->currency?->name ?? 'Business currency',
+                'symbol' => $merchant->currency?->symbol ?? '',
+            ]];
+        }
+
+        return $currencies->values()->all();
+    }
+
+    private function nextObligationDueDate(RetailBusinessObligation $obligation): ?Carbon
+    {
+        $frequency = $obligation->recurrence_frequency ?: 'none';
+        if ($frequency === 'none') {
+            return null;
+        }
+
+        $interval = max(1, (int) ($obligation->recurrence_interval ?: 1));
+        $date = $obligation->due_date instanceof Carbon
+            ? $obligation->due_date->copy()
+            : Carbon::parse($obligation->due_date);
+
+        return match ($frequency) {
+            'days' => $date->addDays($interval),
+            'weeks' => $date->addWeeks($interval),
+            'months' => $date->addMonthsNoOverflow($interval),
+            'years' => $date->addYearsNoOverflow($interval),
+            default => null,
+        };
     }
 
     private function nextDueDate(string $frequency, string|Carbon $current): Carbon

@@ -23,6 +23,9 @@ class User extends Authenticatable
         'password',
         'is_admin',
         'is_banned',
+        'is_shadow_user',
+        'shadow_source',
+        'onboarded_at',
     ];
 
     protected $hidden = [
@@ -41,6 +44,8 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_admin' => 'boolean',
             'is_banned' => 'boolean',
+            'is_shadow_user' => 'boolean',
+            'onboarded_at' => 'datetime',
         ];
     }
 

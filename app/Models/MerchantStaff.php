@@ -16,6 +16,9 @@ class MerchantStaff extends Model
         'user_id',
         'assigned_location_id',
         'role',
+        'job_title',
+        'display_name',
+        'avatar_url',
         'pin_hash',
         'is_active',
     ];

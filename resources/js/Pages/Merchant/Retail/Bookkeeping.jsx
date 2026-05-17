@@ -131,8 +131,17 @@ const emptyObligation = {
     obligation_type: 'annual_return',
     authority: '',
     due_date: new Date().toISOString().slice(0, 10),
+    recurrence_frequency: 'none',
+    recurrence_interval: 1,
+    recurrence_ends_at: '',
+    estimated_amount: '',
+    currency_code: '',
     remind_days_before: 14,
     sms_reminder_enabled: true,
+    suggest_country_template: true,
+    template_key: '',
+    sector_tags: [],
+    applies_when: '',
     reference_number: '',
     description: '',
 };
@@ -151,6 +160,7 @@ const emptyRecurringBill = {
 };
 
 const emptyPayroll = {
+    merchant_staff_id: '',
     worker_name: '',
     worker_type: 'employee',
     role: '',
@@ -175,6 +185,11 @@ const emptyShareLink = {
     include_proofs: true,
     allow_downloads: false,
 };
+
+const parseTags = (value) => value
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
 
 const typeLabels = {
     income: 'Income',
@@ -254,6 +269,8 @@ export default function Bookkeeping({ merchant }) {
     const [matchingEntryIds, setMatchingEntryIds] = useState({});
     const [accountCategoryCustom, setAccountCategoryCustom] = useState(false);
     const [isObligationOpen, setIsObligationOpen] = useState(false);
+    const [isComplianceCatalogOpen, setIsComplianceCatalogOpen] = useState(false);
+    const [complianceCatalogFilter, setComplianceCatalogFilter] = useState('all');
     const [obligationForm, setObligationForm] = useState(emptyObligation);
     const [savingObligation, setSavingObligation] = useState(false);
     const [isBillOpen, setIsBillOpen] = useState(false);
@@ -290,10 +307,17 @@ export default function Bookkeeping({ merchant }) {
 
     const categories = useMemo(() => payload?.categories?.[form.entry_type] || [], [payload, form.entry_type]);
 
-    const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency,
-    }).format(Number(value || 0));
+    const formatCurrency = (value, currencyCode = currency) => {
+        const activeCurrency = currencyCode || currency;
+        try {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: activeCurrency,
+            }).format(Number(value || 0));
+        } catch (error) {
+            return `${activeCurrency} ${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+    };
 
     const openCreate = () => {
         setEditingEntry(null);
@@ -659,6 +683,10 @@ export default function Bookkeeping({ merchant }) {
             await window.axios.post('/api/retail/bookkeeping/obligations', {
                 merchant_id: merchant.id,
                 ...obligationForm,
+                recurrence_interval: obligationForm.recurrence_frequency === 'none' ? 1 : obligationForm.recurrence_interval,
+                recurrence_ends_at: obligationForm.recurrence_frequency === 'none' ? null : (obligationForm.recurrence_ends_at || null),
+                estimated_amount: obligationForm.estimated_amount === '' ? null : obligationForm.estimated_amount,
+                currency_code: (obligationForm.currency_code || merchant.currency?.code || 'TZS').toUpperCase(),
             });
             toast.success('Business reminder saved.');
             setIsObligationOpen(false);
@@ -800,8 +828,24 @@ export default function Bookkeeping({ merchant }) {
             obligation_type: template.type || 'custom',
             authority: template.authority || '',
             remind_days_before: template.remind_days_before ?? 14,
+            recurrence_frequency: template.recurrence_frequency || 'none',
+            recurrence_interval: template.recurrence_interval || 1,
+            recurrence_ends_at: '',
+            estimated_amount: template.estimated_amount ?? '',
+            currency_code: template.currency_code || merchant.currency?.code || 'TZS',
+            suggest_country_template: false,
+            template_key: template.key || '',
+            sector_tags: template.sector_tags || [],
+            applies_when: template.applies_when || '',
             description: template.description || '',
         });
+        setIsComplianceCatalogOpen(false);
+        setIsObligationOpen(true);
+    };
+
+    const openCustomReminder = () => {
+        setObligationForm({ ...emptyObligation });
+        setIsComplianceCatalogOpen(false);
         setIsObligationOpen(true);
     };
 
@@ -855,8 +899,57 @@ export default function Bookkeeping({ merchant }) {
     const obligations = businessTools.obligations || [];
     const recurringBills = businessTools.recurring_bills || [];
     const payrollRecords = businessTools.payroll || [];
+    const staffDirectory = businessTools.staff_directory || [];
     const shareLinks = businessTools.share_links || [];
     const recommendedSetup = businessTools.recommended_setup || [];
+    const currencyOptions = (businessTools.currencies?.length ? businessTools.currencies : [{
+        code: currency,
+        name: merchant.currency?.name || 'Business currency',
+        symbol: merchant.currency?.symbol || '',
+    }]);
+    const currencyLabel = (option) => [option.code, option.symbol, option.name].filter(Boolean).join(' • ');
+    const recurrenceFrequencies = businessTools.recurrence_frequencies || [
+        { value: 'none', label: 'Does not repeat' },
+        { value: 'days', label: 'Days' },
+        { value: 'weeks', label: 'Weeks' },
+        { value: 'months', label: 'Months' },
+        { value: 'years', label: 'Years' },
+    ];
+    const complianceTypes = businessTools.compliance_types || [
+        { value: 'annual_return', label: 'Annual return / registry filing' },
+        { value: 'tax_filing', label: 'Tax filing / payment' },
+        { value: 'license_renewal', label: 'Licence / permit renewal' },
+        { value: 'payroll_tax', label: 'Payroll / statutory employment' },
+        { value: 'data_protection', label: 'Data protection / privacy' },
+        { value: 'sector_regulator', label: 'Sector regulator compliance' },
+        { value: 'local_government', label: 'Municipal / local government levy' },
+        { value: 'import_export', label: 'Import / export / customs' },
+        { value: 'audit_accounting', label: 'Audit / accounting compliance' },
+        { value: 'custom', label: 'Custom' },
+    ];
+    const complianceTypeLabel = (value) => complianceTypes.find((type) => type.value === value)?.label || value;
+    const complianceCatalogItems = recommendedSetup.filter((item) => complianceCatalogFilter === 'all' || item.type === complianceCatalogFilter);
+    const selectedPayrollStaff = staffDirectory.find((staff) => String(staff.id) === String(payrollForm.merchant_staff_id));
+    const handlePayrollStaffChange = (staffId) => {
+        const staff = staffDirectory.find((item) => String(item.id) === String(staffId));
+        if (!staff) {
+            setPayrollForm({
+                ...payrollForm,
+                merchant_staff_id: '',
+                worker_name: '',
+                role: '',
+            });
+            return;
+        }
+
+        setPayrollForm({
+            ...payrollForm,
+            merchant_staff_id: String(staff.id),
+            worker_name: staff.name || '',
+            worker_type: 'employee',
+            role: staff.job_title || staff.access_role || '',
+        });
+    };
     const accountCategoryOptions = accountForm.item_type === 'receivable'
         ? (payload?.categories?.income || [])
         : (payload?.categories?.expense || []);
@@ -970,18 +1063,25 @@ export default function Bookkeeping({ merchant }) {
                         <ReadinessStat label="Payroll Pending" value={toolSummary.pending_payroll || 0} />
                         <ReadinessStat label="Share Links" value={toolSummary.active_share_links || 0} />
                     </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                        <ReadinessStat label="Compliance Estimate" value={formatCurrency(toolSummary.estimated_obligations_due_soon)} />
+                        <ReadinessStat label="Bill Estimate" value={formatCurrency(toolSummary.estimated_bills_due_soon)} />
+                        <ReadinessStat label="Payroll Estimate" value={formatCurrency(toolSummary.estimated_pending_payroll)} />
+                    </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
                         <BusinessList
-                            title="Recommended setup"
-                            empty="No setup templates for this country."
-                            items={recommendedSetup}
+                            title="Business compliance setup"
+                            empty="No compliance items added yet."
+                            items={obligations}
+                            actionLabel="Add"
+                            onAction={() => setIsComplianceCatalogOpen(true)}
                             render={(item) => (
                                 <BusinessRow
-                                    key={item.key}
+                                    key={item.id}
                                     title={item.title}
-                                    meta={`${item.authority || 'Authority'} • ${item.suggested_frequency || 'set date'}`}
-                                    actionLabel="Set"
-                                    onAction={() => openRecommendedReminder(item)}
+                                    meta={`${item.authority || complianceTypeLabel(item.obligation_type)} • due ${item.due_date?.slice(0, 10)}${item.estimated_amount ? ` • ${formatCurrency(item.estimated_amount, item.currency_code)}` : ''}`}
+                                    actionLabel="Done"
+                                    onAction={() => handleObligationComplete(item)}
                                 />
                             )}
                         />
@@ -993,7 +1093,7 @@ export default function Bookkeeping({ merchant }) {
                                 <BusinessRow
                                     key={item.id}
                                     title={item.title}
-                                    meta={`${item.authority || item.obligation_type} • due ${item.due_date?.slice(0, 10)}`}
+                                    meta={`${item.authority || item.obligation_type} • due ${item.due_date?.slice(0, 10)}${item.estimated_amount ? ` • ${formatCurrency(item.estimated_amount, item.currency_code)}` : ''}`}
                                     actionLabel="Done"
                                     onAction={() => handleObligationComplete(item)}
                                 />
@@ -1021,7 +1121,7 @@ export default function Bookkeeping({ merchant }) {
                                 <BusinessRow
                                     key={item.id}
                                     title={item.worker_name}
-                                    meta={`${formatCurrency(item.net_amount)} • ${item.pay_period} • ${item.status}`}
+                                    meta={`${formatCurrency(item.net_amount)} • ${item.role || item.worker_type} • ${item.pay_period} • ${item.status}`}
                                     actionLabel={item.status === 'paid' ? 'Paid' : (payingPayrollId === item.id ? 'Posting...' : 'Pay')}
                                     onAction={() => item.status !== 'paid' && handlePayrollPay(item)}
                                     disabled={item.status === 'paid'}
@@ -1521,11 +1621,9 @@ export default function Bookkeeping({ merchant }) {
                             </Field>
                             <Field label="Type">
                                 <select value={obligationForm.obligation_type} onChange={(e) => setObligationForm({ ...obligationForm, obligation_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
-                                    <option value="annual_return">Annual Return</option>
-                                    <option value="tax_filing">Tax Filing</option>
-                                    <option value="license_renewal">License Renewal</option>
-                                    <option value="payroll_tax">Payroll Tax</option>
-                                    <option value="custom">Custom</option>
+                                    {complianceTypes.map((type) => (
+                                        <option key={type.value} value={type.value}>{type.label}</option>
+                                    ))}
                                 </select>
                             </Field>
                             <Field label="Authority">
@@ -1534,23 +1632,150 @@ export default function Bookkeeping({ merchant }) {
                             <Field label="Due Date">
                                 <Input type="date" value={obligationForm.due_date} onChange={(e) => setObligationForm({ ...obligationForm, due_date: e.target.value })} required />
                             </Field>
+                            <Field label="Repeats">
+                                <div className="grid grid-cols-[88px_1fr] gap-2">
+                                    <Input
+                                        type="number"
+                                        min="1"
+                                        max="120"
+                                        value={obligationForm.recurrence_interval}
+                                        onChange={(e) => setObligationForm({ ...obligationForm, recurrence_interval: e.target.value })}
+                                        disabled={obligationForm.recurrence_frequency === 'none'}
+                                    />
+                                    <select value={obligationForm.recurrence_frequency} onChange={(e) => setObligationForm({ ...obligationForm, recurrence_frequency: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
+                                        {recurrenceFrequencies.map((frequency) => (
+                                            <option key={frequency.value} value={frequency.value}>{frequency.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </Field>
+                            <Field label="Repeat Until">
+                                <Input type="date" value={obligationForm.recurrence_ends_at || ''} onChange={(e) => setObligationForm({ ...obligationForm, recurrence_ends_at: e.target.value })} disabled={obligationForm.recurrence_frequency === 'none'} />
+                            </Field>
+                            <Field label="Estimated Amount">
+                                <div className="grid grid-cols-[1fr_96px] gap-2">
+                                    <Input type="number" min="0" step="0.01" value={obligationForm.estimated_amount} onChange={(e) => setObligationForm({ ...obligationForm, estimated_amount: e.target.value, currency_code: obligationForm.currency_code || currency })} placeholder="0.00" />
+                                    <select
+                                        value={obligationForm.currency_code || currency}
+                                        onChange={(e) => setObligationForm({ ...obligationForm, currency_code: e.target.value })}
+                                        aria-label="Currency"
+                                        className="h-10 rounded-xl border border-slate-200 bg-white px-2 text-sm font-black uppercase text-center"
+                                    >
+                                        {currencyOptions.map((option) => (
+                                            <option key={option.code} value={option.code}>
+                                                {currencyLabel(option)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </Field>
                             <Field label="Remind Days Before">
                                 <Input type="number" min="0" max="365" value={obligationForm.remind_days_before} onChange={(e) => setObligationForm({ ...obligationForm, remind_days_before: e.target.value })} />
                             </Field>
                             <Field label="Reference">
                                 <Input value={obligationForm.reference_number} onChange={(e) => setObligationForm({ ...obligationForm, reference_number: e.target.value })} placeholder="Filing ref or account number" />
                             </Field>
+                            {!obligationForm.template_key && (
+                                <>
+                                    <Field label="Sector Tags">
+                                        <Input value={(obligationForm.sector_tags || []).join(', ')} onChange={(e) => setObligationForm({ ...obligationForm, sector_tags: parseTags(e.target.value) })} placeholder="pharmacy, employer, importer..." />
+                                    </Field>
+                                    <Field label="Applies When">
+                                        <Input value={obligationForm.applies_when || ''} onChange={(e) => setObligationForm({ ...obligationForm, applies_when: e.target.value })} placeholder="VAT registered, has employees..." />
+                                    </Field>
+                                </>
+                            )}
                             <div className="md:col-span-2">
                                 <Field label="Description">
                                     <Textarea value={obligationForm.description} onChange={(e) => setObligationForm({ ...obligationForm, description: e.target.value })} />
                                 </Field>
                             </div>
+                            {!obligationForm.template_key && (
+                                <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(obligationForm.suggest_country_template)}
+                                        onChange={(e) => setObligationForm({ ...obligationForm, suggest_country_template: e.target.checked })}
+                                        className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                                    />
+                                    <span>
+                                        Suggest this as a country compliance template so admins can review and make it available to other businesses.
+                                    </span>
+                                </label>
+                            )}
                         </div>
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setIsObligationOpen(false)}>Cancel</Button>
                             <Button type="submit" className="bg-brand-600 hover:bg-brand-700 text-white" disabled={savingObligation}>{savingObligation ? 'Saving...' : 'Save Reminder'}</Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isComplianceCatalogOpen} onOpenChange={setIsComplianceCatalogOpen}>
+                <DialogContent className="sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Add compliance item</DialogTitle>
+                        <DialogDescription>Choose only the filings, licences, certificates, or payments that apply to this business.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex gap-2 overflow-x-auto pt-4">
+                        <button
+                            type="button"
+                            onClick={() => setComplianceCatalogFilter('all')}
+                            className={`h-9 shrink-0 rounded-xl border px-3 text-xs font-black ${complianceCatalogFilter === 'all' ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                        >
+                            All
+                        </button>
+                        {complianceTypes.map((type) => (
+                            <button
+                                key={type.value}
+                                type="button"
+                                onClick={() => setComplianceCatalogFilter(type.value)}
+                                className={`h-9 shrink-0 rounded-xl border px-3 text-xs font-black ${complianceCatalogFilter === type.value ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                            >
+                                {type.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
+                        {complianceCatalogItems.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
+                                <p className="text-sm font-bold text-slate-700">No matching country defaults configured yet.</p>
+                            </div>
+                        ) : complianceCatalogItems.map((item) => (
+                            <div key={item.key} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-black text-slate-950">{item.title}</p>
+                                    <p className="text-xs font-bold text-slate-500 mt-1">{item.authority || 'Authority'} • {complianceTypeLabel(item.type)} • {item.suggested_frequency || 'set date'}</p>
+                                    {item.recurrence_frequency && item.recurrence_frequency !== 'none' && (
+                                        <p className="text-xs font-semibold text-emerald-700 mt-1">
+                                            Repeats every {item.recurrence_interval || 1} {item.recurrence_frequency}
+                                        </p>
+                                    )}
+                                    {item.estimated_amount && <p className="text-xs font-semibold text-sky-700 mt-1">Estimated: {formatCurrency(item.estimated_amount, item.currency_code)}</p>}
+                                    {item.applies_when && <p className="text-xs font-semibold text-amber-700 mt-1">Applies when: {item.applies_when}</p>}
+                                    {(item.sector_tags || []).length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1">
+                                            {item.sector_tags.map((tag) => (
+                                                <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">{tag}</span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {item.description && <p className="text-xs font-semibold text-slate-400 mt-1 line-clamp-2">{item.description}</p>}
+                                </div>
+                                <Button type="button" variant="outline" size="sm" className="rounded-xl shrink-0" onClick={() => openRecommendedReminder(item)}>
+                                    Add
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsComplianceCatalogOpen(false)}>Cancel</Button>
+                        <Button type="button" className="bg-brand-600 hover:bg-brand-700 text-white" onClick={openCustomReminder}>
+                            <Plus className="h-4 w-4 mr-1" />
+                            Custom
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -1606,8 +1831,18 @@ export default function Bookkeeping({ merchant }) {
                             <DialogDescription>Record simple staff or contractor payments and attach payslips, worksheets, or payment proof when available.</DialogDescription>
                         </DialogHeader>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-5">
+                            <Field label="Team Member">
+                                <select value={payrollForm.merchant_staff_id} onChange={(e) => handlePayrollStaffChange(e.target.value)} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
+                                    <option value="">Custom worker</option>
+                                    {staffDirectory.map((staff) => (
+                                        <option key={staff.id} value={staff.id}>
+                                            {staff.name} {staff.job_title ? `- ${staff.job_title}` : `- ${staff.access_role}`}
+                                        </option>
+                                    ))}
+                                </select>
+                            </Field>
                             <Field label="Worker Name">
-                                <Input value={payrollForm.worker_name} onChange={(e) => setPayrollForm({ ...payrollForm, worker_name: e.target.value })} required />
+                                <Input value={payrollForm.worker_name} onChange={(e) => setPayrollForm({ ...payrollForm, worker_name: e.target.value, merchant_staff_id: '' })} required disabled={Boolean(selectedPayrollStaff)} />
                             </Field>
                             <Field label="Worker Type">
                                 <select value={payrollForm.worker_type} onChange={(e) => setPayrollForm({ ...payrollForm, worker_type: e.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white w-full">
@@ -1615,6 +1850,9 @@ export default function Bookkeeping({ merchant }) {
                                     <option value="contractor">Contractor</option>
                                     <option value="casual">Casual</option>
                                 </select>
+                            </Field>
+                            <Field label="Job Title">
+                                <Input value={payrollForm.role} onChange={(e) => setPayrollForm({ ...payrollForm, role: e.target.value })} placeholder="Pharmacist, driver, cleaner..." />
                             </Field>
                             <Field label="Gross Amount">
                                 <Input type="number" min="0.01" step="0.01" value={payrollForm.gross_amount} onChange={(e) => setPayrollForm({ ...payrollForm, gross_amount: e.target.value })} required />
@@ -2093,10 +2331,18 @@ function ReadinessStat({ label, value }) {
     );
 }
 
-function BusinessList({ title, empty, items, render }) {
+function BusinessList({ title, empty, items, render, actionLabel = null, onAction = null }) {
     return (
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{title}</p>
+            <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{title}</p>
+                {actionLabel && (
+                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl px-2 text-[10px]" onClick={onAction}>
+                        <Plus className="mr-1 h-3 w-3" />
+                        {actionLabel}
+                    </Button>
+                )}
+            </div>
             <div className="divide-y divide-slate-200/70 mt-2">
                 {items.length === 0 ? (
                     <p className="py-5 text-center text-xs font-semibold text-slate-500">{empty}</p>

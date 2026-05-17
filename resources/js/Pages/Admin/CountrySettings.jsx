@@ -19,22 +19,57 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-export default function CountrySettings({ country }) {
+const complianceTypeOptions = [
+    ['annual_return', 'Annual return / registry filing'],
+    ['tax_filing', 'Tax filing / payment'],
+    ['license_renewal', 'Licence / permit renewal'],
+    ['payroll_tax', 'Payroll / statutory employment'],
+    ['data_protection', 'Data protection / privacy'],
+    ['sector_regulator', 'Sector regulator compliance'],
+    ['local_government', 'Municipal / local government levy'],
+    ['import_export', 'Import / export / customs'],
+    ['audit_accounting', 'Audit / accounting compliance'],
+    ['custom', 'Custom'],
+];
+
+const recurrenceOptions = [
+    ['none', 'Does not repeat'],
+    ['days', 'Days'],
+    ['weeks', 'Weeks'],
+    ['months', 'Months'],
+    ['years', 'Years'],
+];
+
+const parseTags = (value) => value
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+const currencyLabel = (currency) => [currency.code, currency.symbol, currency.name].filter(Boolean).join(' • ');
+
+export default function CountrySettings({ country, currencies = [], complianceSuggestions = [] }) {
     const [activeTab, setActiveTab] = useState('general');
+    const currencyOptions = currencies.length ? currencies : [{
+        code: country.currency?.code || 'TZS',
+        name: country.currency?.name || 'Country currency',
+        symbol: country.currency?.symbol || '',
+    }];
+    const baseSettings = {
+        kyc: {
+            personal: [],
+            sole_proprietor: [],
+            business: [],
+            ngo: []
+        },
+        gateways: [],
+        tax_calendar_defaults: []
+    };
     
     const { data, setData, patch, processing, errors } = useForm({
         tax_label: country.tax_label || 'VAT',
         default_tax_rate: country.default_tax_rate || 0,
         is_active: country.is_active,
-        settings: country.settings || {
-            kyc: {
-                personal: [],
-                sole_proprietor: [],
-                business: [],
-                ngo: []
-            },
-            gateways: []
-        }
+        settings: { ...baseSettings, ...(country.settings || {}) }
     });
 
     const handleSubmit = (e) => {
@@ -83,6 +118,12 @@ export default function CountrySettings({ country }) {
                     authority: '',
                     remind_days_before: 30,
                     suggested_frequency: '',
+                    recurrence_frequency: 'none',
+                    recurrence_interval: 1,
+                    estimated_amount: '',
+                    currency_code: country.currency?.code || 'TZS',
+                    sector_tags: [],
+                    applies_when: '',
                     description: '',
                 }
             ]
@@ -96,6 +137,31 @@ export default function CountrySettings({ country }) {
 
     const removeTaxDefault = (index) => {
         setData('settings', { ...data.settings, tax_calendar_defaults: taxDefaults.filter((_, itemIndex) => itemIndex !== index) });
+    };
+
+    const promoteSuggestion = (suggestion) => {
+        setData('settings', {
+            ...data.settings,
+            tax_calendar_defaults: [
+                ...taxDefaults,
+                {
+                    key: `${(suggestion.authority || suggestion.title || 'compliance').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}_${Date.now()}`,
+                    title: suggestion.title || '',
+                    type: suggestion.type || 'custom',
+                    authority: suggestion.authority || '',
+                    remind_days_before: suggestion.remind_days_before ?? 30,
+                    suggested_frequency: suggestion.suggested_frequency || '',
+                    recurrence_frequency: suggestion.recurrence_frequency || 'none',
+                    recurrence_interval: suggestion.recurrence_interval || 1,
+                    estimated_amount: suggestion.estimated_amount ?? '',
+                    currency_code: suggestion.currency_code || country.currency?.code || 'TZS',
+                    sector_tags: suggestion.sector_tags || [],
+                    applies_when: suggestion.applies_when || '',
+                    description: suggestion.description || '',
+                }
+            ]
+        });
+        toast.success('Suggestion added to defaults. Save settings to publish it.');
     };
 
     return (
@@ -144,7 +210,7 @@ export default function CountrySettings({ country }) {
                         active={activeTab === 'tax_calendar'}
                         onClick={() => setActiveTab('tax_calendar')}
                         icon={Globe}
-                        label="Tax Calendar"
+                        label="Compliance"
                     />
                     <TabButton 
                         active={activeTab === 'payouts'} 
@@ -312,8 +378,8 @@ export default function CountrySettings({ country }) {
                     <Card className="rounded-3xl border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
                             <div>
-                                <h3 className="font-bold text-slate-900">Default Business Setup Reminders</h3>
-                                <p className="text-xs text-slate-500 mt-1">These appear in Retail Ops as country-specific setup suggestions for new businesses.</p>
+                                <h3 className="font-bold text-slate-900">Regulatory Compliance & Certification Defaults</h3>
+                                <p className="text-xs text-slate-500 mt-1">These appear in bookkeeping as country-specific setup suggestions businesses can choose from.</p>
                             </div>
                             <Button variant="outline" size="sm" onClick={addTaxDefault} className="h-9 px-4 rounded-xl border-slate-200 text-slate-600 gap-2 hover:bg-white">
                                 <Plus className="h-4 w-4" /> Add Default
@@ -331,14 +397,35 @@ export default function CountrySettings({ country }) {
                                         <Input value={item.title || ''} onChange={(e) => updateTaxDefault(index, { title: e.target.value })} placeholder="Title e.g. Annual return estimate" className="h-11 rounded-xl border-slate-200" />
                                         <Input value={item.authority || ''} onChange={(e) => updateTaxDefault(index, { authority: e.target.value })} placeholder="Authority e.g. TRA, PDPC, TCRA" className="h-11 rounded-xl border-slate-200" />
                                         <select value={item.type || 'custom'} onChange={(e) => updateTaxDefault(index, { type: e.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white">
-                                            <option value="annual_return">Annual Return</option>
-                                            <option value="tax_filing">Tax Filing</option>
-                                            <option value="license_renewal">License Renewal</option>
-                                            <option value="payroll_tax">Payroll Tax</option>
-                                            <option value="custom">Custom</option>
+                                            {complianceTypeOptions.map(([value, label]) => (
+                                                <option key={value} value={value}>{label}</option>
+                                            ))}
                                         </select>
                                         <Input type="number" min="0" max="365" value={item.remind_days_before ?? 30} onChange={(e) => updateTaxDefault(index, { remind_days_before: e.target.value })} placeholder="Remind days before" className="h-11 rounded-xl border-slate-200" />
                                         <Input value={item.suggested_frequency || ''} onChange={(e) => updateTaxDefault(index, { suggested_frequency: e.target.value })} placeholder="Suggested frequency" className="h-11 rounded-xl border-slate-200" />
+                                        <select value={item.recurrence_frequency || 'none'} onChange={(e) => updateTaxDefault(index, { recurrence_frequency: e.target.value })} className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-bold bg-white">
+                                            {recurrenceOptions.map(([value, label]) => (
+                                                <option key={value} value={value}>{label}</option>
+                                            ))}
+                                        </select>
+                                        <Input type="number" min="1" max="120" value={item.recurrence_interval ?? 1} onChange={(e) => updateTaxDefault(index, { recurrence_interval: e.target.value })} placeholder="Repeat interval" className="h-11 rounded-xl border-slate-200" disabled={(item.recurrence_frequency || 'none') === 'none'} />
+                                        <div className="grid grid-cols-[1fr_96px] gap-2">
+                                            <Input type="number" min="0" step="0.01" value={item.estimated_amount ?? ''} onChange={(e) => updateTaxDefault(index, { estimated_amount: e.target.value, currency_code: item.currency_code || country.currency?.code || 'TZS' })} placeholder="Estimated amount" className="h-11 rounded-xl border-slate-200" />
+                                            <select
+                                                value={item.currency_code || country.currency?.code || 'TZS'}
+                                                onChange={(e) => updateTaxDefault(index, { currency_code: e.target.value })}
+                                                className="h-11 rounded-xl border border-slate-200 bg-white px-2 text-center text-sm font-black uppercase"
+                                                aria-label="Currency"
+                                            >
+                                                {currencyOptions.map((currency) => (
+                                                    <option key={currency.code} value={currency.code}>
+                                                        {currencyLabel(currency)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <Input value={(item.sector_tags || []).join(', ')} onChange={(e) => updateTaxDefault(index, { sector_tags: parseTags(e.target.value) })} placeholder="Sector tags e.g. pharmacy, employer, importer" className="h-11 rounded-xl border-slate-200" />
+                                        <Input value={item.applies_when || ''} onChange={(e) => updateTaxDefault(index, { applies_when: e.target.value })} placeholder="Applies when e.g. VAT registered, has employees" className="h-11 rounded-xl border-slate-200" />
                                         <Input value={item.description || ''} onChange={(e) => updateTaxDefault(index, { description: e.target.value })} placeholder="Short guidance" className="h-11 rounded-xl border-slate-200" />
                                     </div>
                                     <div className="flex justify-end mt-3">
@@ -346,6 +433,33 @@ export default function CountrySettings({ country }) {
                                             <Trash2 className="h-4 w-4 mr-1" /> Remove
                                         </Button>
                                     </div>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {activeTab === 'tax_calendar' && complianceSuggestions.length > 0 && (
+                    <Card className="rounded-3xl border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100">
+                            <h3 className="font-bold text-slate-900">Merchant Custom Suggestions</h3>
+                            <p className="text-xs text-slate-500 mt-1">Custom reminders submitted by businesses in this country. Promote useful ones into the country defaults above.</p>
+                        </div>
+                        <CardContent className="p-6 space-y-3">
+                            {complianceSuggestions.map((suggestion, index) => (
+                                <div key={`${suggestion.title}-${index}`} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-black text-slate-900">{suggestion.title}</p>
+                                        <p className="text-xs font-semibold text-slate-500 mt-1">
+                                            {suggestion.authority || 'Authority'} • {suggestion.type || 'custom'} • {suggestion.count} suggestion{suggestion.count === 1 ? '' : 's'}
+                                        </p>
+                                        <p className="text-[10px] font-semibold text-slate-400 mt-1">
+                                            Latest: {suggestion.latest_business || 'Business'} on {suggestion.latest_added_at || 'recently'}
+                                        </p>
+                                    </div>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => promoteSuggestion(suggestion)} className="rounded-xl shrink-0">
+                                        <Plus className="h-4 w-4 mr-1" /> Promote
+                                    </Button>
                                 </div>
                             ))}
                         </CardContent>

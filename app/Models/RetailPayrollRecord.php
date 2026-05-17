@@ -10,6 +10,7 @@ class RetailPayrollRecord extends Model
     protected $fillable = [
         'merchant_id',
         'user_id',
+        'merchant_staff_id',
         'worker_name',
         'worker_type',
         'role',
@@ -49,6 +50,11 @@ class RetailPayrollRecord extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function staff(): BelongsTo
+    {
+        return $this->belongsTo(MerchantStaff::class, 'merchant_staff_id');
     }
 
     public function bookkeepingEntry(): BelongsTo

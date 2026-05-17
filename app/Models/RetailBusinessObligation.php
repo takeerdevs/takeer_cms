@@ -14,6 +14,11 @@ class RetailBusinessObligation extends Model
         'obligation_type',
         'authority',
         'due_date',
+        'recurrence_frequency',
+        'recurrence_interval',
+        'recurrence_ends_at',
+        'estimated_amount',
+        'currency_code',
         'remind_days_before',
         'sms_reminder_enabled',
         'status',
@@ -25,6 +30,8 @@ class RetailBusinessObligation extends Model
 
     protected $casts = [
         'due_date' => 'date',
+        'recurrence_ends_at' => 'date',
+        'estimated_amount' => 'decimal:2',
         'completed_at' => 'datetime',
         'sms_reminder_enabled' => 'boolean',
         'metadata' => 'array',

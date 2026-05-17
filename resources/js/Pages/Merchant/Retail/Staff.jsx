@@ -15,7 +15,8 @@ import {
     User,
     ArrowRightLeft,
     LinkIcon,
-    ShieldAlert
+    ShieldAlert,
+    Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
@@ -34,9 +35,13 @@ export default function Staff({ merchant }) {
         name: '',
         phone_number: '',
         role: 'CASHIER',
+        job_title: '',
+        display_name: '',
+        avatar_url: '',
         pin: '',
         assigned_location_id: ''
     });
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
     const fetchStaff = async () => {
         try {
@@ -81,7 +86,7 @@ export default function Staff({ merchant }) {
             }
             setIsAdding(false);
             setEditingStaff(null);
-            setForm({ name: '', phone_number: '', role: 'CASHIER', pin: '', assigned_location_id: '' });
+            setForm({ name: '', phone_number: '', role: 'CASHIER', job_title: '', display_name: '', avatar_url: '', pin: '', assigned_location_id: '' });
             fetchStaff();
         } catch (err) {
             alert('Imeshindwa kuhifadhi: ' + (err.response?.data?.message || err.message));
@@ -95,6 +100,9 @@ export default function Staff({ merchant }) {
             name: s.user?.name || '',
             phone_number: s.user?.phone_number || '',
             role: s.role,
+            job_title: s.job_title || '',
+            display_name: s.display_name || '',
+            avatar_url: s.avatar_url || '',
             pin: '', // Keep empty unless changing
             assigned_location_id: s.assigned_location_id || ''
         });
@@ -119,6 +127,31 @@ export default function Staff({ merchant }) {
             toast.success('All trusted devices cleared!');
         } catch (err) {
             toast.error('Failed to clear devices');
+        }
+    };
+
+    const handleAvatarUpload = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setUploadingAvatar(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', 'public');
+        formData.append('folder', 'avatars');
+
+        try {
+            const uploadUrl = merchant.username ? `/merchant/${merchant.username}/upload/media` : '/merchant/upload/media';
+            const res = await window.axios.post(uploadUrl, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setForm((current) => ({ ...current, avatar_url: res.data.url }));
+            toast.success('Staff photo uploaded.');
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Failed to upload staff photo.');
+        } finally {
+            setUploadingAvatar(false);
+            event.target.value = '';
         }
     };
 
@@ -179,7 +212,7 @@ export default function Staff({ merchant }) {
                                     onClick={() => {
                                         setIsAdding(!isAdding);
                                         if (editingStaff) setEditingStaff(null);
-                                        if (!isAdding) setForm({ name: '', phone_number: '', role: 'CASHIER', pin: '', assigned_location_id: '' });
+                                        if (!isAdding) setForm({ name: '', phone_number: '', role: 'CASHIER', job_title: '', display_name: '', avatar_url: '', pin: '', assigned_location_id: '' });
                                     }}
                                     className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg"
                                 >
@@ -198,6 +231,24 @@ export default function Staff({ merchant }) {
                                 </CardHeader>
                                 <CardContent className="p-6">
                                     <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        <div className="md:col-span-2 lg:col-span-3 flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                            <div className="h-16 w-16 overflow-hidden rounded-2xl bg-white border border-brand-100 flex items-center justify-center text-brand-600">
+                                                {form.avatar_url ? (
+                                                    <img src={form.avatar_url} alt="" className="h-full w-full object-cover" />
+                                                ) : (
+                                                    <User className="h-7 w-7" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-black text-slate-900">Work profile photo</p>
+                                                <p className="text-xs font-semibold text-muted-foreground">Only used inside this business, separate from the person’s platform account.</p>
+                                            </div>
+                                            <label className="h-10 shrink-0 rounded-xl border border-slate-200 bg-white px-3 flex items-center gap-2 text-xs font-black text-slate-700 cursor-pointer hover:bg-slate-50">
+                                                <Upload className="h-4 w-4" />
+                                                {uploadingAvatar ? 'Uploading...' : 'Upload'}
+                                                <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={uploadingAvatar} />
+                                            </label>
+                                        </div>
                                         <div className="space-y-1">
                                             <label className="text-xs font-bold text-muted-foreground uppercase">Full Name</label>
                                             <Input
@@ -219,7 +270,16 @@ export default function Staff({ merchant }) {
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase">Role</label>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">Work Display Name</label>
+                                            <Input
+                                                placeholder="Optional, e.g. Dr. Amina"
+                                                className="rounded-xl"
+                                                value={form.display_name}
+                                                onChange={e => setForm({ ...form, display_name: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">Access Level</label>
                                             <select
                                                 className="flex h-10 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm"
                                                 value={form.role}
@@ -229,6 +289,15 @@ export default function Staff({ merchant }) {
                                                 <option value="STOREKEEPER">Storekeeper (Transfers)</option>
                                                 <option value="MANAGER">Manager (Full Access + Voids)</option>
                                             </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase">Job Title</label>
+                                            <Input
+                                                placeholder="Pharmacist, Driver, Cleaner..."
+                                                className="rounded-xl"
+                                                value={form.job_title}
+                                                onChange={e => setForm({ ...form, job_title: e.target.value })}
+                                            />
                                         </div>
                                         <div className="space-y-1">
                                             <label className="text-xs font-bold text-muted-foreground uppercase">Primary Location</label>
@@ -272,8 +341,12 @@ export default function Staff({ merchant }) {
                                 <Card key={s.id} className={`glass-card border shadow-sm transition-all ${!s.is_active ? 'opacity-60 bg-gray-50' : 'bg-white hover:shadow-md'}`}>
                                     <CardContent className="p-6">
                                         <div className="flex items-start justify-between mb-4">
-                                            <div className="h-12 w-12 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600 border border-brand-100">
-                                                <User className="h-6 w-6" />
+                                            <div className="h-12 w-12 rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600 border border-brand-100 overflow-hidden">
+                                                {s.avatar_url ? (
+                                                    <img src={s.avatar_url} alt="" className="h-full w-full object-cover" />
+                                                ) : (
+                                                    <User className="h-6 w-6" />
+                                                )}
                                             </div>
                                             <div className="flex flex-col items-end gap-2">
                                                 <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
@@ -292,10 +365,16 @@ export default function Staff({ merchant }) {
 
                                         <div className="space-y-4">
                                             <div>
-                                                <h3 className="font-black text-lg">{s.user?.name}</h3>
+                                                <h3 className="font-black text-lg">{s.display_name || s.user?.name}</h3>
+                                                {s.display_name && (
+                                                    <p className="text-xs font-semibold text-slate-400">{s.user?.name}</p>
+                                                )}
                                                 <p className="text-xs font-bold text-brand-600 flex items-center gap-1">
                                                     <ShieldCheck className="h-3 w-3" /> {s.role}
                                                 </p>
+                                                {s.job_title && (
+                                                    <p className="mt-1 text-xs font-semibold text-slate-500">{s.job_title}</p>
+                                                )}
                                             </div>
 
                                             <div className="space-y-2">
