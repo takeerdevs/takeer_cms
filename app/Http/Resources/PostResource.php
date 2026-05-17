@@ -23,7 +23,7 @@ class PostResource extends JsonResource
         }
         $resolvedProduct?->loadMissing(['unitType', 'packageContentUnitType', 'returnPolicy', 'faqs']);
 
-        $this->loadMissing(['media.productImage', 'linkPreview']);
+        $this->loadMissing(['media.productImage', 'linkPreview', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id']);
         $mediaItems = $this->media ?? collect();
         $linkedContentItem = $this->relationLoaded('linkedContentItem') ? $this->linkedContentItem : null;
         $fallbackMedia = $mediaItems->first();
@@ -141,6 +141,7 @@ class PostResource extends JsonResource
             'public_id' => $this->public_id,
             'permalink' => url('/p/' . ($this->public_id ?: $this->id)),
             'merchant_id' => $this->merchant_id,
+            'created_by' => $this->creatorPayload(),
             'content_item_id' => $linkedContentItem?->id,
             'caption' => $displayCaption,
             'title' => $displayTitle,
@@ -484,6 +485,29 @@ class PostResource extends JsonResource
             ),
             'hotspots' => (!$hasAccess && $isRestricted) ? [] : $rawHotspots,
             'resolved_hotspots' => $resolvedHotspots,
+        ];
+    }
+
+    private function creatorPayload(): ?array
+    {
+        $staff = $this->relationLoaded('createdByStaff') ? $this->createdByStaff : null;
+        $user = $this->relationLoaded('createdByUser') ? $this->createdByUser : null;
+
+        if (! $staff && ! $user) {
+            return null;
+        }
+
+        $displayName = $staff?->display_name
+            ?: $staff?->job_title
+            ?: $user?->name;
+
+        return [
+            'user_id' => $user?->id,
+            'staff_id' => $staff?->id,
+            'name' => $displayName,
+            'user_name' => $user?->name,
+            'job_title' => $staff?->job_title,
+            'label' => $displayName ? "via {$displayName}" : null,
         ];
     }
 

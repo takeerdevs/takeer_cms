@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ServiceCategory;
+use App\Support\ServiceTemplateRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -27,7 +28,9 @@ class ServiceCategoryController extends Controller
             ->orderBy('name')
             ->get();
 
-        return response()->json(['data' => $categories]);
+        return response()->json([
+            'data' => $categories->map(fn (ServiceCategory $category) => $this->serialize($category))->values(),
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -38,6 +41,8 @@ class ServiceCategoryController extends Controller
             'is_active' => 'nullable|boolean',
             'sort_order' => 'nullable|integer|min:0',
             'option_template' => 'nullable|array',
+            'service_template_key' => 'nullable|string|max:80',
+            'template_config' => 'nullable|array',
             'risk_level' => 'nullable|string|in:standard,elevated,regulated,restricted',
             'required_documents' => 'nullable|array',
             'required_documents.*' => 'string|in:identity,tin,business_license,registration,professional_license',
@@ -53,6 +58,8 @@ class ServiceCategoryController extends Controller
             'is_active' => (bool) ($validated['is_active'] ?? true),
             'sort_order' => (int) ($validated['sort_order'] ?? 0),
             'option_template' => $validated['option_template'] ?? null,
+            'service_template_key' => $validated['service_template_key'] ?? null,
+            'template_config' => $validated['template_config'] ?? null,
             'risk_level' => $validated['risk_level'] ?? 'standard',
             'required_documents' => $validated['required_documents'] ?? [],
             'requires_manual_review' => (bool) ($validated['requires_manual_review'] ?? false),
@@ -62,7 +69,7 @@ class ServiceCategoryController extends Controller
 
         return response()->json([
             'message' => 'Service category created.',
-            'category' => $category,
+            'category' => $this->serialize($category->fresh('children')),
         ], 201);
     }
 
@@ -74,6 +81,8 @@ class ServiceCategoryController extends Controller
             'is_active' => 'nullable|boolean',
             'sort_order' => 'nullable|integer|min:0',
             'option_template' => 'nullable|array',
+            'service_template_key' => 'nullable|string|max:80',
+            'template_config' => 'nullable|array',
             'risk_level' => 'nullable|string|in:standard,elevated,regulated,restricted',
             'required_documents' => 'nullable|array',
             'required_documents.*' => 'string|in:identity,tin,business_license,registration,professional_license',
@@ -95,7 +104,7 @@ class ServiceCategoryController extends Controller
 
         return response()->json([
             'message' => 'Service category updated.',
-            'category' => $serviceCategory->fresh('children'),
+            'category' => $this->serialize($serviceCategory->fresh('children')),
         ]);
     }
 
@@ -123,5 +132,31 @@ class ServiceCategoryController extends Controller
         }
 
         return $slug;
+    }
+
+    private function serialize(ServiceCategory $category): array
+    {
+        $category->loadMissing('parent');
+
+        return [
+            'id' => $category->id,
+            'parent_id' => $category->parent_id,
+            'name' => $category->name,
+            'slug' => $category->slug,
+            'is_active' => (bool) $category->is_active,
+            'sort_order' => (int) $category->sort_order,
+            'option_template' => $category->option_template,
+            'service_template_key' => $category->service_template_key,
+            'template_config' => $category->template_config,
+            'risk_level' => $category->risk_level,
+            'required_documents' => $category->required_documents ?? [],
+            'requires_manual_review' => (bool) $category->requires_manual_review,
+            'payout_hold_days' => (int) $category->payout_hold_days,
+            'max_first_quote_amount' => $category->max_first_quote_amount !== null ? (float) $category->max_first_quote_amount : null,
+            'service_template' => ServiceTemplateRegistry::forCategory($category),
+            'children' => $category->relationLoaded('children')
+                ? $category->children->map(fn (ServiceCategory $child) => $this->serialize($child))->values()
+                : [],
+        ];
     }
 }

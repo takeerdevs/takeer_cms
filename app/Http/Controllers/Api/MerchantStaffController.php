@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\MerchantStaff;
 use App\Models\User;
+use App\Services\MerchantAuditService;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
@@ -12,6 +14,10 @@ use Illuminate\Validation\Rule;
 
 class MerchantStaffController extends Controller
 {
+    public function __construct(private MerchantAuditService $audit)
+    {
+    }
+
     /**
      * List all staff for the active merchant.
      */
@@ -20,15 +26,7 @@ class MerchantStaffController extends Controller
         $merchant = $request->attributes->get('active_merchant');
         $user = $request->user();
 
-        // Security: Only Owners or Managers can manage staff
-        $isOwner = $merchant->user_id === $user->id;
-        $isManager = \App\Models\MerchantStaff::where('merchant_id', $merchant->id)
-            ->where('user_id', $user->id)
-            ->where('role', 'MANAGER')
-            ->where('is_active', true)
-            ->exists();
-
-        if (!$isOwner && !$isManager) {
+        if (!MerchantPermissions::can($user, $merchant, 'team.view')) {
             return response()->json(['message' => 'Huna ruhusa ya kusimamia mhudumu.'], 403);
         }
         
@@ -36,7 +34,14 @@ class MerchantStaffController extends Controller
             ->with(['user', 'location'])
             ->get();
 
-        return response()->json(['data' => $staff]);
+        return response()->json([
+            'data' => $staff->map(function (MerchantStaff $staff) {
+                $staff->setAttribute('effective_permissions', MerchantPermissions::permissionsForStaff($staff));
+                return $staff;
+            }),
+            'permission_registry' => MerchantPermissions::registry(),
+            'permission_presets' => MerchantPermissions::presets(),
+        ]);
     }
 
     /**
@@ -50,6 +55,10 @@ class MerchantStaffController extends Controller
             'phone_number' => 'required|string', // Format check usually done by middleware or service
             'name' => 'required|string|max:255',
             'role' => ['required', Rule::in(['MANAGER', 'CASHIER', 'STOREKEEPER'])],
+            'permissions' => 'nullable|array',
+            'permissions.*' => ['string', Rule::in(MerchantPermissions::all())],
+            'dashboard_access_enabled' => 'nullable|boolean',
+            'pos_access_enabled' => 'nullable|boolean',
             'job_title' => 'nullable|string|max:120',
             'display_name' => 'nullable|string|max:160',
             'avatar_url' => 'nullable|string|max:2048',
@@ -86,11 +95,21 @@ class MerchantStaffController extends Controller
             'user_id' => $user->id,
             'assigned_location_id' => $validated['assigned_location_id'],
             'role' => $validated['role'],
+            'permissions' => $validated['permissions'] ?? [],
+            'dashboard_access_enabled' => (bool) ($validated['dashboard_access_enabled'] ?? false),
+            'pos_access_enabled' => (bool) ($validated['pos_access_enabled'] ?? true),
             'job_title' => $validated['job_title'] ?? null,
             'display_name' => $validated['display_name'] ?? null,
             'avatar_url' => $validated['avatar_url'] ?? null,
             'pin_hash' => Hash::make($validated['pin']),
             'is_active' => true,
+        ]);
+
+        $this->audit->record($request, $merchant, 'TEAM_MEMBER_CREATED', 'Team member enrolled.', [
+            'target_type' => MerchantStaff::class,
+            'target_id' => $staff->id,
+            'staff_user_id' => $staff->user_id,
+            'after' => $this->staffAuditSnapshot($staff->fresh(['user', 'location'])),
         ]);
 
         return response()->json([
@@ -110,8 +129,14 @@ class MerchantStaffController extends Controller
             abort(403);
         }
 
+        $before = $this->staffAuditSnapshot($staff->fresh(['user', 'location']));
+
         $validated = $request->validate([
             'role' => [Rule::in(['MANAGER', 'CASHIER', 'STOREKEEPER'])],
+            'permissions' => 'nullable|array',
+            'permissions.*' => ['string', Rule::in(MerchantPermissions::all())],
+            'dashboard_access_enabled' => 'boolean',
+            'pos_access_enabled' => 'boolean',
             'job_title' => 'nullable|string|max:120',
             'display_name' => 'nullable|string|max:160',
             'avatar_url' => 'nullable|string|max:2048',
@@ -125,6 +150,17 @@ class MerchantStaffController extends Controller
         if (!empty($validated['pin'])) {
             $staff->update(['pin_hash' => Hash::make($validated['pin'])]);
         }
+
+        $after = $this->staffAuditSnapshot($staff->fresh(['user', 'location']));
+
+        $this->audit->record($request, $merchant, 'TEAM_MEMBER_UPDATED', 'Team member access updated.', [
+            'target_type' => MerchantStaff::class,
+            'target_id' => $staff->id,
+            'staff_user_id' => $staff->user_id,
+            'changed_fields' => array_keys($validated),
+            'before' => $before,
+            'after' => $after,
+        ]);
 
         return response()->json([
             'message' => 'Staff record updated.',
@@ -148,6 +184,12 @@ class MerchantStaffController extends Controller
             'pin_hash' => Hash::make($validated['pin'])
         ]);
 
+        $this->audit->record($request, $merchant, 'TEAM_MEMBER_PIN_RESET', 'Team member POS PIN reset.', [
+            'target_type' => MerchantStaff::class,
+            'target_id' => $staff->id,
+            'staff_user_id' => $staff->user_id,
+        ]);
+
         return response()->json(['message' => 'PIN imewekwa upya mafanikio.']);
     }
 
@@ -160,7 +202,15 @@ class MerchantStaffController extends Controller
         $merchant = $request->attributes->get('active_merchant');
         if ($staff->merchant_id !== $merchant->id) abort(403);
 
+        $deviceCount = $staff->authorizedDevices()->count();
         $staff->authorizedDevices()->delete();
+
+        $this->audit->record($request, $merchant, 'TEAM_MEMBER_DEVICES_CLEARED', 'Team member trusted devices cleared.', [
+            'target_type' => MerchantStaff::class,
+            'target_id' => $staff->id,
+            'staff_user_id' => $staff->user_id,
+            'devices_cleared' => $deviceCount,
+        ]);
 
         return response()->json(['message' => 'Vifaa vyote vimeondolewa. OTP itatakiwa kwenye login ijayo.']);
     }
@@ -177,8 +227,37 @@ class MerchantStaffController extends Controller
         }
 
         // We soft-deactivate rather than delete to maintain audit logs
+        $before = $this->staffAuditSnapshot($staff->fresh(['user', 'location']));
         $staff->update(['is_active' => false]);
 
+        $this->audit->record($request, $merchant, 'TEAM_MEMBER_DEACTIVATED', 'Team member deactivated.', [
+            'target_type' => MerchantStaff::class,
+            'target_id' => $staff->id,
+            'staff_user_id' => $staff->user_id,
+            'before' => $before,
+            'after' => $this->staffAuditSnapshot($staff->fresh(['user', 'location'])),
+        ]);
+
         return response()->json(['message' => 'Staff member deactivated.']);
+    }
+
+    private function staffAuditSnapshot(MerchantStaff $staff): array
+    {
+        return [
+            'id' => $staff->id,
+            'user_id' => $staff->user_id,
+            'user_name' => $staff->user?->name,
+            'user_phone' => $staff->user?->phone_number,
+            'role' => $staff->role,
+            'job_title' => $staff->job_title,
+            'display_name' => $staff->display_name,
+            'assigned_location_id' => $staff->assigned_location_id,
+            'assigned_location_name' => $staff->location?->name,
+            'is_active' => (bool) $staff->is_active,
+            'dashboard_access_enabled' => (bool) $staff->dashboard_access_enabled,
+            'pos_access_enabled' => (bool) $staff->pos_access_enabled,
+            'permissions' => $staff->permissions ?? [],
+            'effective_permissions' => MerchantPermissions::permissionsForStaff($staff),
+        ];
     }
 }

@@ -35,6 +35,7 @@ export default function Profile({
     salesBreakdown = { digital: 0, physical: 0, services: 0 },
     commerceHubSummary = { physical: 0, digital: 0, services: 0, posts: 0, bundles: 0, subscriptions: 0 },
     creatorMonetization = null,
+    activeMerchantAccess = null,
     countries = [],
     currencies = [],
     merchantKyc = null,
@@ -58,15 +59,17 @@ export default function Profile({
 
     const isVerified = activeMerchant?.is_verified ?? false;
     const merchantSlug = activeMerchant?.username ?? '';
+    const activePermissions = activeMerchantAccess?.permissions ?? activeMerchant?.permissions ?? [];
+    const can = (permission) => activePermissions.includes('*') || activePermissions.includes(permission);
     const commerceHubItems = [
-        { key: 'physical', title: 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products` },
-        { key: 'digital', title: 'Digital Downloads', count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads` },
-        { key: 'services', title: 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services` },
-        { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts` },
-        { key: 'bundles', title: 'Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles` },
-        { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions` },
-        { key: 'marketing', title: 'Marketing', count: 0, icon: Megaphone, href: `/merchant/${merchantSlug}/marketing` },
-    ];
+        { key: 'physical', title: 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view' },
+        { key: 'digital', title: 'Digital Downloads', count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view' },
+        { key: 'services', title: 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view' },
+        { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view' },
+        { key: 'bundles', title: 'Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view' },
+        { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permission: 'subscriptions.view' },
+        { key: 'marketing', title: 'Marketing', count: 0, icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permission: 'marketing.view' },
+    ].filter((item) => can(item.permission));
 
     // Verification State
     const [verifView, setVerifView] = useState('main'); // main, selection, form
@@ -662,16 +665,30 @@ export default function Profile({
                                         <div className="space-y-3">
                                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Actions</h3>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <ActionBtn icon={Plus} label="New Item" href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
-                                                <ActionBtn icon={KeyRound} label="Order Checkup" onClick={() => setIsOrderCheckupOpen(true)} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
-                                                {retailEligible && (
-                                                    <ActionBtn icon={Store} label="Retail" href={`/merchant/${merchantSlug}/retail/dashboard`} color="bg-brand-50" textColor="text-brand-700" borderColor="border-brand-100" />
+                                                {(can('products.create') || can('digital_products.create') || can('services.create')) && (
+                                                    <ActionBtn icon={Plus} label="New Item" href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
                                                 )}
-                                                <ActionBtn icon={HardDrive} label="Storage Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/storage`} color="bg-sky-50" textColor="text-sky-700" borderColor="border-sky-100" />
-                                                <ActionBtn icon={Clock} label="Pulse" href={`/merchant/${merchantSlug}/pulse`} color="bg-blue-50" textColor="text-blue-700" borderColor="border-blue-100" />
-                                                <ActionBtn icon={Megaphone} label="Marketing" href={`/merchant/${merchantSlug}/marketing`} color="bg-violet-50" textColor="text-violet-700" borderColor="border-violet-100" />
-                                                <ActionBtn icon={Wallet} label="Wallet" href={`/merchant/${merchantSlug}/wallet`} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
-                                                <ActionBtn icon={Settings} label="Settings" href={`/merchant/${merchantSlug}/settings`} color="bg-slate-50" textColor="text-slate-700" borderColor="border-slate-100" />
+                                                {can('orders.verify_pickup') && (
+                                                    <ActionBtn icon={KeyRound} label="Order Checkup" onClick={() => setIsOrderCheckupOpen(true)} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
+                                                )}
+                                                {retailEligible && (can('retail.dashboard') || can('retail.pos')) && (
+                                                    <ActionBtn icon={Store} label="Retail" href={`/merchant/${merchantSlug}/retail/${can('retail.dashboard') ? 'dashboard' : 'pos'}`} color="bg-brand-50" textColor="text-brand-700" borderColor="border-brand-100" />
+                                                )}
+                                                {can('settings.update') && (
+                                                    <ActionBtn icon={HardDrive} label="Storage Plan" href={`/merchant/${merchantSlug}/platform-subscriptions/storage`} color="bg-sky-50" textColor="text-sky-700" borderColor="border-sky-100" />
+                                                )}
+                                                {can('dashboard.view') && (
+                                                    <ActionBtn icon={Clock} label="Pulse" href={`/merchant/${merchantSlug}/pulse`} color="bg-blue-50" textColor="text-blue-700" borderColor="border-blue-100" />
+                                                )}
+                                                {can('marketing.view') && (
+                                                    <ActionBtn icon={Megaphone} label="Marketing" href={`/merchant/${merchantSlug}/marketing`} color="bg-violet-50" textColor="text-violet-700" borderColor="border-violet-100" />
+                                                )}
+                                                {can('wallet.view') && (
+                                                    <ActionBtn icon={Wallet} label="Wallet" href={`/merchant/${merchantSlug}/wallet`} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
+                                                )}
+                                                {can('settings.view') && (
+                                                    <ActionBtn icon={Settings} label="Settings" href={`/merchant/${merchantSlug}/settings`} color="bg-slate-50" textColor="text-slate-700" borderColor="border-slate-100" />
+                                                )}
                                             </div>
                                         </div>
 
@@ -720,7 +737,9 @@ export default function Profile({
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between px-1">
                                                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Miamala ya Hivi Karibuni</h3>
-                                                <Link href={`/merchant/${merchantSlug}/orders`} className="text-xs font-bold text-brand-600 hover:underline">Ona Zote</Link>
+                                                {can('orders.view') && (
+                                                    <Link href={`/merchant/${merchantSlug}/orders`} className="text-xs font-bold text-brand-600 hover:underline">Ona Zote</Link>
+                                                )}
                                             </div>
 
                                             <div className="space-y-3">
@@ -733,7 +752,7 @@ export default function Profile({
                                                     recentOrders.map(order => (
                                                         <Card key={order.id} className="border border-slate-100 hover:border-brand-200 transition-all rounded-xl shadow-sm group">
                                                             <CardContent className="p-4">
-                                                                <Link href={`/merchant/${merchantSlug}/orders/${order.id}`} className="flex items-center justify-between gap-4">
+                                                                <Link href={can('orders.view') ? `/merchant/${merchantSlug}/orders/${order.id}` : '#'} className="flex items-center justify-between gap-4">
                                                                     <div className="flex items-center gap-3 min-w-0">
                                                                         <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden transition-colors group-hover:bg-brand-50 group-hover:border-brand-100">
                                                                             {order.image_url ? (

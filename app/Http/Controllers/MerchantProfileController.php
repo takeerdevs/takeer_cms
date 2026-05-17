@@ -19,8 +19,11 @@ class MerchantProfileController extends Controller
     public function edit(Request $request): Response
     {
         $user = $request->user();
-        $merchant = $user->merchantProfiles()->where('is_default', true)->first() 
-            ?? $user->merchantProfiles()->first();
+        $merchant = $request->route('merchant') instanceof Merchant
+            ? $request->route('merchant')
+            : ($request->attributes->get('resolved_merchant')
+                ?? $user->merchantProfiles()->where('is_default', true)->first()
+                ?? $user->merchantProfiles()->first());
 
         if (!$merchant) {
             abort(404, 'Merchant profile not found.');
@@ -47,8 +50,11 @@ class MerchantProfileController extends Controller
     public function update(Request $request): \Illuminate\Http\RedirectResponse
     {
         $user = $request->user();
-        $merchant = $user->merchantProfiles()->where('is_default', true)->first() 
-            ?? $user->merchantProfiles()->first();
+        $merchant = $request->route('merchant') instanceof Merchant
+            ? $request->route('merchant')
+            : ($request->attributes->get('resolved_merchant')
+                ?? $user->merchantProfiles()->where('is_default', true)->first()
+                ?? $user->merchantProfiles()->first());
 
         if (!$merchant) {
             abort(404, 'Merchant profile not found.');

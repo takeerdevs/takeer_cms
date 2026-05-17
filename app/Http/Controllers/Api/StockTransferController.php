@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\PosSaleItem;
 use App\Models\RetailAuditLog;
 use App\Models\MerchantLocation;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -79,7 +80,6 @@ class StockTransferController extends Controller
     {
         $merchant = $request->attributes->get('active_merchant');
         $staff = $this->activeStaffContext($request);
-        $staffRole = strtoupper((string) ($staff?->role ?? ''));
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
         $search = trim((string) $request->input('q', ''));
@@ -91,11 +91,8 @@ class StockTransferController extends Controller
             ->with(['product.unitType', 'variant', 'fromLocation', 'toLocation', 'requestedBy.user', 'dispatchedBy.user', 'receivedBy.user'])
             ->latest();
 
-        if (in_array($staffRole, ['STOREKEEPER', 'CASHIER'], true)) {
-            $assignedLocationId = (int) ($staff->assigned_location_id ?? 0);
-            if ($assignedLocationId <= 0) {
-                return response()->json(['data' => []]);
-            }
+        $assignedLocationId = (int) ($staff?->assigned_location_id ?? 0);
+        if ($assignedLocationId > 0) {
             $query->where(function ($q) use ($assignedLocationId) {
                 $q->where('from_location_id', $assignedLocationId)
                     ->orWhere('to_location_id', $assignedLocationId);
@@ -310,10 +307,6 @@ class StockTransferController extends Controller
     {
         $merchant = $request->attributes->get('active_merchant');
         $staff = $this->activeStaffContext($request);
-        $staffRole = strtoupper((string) ($staff?->role ?? ''));
-        if ($staffRole === 'STOREKEEPER') {
-            return response()->json(['message' => 'Storekeeper cannot create transfer requests.'], 403);
-        }
 
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
@@ -359,6 +352,15 @@ class StockTransferController extends Controller
             return response()->json(['message' => 'Source/Destination location does not belong to this merchant.'], 422);
         }
 
+        $assignedLocationId = MerchantPermissions::assignedLocationIdFor($request->user(), $merchant);
+        if (
+            $assignedLocationId !== null
+            && (int) $validated['from_location_id'] !== $assignedLocationId
+            && (int) $validated['to_location_id'] !== $assignedLocationId
+        ) {
+            return response()->json(['message' => 'Huwezi kuomba transfer isiyohusisha location uliyopewa.'], 403);
+        }
+
         $requestedQuantity = (float) $validated['quantity'];
 
         $transfer = StockTransfer::create([
@@ -389,15 +391,11 @@ class StockTransferController extends Controller
         if ($transfer->merchant_id !== $merchant->id) abort(403);
         $transfer->loadMissing(['fromLocation', 'toLocation']);
         $staff = $this->activeStaffContext($request);
-        $staffRole = strtoupper((string) ($staff?->role ?? ''));
-        if (in_array($staffRole, ['STOREKEEPER', 'CASHIER'], true) && (int) ($staff->assigned_location_id ?? 0) !== (int) $transfer->from_location_id) {
+        if (! MerchantPermissions::canAccessLocation($request->user(), $merchant, (int) $transfer->from_location_id)) {
             return response()->json(['message' => 'Staff can dispatch only from their assigned source location.'], 403);
         }
         if ($response = $this->ensureShopLocationVerification($staff, $transfer->fromLocation, 'dispatch')) {
             return $response;
-        }
-        if ($staffRole === 'CASHIER' && !$this->isShopLocation($transfer->fromLocation)) {
-            return response()->json(['message' => 'Cashiers can only verify transfers from their assigned shop.'], 403);
         }
 
         if ($transfer->status !== 'PENDING') {
@@ -462,15 +460,11 @@ class StockTransferController extends Controller
         if ($transfer->merchant_id !== $merchant->id) abort(403);
         $transfer->loadMissing(['fromLocation', 'toLocation']);
         $staff = $this->activeStaffContext($request);
-        $staffRole = strtoupper((string) ($staff?->role ?? ''));
-        if (in_array($staffRole, ['STOREKEEPER', 'CASHIER'], true) && (int) ($staff->assigned_location_id ?? 0) !== (int) $transfer->to_location_id) {
+        if (! MerchantPermissions::canAccessLocation($request->user(), $merchant, (int) $transfer->to_location_id)) {
             return response()->json(['message' => 'Staff can confirm receipt only at their assigned destination location.'], 403);
         }
         if ($response = $this->ensureShopLocationVerification($staff, $transfer->toLocation, 'receive')) {
             return $response;
-        }
-        if ($staffRole === 'CASHIER' && !$this->isShopLocation($transfer->toLocation)) {
-            return response()->json(['message' => 'Cashiers can only verify transfers to their assigned shop.'], 403);
         }
 
         if ($transfer->status !== 'DISPATCHED') {
@@ -547,10 +541,13 @@ class StockTransferController extends Controller
     {
         $merchant = $request->attributes->get('active_merchant');
         if ($transfer->merchant_id !== $merchant->id) abort(403);
-        $staff = $this->activeStaffContext($request);
-        $staffRole = strtoupper((string) ($staff?->role ?? ''));
-        if ($staffRole === 'STOREKEEPER') {
-            return response()->json(['message' => 'Storekeeper cannot cancel transfer requests.'], 403);
+        $assignedLocationId = MerchantPermissions::assignedLocationIdFor($request->user(), $merchant);
+        if (
+            $assignedLocationId !== null
+            && (int) $transfer->from_location_id !== $assignedLocationId
+            && (int) $transfer->to_location_id !== $assignedLocationId
+        ) {
+            return response()->json(['message' => 'Huwezi kufuta transfer isiyohusisha location uliyopewa.'], 403);
         }
 
         if ($transfer->status !== 'PENDING') {

@@ -41,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
             'merchant_status' => \App\Http\Middleware\CheckMerchantStatus::class,
             'own_merchant' => \App\Http\Middleware\EnsureUserOwnsMerchant::class,
+            'merchant_permission' => \App\Http\Middleware\EnsureMerchantPermission::class,
             'retail_ops' => \App\Http\Middleware\EnsureRetailModuleActive::class,
             'retail_role' => \App\Http\Middleware\EnsureRetailStaffRole::class,
         ]);

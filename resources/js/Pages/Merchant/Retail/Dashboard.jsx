@@ -41,8 +41,21 @@ import {
 } from '@/Components/ui/Drawer';
 import { Input } from '@/Components/ui/Input';
 import { toast } from 'sonner';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 export default function Dashboard({ merchant }) {
+    const { can, canAny } = useMerchantPermissions(merchant?.username);
+    const canRetailPos = can('retail.pos');
+    const canRetailTransfers = can('retail.transfers');
+    const canRetailInventory = can('retail.inventory');
+    const canRetailSettings = can('retail.settings');
+    const canRetailCustomers = can('retail.customers');
+    const canRetailApproveSale = can('retail.approve_sale');
+    const canBookkeepingView = can('bookkeeping.view');
+    const canTeamView = can('team.view');
+    const canWalletView = can('wallet.view');
+    const canOrdersView = can('orders.view');
+    const canTrustSafetyView = canAny(['retail.settings', 'settings.view']);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [permissionError, setPermissionError] = useState(null);
@@ -88,6 +101,7 @@ export default function Dashboard({ merchant }) {
     }, []);
 
     const handleRestock = async () => {
+        if (!canRetailInventory) return;
         if (!restockAmount || restockAmount <= 0) return;
         try {
             await window.axios.post('/api/retail/inventory/restock', {
@@ -106,6 +120,7 @@ export default function Dashboard({ merchant }) {
     };
 
     const handleImport = async (e) => {
+        if (!canRetailInventory) return;
         const file = e.target.files[0];
         if (!file) return;
         setImporting(true);
@@ -126,6 +141,7 @@ export default function Dashboard({ merchant }) {
     };
 
     const handleReviewOrder = (order) => {
+        if (!canRetailApproveSale) return;
         setSelectedOrder(order);
         setCounterTotal(order.grand_total?.toString() || '');
         setManagerNotes(order.manager_notes || '');
@@ -133,6 +149,7 @@ export default function Dashboard({ merchant }) {
     };
 
     const handleApproveOrder = async (order, reject = false) => {
+        if (!canRetailApproveSale) return;
         if (!order?.id) return;
         if (reject) setRejecting(true);
         else setApproving(true);
@@ -190,19 +207,23 @@ export default function Dashboard({ merchant }) {
                         <p className="text-muted-foreground max-w-md mb-8">{permissionError}</p>
                         
                         <div className="flex flex-wrap justify-center gap-4">
-                            <Button
-                                className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl h-12 px-6"
-                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/pos`)}
-                            >
-                                <ShoppingCart className="mr-2 h-5 w-5" /> Fungua POS (Uza)
-                            </Button>
-                            <Button
-                                variant="outline"
-                                className="rounded-xl border-brand-200 h-12 px-6"
-                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/transfers`)}
-                            >
-                                <ArrowRightLeft className="mr-2 h-5 w-5 text-brand-600" /> Hamisha Stock
-                            </Button>
+                            {canRetailPos && (
+                                <Button
+                                    className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl h-12 px-6"
+                                    onClick={() => router.visit(`/merchant/${merchant.username}/retail/pos`)}
+                                >
+                                    <ShoppingCart className="mr-2 h-5 w-5" /> Fungua POS (Uza)
+                                </Button>
+                            )}
+                            {canRetailTransfers && (
+                                <Button
+                                    variant="outline"
+                                    className="rounded-xl border-brand-200 h-12 px-6"
+                                    onClick={() => router.visit(`/merchant/${merchant.username}/retail/transfers`)}
+                                >
+                                    <ArrowRightLeft className="mr-2 h-5 w-5 text-brand-600" /> Hamisha Stock
+                                </Button>
+                            )}
                         </div>
                     </div>
                 ) : (
@@ -236,19 +257,21 @@ export default function Dashboard({ merchant }) {
                                     </p>
                                 </div>
                             </div>
-                            <Button
-                                variant="outline"
-                                className="rounded-xl bg-white"
-                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/trust-safety`)}
-                            >
-                                <Gavel className="h-4 w-4 mr-2" />
-                                View Status
-                            </Button>
+                            {canTrustSafetyView && (
+                                <Button
+                                    variant="outline"
+                                    className="rounded-xl bg-white"
+                                    onClick={() => router.visit(`/merchant/${merchant.username}/retail/trust-safety`)}
+                                >
+                                    <Gavel className="h-4 w-4 mr-2" />
+                                    View Status
+                                </Button>
+                            )}
                         </CardContent>
                     </Card>
                 )}
                 {/* Pending Approvals Alert Section */}
-                {data?.pending_approvals?.length > 0 && (
+                {canRetailApproveSale && data?.pending_approvals?.length > 0 && (
                     <div className="mb-8 space-y-4">
                         <div className="flex items-center gap-2 mb-2">
                             <ShieldAlert className="h-5 w-5 text-amber-600 animate-pulse" />
@@ -301,6 +324,7 @@ export default function Dashboard({ merchant }) {
                 )}
 
                 {/* Financial Cards (Ledger Distinction) */}
+                {canWalletView && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <Card
                         className="bg-brand-700 text-white border-brand-800 shadow-lg shadow-brand-700/20 cursor-pointer transition-transform active:scale-[0.99] hover:bg-brand-800"
@@ -355,6 +379,7 @@ export default function Dashboard({ merchant }) {
                         </CardContent>
                     </Card>
                 </div>
+                )}
 
                 {/* Quick Actions */}
                 <div className="rounded-[2rem] border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
@@ -373,85 +398,101 @@ export default function Dashboard({ merchant }) {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
-                        <Button
-                            className="group h-20 justify-start gap-4 rounded-2xl bg-brand-600 px-4 text-white shadow-lg shadow-brand-600/20 hover:bg-brand-700 sm:col-span-2"
-                            onClick={() => router.visit(`/merchant/${merchant.username}/retail/pos`)}
-                        >
-                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/15">
-                                <ShoppingCart className="h-6 w-6 group-hover:scale-110 transition-transform" />
-                            </span>
-                            <span className="text-base font-black">New Sale</span>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
-                            onClick={() => router.visit(`/merchant/${merchant.username}/retail/transfers`)}
-                        >
-                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
-                                <ArrowRightLeft className="h-5 w-5" />
-                            </span>
-                            <span className="text-base font-black">Transfer</span>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
-                            onClick={() => router.visit(`/merchant/${merchant.username}/retail/inventory`)}
-                        >
-                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
-                                <Package className="h-5 w-5" />
-                            </span>
-                            <span className="text-base font-black">Inventory</span>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
-                            onClick={() => router.visit(`/merchant/${merchant.username}/retail/bookkeeping`)}
-                        >
-                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
-                                <BookOpenCheck className="h-5 w-5" />
-                            </span>
-                            <span className="text-base font-black">Bookkeeping</span>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
-                            onClick={() => setIsImportModalOpen(true)}
-                        >
-                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
-                                <Upload className="h-5 w-5" />
-                            </span>
-                            <span className="text-base font-black">Bulk Import</span>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
-                            onClick={() => router.visit(`/merchant/${merchant.username}/retail/staff`)}
-                        >
-                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
-                                <Users className="h-5 w-5" />
-                            </span>
-                            <span className="text-base font-black">Staff</span>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
-                            onClick={() => router.visit(`/merchant/${merchant.username}/retail/settings`)}
-                        >
-                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
-                                <Settings className="h-5 w-5" />
-                            </span>
-                            <span className="text-base font-black">Settings</span>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
-                            onClick={() => router.visit(`/merchant/${merchant.username}/retail/customers`)}
-                        >
-                            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
-                                <Users className="h-5 w-5" />
-                            </span>
-                            <span className="text-base font-black">Customers</span>
-                        </Button>
+                        {canRetailPos && (
+                            <Button
+                                className="group h-20 justify-start gap-4 rounded-2xl bg-brand-600 px-4 text-white shadow-lg shadow-brand-600/20 hover:bg-brand-700 sm:col-span-2"
+                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/pos`)}
+                            >
+                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/15">
+                                    <ShoppingCart className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                                </span>
+                                <span className="text-base font-black">New Sale</span>
+                            </Button>
+                        )}
+                        {canRetailTransfers && (
+                            <Button
+                                variant="outline"
+                                className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
+                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/transfers`)}
+                            >
+                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
+                                    <ArrowRightLeft className="h-5 w-5" />
+                                </span>
+                                <span className="text-base font-black">Transfer</span>
+                            </Button>
+                        )}
+                        {canRetailInventory && (
+                            <Button
+                                variant="outline"
+                                className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
+                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/inventory`)}
+                            >
+                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
+                                    <Package className="h-5 w-5" />
+                                </span>
+                                <span className="text-base font-black">Inventory</span>
+                            </Button>
+                        )}
+                        {canBookkeepingView && (
+                            <Button
+                                variant="outline"
+                                className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
+                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/bookkeeping`)}
+                            >
+                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
+                                    <BookOpenCheck className="h-5 w-5" />
+                                </span>
+                                <span className="text-base font-black">Bookkeeping</span>
+                            </Button>
+                        )}
+                        {canRetailInventory && (
+                            <Button
+                                variant="outline"
+                                className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
+                                onClick={() => setIsImportModalOpen(true)}
+                            >
+                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
+                                    <Upload className="h-5 w-5" />
+                                </span>
+                                <span className="text-base font-black">Bulk Import</span>
+                            </Button>
+                        )}
+                        {canTeamView && (
+                            <Button
+                                variant="outline"
+                                className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
+                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/staff`)}
+                            >
+                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
+                                    <Users className="h-5 w-5" />
+                                </span>
+                                <span className="text-base font-black">Staff</span>
+                            </Button>
+                        )}
+                        {canRetailSettings && (
+                            <Button
+                                variant="outline"
+                                className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
+                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/settings`)}
+                            >
+                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
+                                    <Settings className="h-5 w-5" />
+                                </span>
+                                <span className="text-base font-black">Settings</span>
+                            </Button>
+                        )}
+                        {canRetailCustomers && (
+                            <Button
+                                variant="outline"
+                                className="h-20 justify-start gap-4 rounded-2xl border-slate-200 bg-slate-50/60 px-4 text-slate-950 hover:bg-brand-50 hover:border-brand-200"
+                                onClick={() => router.visit(`/merchant/${merchant.username}/retail/customers`)}
+                            >
+                                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white border border-slate-100 text-brand-600">
+                                    <Users className="h-5 w-5" />
+                                </span>
+                                <span className="text-base font-black">Customers</span>
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -483,15 +524,17 @@ export default function Dashboard({ merchant }) {
                                             </div>
                                              <div className="text-right">
                                                 <p className="text-sm font-black text-red-600">{item.quantity} Left</p>
-                                                <button 
-                                                    onClick={() => {
-                                                        setSelectedItem(item);
-                                                        setIsRestockModalOpen(true);
-                                                    }}
-                                                    className="text-[10px] font-bold text-brand-600 hover:underline"
-                                                >
-                                                    Restock
-                                                </button>
+                                                {canRetailInventory && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            setSelectedItem(item);
+                                                            setIsRestockModalOpen(true);
+                                                        }}
+                                                        className="text-[10px] font-bold text-brand-600 hover:underline"
+                                                    >
+                                                        Restock
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -510,14 +553,16 @@ export default function Dashboard({ merchant }) {
                             <CardTitle className="text-sm font-bold flex items-center gap-2 text-muted-foreground uppercase tracking-widest">
                                 <History className="h-4 w-4" /> Miamala ya hivi karibuni
                             </CardTitle>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-[10px] font-black text-brand-600 hover:bg-brand-50 rounded-lg h-7"
-                                onClick={() => router.visit(`/merchant/${merchant.username}/orders`)}
-                            >
-                                ONA ODA ZOTE
-                            </Button>
+                            {canOrdersView && (
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="text-[10px] font-black text-brand-600 hover:bg-brand-50 rounded-lg h-7"
+                                    onClick={() => router.visit(`/merchant/${merchant.username}/orders`)}
+                                >
+                                    ONA ODA ZOTE
+                                </Button>
+                            )}
                         </CardHeader>
                         <CardContent className="p-6">
                             <div className="space-y-6">
@@ -529,7 +574,7 @@ export default function Dashboard({ merchant }) {
                                             log.metadata?.order_id ? "cursor-pointer group/item hover:bg-brand-50/50 -mx-4 px-10 py-3 rounded-2xl transition-colors" : ""
                                         ].join(' ')}
                                         onClick={() => {
-                                            if (log.metadata?.order_id) {
+                                            if (canOrdersView && log.metadata?.order_id) {
                                                 router.visit(`/merchant/${merchant.username}/orders/${log.metadata.order_id}`);
                                             }
                                         }}
@@ -701,21 +746,25 @@ export default function Dashboard({ merchant }) {
                                     </div>
 
                                     <div className="p-6 bg-white border-t border-slate-100 flex gap-3 shrink-0">
-                                        <Button
-                                            variant="outline"
-                                            className="flex-1 h-14 rounded-3xl border-2 border-slate-100 font-black text-slate-400 hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all"
-                                            onClick={() => handleApproveOrder(selectedOrder, true)}
-                                            disabled={rejecting || approving}
-                                        >
-                                            {rejecting ? <Clock className="h-4 w-4 animate-spin mr-2" /> : 'REJECT'}
-                                        </Button>
-                                        <Button
-                                            className="flex-[2] h-14 rounded-3xl bg-brand-600 hover:bg-brand-700 text-white font-black shadow-xl shadow-brand-600/20 transition-all active:scale-95"
-                                            onClick={() => handleApproveOrder(selectedOrder, false)}
-                                            disabled={approving || rejecting}
-                                        >
-                                            {approving ? <Clock className="h-4 w-4 animate-spin mr-2" /> : 'APPROVE & SEND'}
-                                        </Button>
+                                        {canRetailApproveSale && (
+                                            <>
+                                                <Button
+                                                    variant="outline"
+                                                    className="flex-1 h-14 rounded-3xl border-2 border-slate-100 font-black text-slate-400 hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all"
+                                                    onClick={() => handleApproveOrder(selectedOrder, true)}
+                                                    disabled={rejecting || approving}
+                                                >
+                                                    {rejecting ? <Clock className="h-4 w-4 animate-spin mr-2" /> : 'REJECT'}
+                                                </Button>
+                                                <Button
+                                                    className="flex-[2] h-14 rounded-3xl bg-brand-600 hover:bg-brand-700 text-white font-black shadow-xl shadow-brand-600/20 transition-all active:scale-95"
+                                                    onClick={() => handleApproveOrder(selectedOrder, false)}
+                                                    disabled={approving || rejecting}
+                                                >
+                                                    {approving ? <Clock className="h-4 w-4 animate-spin mr-2" /> : 'APPROVE & SEND'}
+                                                </Button>
+                                            </>
+                                        )}
                                     </div>
                                 </>
                             );
@@ -747,13 +796,15 @@ export default function Dashboard({ merchant }) {
                         </div>
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setIsRestockModalOpen(false)}>Cancel</Button>
-                            <Button 
-                                className="bg-brand-600 hover:bg-brand-700 text-white" 
-                                onClick={handleRestock}
-                                disabled={!restockAmount || restockAmount <= 0}
-                            >
-                                Update Inventory
-                            </Button>
+                            {canRetailInventory && (
+                                <Button 
+                                    className="bg-brand-600 hover:bg-brand-700 text-white" 
+                                    onClick={handleRestock}
+                                    disabled={!restockAmount || restockAmount <= 0}
+                                >
+                                    Update Inventory
+                                </Button>
+                            )}
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

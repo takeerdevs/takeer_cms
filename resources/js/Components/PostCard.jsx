@@ -654,6 +654,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                         className="text-[10px] text-muted-foreground mt-0.5 truncate block hover:text-brand-600 transition-colors"
                     >
                         @{post.merchant_profile?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}
+                        {post.created_by?.label ? ` ${post.created_by.label}` : ''}
                     </Link>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">

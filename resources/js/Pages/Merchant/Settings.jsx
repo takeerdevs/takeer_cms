@@ -9,6 +9,7 @@ import { Globe, User, Save, ArrowLeft, UploadCloud, MessageCircle, Heart, Shoppi
 import { router } from '@inertiajs/react';
 import ShopLocationsManager from '@/Components/Merchant/ShopLocationsManager';
 import ReturnPoliciesManager from '@/Components/Merchant/ReturnPoliciesManager';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 export default function Settings({ merchant, merchantUsername, countries = [], currencies = [], storefrontSettings = {}, retailEligible = false }) {
     const [locations, setLocations] = useState([]);
@@ -50,6 +51,8 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
     const [uploading, setUploading] = useState(false);
     const { auth } = usePage().props;
     const merchantSlug = merchantUsername || auth?.user?.merchant_profiles?.[0]?.username || '';
+    const { can } = useMerchantPermissions(merchantSlug);
+    const canUpdateSettings = can('settings.update');
     const selectedCountry = countries.find(country => String(country.id) === String(merchant.country_id));
     const selectedCountryTimezones = selectedCountry?.settings?.timezones || (selectedCountry?.timezone ? [selectedCountry.timezone] : []);
 
@@ -138,6 +141,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
     };
 
     const handleAvatarUpload = async (e) => {
+        if (!canUpdateSettings) return;
         const file = e.target.files[0];
         if (!file) return;
 
@@ -163,6 +167,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
     };
 
     const handleToggleModule = async (module, active) => {
+        if (!canUpdateSettings) return;
         try {
             if (active) {
                 await window.axios.post('/api/merchant/modules/retail-ops/activate');
@@ -184,6 +189,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (!canUpdateSettings) return;
         post(`/merchant/${merchantSlug}/settings`, {
             onSuccess: () => {
                 // Flash message or redirect as needed
@@ -219,7 +225,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
 
                         <div
                             className="relative h-32 w-32 rounded-full bg-muted flex items-center justify-center overflow-hidden border-4 border-background shadow-md cursor-pointer group hover:border-brand-200 transition-all hover:shadow-lg"
-                            onClick={() => document.getElementById('avatar-upload').click()}
+                            onClick={() => canUpdateSettings && document.getElementById('avatar-upload').click()}
                         >
                             {data.avatar_url ? (
                                 <img src={data.avatar_url} alt="Avatar" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
@@ -239,7 +245,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                             accept="image/*"
                             className="hidden"
                             onChange={handleAvatarUpload}
-                            disabled={uploading}
+                            disabled={uploading || !canUpdateSettings}
                         />
                         {uploading && <p className="text-xs text-brand-600 font-bold animate-pulse">Inapakia...</p>}
                     </div>
@@ -488,6 +494,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                                 className="sr-only peer"
                                                 checked={merchant.active_modules?.includes('retail_ops')}
                                                 onChange={(e) => handleToggleModule('retail_ops', e.target.checked)}
+                                                disabled={!canUpdateSettings}
                                             />
                                             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
                                         </label>
@@ -497,25 +504,31 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                         </Card>
                     )}
 
-                    <Button
-                        type="submit"
-                        className="w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-brand-600/20"
-                        disabled={processing}
-                    >
-                        <Save className="h-4 w-4" /> {processing ? 'Inahifadhi...' : 'Hifadhi Mabadiliko'}
-                    </Button>
+                    {canUpdateSettings && (
+                        <Button
+                            type="submit"
+                            className="w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-brand-600/20"
+                            disabled={processing}
+                        >
+                            <Save className="h-4 w-4" /> {processing ? 'Inahifadhi...' : 'Hifadhi Mabadiliko'}
+                        </Button>
+                    )}
                 </form>
 
-                <ShopLocationsManager
-                    locations={locations}
-                    onRefresh={fetchLocations}
-                    loading={loadingLocations}
-                    profiles={profiles}
-                    onRefreshZones={fetchProfiles}
-                    personalMode={merchant?.type === 'personal'}
-                />
+                {canUpdateSettings && (
+                    <>
+                        <ShopLocationsManager
+                            locations={locations}
+                            onRefresh={fetchLocations}
+                            loading={loadingLocations}
+                            profiles={profiles}
+                            onRefreshZones={fetchProfiles}
+                            personalMode={merchant?.type === 'personal'}
+                        />
 
-                <ReturnPoliciesManager />
+                        <ReturnPoliciesManager />
+                    </>
+                )}
 
             </div>
         </AppLayout>

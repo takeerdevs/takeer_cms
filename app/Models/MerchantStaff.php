@@ -16,6 +16,9 @@ class MerchantStaff extends Model
         'user_id',
         'assigned_location_id',
         'role',
+        'permissions',
+        'dashboard_access_enabled',
+        'pos_access_enabled',
         'job_title',
         'display_name',
         'avatar_url',
@@ -31,6 +34,9 @@ class MerchantStaff extends Model
     {
         return [
             'is_active' => 'boolean',
+            'permissions' => 'array',
+            'dashboard_access_enabled' => 'boolean',
+            'pos_access_enabled' => 'boolean',
         ];
     }
 

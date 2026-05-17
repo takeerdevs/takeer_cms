@@ -917,11 +917,14 @@ Route::middleware('auth')->group(function () {
         
         // Determine active merchant
         $activeMerchantId = Session::get('active_merchant_id');
-        $merchantProfiles = $user->merchantProfiles()->with(['kyc', 'locations'])->get();
+        $merchantProfiles = \App\Support\MerchantPermissions::accessibleMerchantsFor($user);
         
         $activeMerchant = $activeMerchantId 
             ? $merchantProfiles->find($activeMerchantId) 
             : ($merchantProfiles->where('is_default', true)->first() ?? $merchantProfiles->first());
+        $activeMerchantAccess = $activeMerchant
+            ? \App\Support\MerchantPermissions::accessSummary($user, $activeMerchant)
+            : null;
 
         if ($activeMerchant
             && (string) \App\Models\AdminSetting::get('retail_access_mode', 'free') === 'free'
@@ -1137,6 +1140,7 @@ Route::middleware('auth')->group(function () {
 
         return Inertia::render('Profile', [
             'activeMerchant' => $activeMerchant,
+            'activeMerchantAccess' => $activeMerchantAccess,
             'thisMonthEarnings' => (float) $thisMonthEarnings,
             'weeklyStats' => [
                 'payments' => (float) $paymentsThisWeek,
@@ -1346,11 +1350,11 @@ Route::middleware('auth')->group(function () {
                     'display_name' => $merchant->display_name,
                 ],
             ]);
-        })->name('merchant.pulse');
-        Route::get('/pulse/api', [EntitlementController::class, 'merchantPulse']);
+        })->middleware('merchant_permission:dashboard.view')->name('merchant.pulse');
+        Route::get('/pulse/api', [EntitlementController::class, 'merchantPulse'])->middleware('merchant_permission:dashboard.view');
 
-        Route::get('/settings', [MerchantProfileController::class, 'edit'])->name('merchant.settings.edit');
-        Route::post('/settings', [MerchantProfileController::class, 'update'])->name('merchant.settings.update');
+        Route::get('/settings', [MerchantProfileController::class, 'edit'])->middleware('merchant_permission:settings.view')->name('merchant.settings.edit');
+        Route::post('/settings', [MerchantProfileController::class, 'update'])->middleware('merchant_permission:settings.update')->name('merchant.settings.update');
 
         Route::get('/upload', function (Merchant $merchant) {
             abort_unless($merchant->canSellProducts(), 403, 'Complete KYC before uploading products.');
@@ -1368,34 +1372,34 @@ Route::middleware('auth')->group(function () {
                 'merchantTimezone' => $merchantTimezone,
                 'timezoneOptions' => $timezoneOptions,
             ]);
-        });
+        })->middleware('merchant_permission:products.create,digital_products.create,services.create');
 
         Route::get('/products', function (Request $request, Merchant $merchant) {
             return Inertia::render('Merchant/Products', [
                 'merchantUsername' => $merchant->username,
                 'typeScope' => 'physical',
             ]);
-        });
+        })->middleware('merchant_permission:products.view');
 
         Route::get('/products/{productId}', function (Merchant $merchant, int $productId) {
             return Inertia::render('Merchant/ProductDetails', [
                 'merchantUsername' => $merchant->username,
                 'productId' => $productId,
             ]);
-        })->whereNumber('productId');
+        })->whereNumber('productId')->middleware('merchant_permission:products.view,digital_products.view,services.view');
 
         Route::get('/posts', function (Merchant $merchant) {
             return Inertia::render('Merchant/Posts', [
                 'merchantUsername' => $merchant->username,
             ]);
-        });
+        })->middleware('merchant_permission:posts.view');
 
         Route::get('/bundles', function (Merchant $merchant) {
             return Inertia::render('Merchant/Bundles', [
                 'merchantUsername' => $merchant->username,
                 'itemPickerDefaultLimit' => (int) AdminSetting::get('catalog_item_picker_default_limit', 5),
             ]);
-        });
+        })->middleware('merchant_permission:bundles.view');
         Route::get('/bundles/{bundle:id}/course', function (Merchant $merchant, Bundle $bundle) {
             abort_unless((int) $bundle->merchant_id === (int) $merchant->id && $bundle->is_course, 404);
 
@@ -1403,20 +1407,20 @@ Route::middleware('auth')->group(function () {
                 'merchantUsername' => $merchant->username,
                 'bundleId' => $bundle->id,
             ]);
-        });
+        })->middleware('merchant_permission:bundles.manage_course');
 
         Route::get('/subscriptions', function (Merchant $merchant) {
             return Inertia::render('Merchant/Subscriptions', [
                 'merchantUsername' => $merchant->username,
                 'itemPickerDefaultLimit' => (int) AdminSetting::get('catalog_item_picker_default_limit', 5),
             ]);
-        });
+        })->middleware('merchant_permission:subscriptions.view');
         Route::get('/subscription-members', function (Merchant $merchant) {
             return Inertia::render('Merchant/SubscriptionMembers', [
                 'merchantUsername' => $merchant->username,
                 'merchantName' => $merchant->display_name,
             ]);
-        });
+        })->middleware('merchant_permission:subscriptions.manage_members');
         Route::get('/subscription-plans/{subscriptionPlan:id}/members', function (Merchant $merchant, SubscriptionPlan $subscriptionPlan) {
             abort_unless((int) $subscriptionPlan->merchant_id === (int) $merchant->id, 404);
 
@@ -1426,7 +1430,7 @@ Route::middleware('auth')->group(function () {
                 'subscriptionPlanId' => $subscriptionPlan->id,
                 'subscriptionPlanName' => $subscriptionPlan->name,
             ]);
-        });
+        })->middleware('merchant_permission:subscriptions.manage_members');
 
         Route::get('/marketing', function (Merchant $merchant) {
             return Inertia::render('Merchant/Marketing', [
@@ -1434,7 +1438,7 @@ Route::middleware('auth')->group(function () {
                 'merchantName' => $merchant->display_name,
                 'section' => 'overview',
             ]);
-        });
+        })->middleware('merchant_permission:marketing.view');
         Route::get('/marketing/{section}', function (Merchant $merchant, string $section) {
             abort_unless(in_array($section, ['coupons', 'sms', 'referrals', 'group-sales', 'social-dms', 'whatsapp', 'analytics'], true), 404);
 
@@ -1443,7 +1447,7 @@ Route::middleware('auth')->group(function () {
                 'merchantName' => $merchant->display_name,
                 'section' => $section,
             ]);
-        })->where('section', 'coupons|sms|referrals|group-sales|social-dms|whatsapp|analytics');
+        })->where('section', 'coupons|sms|referrals|group-sales|social-dms|whatsapp|analytics')->middleware('merchant_permission:marketing.view');
 
         Route::get('/services', function (Merchant $merchant) {
             $merchant->loadMissing('country');
@@ -1453,25 +1457,25 @@ Route::middleware('auth')->group(function () {
                 'typeScope' => 'service',
                 'merchantTimezone' => $merchant->defaultTimezone(),
             ]);
-        });
+        })->middleware('merchant_permission:services.view');
 
         Route::get('/downloads', function (Merchant $merchant) {
             return Inertia::render('Merchant/Products', [
                 'merchantUsername' => $merchant->username,
                 'typeScope' => 'digital',
             ]);
-        });
+        })->middleware('merchant_permission:digital_products.view');
 
         Route::get('/orders', function (Merchant $merchant) {
             return Inertia::render('Merchant/Orders', [
                 'merchantUsername' => $merchant->username,
                 'merchantName' => $merchant->display_name,
             ]);
-        });
+        })->middleware('merchant_permission:orders.view');
 
-        Route::get('/wallet', [\App\Http\Controllers\Api\MerchantWalletController::class, 'show'])->name('merchant.wallet');
-        Route::get('/wallet/ledger', [\App\Http\Controllers\Api\MerchantWalletController::class, 'showLedger'])->name('merchant.wallet.ledger');
-        Route::post('/wallet/withdraw', [\App\Http\Controllers\Api\MerchantWalletController::class, 'requestWithdrawal'])->name('merchant.wallet.withdraw');
+        Route::get('/wallet', [\App\Http\Controllers\Api\MerchantWalletController::class, 'show'])->middleware('merchant_permission:wallet.view')->name('merchant.wallet');
+        Route::get('/wallet/ledger', [\App\Http\Controllers\Api\MerchantWalletController::class, 'showLedger'])->middleware('merchant_permission:wallet.ledger')->name('merchant.wallet.ledger');
+        Route::post('/wallet/withdraw', [\App\Http\Controllers\Api\MerchantWalletController::class, 'requestWithdrawal'])->middleware('merchant_permission:wallet.withdraw')->name('merchant.wallet.withdraw');
         Route::get('/platform-subscriptions/retail-operations', function (Merchant $merchant) {
             abort_unless($merchant->isRetailEligible(), 403, 'Retail Operations is only available for verified business accounts with completed business KYC.');
 
@@ -1490,125 +1494,125 @@ Route::middleware('auth')->group(function () {
                 'merchantName' => $merchant->display_name,
                 'featureKey' => 'retail_ops',
             ]);
-        })->name('merchant.platform-subscriptions.retail-operations');
+        })->middleware('merchant_permission:settings.update')->name('merchant.platform-subscriptions.retail-operations');
         Route::get('/platform-subscriptions/storage', function (Merchant $merchant) {
             return Inertia::render('Merchant/PlatformSubscription', [
                 'merchantUsername' => $merchant->username,
                 'merchantName' => $merchant->display_name,
                 'featureKey' => 'storage',
             ]);
-        })->name('merchant.platform-subscriptions.storage');
-        Route::get('/platform-subscriptions/api', [MerchantPlatformSubscriptionController::class, 'index']);
-        Route::post('/platform-subscriptions/trial', [MerchantPlatformSubscriptionController::class, 'startTrial']);
-        Route::post('/platform-subscriptions/simulate-payment', [MerchantPlatformSubscriptionController::class, 'simulatePayment']);
+        })->middleware('merchant_permission:settings.update')->name('merchant.platform-subscriptions.storage');
+        Route::get('/platform-subscriptions/api', [MerchantPlatformSubscriptionController::class, 'index'])->middleware('merchant_permission:settings.view');
+        Route::post('/platform-subscriptions/trial', [MerchantPlatformSubscriptionController::class, 'startTrial'])->middleware('merchant_permission:settings.update');
+        Route::post('/platform-subscriptions/simulate-payment', [MerchantPlatformSubscriptionController::class, 'simulatePayment'])->middleware('merchant_permission:settings.update');
 
         // ── Merchant-scoped API endpoints (still session-scoped internally) ──
-        Route::get('/products/api', [UploadController::class, 'index']);
-        Route::get('/products/{id}/api', [UploadController::class, 'show'])->whereNumber('id');
-        Route::delete('/products/{id}', [UploadController::class, 'deleteProduct'])->whereNumber('id');
-        Route::post('/products/{product}/hotspots', [UploadController::class, 'syncHotspots'])->whereNumber('product');
-        Route::post('/products/{product}/media', [UploadController::class, 'syncDraftMedia'])->whereNumber('product');
-        Route::get('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'index']);
-        Route::post('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'store']);
-        Route::patch('/products/{product:id}/releases/{release:id}', [\App\Http\Controllers\Api\ProductReleaseController::class, 'update']);
-        Route::delete('/products/{product:id}/releases/{release:id}', [\App\Http\Controllers\Api\ProductReleaseController::class, 'destroy']);
-        Route::get('/products/{product:id}/license-keys', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'index']);
-        Route::post('/products/{product:id}/license-keys/{license:id}/revoke', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'revoke']);
-        Route::post('/products/{product:id}/license-keys/{license:id}/regenerate', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'regenerate']);
+        Route::get('/products/api', [UploadController::class, 'index'])->middleware('merchant_permission:products.view,digital_products.view,services.view');
+        Route::get('/products/{id}/api', [UploadController::class, 'show'])->whereNumber('id')->middleware('merchant_permission:products.view,digital_products.view,services.view');
+        Route::delete('/products/{id}', [UploadController::class, 'deleteProduct'])->whereNumber('id')->middleware('merchant_permission:products.delete,digital_products.delete,services.delete');
+        Route::post('/products/{product}/hotspots', [UploadController::class, 'syncHotspots'])->whereNumber('product')->middleware('merchant_permission:products.update,digital_products.update,services.update');
+        Route::post('/products/{product}/media', [UploadController::class, 'syncDraftMedia'])->whereNumber('product')->middleware('merchant_permission:products.update,digital_products.update,services.update');
+        Route::get('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'index'])->middleware('merchant_permission:digital_products.view');
+        Route::post('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'store'])->middleware('merchant_permission:digital_products.update');
+        Route::patch('/products/{product:id}/releases/{release:id}', [\App\Http\Controllers\Api\ProductReleaseController::class, 'update'])->middleware('merchant_permission:digital_products.update');
+        Route::delete('/products/{product:id}/releases/{release:id}', [\App\Http\Controllers\Api\ProductReleaseController::class, 'destroy'])->middleware('merchant_permission:digital_products.delete');
+        Route::get('/products/{product:id}/license-keys', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'index'])->middleware('merchant_permission:digital_products.manage_keys');
+        Route::post('/products/{product:id}/license-keys/{license:id}/revoke', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'revoke'])->middleware('merchant_permission:digital_products.manage_keys');
+        Route::post('/products/{product:id}/license-keys/{license:id}/regenerate', [\App\Http\Controllers\Api\ProductLicenseKeyController::class, 'regenerate'])->middleware('merchant_permission:digital_products.manage_keys');
         Route::get('/products/{product:id}/live-event', [\App\Http\Controllers\Api\LiveEventController::class, 'dashboard']);
         Route::put('/products/{product:id}/live-event', [\App\Http\Controllers\Api\LiveEventController::class, 'update']);
         Route::post('/products/{product:id}/live-event/orders/{order:id}/attendance', [\App\Http\Controllers\Api\LiveEventController::class, 'markAttendance']);
         Route::post('/products/{product:id}/live-event/orders/{order:id}/resend-access', [\App\Http\Controllers\Api\LiveEventController::class, 'resendAccess']);
-        Route::post('/upload/media', [UploadController::class, 'uploadMedia']);
-        Route::post('/upload/draft', [UploadController::class, 'draftProduct']);
-        Route::post('/upload/manual', [UploadController::class, 'manualDraft']);
-        Route::post('/upload/publish', [UploadController::class, 'publishProduct']);
+        Route::post('/upload/media', [UploadController::class, 'uploadMedia'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
+        Route::post('/upload/draft', [UploadController::class, 'draftProduct'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
+        Route::post('/upload/manual', [UploadController::class, 'manualDraft'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
+        Route::post('/upload/publish', [UploadController::class, 'publishProduct'])->middleware('merchant_permission:products.publish,digital_products.publish,services.create');
         Route::get('/catalog/schema', [UploadController::class, 'catalogSchema']);
-        Route::post('/posts', [PostController::class, 'store']);
-        Route::delete('/posts/{post}', [PostController::class, 'destroy']);
+        Route::post('/posts', [PostController::class, 'store'])->middleware('merchant_permission:posts.create,posts.publish');
+        Route::delete('/posts/{post}', [PostController::class, 'destroy'])->middleware('merchant_permission:posts.delete');
 
-        Route::get('/content-items/api', [MerchantContentController::class, 'index']);
-        Route::post('/content-items/api', [MerchantContentController::class, 'store']);
-        Route::get('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show']);
-        Route::put('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update']);
-        Route::delete('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy']);
-        Route::get('/posts/api', [MerchantContentController::class, 'posts']);
-        Route::patch('/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction']);
-        Route::get('/content-reports/api', [ContentReportModerationController::class, 'merchantIndex']);
-        Route::patch('/content-reports/{contentReport:id}/resolve/api', [ContentReportModerationController::class, 'merchantResolve']);
-        Route::post('/content-reports/{contentReport:id}/appeal/api', [ContentReportModerationController::class, 'merchantAppeal']);
+        Route::get('/content-items/api', [MerchantContentController::class, 'index'])->middleware('merchant_permission:digital_products.view');
+        Route::post('/content-items/api', [MerchantContentController::class, 'store'])->middleware('merchant_permission:digital_products.create');
+        Route::get('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show'])->middleware('merchant_permission:digital_products.view');
+        Route::put('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update'])->middleware('merchant_permission:digital_products.update');
+        Route::delete('/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy'])->middleware('merchant_permission:digital_products.delete');
+        Route::get('/posts/api', [MerchantContentController::class, 'posts'])->middleware('merchant_permission:posts.view');
+        Route::patch('/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction'])->middleware('merchant_permission:posts.update');
+        Route::get('/content-reports/api', [ContentReportModerationController::class, 'merchantIndex'])->middleware('merchant_permission:posts.view');
+        Route::patch('/content-reports/{contentReport:id}/resolve/api', [ContentReportModerationController::class, 'merchantResolve'])->middleware('merchant_permission:posts.update');
+        Route::post('/content-reports/{contentReport:id}/appeal/api', [ContentReportModerationController::class, 'merchantAppeal'])->middleware('merchant_permission:posts.update');
 
-        Route::get('/bundles/api', fn (Request $request, Merchant $merchant, MerchantBundleController $controller) => $controller->index($request));
-        Route::post('/bundles/api', fn (Request $request, Merchant $merchant, MerchantBundleController $controller, EntitlementService $entitlementService) => $controller->store($request, $entitlementService));
-        Route::get('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller) => $controller->show($request, $bundle));
-        Route::put('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller, EntitlementService $entitlementService) => $controller->update($request, $bundle, $entitlementService));
-        Route::delete('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller) => $controller->destroy($request, $bundle));
-        Route::get('/bundles/{bundle:id}/course/api', [MerchantCourseController::class, 'dashboard']);
-        Route::post('/bundles/{bundle:id}/course/sessions/{session:id}/check-in-code', [MerchantCourseController::class, 'generateCheckInCode']);
-        Route::post('/bundles/{bundle:id}/course/sessions/{session:id}/attendance', [MerchantCourseController::class, 'markAttendance']);
+        Route::get('/bundles/api', fn (Request $request, Merchant $merchant, MerchantBundleController $controller) => $controller->index($request))->middleware('merchant_permission:bundles.view');
+        Route::post('/bundles/api', fn (Request $request, Merchant $merchant, MerchantBundleController $controller, EntitlementService $entitlementService) => $controller->store($request, $entitlementService))->middleware('merchant_permission:bundles.create');
+        Route::get('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller) => $controller->show($request, $bundle))->middleware('merchant_permission:bundles.view');
+        Route::put('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller, EntitlementService $entitlementService) => $controller->update($request, $bundle, $entitlementService))->middleware('merchant_permission:bundles.update');
+        Route::delete('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller) => $controller->destroy($request, $bundle))->middleware('merchant_permission:bundles.delete');
+        Route::get('/bundles/{bundle:id}/course/api', [MerchantCourseController::class, 'dashboard'])->middleware('merchant_permission:bundles.manage_course');
+        Route::post('/bundles/{bundle:id}/course/sessions/{session:id}/check-in-code', [MerchantCourseController::class, 'generateCheckInCode'])->middleware('merchant_permission:bundles.manage_course');
+        Route::post('/bundles/{bundle:id}/course/sessions/{session:id}/attendance', [MerchantCourseController::class, 'markAttendance'])->middleware('merchant_permission:bundles.manage_course');
 
-        Route::get('/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'index']);
-        Route::post('/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'store']);
-        Route::get('/subscription-members/api', [MerchantSubscriptionPlanController::class, 'merchantMembers']);
-        Route::get('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'show']);
-        Route::put('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'update']);
-        Route::delete('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy']);
-        Route::get('/subscription-plans/{subscriptionPlan:id}/members/api', [MerchantSubscriptionPlanController::class, 'members']);
-        Route::patch('/subscription-plans/{subscriptionPlan:id}/members/{userSubscription:id}/api', [MerchantSubscriptionPlanController::class, 'updateMember']);
-        Route::get('/subscription-plans/{subscriptionPlan:id}/community-posts/api', [MerchantSubscriptionPlanController::class, 'communityPosts']);
-        Route::post('/subscription-plans/{subscriptionPlan:id}/community-posts/api', [MerchantSubscriptionPlanController::class, 'storeCommunityPost']);
-        Route::delete('/subscription-plans/{subscriptionPlan:id}/community-posts/{post:id}/api', [MerchantSubscriptionPlanController::class, 'destroyCommunityPost']);
+        Route::get('/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'index'])->middleware('merchant_permission:subscriptions.view');
+        Route::post('/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'store'])->middleware('merchant_permission:subscriptions.create');
+        Route::get('/subscription-members/api', [MerchantSubscriptionPlanController::class, 'merchantMembers'])->middleware('merchant_permission:subscriptions.manage_members');
+        Route::get('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'show'])->middleware('merchant_permission:subscriptions.view');
+        Route::put('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'update'])->middleware('merchant_permission:subscriptions.update');
+        Route::delete('/subscription-plans/{subscriptionPlan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy'])->middleware('merchant_permission:subscriptions.delete');
+        Route::get('/subscription-plans/{subscriptionPlan:id}/members/api', [MerchantSubscriptionPlanController::class, 'members'])->middleware('merchant_permission:subscriptions.manage_members');
+        Route::patch('/subscription-plans/{subscriptionPlan:id}/members/{userSubscription:id}/api', [MerchantSubscriptionPlanController::class, 'updateMember'])->middleware('merchant_permission:subscriptions.manage_members');
+        Route::get('/subscription-plans/{subscriptionPlan:id}/community-posts/api', [MerchantSubscriptionPlanController::class, 'communityPosts'])->middleware('merchant_permission:subscriptions.view');
+        Route::post('/subscription-plans/{subscriptionPlan:id}/community-posts/api', [MerchantSubscriptionPlanController::class, 'storeCommunityPost'])->middleware('merchant_permission:subscriptions.update');
+        Route::delete('/subscription-plans/{subscriptionPlan:id}/community-posts/{post:id}/api', [MerchantSubscriptionPlanController::class, 'destroyCommunityPost'])->middleware('merchant_permission:subscriptions.update');
 
-        Route::get('/marketing/api', [MerchantMarketingController::class, 'index']);
-        Route::post('/marketing/coupons/api', [MerchantMarketingController::class, 'store']);
-        Route::put('/marketing/coupons/{coupon:id}/api', [MerchantMarketingController::class, 'update']);
-        Route::delete('/marketing/coupons/{coupon:id}/api', [MerchantMarketingController::class, 'destroy']);
-        Route::post('/marketing/sms/packages/api', [MerchantMarketingController::class, 'buySmsPackage']);
-        Route::post('/marketing/sms/estimate/api', [MerchantMarketingController::class, 'estimateSmsAudience']);
-        Route::post('/marketing/sms/campaigns/api', [MerchantMarketingController::class, 'storeSmsCampaign']);
-        Route::put('/marketing/abandoned-checkout-automation/api', [MerchantMarketingController::class, 'updateAbandonedCheckoutAutomation']);
-        Route::post('/marketing/referrals/api', [MerchantMarketingController::class, 'storeReferral']);
-        Route::put('/marketing/referrals/{referralLink:id}/api', [MerchantMarketingController::class, 'updateReferral']);
-        Route::delete('/marketing/referrals/{referralLink:id}/api', [MerchantMarketingController::class, 'destroyReferral']);
-        Route::post('/marketing/referrals/{referralLink:id}/commissions/api', [MerchantMarketingController::class, 'payReferralCommissions']);
-        Route::get('/marketing/social-accounts/meta/connect', [MerchantMarketingController::class, 'startMetaConnection']);
-        Route::post('/marketing/social-accounts/api', [MerchantMarketingController::class, 'connectSocialAccount']);
-        Route::get('/marketing/social-accounts/{socialAccount:id}/media/api', [MerchantMarketingController::class, 'importSocialMedia']);
-        Route::post('/marketing/social-dms/api', [MerchantMarketingController::class, 'storeSocialDmCampaign']);
-        Route::put('/marketing/social-dms/{socialDmCampaign:id}/api', [MerchantMarketingController::class, 'updateSocialDmCampaign']);
-        Route::delete('/marketing/social-dms/{socialDmCampaign:id}/api', [MerchantMarketingController::class, 'destroySocialDmCampaign']);
-        Route::post('/marketing/social-dms/simulate-comment/api', [MerchantMarketingController::class, 'simulateSocialDmComment']);
-        Route::post('/marketing/whatsapp/accounts/api', [MerchantMarketingController::class, 'connectWhatsappAccount']);
-        Route::post('/marketing/whatsapp/embedded-signup/api', [MerchantMarketingController::class, 'completeWhatsappEmbeddedSignup']);
-        Route::post('/marketing/whatsapp/automations/api', [MerchantMarketingController::class, 'storeWhatsappAutomation']);
-        Route::put('/marketing/whatsapp/automations/{whatsappAutomation:id}/api', [MerchantMarketingController::class, 'updateWhatsappAutomation']);
-        Route::delete('/marketing/whatsapp/automations/{whatsappAutomation:id}/api', [MerchantMarketingController::class, 'destroyWhatsappAutomation']);
-        Route::post('/marketing/whatsapp/simulate-message/api', [MerchantMarketingController::class, 'simulateWhatsappMessage']);
-        Route::post('/marketing/group-sales/api', [MerchantMarketingController::class, 'storeGroupSale']);
-        Route::put('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'updateGroupSale']);
-        Route::delete('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'destroyGroupSale']);
-        Route::get('/exports/orders.csv', [MerchantAnalyticsExportController::class, 'orders']);
-        Route::get('/exports/statement.csv', [MerchantAnalyticsExportController::class, 'statement']);
-        Route::get('/exports/product-performance.csv', [MerchantAnalyticsExportController::class, 'productPerformance']);
-        Route::get('/exports/campaigns.csv', [MerchantAnalyticsExportController::class, 'campaigns']);
+        Route::get('/marketing/api', [MerchantMarketingController::class, 'index'])->middleware('merchant_permission:marketing.view');
+        Route::post('/marketing/coupons/api', [MerchantMarketingController::class, 'store'])->middleware('merchant_permission:marketing.create');
+        Route::put('/marketing/coupons/{coupon:id}/api', [MerchantMarketingController::class, 'update'])->middleware('merchant_permission:marketing.update');
+        Route::delete('/marketing/coupons/{coupon:id}/api', [MerchantMarketingController::class, 'destroy'])->middleware('merchant_permission:marketing.delete');
+        Route::post('/marketing/sms/packages/api', [MerchantMarketingController::class, 'buySmsPackage'])->middleware('merchant_permission:marketing.send_sms');
+        Route::post('/marketing/sms/estimate/api', [MerchantMarketingController::class, 'estimateSmsAudience'])->middleware('merchant_permission:marketing.send_sms');
+        Route::post('/marketing/sms/campaigns/api', [MerchantMarketingController::class, 'storeSmsCampaign'])->middleware('merchant_permission:marketing.send_sms');
+        Route::put('/marketing/abandoned-checkout-automation/api', [MerchantMarketingController::class, 'updateAbandonedCheckoutAutomation'])->middleware('merchant_permission:marketing.send_sms,marketing.update');
+        Route::post('/marketing/referrals/api', [MerchantMarketingController::class, 'storeReferral'])->middleware('merchant_permission:marketing.create');
+        Route::put('/marketing/referrals/{referralLink:id}/api', [MerchantMarketingController::class, 'updateReferral'])->middleware('merchant_permission:marketing.update');
+        Route::delete('/marketing/referrals/{referralLink:id}/api', [MerchantMarketingController::class, 'destroyReferral'])->middleware('merchant_permission:marketing.delete');
+        Route::post('/marketing/referrals/{referralLink:id}/commissions/api', [MerchantMarketingController::class, 'payReferralCommissions'])->middleware('merchant_permission:marketing.update');
+        Route::get('/marketing/social-accounts/meta/connect', [MerchantMarketingController::class, 'startMetaConnection'])->middleware('merchant_permission:marketing.connect_channels');
+        Route::post('/marketing/social-accounts/api', [MerchantMarketingController::class, 'connectSocialAccount'])->middleware('merchant_permission:marketing.connect_channels');
+        Route::get('/marketing/social-accounts/{socialAccount:id}/media/api', [MerchantMarketingController::class, 'importSocialMedia'])->middleware('merchant_permission:marketing.connect_channels');
+        Route::post('/marketing/social-dms/api', [MerchantMarketingController::class, 'storeSocialDmCampaign'])->middleware('merchant_permission:marketing.create');
+        Route::put('/marketing/social-dms/{socialDmCampaign:id}/api', [MerchantMarketingController::class, 'updateSocialDmCampaign'])->middleware('merchant_permission:marketing.update');
+        Route::delete('/marketing/social-dms/{socialDmCampaign:id}/api', [MerchantMarketingController::class, 'destroySocialDmCampaign'])->middleware('merchant_permission:marketing.delete');
+        Route::post('/marketing/social-dms/simulate-comment/api', [MerchantMarketingController::class, 'simulateSocialDmComment'])->middleware('merchant_permission:marketing.view');
+        Route::post('/marketing/whatsapp/accounts/api', [MerchantMarketingController::class, 'connectWhatsappAccount'])->middleware('merchant_permission:marketing.connect_channels');
+        Route::post('/marketing/whatsapp/embedded-signup/api', [MerchantMarketingController::class, 'completeWhatsappEmbeddedSignup'])->middleware('merchant_permission:marketing.connect_channels');
+        Route::post('/marketing/whatsapp/automations/api', [MerchantMarketingController::class, 'storeWhatsappAutomation'])->middleware('merchant_permission:marketing.create');
+        Route::put('/marketing/whatsapp/automations/{whatsappAutomation:id}/api', [MerchantMarketingController::class, 'updateWhatsappAutomation'])->middleware('merchant_permission:marketing.update');
+        Route::delete('/marketing/whatsapp/automations/{whatsappAutomation:id}/api', [MerchantMarketingController::class, 'destroyWhatsappAutomation'])->middleware('merchant_permission:marketing.delete');
+        Route::post('/marketing/whatsapp/simulate-message/api', [MerchantMarketingController::class, 'simulateWhatsappMessage'])->middleware('merchant_permission:marketing.view');
+        Route::post('/marketing/group-sales/api', [MerchantMarketingController::class, 'storeGroupSale'])->middleware('merchant_permission:marketing.create');
+        Route::put('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'updateGroupSale'])->middleware('merchant_permission:marketing.update');
+        Route::delete('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'destroyGroupSale'])->middleware('merchant_permission:marketing.delete');
+        Route::get('/exports/orders.csv', [MerchantAnalyticsExportController::class, 'orders'])->middleware('merchant_permission:marketing.view');
+        Route::get('/exports/statement.csv', [MerchantAnalyticsExportController::class, 'statement'])->middleware('merchant_permission:marketing.view');
+        Route::get('/exports/product-performance.csv', [MerchantAnalyticsExportController::class, 'productPerformance'])->middleware('merchant_permission:marketing.view');
+        Route::get('/exports/campaigns.csv', [MerchantAnalyticsExportController::class, 'campaigns'])->middleware('merchant_permission:marketing.view');
 
-        Route::get('/orders/api', [MerchantOrderController::class, 'index']);
-        Route::get('/orders/api/summary', [MerchantOrderController::class, 'summary']);
-        Route::get('/orders/api/commerce-summary', [MerchantOrderController::class, 'commerceSummary']);
-        Route::get('/service-requests/api', [ServiceRequestController::class, 'merchantIndex']);
-        Route::get('/service-requests/{serviceRequest}/attachments/{field}/{index}', [ServiceRequestController::class, 'showAttachment'])->where('field', '[^/]+')->whereNumber('index');
-        Route::patch('/service-requests/{serviceRequest}/status', [ServiceRequestController::class, 'updateStatus']);
-        Route::post('/service-requests/{serviceRequest}/mark-delivered', [ServiceRequestController::class, 'markDelivered']);
-        Route::post('/service-requests/{serviceRequest}/prepare-notification', [ServiceRequestController::class, 'prepareNotification']);
-        Route::post('/service-requests/{serviceRequest}/prepare-calendar-event', [ServiceRequestController::class, 'prepareCalendarEvent']);
-        Route::get('/service-scheduling/api', [ServiceRequestController::class, 'scheduling']);
-        Route::put('/service-scheduling/api', [ServiceRequestController::class, 'updateScheduling']);
-        Route::get('/service-sessions/api', [ServiceRequestController::class, 'sessions']);
-        Route::put('/service-sessions/api', [ServiceRequestController::class, 'updateSessions']);
-        Route::get('/orders/{order}/api', [MerchantOrderController::class, 'show']);
-        Route::post('/orders/{order}/custom-delivery', [MerchantOrderController::class, 'uploadCustomDelivery']);
-        Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity']);
-        Route::post('/dispatch/{order}/local', [DispatchController::class, 'local']);
+        Route::get('/orders/api', [MerchantOrderController::class, 'index'])->middleware('merchant_permission:orders.view');
+        Route::get('/orders/api/summary', [MerchantOrderController::class, 'summary'])->middleware('merchant_permission:orders.view');
+        Route::get('/orders/api/commerce-summary', [MerchantOrderController::class, 'commerceSummary'])->middleware('merchant_permission:dashboard.view,orders.view');
+        Route::get('/service-requests/api', [ServiceRequestController::class, 'merchantIndex'])->middleware('merchant_permission:services.view,orders.view');
+        Route::get('/service-requests/{serviceRequest}/attachments/{field}/{index}', [ServiceRequestController::class, 'showAttachment'])->where('field', '[^/]+')->whereNumber('index')->middleware('merchant_permission:services.view,orders.view');
+        Route::patch('/service-requests/{serviceRequest}/status', [ServiceRequestController::class, 'updateStatus'])->middleware('merchant_permission:services.update,orders.update');
+        Route::post('/service-requests/{serviceRequest}/mark-delivered', [ServiceRequestController::class, 'markDelivered'])->middleware('merchant_permission:services.update,orders.update');
+        Route::post('/service-requests/{serviceRequest}/prepare-notification', [ServiceRequestController::class, 'prepareNotification'])->middleware('merchant_permission:services.update,orders.update');
+        Route::post('/service-requests/{serviceRequest}/prepare-calendar-event', [ServiceRequestController::class, 'prepareCalendarEvent'])->middleware('merchant_permission:services.schedule');
+        Route::get('/service-scheduling/api', [ServiceRequestController::class, 'scheduling'])->middleware('merchant_permission:services.view,services.schedule');
+        Route::put('/service-scheduling/api', [ServiceRequestController::class, 'updateScheduling'])->middleware('merchant_permission:services.schedule');
+        Route::get('/service-sessions/api', [ServiceRequestController::class, 'sessions'])->middleware('merchant_permission:services.view,services.schedule');
+        Route::put('/service-sessions/api', [ServiceRequestController::class, 'updateSessions'])->middleware('merchant_permission:services.schedule');
+        Route::get('/orders/{order}/api', [MerchantOrderController::class, 'show'])->middleware('merchant_permission:orders.view');
+        Route::post('/orders/{order}/custom-delivery', [MerchantOrderController::class, 'uploadCustomDelivery'])->middleware('merchant_permission:orders.dispatch');
+        Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity'])->middleware('merchant_permission:orders.dispatch');
+        Route::post('/dispatch/{order}/local', [DispatchController::class, 'local'])->middleware('merchant_permission:orders.dispatch');
         Route::get('/orders/{order}', function (Merchant $merchant, \App\Models\Order $order) {
             abort_unless($order->merchant_id === $merchant->id, 404);
 
@@ -1617,21 +1621,21 @@ Route::middleware('auth')->group(function () {
                 'merchantName' => $merchant->display_name,
                 'orderId' => $order->id,
             ]);
-        });
-        Route::get('/wallet/api/history', [\App\Http\Controllers\Api\MerchantWalletController::class, 'history']);
+        })->middleware('merchant_permission:orders.view');
+        Route::get('/wallet/api/history', [\App\Http\Controllers\Api\MerchantWalletController::class, 'history'])->middleware('merchant_permission:wallet.view,wallet.ledger');
         
         // KYC endpoints
-        Route::get('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'show']);
-        Route::post('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'store']);
-        Route::get('/service-credentials/api', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'index']);
-        Route::post('/service-credentials/api', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'store']);
-        Route::delete('/service-credentials/api/{credential}', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'destroy']);
+        Route::get('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'show'])->middleware('merchant_permission:kyc.view');
+        Route::post('/kyc/api', [\App\Http\Controllers\Api\MerchantKycController::class, 'store'])->middleware('merchant_permission:kyc.update');
+        Route::get('/service-credentials/api', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'index'])->middleware('merchant_permission:kyc.view');
+        Route::post('/service-credentials/api', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'store'])->middleware('merchant_permission:kyc.update');
+        Route::delete('/service-credentials/api/{credential}', [\App\Http\Controllers\Api\MerchantServiceCredentialController::class, 'destroy'])->middleware('merchant_permission:kyc.update');
         
         Route::get('/verification', function (Merchant $merchant) {
             return Inertia::render('Merchant/VerificationCenter', [
                 'merchantUsername' => $merchant->username,
             ]);
-        });
+        })->middleware('merchant_permission:kyc.view');
 
         // ── RETAIL OPS PAGES ──
         Route::middleware('retail_ops')->prefix('retail')->group(function () {
@@ -1639,59 +1643,59 @@ Route::middleware('auth')->group(function () {
                 return Inertia::render('Merchant/Retail/Dashboard', [
                     'merchant' => $merchant->load('currency'),
                 ]);
-            })->middleware('retail_role:MANAGER');
+            })->middleware('merchant_permission:retail.dashboard');
 
             Route::get('/trust-safety', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/TrustSafety', [
                     'merchant' => $merchant->load('currency'),
                 ]);
-            })->middleware('retail_role:MANAGER');
+            })->middleware('merchant_permission:retail.settings,settings.view');
 
             Route::get('/bookkeeping', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/Bookkeeping', [
                     'merchant' => $merchant->load('currency'),
                 ]);
-            })->middleware('retail_role:MANAGER');
+            })->middleware('merchant_permission:bookkeeping.view');
 
             Route::get('/staff', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/Staff', ['merchant' => $merchant]);
-            })->middleware('retail_role:MANAGER');
+            })->middleware('merchant_permission:team.view');
             Route::get('/customers', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/Customers', ['merchant' => $merchant]);
-            })->middleware('retail_role:MANAGER,STOREKEEPER');
+            })->middleware('merchant_permission:retail.customers');
             Route::get('/outstanding', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/Outstanding', [
                     'merchant' => $merchant->load('currency'),
                 ]);
-            })->middleware('retail_role:MANAGER,CASHIER');
+            })->middleware('merchant_permission:retail.outstanding');
             Route::get('/transfers', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/Transfers', ['merchant' => $merchant]);
-            })->middleware('retail_role:MANAGER,STOREKEEPER');
+            })->middleware('merchant_permission:retail.transfers');
             Route::get('/products/{product:id}/timeline', function (Merchant $merchant, \App\Models\Product $product) {
                 abort_unless((int) $product->merchant_id === (int) $merchant->id, 404);
                 return Inertia::render('Merchant/Retail/ProductTimeline', [
                     'merchant' => $merchant->load('currency'),
                     'productId' => $product->id,
                 ]);
-            })->middleware('retail_role:MANAGER,STOREKEEPER');
+            })->middleware('merchant_permission:retail.inventory');
             Route::get('/inventory', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/Inventory', ['merchant' => $merchant->load('currency')]);
-            })->middleware('retail_role:MANAGER,STOREKEEPER');
+            })->middleware('merchant_permission:retail.inventory');
             Route::get('/storekeeper', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/Storekeeper', ['merchant' => $merchant]);
-            })->middleware('retail_role:MANAGER,STOREKEEPER,CASHIER');
+            })->middleware('merchant_permission:retail.inventory,retail.pos');
 
             Route::get('/settings', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/Settings', ['merchant' => $merchant]);
-            })->middleware('retail_role:MANAGER');
+            })->middleware('merchant_permission:retail.settings');
 
             Route::get('/pos', function (Merchant $merchant) {
                 return Inertia::render('Merchant/Retail/PosTerminal', [
                     'merchant' => $merchant->load('currency'),
                 ]);
-            })->middleware('retail_role:MANAGER,CASHIER');
+            })->middleware('merchant_permission:retail.pos');
 
-            Route::get('/onboarding/template', [\App\Http\Controllers\Api\RetailOnboardingController::class, 'downloadTemplate']);
+            Route::get('/onboarding/template', [\App\Http\Controllers\Api\RetailOnboardingController::class, 'downloadTemplate'])->middleware('merchant_permission:retail.inventory');
         });
     });
 
@@ -1708,42 +1712,42 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('merchant_status')->group(function () {
         // File handling & Product Management
-        Route::get('/merchant/products/api', [UploadController::class, 'index']);
-        Route::get('/merchant/products/{id}/api', [UploadController::class, 'show']);
-        Route::delete('/merchant/products/{id}', [UploadController::class, 'deleteProduct']);
-        Route::post('/merchant/products/{product}/media', [UploadController::class, 'syncDraftMedia']);
-        Route::post('/merchant/upload/media', [UploadController::class, 'uploadMedia']);
-        Route::post('/merchant/upload/draft', [UploadController::class, 'draftProduct']);
-        Route::post('/merchant/upload/manual', [UploadController::class, 'manualDraft']);
-        Route::post('/merchant/upload/publish', [UploadController::class, 'publishProduct']);
+        Route::get('/merchant/products/api', [UploadController::class, 'index'])->middleware('merchant_permission:products.view,digital_products.view,services.view');
+        Route::get('/merchant/products/{id}/api', [UploadController::class, 'show'])->middleware('merchant_permission:products.view,digital_products.view,services.view');
+        Route::delete('/merchant/products/{id}', [UploadController::class, 'deleteProduct'])->middleware('merchant_permission:products.delete,digital_products.delete,services.delete');
+        Route::post('/merchant/products/{product}/media', [UploadController::class, 'syncDraftMedia'])->middleware('merchant_permission:products.update,digital_products.update,services.update');
+        Route::post('/merchant/upload/media', [UploadController::class, 'uploadMedia'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
+        Route::post('/merchant/upload/draft', [UploadController::class, 'draftProduct'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
+        Route::post('/merchant/upload/manual', [UploadController::class, 'manualDraft'])->middleware('merchant_permission:products.create,digital_products.create,services.create');
+        Route::post('/merchant/upload/publish', [UploadController::class, 'publishProduct'])->middleware('merchant_permission:products.publish,digital_products.publish,services.create');
         Route::get('/merchant/catalog/schema', [UploadController::class, 'catalogSchema']);
-        Route::post('/merchant/products/{product}/hotspots', [UploadController::class, 'syncHotspots']);
-        Route::post('/merchant/posts', [PostController::class, 'store']);
-        Route::delete('/merchant/posts/{post}', [PostController::class, 'destroy']);
+        Route::post('/merchant/products/{product}/hotspots', [UploadController::class, 'syncHotspots'])->middleware('merchant_permission:products.update,digital_products.update,services.update');
+        Route::post('/merchant/posts', [PostController::class, 'store'])->middleware('merchant_permission:posts.create,posts.publish');
+        Route::delete('/merchant/posts/{post}', [PostController::class, 'destroy'])->middleware('merchant_permission:posts.delete');
 
         // Commerce management (session-auth web endpoints)
-        Route::get('/merchant/content-items/api', [MerchantContentController::class, 'index']);
-        Route::post('/merchant/content-items/api', [MerchantContentController::class, 'store']);
-        Route::get('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show']);
-        Route::put('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update']);
-        Route::delete('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy']);
-        Route::get('/merchant/posts/api', [MerchantContentController::class, 'posts']);
-        Route::patch('/merchant/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction']);
-        Route::get('/merchant/content-reports/api', [ContentReportModerationController::class, 'merchantIndex']);
-        Route::patch('/merchant/content-reports/{contentReport:id}/resolve/api', [ContentReportModerationController::class, 'merchantResolve']);
-        Route::post('/merchant/content-reports/{contentReport:id}/appeal/api', [ContentReportModerationController::class, 'merchantAppeal']);
+        Route::get('/merchant/content-items/api', [MerchantContentController::class, 'index'])->middleware('merchant_permission:digital_products.view');
+        Route::post('/merchant/content-items/api', [MerchantContentController::class, 'store'])->middleware('merchant_permission:digital_products.create');
+        Route::get('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'show'])->middleware('merchant_permission:digital_products.view');
+        Route::put('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'update'])->middleware('merchant_permission:digital_products.update');
+        Route::delete('/merchant/content-items/{contentItem:id}/api', [MerchantContentController::class, 'destroy'])->middleware('merchant_permission:digital_products.delete');
+        Route::get('/merchant/posts/api', [MerchantContentController::class, 'posts'])->middleware('merchant_permission:posts.view');
+        Route::patch('/merchant/posts/{post:id}/interaction/api', [MerchantContentController::class, 'updatePostInteraction'])->middleware('merchant_permission:posts.update');
+        Route::get('/merchant/content-reports/api', [ContentReportModerationController::class, 'merchantIndex'])->middleware('merchant_permission:posts.view');
+        Route::patch('/merchant/content-reports/{contentReport:id}/resolve/api', [ContentReportModerationController::class, 'merchantResolve'])->middleware('merchant_permission:posts.update');
+        Route::post('/merchant/content-reports/{contentReport:id}/appeal/api', [ContentReportModerationController::class, 'merchantAppeal'])->middleware('merchant_permission:posts.update');
 
-        Route::get('/merchant/bundles/api', [MerchantBundleController::class, 'index']);
-        Route::post('/merchant/bundles/api', [MerchantBundleController::class, 'store']);
-        Route::get('/merchant/bundles/{bundle:id}/api', [MerchantBundleController::class, 'show']);
-        Route::put('/merchant/bundles/{bundle:id}/api', [MerchantBundleController::class, 'update']);
-        Route::delete('/merchant/bundles/{bundle:id}/api', [MerchantBundleController::class, 'destroy']);
+        Route::get('/merchant/bundles/api', [MerchantBundleController::class, 'index'])->middleware('merchant_permission:bundles.view');
+        Route::post('/merchant/bundles/api', [MerchantBundleController::class, 'store'])->middleware('merchant_permission:bundles.create');
+        Route::get('/merchant/bundles/{bundle:id}/api', [MerchantBundleController::class, 'show'])->middleware('merchant_permission:bundles.view');
+        Route::put('/merchant/bundles/{bundle:id}/api', [MerchantBundleController::class, 'update'])->middleware('merchant_permission:bundles.update');
+        Route::delete('/merchant/bundles/{bundle:id}/api', [MerchantBundleController::class, 'destroy'])->middleware('merchant_permission:bundles.delete');
 
-        Route::get('/merchant/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'index']);
-        Route::post('/merchant/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'store']);
-        Route::get('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'show']);
-        Route::put('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'update']);
-        Route::delete('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy']);
+        Route::get('/merchant/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'index'])->middleware('merchant_permission:subscriptions.view');
+        Route::post('/merchant/subscription-plans/api', [MerchantSubscriptionPlanController::class, 'store'])->middleware('merchant_permission:subscriptions.create');
+        Route::get('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'show'])->middleware('merchant_permission:subscriptions.view');
+        Route::put('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'update'])->middleware('merchant_permission:subscriptions.update');
+        Route::delete('/merchant/subscription-plans/{plan:id}/api', [MerchantSubscriptionPlanController::class, 'destroy'])->middleware('merchant_permission:subscriptions.delete');
 
         // Standalone Payment Pages
         Route::get('/merchant/{merchant:username}/payment-pages', [\App\Http\Controllers\Api\PaymentPageController::class, 'index'])->name('merchant.payment-pages.index');

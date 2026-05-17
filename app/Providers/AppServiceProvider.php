@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Payments\Drivers\AzamPay\AzamPayGateway;
 use App\Payments\Drivers\AzamPay\AzamPayTokenService;
+use App\Observers\MerchantAuditObserver;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -43,5 +44,23 @@ class AppServiceProvider extends ServiceProvider
     {
         \App\Models\Product::observe(\App\Observers\InventoryObserver::class);
         \App\Models\ProductVariant::observe(\App\Observers\InventoryObserver::class);
+
+        foreach ([
+            \App\Models\Bundle::class,
+            \App\Models\ContentItem::class,
+            \App\Models\MerchantCoupon::class,
+            \App\Models\MerchantGroupSaleCampaign::class,
+            \App\Models\MerchantLocation::class,
+            \App\Models\MerchantReturnPolicy::class,
+            \App\Models\MerchantSocialDmCampaign::class,
+            \App\Models\MerchantWhatsappAutomation::class,
+            \App\Models\PaymentPage::class,
+            \App\Models\Post::class,
+            \App\Models\Product::class,
+            \App\Models\ShippingProfile::class,
+            \App\Models\SubscriptionPlan::class,
+        ] as $model) {
+            $model::observe(MerchantAuditObserver::class);
+        }
     }
 }

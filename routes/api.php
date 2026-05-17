@@ -140,69 +140,69 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Merchant Controls
     Route::middleware('merchant_status')->prefix('merchant')->group(function () {
-        Route::put('/settings', [\App\Http\Controllers\Api\MerchantSettingsController::class, 'update']);
-        Route::post('/products/{product}/sync', [ProductController::class, 'syncStock']);
-        Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity']);
-        Route::post('/dispatch/{order}/local', [DispatchController::class, 'local']);
-        Route::get('/content-items', [MerchantContentController::class, 'index']);
-        Route::post('/content-items', [MerchantContentController::class, 'store']);
-        Route::get('/content-items/{contentItem:id}', [MerchantContentController::class, 'show']);
-        Route::put('/content-items/{contentItem:id}', [MerchantContentController::class, 'update']);
-        Route::delete('/content-items/{contentItem:id}', [MerchantContentController::class, 'destroy']);
-        Route::get('/posts', [MerchantContentController::class, 'posts']);
-        Route::patch('/posts/{post:id}/interaction', [MerchantContentController::class, 'updatePostInteraction']);
+        Route::put('/settings', [\App\Http\Controllers\Api\MerchantSettingsController::class, 'update'])->middleware('merchant_permission:settings.update');
+        Route::post('/products/{product}/sync', [ProductController::class, 'syncStock'])->middleware('merchant_permission:products.manage_stock');
+        Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity'])->middleware('merchant_permission:orders.dispatch');
+        Route::post('/dispatch/{order}/local', [DispatchController::class, 'local'])->middleware('merchant_permission:orders.dispatch');
+        Route::get('/content-items', [MerchantContentController::class, 'index'])->middleware('merchant_permission:digital_products.view');
+        Route::post('/content-items', [MerchantContentController::class, 'store'])->middleware('merchant_permission:digital_products.create');
+        Route::get('/content-items/{contentItem:id}', [MerchantContentController::class, 'show'])->middleware('merchant_permission:digital_products.view');
+        Route::put('/content-items/{contentItem:id}', [MerchantContentController::class, 'update'])->middleware('merchant_permission:digital_products.update');
+        Route::delete('/content-items/{contentItem:id}', [MerchantContentController::class, 'destroy'])->middleware('merchant_permission:digital_products.delete');
+        Route::get('/posts', [MerchantContentController::class, 'posts'])->middleware('merchant_permission:posts.view');
+        Route::patch('/posts/{post:id}/interaction', [MerchantContentController::class, 'updatePostInteraction'])->middleware('merchant_permission:posts.update');
 
-        Route::get('/bundles', [MerchantBundleController::class, 'index']);
-        Route::post('/bundles', [MerchantBundleController::class, 'store']);
-        Route::get('/bundles/{bundle:id}', [MerchantBundleController::class, 'show']);
-        Route::put('/bundles/{bundle:id}', [MerchantBundleController::class, 'update']);
-        Route::delete('/bundles/{bundle:id}', [MerchantBundleController::class, 'destroy']);
+        Route::get('/bundles', [MerchantBundleController::class, 'index'])->middleware('merchant_permission:bundles.view');
+        Route::post('/bundles', [MerchantBundleController::class, 'store'])->middleware('merchant_permission:bundles.create');
+        Route::get('/bundles/{bundle:id}', [MerchantBundleController::class, 'show'])->middleware('merchant_permission:bundles.view');
+        Route::put('/bundles/{bundle:id}', [MerchantBundleController::class, 'update'])->middleware('merchant_permission:bundles.update');
+        Route::delete('/bundles/{bundle:id}', [MerchantBundleController::class, 'destroy'])->middleware('merchant_permission:bundles.delete');
 
         // Merchant Order PIN Verification
-        Route::post('/{merchant:username}/order-checkup/lookup', [MerchantOrderController::class, 'checkupLookup']);
-        Route::post('/{merchant:username}/orders/{order:id}/verify-pickup', [MerchantOrderController::class, 'verifyPickup']);
-        Route::post('/{merchant:username}/orders/{order:id}/verify-delivery', [MerchantOrderController::class, 'verifyDelivery']);
-        Route::post('/{merchant:username}/orders/{order:id}/extend-lock', [MerchantOrderController::class, 'extendExpiration']);
-        Route::post('/{merchant:username}/orders/{order:id}/release-inventory', [MerchantOrderController::class, 'releaseInventory']);
-        Route::post('/{merchant:username}/dispatch/{order:id}/{mode}', [MerchantOrderController::class, 'dispatchOrder']);
+        Route::post('/{merchant:username}/order-checkup/lookup', [MerchantOrderController::class, 'checkupLookup'])->middleware('merchant_permission:orders.verify_pickup');
+        Route::post('/{merchant:username}/orders/{order:id}/verify-pickup', [MerchantOrderController::class, 'verifyPickup'])->middleware('merchant_permission:orders.verify_pickup');
+        Route::post('/{merchant:username}/orders/{order:id}/verify-delivery', [MerchantOrderController::class, 'verifyDelivery'])->middleware('merchant_permission:orders.verify_pickup');
+        Route::post('/{merchant:username}/orders/{order:id}/extend-lock', [MerchantOrderController::class, 'extendExpiration'])->middleware('merchant_permission:orders.update');
+        Route::post('/{merchant:username}/orders/{order:id}/release-inventory', [MerchantOrderController::class, 'releaseInventory'])->middleware('merchant_permission:orders.update');
+        Route::post('/{merchant:username}/dispatch/{order:id}/{mode}', [MerchantOrderController::class, 'dispatchOrder'])->middleware('merchant_permission:orders.dispatch');
 
-        Route::get('/subscription-plans', [MerchantSubscriptionPlanController::class, 'index']);
-        Route::post('/subscription-plans', [MerchantSubscriptionPlanController::class, 'store']);
-        Route::get('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'show']);
-        Route::put('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'update']);
-        Route::delete('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'destroy']);
-        Route::get('/subscription-plans/{subscriptionPlan:id}/community-posts', [MerchantSubscriptionPlanController::class, 'communityPosts']);
-        Route::post('/subscription-plans/{subscriptionPlan:id}/community-posts', [MerchantSubscriptionPlanController::class, 'storeCommunityPost']);
-        Route::delete('/subscription-plans/{subscriptionPlan:id}/community-posts/{post:id}', [MerchantSubscriptionPlanController::class, 'destroyCommunityPost']);
+        Route::get('/subscription-plans', [MerchantSubscriptionPlanController::class, 'index'])->middleware('merchant_permission:subscriptions.view');
+        Route::post('/subscription-plans', [MerchantSubscriptionPlanController::class, 'store'])->middleware('merchant_permission:subscriptions.create');
+        Route::get('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'show'])->middleware('merchant_permission:subscriptions.view');
+        Route::put('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'update'])->middleware('merchant_permission:subscriptions.update');
+        Route::delete('/subscription-plans/{subscriptionPlan:id}', [MerchantSubscriptionPlanController::class, 'destroy'])->middleware('merchant_permission:subscriptions.delete');
+        Route::get('/subscription-plans/{subscriptionPlan:id}/community-posts', [MerchantSubscriptionPlanController::class, 'communityPosts'])->middleware('merchant_permission:subscriptions.view');
+        Route::post('/subscription-plans/{subscriptionPlan:id}/community-posts', [MerchantSubscriptionPlanController::class, 'storeCommunityPost'])->middleware('merchant_permission:subscriptions.update');
+        Route::delete('/subscription-plans/{subscriptionPlan:id}/community-posts/{post:id}', [MerchantSubscriptionPlanController::class, 'destroyCommunityPost'])->middleware('merchant_permission:subscriptions.update');
         
-        Route::get('/shipping-profiles', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'index']);
-        Route::post('/shipping-profiles', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'store']);
-        Route::put('/shipping-profiles/{shippingProfile:id}', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'update']);
-        Route::delete('/shipping-profiles/{shippingProfile:id}', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'destroy']);
-        Route::post('/shipping-profiles/{shippingProfile:id}/set-default', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'setDefault']);
+        Route::get('/shipping-profiles', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'index'])->middleware('merchant_permission:settings.view');
+        Route::post('/shipping-profiles', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'store'])->middleware('merchant_permission:settings.update');
+        Route::put('/shipping-profiles/{shippingProfile:id}', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'update'])->middleware('merchant_permission:settings.update');
+        Route::delete('/shipping-profiles/{shippingProfile:id}', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'destroy'])->middleware('merchant_permission:settings.update');
+        Route::post('/shipping-profiles/{shippingProfile:id}/set-default', [\App\Http\Controllers\Api\MerchantShippingProfileController::class, 'setDefault'])->middleware('merchant_permission:settings.update');
 
-        Route::get('/return-policies', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'index']);
-        Route::post('/return-policies', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'store']);
-        Route::put('/return-policies/{returnPolicy:id}', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'update']);
-        Route::delete('/return-policies/{returnPolicy:id}', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'destroy']);
-        Route::post('/return-policies/{returnPolicy:id}/set-default', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'setDefault']);
+        Route::get('/return-policies', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'index'])->middleware('merchant_permission:settings.view');
+        Route::post('/return-policies', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'store'])->middleware('merchant_permission:settings.update');
+        Route::put('/return-policies/{returnPolicy:id}', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'update'])->middleware('merchant_permission:settings.update');
+        Route::delete('/return-policies/{returnPolicy:id}', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'destroy'])->middleware('merchant_permission:settings.update');
+        Route::post('/return-policies/{returnPolicy:id}/set-default', [\App\Http\Controllers\Api\MerchantReturnPolicyController::class, 'setDefault'])->middleware('merchant_permission:settings.update');
 
-        Route::get('/shipping-profiles/{shippingProfile:id}/zones', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'index']);
-        Route::post('/shipping-profiles/{shippingProfile:id}/zones', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'store']);
-        Route::put('/shipping-zones/{shippingZone:id}', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'update']);
-        Route::delete('/shipping-zones/{shippingZone:id}', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'destroy']);
+        Route::get('/shipping-profiles/{shippingProfile:id}/zones', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'index'])->middleware('merchant_permission:settings.view');
+        Route::post('/shipping-profiles/{shippingProfile:id}/zones', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'store'])->middleware('merchant_permission:settings.update');
+        Route::put('/shipping-zones/{shippingZone:id}', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'update'])->middleware('merchant_permission:settings.update');
+        Route::delete('/shipping-zones/{shippingZone:id}', [\App\Http\Controllers\Api\MerchantShippingZoneController::class, 'destroy'])->middleware('merchant_permission:settings.update');
 
-        Route::get('/content-reports', [ContentReportModerationController::class, 'merchantIndex']);
-        Route::patch('/content-reports/{contentReport:id}/resolve', [ContentReportModerationController::class, 'merchantResolve']);
-        Route::post('/content-reports/{contentReport:id}/appeal', [ContentReportModerationController::class, 'merchantAppeal']);
+        Route::get('/content-reports', [ContentReportModerationController::class, 'merchantIndex'])->middleware('merchant_permission:posts.view');
+        Route::patch('/content-reports/{contentReport:id}/resolve', [ContentReportModerationController::class, 'merchantResolve'])->middleware('merchant_permission:posts.update');
+        Route::post('/content-reports/{contentReport:id}/appeal', [ContentReportModerationController::class, 'merchantAppeal'])->middleware('merchant_permission:posts.update');
     });
 
     // Merchant Locations (outside merchant_status to avoid binding issues)
     Route::prefix('merchant')->group(function () {
-        Route::get('/locations', [\App\Http\Controllers\Api\MerchantLocationController::class, 'index']);
-        Route::post('/locations', [\App\Http\Controllers\Api\MerchantLocationController::class, 'store']);
-        Route::put('/locations/{merchantLocation:id}', [\App\Http\Controllers\Api\MerchantLocationController::class, 'update']);
-        Route::delete('/locations/{merchantLocation:id}', [\App\Http\Controllers\Api\MerchantLocationController::class, 'destroy']);
+        Route::get('/locations', [\App\Http\Controllers\Api\MerchantLocationController::class, 'index'])->middleware('merchant_permission:settings.view');
+        Route::post('/locations', [\App\Http\Controllers\Api\MerchantLocationController::class, 'store'])->middleware('merchant_permission:settings.update');
+        Route::put('/locations/{merchantLocation:id}', [\App\Http\Controllers\Api\MerchantLocationController::class, 'update'])->middleware('merchant_permission:settings.update');
+        Route::delete('/locations/{merchantLocation:id}', [\App\Http\Controllers\Api\MerchantLocationController::class, 'destroy'])->middleware('merchant_permission:settings.update');
     });
 
     // Phase 11 Safe-Chat
@@ -214,7 +214,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Shipping Inquiries
     Route::post('/v1/checkout/inquire', [CheckoutController::class, 'inquire']);
     Route::post('/v1/checkout/pay-inquiry/{order}', [CheckoutController::class, 'payInquiry']);
-    Route::post('/merchant/orders/{order}/quote', [MerchantOrderController::class, 'provideQuote']);
+    Route::post('/merchant/orders/{order}/quote', [MerchantOrderController::class, 'provideQuote'])->middleware('merchant_permission:orders.update');
 
     // Logistics
     Route::post('/delivery/confirm-pin', [DeliveryController::class, 'confirmPin']);
@@ -294,93 +294,93 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ─── RETAIL OPS MODULE ──────────────────────────────────────────────────
-    Route::post('/merchant/modules/retail-ops/activate', [\App\Http\Controllers\Api\RetailModuleController::class, 'activate']);
-    Route::post('/merchant/modules/retail-ops/deactivate', [\App\Http\Controllers\Api\RetailModuleController::class, 'deactivate']);
+    Route::post('/merchant/modules/retail-ops/activate', [\App\Http\Controllers\Api\RetailModuleController::class, 'activate'])->middleware('merchant_permission:settings.update');
+    Route::post('/merchant/modules/retail-ops/deactivate', [\App\Http\Controllers\Api\RetailModuleController::class, 'deactivate'])->middleware('merchant_permission:settings.update');
 
     Route::middleware(['retail_ops'])->prefix('retail')->group(function () {
         // Staff Management
-        Route::get('/staff', [\App\Http\Controllers\Api\MerchantStaffController::class, 'index'])->middleware('retail_role:MANAGER');
-        Route::post('/staff', [\App\Http\Controllers\Api\MerchantStaffController::class, 'store'])->middleware('retail_role:MANAGER');
-        Route::patch('/staff/{staff}', [\App\Http\Controllers\Api\MerchantStaffController::class, 'update'])->middleware('retail_role:MANAGER');
-        Route::patch('/staff/{staff}/reset-pin', [\App\Http\Controllers\Api\MerchantStaffController::class, 'resetPin'])->middleware('retail_role:MANAGER');
-        Route::post('/staff/{staff}/clear-devices', [\App\Http\Controllers\Api\MerchantStaffController::class, 'clearDevices'])->middleware('retail_role:MANAGER');
-        Route::delete('/staff/{staff}', [\App\Http\Controllers\Api\MerchantStaffController::class, 'destroy'])->middleware('retail_role:MANAGER');
+        Route::get('/staff', [\App\Http\Controllers\Api\MerchantStaffController::class, 'index'])->middleware('merchant_permission:team.view');
+        Route::post('/staff', [\App\Http\Controllers\Api\MerchantStaffController::class, 'store'])->middleware('merchant_permission:team.create');
+        Route::patch('/staff/{staff}', [\App\Http\Controllers\Api\MerchantStaffController::class, 'update'])->middleware('merchant_permission:team.update');
+        Route::patch('/staff/{staff}/reset-pin', [\App\Http\Controllers\Api\MerchantStaffController::class, 'resetPin'])->middleware('merchant_permission:team.reset_pin');
+        Route::post('/staff/{staff}/clear-devices', [\App\Http\Controllers\Api\MerchantStaffController::class, 'clearDevices'])->middleware('merchant_permission:team.clear_devices');
+        Route::delete('/staff/{staff}', [\App\Http\Controllers\Api\MerchantStaffController::class, 'destroy'])->middleware('merchant_permission:team.delete');
 
         // Dashboard & Audit
-        Route::get('/dashboard', [\App\Http\Controllers\Api\RetailDashboardController::class, 'index'])->middleware('retail_role:MANAGER');
-        Route::get('/audit-logs', [\App\Http\Controllers\Api\RetailDashboardController::class, 'auditLogs'])->middleware('retail_role:MANAGER');
-        Route::get('/bookkeeping', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'index'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'store'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/{entry}/void', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'void'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/{entry}/review', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'review'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/{entry}/reconcile', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'reconcile'])->middleware('retail_role:MANAGER');
-        Route::put('/bookkeeping/{entry}', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'update'])->middleware('retail_role:MANAGER');
-        Route::get('/bookkeeping/export', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'export'])->middleware('retail_role:MANAGER');
-        Route::get('/bookkeeping/audit-pack', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'auditPack'])->middleware('retail_role:MANAGER');
-        Route::get('/bookkeeping/reports/{report}', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'exportReport'])->middleware('retail_role:MANAGER');
-        Route::get('/bookkeeping/tax-wizards/{wizard}/export', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'exportTaxWizard'])->middleware('retail_role:MANAGER');
-        Route::get('/bookkeeping/report-pack', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'reportPack'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/opening-balance', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'openingBalanceStore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/account-items', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'accountItemStore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/account-items/{item}/settle', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'accountItemSettle'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/account-items/{item}/void', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'accountItemVoid'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/adjustments', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'adjustmentStore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/statements/import', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'statementImport'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/statements/manual', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'statementStore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/statements/{line}/match', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'statementMatch'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/statements/{line}/ignore', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'statementIgnore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/obligations', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'obligationStore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/obligations/{obligation}/complete', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'obligationComplete'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/recurring-bills', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'recurringBillStore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/recurring-bills/{bill}/pay', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'recurringBillPay'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/payroll', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'payrollStore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/payroll/{payroll}/pay', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'payrollPay'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/share-links', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'shareLinkStore'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/share-links/{shareLink}/revoke', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'shareLinkRevoke'])->middleware('retail_role:MANAGER');
-        Route::post('/bookkeeping/period-locks', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'lockPeriod'])->middleware('retail_role:MANAGER');
-        Route::get('/fiscal-integrations', [\App\Http\Controllers\Api\MerchantFiscalIntegrationController::class, 'index'])->middleware('retail_role:MANAGER');
-        Route::post('/fiscal-integrations', [\App\Http\Controllers\Api\MerchantFiscalIntegrationController::class, 'store'])->middleware('retail_role:MANAGER');
-        Route::get('/fiscal-receipts', [\App\Http\Controllers\Api\MerchantFiscalIntegrationController::class, 'receipts'])->middleware('retail_role:MANAGER');
-        Route::post('/fiscal-receipts/{receipt}/retry', [\App\Http\Controllers\Api\MerchantFiscalIntegrationController::class, 'retry'])->middleware('retail_role:MANAGER');
-        Route::get('/trust-safety', [\App\Http\Controllers\Api\RetailDashboardController::class, 'trustSafety'])->middleware('retail_role:MANAGER');
-        Route::post('/trust-safety/review-request', [\App\Http\Controllers\Api\RetailDashboardController::class, 'requestTrustSafetyReview'])->middleware('retail_role:MANAGER');
-        Route::get('/outstanding-balances', [\App\Http\Controllers\Api\RetailDashboardController::class, 'outstandingBalances'])->middleware('retail_role:MANAGER,CASHIER');
-        Route::post('/outstanding-balances/{order}/payment-link', [\App\Http\Controllers\Api\RetailDashboardController::class, 'outstandingPaymentLink'])->middleware('retail_role:MANAGER,CASHIER');
-        Route::post('/outstanding-balances/{order}/settle', [\App\Http\Controllers\Api\RetailDashboardController::class, 'settleOutstanding'])->middleware('retail_role:MANAGER,CASHIER');
+        Route::get('/dashboard', [\App\Http\Controllers\Api\RetailDashboardController::class, 'index'])->middleware('merchant_permission:retail.dashboard');
+        Route::get('/audit-logs', [\App\Http\Controllers\Api\RetailDashboardController::class, 'auditLogs'])->middleware('merchant_permission:retail.dashboard,team.view');
+        Route::get('/bookkeeping', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'index'])->middleware('merchant_permission:bookkeeping.view');
+        Route::post('/bookkeeping', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'store'])->middleware('merchant_permission:bookkeeping.create');
+        Route::post('/bookkeeping/{entry}/void', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'void'])->middleware('merchant_permission:bookkeeping.void');
+        Route::post('/bookkeeping/{entry}/review', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'review'])->middleware('merchant_permission:bookkeeping.review');
+        Route::post('/bookkeeping/{entry}/reconcile', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'reconcile'])->middleware('merchant_permission:bookkeeping.reconcile');
+        Route::put('/bookkeeping/{entry}', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'update'])->middleware('merchant_permission:bookkeeping.update');
+        Route::get('/bookkeeping/export', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'export'])->middleware('merchant_permission:bookkeeping.export');
+        Route::get('/bookkeeping/audit-pack', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'auditPack'])->middleware('merchant_permission:bookkeeping.export');
+        Route::get('/bookkeeping/reports/{report}', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'exportReport'])->middleware('merchant_permission:bookkeeping.export');
+        Route::get('/bookkeeping/tax-wizards/{wizard}/export', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'exportTaxWizard'])->middleware('merchant_permission:bookkeeping.export');
+        Route::get('/bookkeeping/report-pack', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'reportPack'])->middleware('merchant_permission:bookkeeping.export');
+        Route::post('/bookkeeping/opening-balance', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'openingBalanceStore'])->middleware('merchant_permission:bookkeeping.create');
+        Route::post('/bookkeeping/account-items', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'accountItemStore'])->middleware('merchant_permission:bookkeeping.create');
+        Route::post('/bookkeeping/account-items/{item}/settle', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'accountItemSettle'])->middleware('merchant_permission:bookkeeping.update');
+        Route::post('/bookkeeping/account-items/{item}/void', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'accountItemVoid'])->middleware('merchant_permission:bookkeeping.void');
+        Route::post('/bookkeeping/adjustments', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'adjustmentStore'])->middleware('merchant_permission:bookkeeping.create');
+        Route::post('/bookkeeping/statements/import', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'statementImport'])->middleware('merchant_permission:bookkeeping.reconcile');
+        Route::post('/bookkeeping/statements/manual', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'statementStore'])->middleware('merchant_permission:bookkeeping.create');
+        Route::post('/bookkeeping/statements/{line}/match', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'statementMatch'])->middleware('merchant_permission:bookkeeping.reconcile');
+        Route::post('/bookkeeping/statements/{line}/ignore', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'statementIgnore'])->middleware('merchant_permission:bookkeeping.reconcile');
+        Route::post('/bookkeeping/obligations', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'obligationStore'])->middleware('merchant_permission:bookkeeping.create');
+        Route::post('/bookkeeping/obligations/{obligation}/complete', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'obligationComplete'])->middleware('merchant_permission:bookkeeping.update');
+        Route::post('/bookkeeping/recurring-bills', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'recurringBillStore'])->middleware('merchant_permission:bookkeeping.create');
+        Route::post('/bookkeeping/recurring-bills/{bill}/pay', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'recurringBillPay'])->middleware('merchant_permission:bookkeeping.update');
+        Route::post('/bookkeeping/payroll', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'payrollStore'])->middleware('merchant_permission:bookkeeping.create');
+        Route::post('/bookkeeping/payroll/{payroll}/pay', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'payrollPay'])->middleware('merchant_permission:bookkeeping.update');
+        Route::post('/bookkeeping/share-links', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'shareLinkStore'])->middleware('merchant_permission:bookkeeping.export');
+        Route::post('/bookkeeping/share-links/{shareLink}/revoke', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'shareLinkRevoke'])->middleware('merchant_permission:bookkeeping.export');
+        Route::post('/bookkeeping/period-locks', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'lockPeriod'])->middleware('merchant_permission:bookkeeping.lock_period');
+        Route::get('/fiscal-integrations', [\App\Http\Controllers\Api\MerchantFiscalIntegrationController::class, 'index'])->middleware('merchant_permission:bookkeeping.view');
+        Route::post('/fiscal-integrations', [\App\Http\Controllers\Api\MerchantFiscalIntegrationController::class, 'store'])->middleware('merchant_permission:bookkeeping.update');
+        Route::get('/fiscal-receipts', [\App\Http\Controllers\Api\MerchantFiscalIntegrationController::class, 'receipts'])->middleware('merchant_permission:bookkeeping.view');
+        Route::post('/fiscal-receipts/{receipt}/retry', [\App\Http\Controllers\Api\MerchantFiscalIntegrationController::class, 'retry'])->middleware('merchant_permission:bookkeeping.update');
+        Route::get('/trust-safety', [\App\Http\Controllers\Api\RetailDashboardController::class, 'trustSafety'])->middleware('merchant_permission:retail.settings,settings.view');
+        Route::post('/trust-safety/review-request', [\App\Http\Controllers\Api\RetailDashboardController::class, 'requestTrustSafetyReview'])->middleware('merchant_permission:retail.settings,settings.update');
+        Route::get('/outstanding-balances', [\App\Http\Controllers\Api\RetailDashboardController::class, 'outstandingBalances'])->middleware('merchant_permission:retail.outstanding');
+        Route::post('/outstanding-balances/{order}/payment-link', [\App\Http\Controllers\Api\RetailDashboardController::class, 'outstandingPaymentLink'])->middleware('merchant_permission:retail.outstanding');
+        Route::post('/outstanding-balances/{order}/settle', [\App\Http\Controllers\Api\RetailDashboardController::class, 'settleOutstanding'])->middleware('merchant_permission:retail.outstanding');
 
         // Stock Transfers (Handshake)
-        Route::get('/transfers', [\App\Http\Controllers\Api\StockTransferController::class, 'index'])->middleware('retail_role:MANAGER,STOREKEEPER,CASHIER');
-        Route::get('/products/{product:id}/timeline', [\App\Http\Controllers\Api\StockTransferController::class, 'productTimeline'])->middleware('retail_role:MANAGER,STOREKEEPER');
-        Route::post('/transfers', [\App\Http\Controllers\Api\StockTransferController::class, 'store'])->middleware('retail_role:MANAGER');
-        Route::patch('/transfers/{transfer}/dispatch', [\App\Http\Controllers\Api\StockTransferController::class, 'dispatch'])->middleware('retail_role:MANAGER,STOREKEEPER,CASHIER');
-        Route::patch('/transfers/{transfer}/receive', [\App\Http\Controllers\Api\StockTransferController::class, 'receive'])->middleware('retail_role:MANAGER,STOREKEEPER,CASHIER');
-        Route::patch('/transfers/{transfer}/cancel', [\App\Http\Controllers\Api\StockTransferController::class, 'cancel'])->middleware('retail_role:MANAGER');
+        Route::get('/transfers', [\App\Http\Controllers\Api\StockTransferController::class, 'index'])->middleware('merchant_permission:retail.transfers');
+        Route::get('/products/{product:id}/timeline', [\App\Http\Controllers\Api\StockTransferController::class, 'productTimeline'])->middleware('merchant_permission:retail.inventory');
+        Route::post('/transfers', [\App\Http\Controllers\Api\StockTransferController::class, 'store'])->middleware('merchant_permission:retail.transfers');
+        Route::patch('/transfers/{transfer}/dispatch', [\App\Http\Controllers\Api\StockTransferController::class, 'dispatch'])->middleware('merchant_permission:retail.transfers');
+        Route::patch('/transfers/{transfer}/receive', [\App\Http\Controllers\Api\StockTransferController::class, 'receive'])->middleware('merchant_permission:retail.transfers');
+        Route::patch('/transfers/{transfer}/cancel', [\App\Http\Controllers\Api\StockTransferController::class, 'cancel'])->middleware('merchant_permission:retail.transfers');
 
         // POS Operations
-        Route::get('/pos/products', [\App\Http\Controllers\Api\PosController::class, 'searchProducts'])->middleware('retail_role:MANAGER,CASHIER');
-        Route::post('/pos/sale', [\App\Http\Controllers\Api\PosController::class, 'storeSale'])->middleware('retail_role:MANAGER,CASHIER');
-        Route::post('/pos/sale/{order}/void', [\App\Http\Controllers\Api\PosController::class, 'voidSale'])->middleware('retail_role:MANAGER,CASHIER');
-        Route::post('/pos/sale/{order}/approve', [\App\Http\Controllers\Api\PosController::class, 'approveOrder'])->middleware('retail_role:MANAGER');
-        Route::post('/pos/sale/{order}/reject', [\App\Http\Controllers\Api\PosController::class, 'rejectOrder'])->middleware('retail_role:MANAGER');
-        Route::post('/pos/lookup', [\App\Http\Controllers\Api\PosController::class, 'findOrderByCode'])->middleware('retail_role:MANAGER,CASHIER,STOREKEEPER');
-        Route::get('/pos/pending', [\App\Http\Controllers\Api\PosController::class, 'pendingOrders'])->middleware('retail_role:MANAGER,CASHIER,STOREKEEPER');
+        Route::get('/pos/products', [\App\Http\Controllers\Api\PosController::class, 'searchProducts'])->middleware('merchant_permission:retail.pos');
+        Route::post('/pos/sale', [\App\Http\Controllers\Api\PosController::class, 'storeSale'])->middleware('merchant_permission:retail.sale');
+        Route::post('/pos/sale/{order}/void', [\App\Http\Controllers\Api\PosController::class, 'voidSale'])->middleware('merchant_permission:retail.void_sale');
+        Route::post('/pos/sale/{order}/approve', [\App\Http\Controllers\Api\PosController::class, 'approveOrder'])->middleware('merchant_permission:retail.approve_sale');
+        Route::post('/pos/sale/{order}/reject', [\App\Http\Controllers\Api\PosController::class, 'rejectOrder'])->middleware('merchant_permission:retail.approve_sale');
+        Route::post('/pos/lookup', [\App\Http\Controllers\Api\PosController::class, 'findOrderByCode'])->middleware('merchant_permission:retail.pos,retail.inventory');
+        Route::get('/pos/pending', [\App\Http\Controllers\Api\PosController::class, 'pendingOrders'])->middleware('merchant_permission:retail.pos,retail.inventory');
 
         // Inventory Management
-        Route::get('/inventory', [\App\Http\Controllers\Api\RetailInventoryController::class, 'index'])->middleware('retail_role:MANAGER,STOREKEEPER');
-        Route::post('/inventory/restock', [\App\Http\Controllers\Api\RetailInventoryController::class, 'restock'])->middleware('retail_role:MANAGER,STOREKEEPER');
-        Route::post('/inventory/count', [\App\Http\Controllers\Api\RetailInventoryController::class, 'submitCount'])->middleware('retail_role:MANAGER,STOREKEEPER');
-        Route::post('/inventory/import', [\App\Http\Controllers\Api\RetailInventoryController::class, 'bulkImport'])->middleware('retail_role:MANAGER');
+        Route::get('/inventory', [\App\Http\Controllers\Api\RetailInventoryController::class, 'index'])->middleware('merchant_permission:retail.inventory');
+        Route::post('/inventory/restock', [\App\Http\Controllers\Api\RetailInventoryController::class, 'restock'])->middleware('merchant_permission:retail.inventory');
+        Route::post('/inventory/count', [\App\Http\Controllers\Api\RetailInventoryController::class, 'submitCount'])->middleware('merchant_permission:retail.inventory');
+        Route::post('/inventory/import', [\App\Http\Controllers\Api\RetailInventoryController::class, 'bulkImport'])->middleware('merchant_permission:retail.inventory');
 
         // Onboarding
-        Route::post('/onboarding/import', [\App\Http\Controllers\Api\RetailOnboardingController::class, 'import'])->middleware('retail_role:MANAGER');
+        Route::post('/onboarding/import', [\App\Http\Controllers\Api\RetailOnboardingController::class, 'import'])->middleware('merchant_permission:retail.inventory');
 
         // Customer Management
-        Route::get('/customers', [\App\Http\Controllers\Api\MerchantCustomerController::class, 'index']);
-        Route::get('/customers/{customer}', [\App\Http\Controllers\Api\MerchantCustomerController::class, 'show']);
+        Route::get('/customers', [\App\Http\Controllers\Api\MerchantCustomerController::class, 'index'])->middleware('merchant_permission:retail.customers');
+        Route::get('/customers/{customer}', [\App\Http\Controllers\Api\MerchantCustomerController::class, 'show'])->middleware('merchant_permission:retail.customers');
 
         // Retail Settings
-        Route::get('/settings', [\App\Http\Controllers\Api\PosController::class, 'getSettings']);
-        Route::patch('/settings', [\App\Http\Controllers\Api\PosController::class, 'updateSettings']);
+        Route::get('/settings', [\App\Http\Controllers\Api\PosController::class, 'getSettings'])->middleware('merchant_permission:retail.settings');
+        Route::patch('/settings', [\App\Http\Controllers\Api\PosController::class, 'updateSettings'])->middleware('merchant_permission:retail.settings');
     });
 
     // POS Terminal Auth (Does not need retail_ops middleware here as it checks staff status internally)

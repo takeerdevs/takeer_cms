@@ -8,6 +8,7 @@ import { Textarea } from '@/Components/ui/Textarea';
 import { Crown, Loader2, Plus, Save, Trash2, Pencil, Clock3, Users } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 const initialPlanForm = {
     id: null,
@@ -50,6 +51,11 @@ function planStatusClasses(status) {
 }
 
 export default function MerchantSubscriptions({ merchantUsername = '', itemPickerDefaultLimit = 5 }) {
+    const { can } = useMerchantPermissions(merchantUsername);
+    const canCreate = can('subscriptions.create');
+    const canUpdate = can('subscriptions.update');
+    const canDelete = can('subscriptions.delete');
+    const canManageMembers = can('subscriptions.manage_members');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [products, setProducts] = useState([]);
@@ -175,6 +181,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
     }
 
     function startEditPlan(item) {
+        if (!canUpdate) return;
         setPlanItemSearch('');
         setPlanForm({
             id: item.id,
@@ -197,6 +204,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
     }
 
     async function savePlan() {
+        if (planForm.id ? !canUpdate : !canCreate) return;
         setSaving(true);
         try {
             const payload = {
@@ -230,6 +238,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
     }
 
     async function destroyPlan(id) {
+        if (!canDelete) return;
         if (!window.confirm('Una uhakika unataka kufuta tier hii?')) return;
 
         try {
@@ -243,6 +252,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
     }
 
     function togglePlanItem(option) {
+        if (planForm.id ? !canUpdate : !canCreate) return;
         setPlanForm((current) => {
             const exists = current.items.some((item) => item.item_type === option.item_type && item.item_id === option.item_id);
             return {
@@ -255,6 +265,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
     }
 
     function updatePlanItemDelay(itemType, itemId, value) {
+        if (planForm.id ? !canUpdate : !canCreate) return;
         setPlanForm((current) => ({
             ...current,
             items: current.items.map((item) => (
@@ -297,6 +308,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                 </Card>
 
                 <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+                    {(canCreate || canUpdate) && (
                     <Card className="rounded-[24px] border-emerald-200/70">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl font-black">
@@ -455,6 +467,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                             </div>
                         </CardContent>
                     </Card>
+                    )}
 
                     <Card className="rounded-[24px]">
                         <CardHeader>
@@ -497,15 +510,21 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                                                 <p className="mt-1 whitespace-nowrap text-base font-black text-brand-700">TZS {Number(item.price || 0).toLocaleString()}</p>
                                             </div>
                                             <div className="flex items-center gap-1 rounded-xl border border-border/70 bg-muted/30 p-1">
-                                                <Button title="Members" aria-label="Members" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => router.visit(`/merchant/${merchantUsername}/subscription-plans/${item.id}/members`)}>
-                                                    <Users className="h-4 w-4" />
-                                                </Button>
-                                                <Button title="Edit tier" aria-label="Edit tier" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => startEditPlan(item)}>
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                <Button title="Delete tier" aria-label="Delete tier" variant="ghost" size="icon" className="h-9 w-9 rounded-lg text-red-600 hover:text-red-700" onClick={() => destroyPlan(item.id)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                {canManageMembers && (
+                                                    <Button title="Members" aria-label="Members" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => router.visit(`/merchant/${merchantUsername}/subscription-plans/${item.id}/members`)}>
+                                                        <Users className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                                {canUpdate && (
+                                                    <Button title="Edit tier" aria-label="Edit tier" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => startEditPlan(item)}>
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                                {canDelete && (
+                                                    <Button title="Delete tier" aria-label="Delete tier" variant="ghost" size="icon" className="h-9 w-9 rounded-lg text-red-600 hover:text-red-700" onClick={() => destroyPlan(item.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

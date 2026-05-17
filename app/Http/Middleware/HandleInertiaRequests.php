@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use App\Support\MerchantPermissions;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -57,20 +58,7 @@ class HandleInertiaRequests extends Middleware
             return null;
         }
 
-        $merchantProfiles = $user->merchantProfiles()
-            ->select([
-                'id',
-                'username',
-                'display_name',
-                'avatar_url',
-                'bio',
-                'type',
-                'is_default',
-                'is_verified',
-                'is_active',
-                'kyc_status',
-            ])
-            ->get()
+        $merchantProfiles = MerchantPermissions::accessibleMerchantsFor($user)
             ->map(fn ($merchant) => [
                 'id' => $merchant->id,
                 'username' => $merchant->username,
@@ -82,6 +70,7 @@ class HandleInertiaRequests extends Middleware
                 'is_verified' => (bool) $merchant->is_verified,
                 'is_active' => (bool) $merchant->is_active,
                 'kyc_status' => $merchant->kyc_status,
+                ...MerchantPermissions::accessSummary($user, $merchant),
             ])
             ->values();
 
@@ -95,7 +84,7 @@ class HandleInertiaRequests extends Middleware
             'role' => $user->role,
             'is_admin' => (bool) $user->is_admin,
             'is_banned' => (bool) $user->is_banned,
-            'is_merchant' => $user->is_merchant,
+            'is_merchant' => $user->is_merchant || $merchantProfiles->isNotEmpty(),
             'merchant_profiles' => $merchantProfiles,
         ];
     }

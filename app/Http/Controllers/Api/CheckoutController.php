@@ -141,7 +141,7 @@ class CheckoutController extends Controller
         }
 
         // ── Calculate total payable ───────────────────────────────────────────
-        $servicePricingInputs = $validated['service_pricing_inputs'] ?? [];
+        $servicePricingInputs = $this->normalizeServicePricingInputs($validated['service_pricing_inputs'] ?? []);
         if ($product?->type === 'service' && !$serviceRequest) {
             $pricingError = $this->validateServicePricingInputs($product, $servicePricingInputs);
             if ($pricingError) {
@@ -817,6 +817,23 @@ class CheckoutController extends Controller
         };
     }
 
+    private function normalizeServicePricingInputs(array $inputs): array
+    {
+        $inputs['people'] ??= $inputs['guests']
+            ?? $inputs['attendees']
+            ?? null;
+        $inputs['quantity'] ??= $inputs['rooms']
+            ?? $inputs['units']
+            ?? null;
+        $inputs['start_date'] ??= $inputs['check_in'] ?? null;
+        $inputs['end_date'] ??= $inputs['check_out'] ?? null;
+
+        return array_filter(
+            $inputs,
+            fn ($value) => $value !== null && $value !== ''
+        );
+    }
+
     private function dateSpanUnits(array $inputs, string $mode): int
     {
         if (empty($inputs['start_date']) || empty($inputs['end_date'])) {
@@ -1072,15 +1089,21 @@ class CheckoutController extends Controller
             'service_pricing_inputs' => 'nullable|array',
             'service_pricing_inputs.service_option_id' => 'nullable|string|max:80',
             'service_pricing_inputs.people' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.guests' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.attendees' => 'nullable|integer|min:1|max:100000',
             'service_pricing_inputs.hours' => 'nullable|numeric|min:0.25|max:100000',
             'service_pricing_inputs.quantity' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.rooms' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.units' => 'nullable|integer|min:1|max:100000',
             'service_pricing_inputs.start_date' => 'nullable|date',
             'service_pricing_inputs.end_date' => 'nullable|date|after:service_pricing_inputs.start_date',
+            'service_pricing_inputs.check_in' => 'nullable|date',
+            'service_pricing_inputs.check_out' => 'nullable|date|after:service_pricing_inputs.check_in',
         ]);
 
         $deliveryType = $validated['delivery_type'] ?? 'shipping';
         $isSelfPickup = $deliveryType === 'self_pickup';
-        $servicePricingInputs = $validated['service_pricing_inputs'] ?? [];
+        $servicePricingInputs = $this->normalizeServicePricingInputs($validated['service_pricing_inputs'] ?? []);
 
         $isServiceInquiry = false;
         $product = null;

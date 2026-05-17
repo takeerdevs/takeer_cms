@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\ProductLocationInventory;
 use App\Models\RetailAuditLog;
 use App\Models\StockTransfer;
+use App\Support\MerchantPermissions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -37,17 +38,12 @@ class RetailDashboardController extends Controller
         $merchant = $request->attributes->get('active_merchant');
         $user = $request->user();
 
-        // 0. Permission Check: Only Owners or MANAGERS can see dashboard metrics
-        $isOwner = $merchant->user_id === $user->id;
-        $isManager = \App\Models\MerchantStaff::where('merchant_id', $merchant->id)
-            ->where('user_id', $user->id)
-            ->where('role', 'MANAGER')
-            ->where('is_active', true)
-            ->exists();
-
-        if (!$isOwner && !$isManager) {
+        if (
+            ! MerchantPermissions::can($user, $merchant, 'dashboard.view')
+            && ! MerchantPermissions::can($user, $merchant, 'retail.dashboard')
+        ) {
             return response()->json([
-                'message' => 'Huna ruhusa ya kuona ripoti za biashara. Sehemu hii ni kwa ajili ya Mameneja tu.',
+                'message' => 'Huna ruhusa ya kuona ripoti za biashara.',
             ], 403);
         }
         

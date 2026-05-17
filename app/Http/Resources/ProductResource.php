@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\MerchantGroupSaleCampaign;
 use App\Services\EntitlementService;
+use App\Support\ServiceTemplateRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -12,6 +13,8 @@ class ProductResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $this->loadMissing(['createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id']);
+
         $rawDelivery = (string) ($this->download_link ?: $this->url ?: '');
         $isExternal = preg_match('/^https?:\/\//i', $rawDelivery) === 1;
         $normalizedPath = preg_replace('/^private:\/\//', '', $rawDelivery);
@@ -194,6 +197,7 @@ class ProductResource extends JsonResource
             'title' => $this->title,
             'description' => $this->description,
             'type' => $this->type,
+            'created_by' => $this->creatorPayload(),
             'has_access' => $hasAccess,
             'latest_order_id' => $latestOrderId,
             'has_variants' => (bool) $this->has_variants,
@@ -359,9 +363,11 @@ class ProductResource extends JsonResource
             'service_category_id' => $this->service_category_id,
             'service_subcategory' => $this->service_subcategory,
             'service_subcategory_id' => $this->service_subcategory_id,
+            'service_template_key' => $this->service_template_key,
             'service_price_display' => $this->service_price_display ?: $this->legacyServicePriceDisplay(),
             'service_charges' => $this->service_charges ?? [],
             'service_options' => $this->service_options ?? [],
+            'service_details' => $this->service_details ?? [],
             'service_duration_minutes' => $this->service_duration_minutes !== null ? (int) $this->service_duration_minutes : null,
             'service_location_type' => $this->service_location_type,
             'service_provider_location' => $this->service_provider_location,
@@ -375,6 +381,7 @@ class ProductResource extends JsonResource
             'service_contact_value' => $this->service_contact_value,
             'service_trust' => $serviceTrust,
             'service_request_payment' => $this->getAttribute('service_request_payment'),
+            'service_template' => $this->type === 'service' ? ServiceTemplateRegistry::forProduct($this->resource) : null,
             'delivery_mode' => $this->type === 'digital'
                 ? (in_array($digitalDeliveryType, ['video_stream', 'audio_stream', 'gallery_pack', 'live_event', 'custom_delivery'], true) ? $digitalDeliveryType : ($isExternal ? 'external_link' : 'uploaded_file'))
                 : null,
@@ -501,6 +508,29 @@ class ProductResource extends JsonResource
                     ])->values()
                     : [],
             ])),
+        ];
+    }
+
+    private function creatorPayload(): ?array
+    {
+        $staff = $this->relationLoaded('createdByStaff') ? $this->createdByStaff : null;
+        $user = $this->relationLoaded('createdByUser') ? $this->createdByUser : null;
+
+        if (! $staff && ! $user) {
+            return null;
+        }
+
+        $displayName = $staff?->display_name
+            ?: $staff?->job_title
+            ?: $user?->name;
+
+        return [
+            'user_id' => $user?->id,
+            'staff_id' => $staff?->id,
+            'name' => $displayName,
+            'user_name' => $user?->name,
+            'job_title' => $staff?->job_title,
+            'label' => $displayName ? "via {$displayName}" : null,
         ];
     }
 

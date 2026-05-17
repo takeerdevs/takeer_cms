@@ -7,6 +7,7 @@ use App\Models\ContentItem;
 use App\Models\Merchant;
 use App\Models\Post;
 use App\Services\ContentPolicyService;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -43,6 +44,8 @@ class MerchantContentController extends Controller
                 'linkedContentItem:id,format,visibility,price',
                 'media:id,post_id,media_url,media_type,product_image_id',
                 'media.productImage:id,image_url',
+                'createdByUser:id,name',
+                'createdByStaff:id,display_name,job_title,user_id',
             ])
             ->latest()
             ->paginate(30);
@@ -69,6 +72,7 @@ class MerchantContentController extends Controller
                     'content_format' => $contentFormat,
                     'content_visibility' => $post->linkedContentItem?->visibility,
                     'content_price' => $post->linkedContentItem?->price,
+                    'created_by' => $this->creatorPayload($post),
                     'cover_image' => $coverImage,
                     'created_at' => $post->created_at?->toISOString(),
                     'views_count' => (int) ($post->views_count ?? 0),
@@ -173,7 +177,7 @@ class MerchantContentController extends Controller
         ]);
 
         if (($validated['visibility'] ?? 'draft') === 'published' && $moderation['allowed']) {
-            $this->syncFeedPostForPublishedContent($contentItem, $validated['bg_style'] ?? null);
+            $this->syncFeedPostForPublishedContent($contentItem, $validated['bg_style'] ?? null, $request);
         }
 
         return response()->json([
@@ -219,7 +223,7 @@ class MerchantContentController extends Controller
 
         $isPublished = ($validated['visibility'] ?? $contentItem->visibility) === 'published' && $moderation['allowed'];
         if ($isPublished) {
-            $this->syncFeedPostForPublishedContent($contentItem->fresh(), $validated['bg_style'] ?? null);
+            $this->syncFeedPostForPublishedContent($contentItem->fresh(), $validated['bg_style'] ?? null, $request);
         } elseif ($wasPublished) {
             Post::where('content_item_id', $contentItem->id)->delete();
         }
@@ -256,14 +260,15 @@ class MerchantContentController extends Controller
         $user = $request->user();
         $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
         if ($merchantId) {
-            $merchant = $user->merchantProfiles()->where('merchants.id', (int) $merchantId)->first();
+            $merchant = \App\Support\MerchantPermissions::accessibleMerchantsFor($user)->firstWhere('id', (int) $merchantId);
             if ($merchant) {
                 return $merchant;
             }
         }
 
         $merchant = $user->merchantProfiles()->where('is_default', true)->first()
-            ?? $user->merchantProfiles()->first();
+            ?? $user->merchantProfiles()->first()
+            ?? \App\Support\MerchantPermissions::accessibleMerchantsFor($user)->first();
 
         abort_unless($merchant, 403, 'Merchant profile not found.');
 
@@ -275,7 +280,30 @@ class MerchantContentController extends Controller
         abort_if($merchantId !== $contentMerchantId, 403, 'Unauthorized.');
     }
 
-    private function syncFeedPostForPublishedContent(ContentItem $contentItem, ?string $bgStyle = null): void
+    private function creatorPayload(Post $post): ?array
+    {
+        $staff = $post->createdByStaff;
+        $user = $post->createdByUser;
+
+        if (! $staff && ! $user) {
+            return null;
+        }
+
+        $displayName = $staff?->display_name
+            ?: $staff?->job_title
+            ?: $user?->name;
+
+        return [
+            'user_id' => $user?->id,
+            'staff_id' => $staff?->id,
+            'name' => $displayName,
+            'user_name' => $user?->name,
+            'job_title' => $staff?->job_title,
+            'label' => $displayName ? "via {$displayName}" : null,
+        ];
+    }
+
+    private function syncFeedPostForPublishedContent(ContentItem $contentItem, ?string $bgStyle = null, ?Request $request = null): void
     {
         $internalShortTitle = '__short_locked__';
         $isShortForm = $contentItem->format === 'plain_text';
@@ -284,6 +312,9 @@ class MerchantContentController extends Controller
             : $contentItem->title;
         $existingFeedPost = Post::where('content_item_id', $contentItem->id)->first();
         $resolvedBgStyle = $bgStyle ?? $existingFeedPost?->bg_style;
+        $actingStaff = $request?->user() && $contentItem->merchant
+            ? MerchantPermissions::staffFor($request->user(), $contentItem->merchant)
+            : null;
 
         $previewText = trim((string) ($contentItem->excerpt ?: Str::limit(trim(strip_tags((string) $contentItem->body)), 240)));
 
@@ -296,6 +327,8 @@ class MerchantContentController extends Controller
             ['content_item_id' => $contentItem->id],
             [
                 'merchant_id' => $contentItem->merchant_id,
+                'created_by_user_id' => $existingFeedPost?->created_by_user_id ?: $request?->user()?->id,
+                'created_by_staff_id' => $existingFeedPost?->created_by_staff_id ?: $actingStaff?->id,
                 'source' => 'content_publish',
                 'caption' => implode("\n\n", $lines),
                 'bg_style' => $resolvedBgStyle,

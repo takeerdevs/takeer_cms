@@ -38,6 +38,8 @@ class Product extends Model
     protected $fillable = [
         'type',
         'merchant_id',
+        'created_by_user_id',
+        'created_by_staff_id',
         'title',
         'has_variants',
         'fulfillment_mode',
@@ -100,9 +102,11 @@ class Product extends Model
         'service_category_id',
         'service_subcategory',
         'service_subcategory_id',
+        'service_template_key',
         'service_price_display',
         'service_charges',
         'service_options',
+        'service_details',
         'service_duration_minutes',
         'service_location_type',
         'service_provider_location',
@@ -171,6 +175,7 @@ class Product extends Model
             'service_is_showcase' => 'boolean',
             'service_charges' => 'array',
             'service_options' => 'array',
+            'service_details' => 'array',
             'service_duration_minutes' => 'integer',
             'service_provider_location' => 'array',
             'service_area' => 'array',
@@ -216,6 +221,16 @@ class Product extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class, 'merchant_id');
+    }
+
+    public function createdByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function createdByStaff(): BelongsTo
+    {
+        return $this->belongsTo(MerchantStaff::class, 'created_by_staff_id');
     }
 
     public function shippingProfile(): BelongsTo

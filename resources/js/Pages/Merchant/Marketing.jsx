@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 const emptyCoupon = {
     id: null,
@@ -248,6 +249,13 @@ const sectionTabs = [
 ];
 
 export default function MerchantMarketing({ merchantUsername = '', merchantName = '', section = 'overview' }) {
+    const { can } = useMerchantPermissions(merchantUsername);
+    const canCreateMarketing = can('marketing.create');
+    const canUpdateMarketing = can('marketing.update');
+    const canDeleteMarketing = can('marketing.delete');
+    const canSendSms = can('marketing.send_sms');
+    const canConnectChannels = can('marketing.connect_channels');
+    const canManageMarketing = canCreateMarketing || canUpdateMarketing || canDeleteMarketing;
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [summary, setSummary] = useState({});
@@ -342,6 +350,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     function editCoupon(coupon) {
+        if (!canUpdateMarketing) return;
         setForm({
             ...emptyCoupon,
             ...coupon,
@@ -358,6 +367,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function saveCoupon() {
+        if (form.id ? !canUpdateMarketing : !canCreateMarketing) return;
         setSaving(true);
         try {
             const payload = {
@@ -396,6 +406,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function deleteCoupon(couponId) {
+        if (!canDeleteMarketing) return;
         if (!window.confirm('Futa coupon hii?')) return;
         try {
             await axios.delete(`/merchant/${merchantUsername}/marketing/coupons/${couponId}/api`);
@@ -417,6 +428,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     function insertCouponIntoSms(coupon) {
+        if (!canSendSms) return;
         const message = smsForm.message.trim();
         const snippet = `Use code ${coupon.code} kupata ${discountLabel(coupon)}.`;
         setSmsForm((current) => ({
@@ -427,6 +439,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function buySmsPackage(packageId) {
+        if (!canSendSms) return;
         setSmsBusy(true);
         try {
             const res = await axios.post(`/merchant/${merchantUsername}/marketing/sms/packages/api`, { package_id: packageId });
@@ -441,6 +454,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function estimateSmsCampaign() {
+        if (!canSendSms) return;
         setSmsBusy(true);
         try {
             const res = await axios.post(`/merchant/${merchantUsername}/marketing/sms/estimate/api`, {
@@ -457,6 +471,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function saveSmsCampaign(sendMode = smsForm.send_mode) {
+        if (!canSendSms) return;
         setSmsBusy(true);
         try {
             const payload = {
@@ -479,6 +494,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function saveAbandonedAutomation() {
+        if (!canSendSms && !canUpdateMarketing) return;
         setSmsBusy(true);
         try {
             const payload = {
@@ -498,6 +514,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     function editReferral(link) {
+        if (!canUpdateMarketing) return;
         setReferralForm({
             ...emptyReferralForm,
             ...link,
@@ -509,6 +526,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function saveReferralLink() {
+        if (referralForm.id ? !canUpdateMarketing : !canCreateMarketing) return;
         setSaving(true);
         try {
             const payload = {
@@ -538,6 +556,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function deleteReferralLink(linkId) {
+        if (!canDeleteMarketing) return;
         if (!window.confirm('Futa referral link hii?')) return;
         try {
             await axios.delete(`/merchant/${merchantUsername}/marketing/referrals/${linkId}/api`);
@@ -549,6 +568,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function settleReferralCommissions(link, status = 'paid') {
+        if (!canUpdateMarketing) return;
         const amount = Number(link.commission_pending || 0);
         if (amount <= 0) {
             toast.info('No pending referral commission for this link.');
@@ -571,6 +591,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     function editGroupSale(campaign) {
+        if (!canUpdateMarketing) return;
         setGroupSaleForm({
             ...emptyGroupSaleForm,
             ...campaign,
@@ -584,6 +605,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function saveGroupSale() {
+        if (groupSaleForm.id ? !canUpdateMarketing : !canCreateMarketing) return;
         setSaving(true);
         try {
             const payload = {
@@ -620,6 +642,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function deleteGroupSale(campaignId) {
+        if (!canDeleteMarketing) return;
         if (!window.confirm('Futa group-sale campaign hii?')) return;
         try {
             await axios.delete(`/merchant/${merchantUsername}/marketing/group-sales/${campaignId}/api`);
@@ -631,6 +654,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     function editSocialDmCampaign(campaign) {
+        if (!canUpdateMarketing) return;
         setSocialDmForm({
             ...emptySocialDmForm,
             ...campaign,
@@ -644,6 +668,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function connectSocialAccount() {
+        if (!canConnectChannels) return;
         setSaving(true);
         try {
             const payload = {
@@ -665,6 +690,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     function connectMetaAccount() {
+        if (!canConnectChannels) return;
         window.location.assign(`/merchant/${merchantUsername}/marketing/social-accounts/meta/connect`);
     }
 
@@ -700,6 +726,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function saveSocialDmCampaign() {
+        if (socialDmForm.id ? !canUpdateMarketing : !canCreateMarketing) return;
         setSaving(true);
         try {
             const payload = {
@@ -742,6 +769,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function deleteSocialDmCampaign(campaignId) {
+        if (!canDeleteMarketing) return;
         if (!window.confirm('Delete this Comment-to-DM campaign?')) return;
         try {
             await axios.delete(`/merchant/${merchantUsername}/marketing/social-dms/${campaignId}/api`);
@@ -771,6 +799,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     function editWhatsappAutomation(automation) {
+        if (!canUpdateMarketing) return;
         setWhatsappForm({
             ...emptyWhatsappForm,
             ...automation,
@@ -784,6 +813,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function connectWhatsappAccount() {
+        if (!canConnectChannels) return;
         setSaving(true);
         try {
             const payload = {
@@ -834,6 +864,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function startWhatsappEmbeddedSignup() {
+        if (!canConnectChannels) return;
         if (!whatsappConnector.embedded_signup_configured) {
             toast.error('Add Meta app ID, secret, and WhatsApp configuration ID first.');
             return;
@@ -897,6 +928,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function saveWhatsappAutomation() {
+        if (whatsappForm.id ? !canUpdateMarketing : !canCreateMarketing) return;
         setSaving(true);
         try {
             const payload = {
@@ -934,6 +966,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     }
 
     async function deleteWhatsappAutomation(automationId) {
+        if (!canDeleteMarketing) return;
         if (!window.confirm('Delete this WhatsApp automation?')) return;
         try {
             await axios.delete(`/merchant/${merchantUsername}/marketing/whatsapp/automations/${automationId}/api`);
@@ -991,7 +1024,15 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
         post: marketingTargets.posts || [],
         content_item: marketingTargets.content_items || [],
     }[whatsappForm.destination_type] || [];
-    const activeSection = sectionMeta[section] ? section : 'overview';
+    const visibleSectionTabs = sectionTabs.filter(([key]) => {
+        if (key === 'overview' || key === 'analytics') return true;
+        if (key === 'sms') return canSendSms || canManageMarketing;
+        if (key === 'social-dms' || key === 'whatsapp') return canConnectChannels || canManageMarketing;
+        return canManageMarketing;
+    });
+    const visibleSectionKeys = new Set(visibleSectionTabs.map(([key]) => key));
+    const visibleToolCards = toolCards.filter((card) => visibleSectionKeys.has(card.key));
+    const activeSection = sectionMeta[section] && visibleSectionKeys.has(section) ? section : 'overview';
     const activeMeta = sectionMeta[activeSection];
     const marketingBaseUrl = `/merchant/${merchantUsername}/marketing`;
 
@@ -1018,13 +1059,13 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                             {activeMeta.description} {merchantName || merchantUsername ? `For ${merchantName || merchantUsername}.` : ''}
                         </p>
                     </div>
-                    <Button className={`rounded-2xl font-black ${activeSection === 'coupons' ? '' : 'hidden'}`} onClick={resetForm}>
+                    <Button className={`rounded-2xl font-black ${activeSection === 'coupons' && canCreateMarketing ? '' : 'hidden'}`} onClick={resetForm}>
                         <Plus className="mr-2 h-4 w-4" />
                         New coupon
                     </Button>
                 </div>
 
-                <MarketingSectionNav baseUrl={marketingBaseUrl} activeSection={activeSection} />
+                <MarketingSectionNav baseUrl={marketingBaseUrl} activeSection={activeSection} tabs={visibleSectionTabs} />
 
                 <div className={`${activeSection === 'overview' ? 'grid' : 'hidden'} gap-3 grid-cols-2 md:grid-cols-4`}>
                     <Metric label="Active coupons" value={summary.active_coupons ?? activeCoupons.length} />
@@ -1034,7 +1075,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                 </div>
 
                 <div className={`${activeSection === 'overview' ? 'grid' : 'hidden'} gap-4 md:grid-cols-4`}>
-                    {toolCards.map(({ key, title, description, icon: Icon, status }) => (
+                    {visibleToolCards.map(({ key, title, description, icon: Icon, status }) => (
                         <Link key={title} href={`${marketingBaseUrl}/${key}`} className="block">
                             <Card className="h-full rounded-[24px] border-brand-100/70 transition hover:border-brand-300 hover:shadow-sm">
                                 <CardContent className="p-5">
@@ -2423,7 +2464,7 @@ function AnalyticsExports({ merchantUsername }) {
     );
 }
 
-function MarketingSectionNav({ baseUrl, activeSection }) {
+function MarketingSectionNav({ baseUrl, activeSection, tabs = sectionTabs }) {
     const scrollContainerRef = React.useRef(null);
     const scrollTabsRight = () => {
         scrollContainerRef.current?.scrollBy({ left: 180, behavior: 'smooth' });
@@ -2433,7 +2474,7 @@ function MarketingSectionNav({ baseUrl, activeSection }) {
         <div className="relative border-b border-border">
             <div ref={scrollContainerRef} className="overflow-x-auto">
                 <div className="flex min-w-max gap-1 pr-14 md:pr-0">
-                    {sectionTabs.map(([key, label]) => {
+                    {tabs.map(([key, label]) => {
                         const href = key === 'overview' ? baseUrl : `${baseUrl}/${key}`;
                         const active = activeSection === key;
 

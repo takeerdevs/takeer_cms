@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\MerchantStaff;
 use App\Models\User;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
@@ -32,6 +33,7 @@ class StaffAuthController extends Controller
         // Find active staff records for this user
         $staffRecords = MerchantStaff::where('user_id', $user->id)
             ->where('is_active', true)
+            ->where('pos_access_enabled', true)
             ->with(['merchant', 'location'])
             ->get();
 
@@ -90,13 +92,13 @@ class StaffAuthController extends Controller
         return response()->json([
             'message' => 'Login successful.',
             'token' => $token,
-            'staff' => $staff,
+            'staff' => [
+                ...$staff->toArray(),
+                'permissions' => \App\Support\MerchantPermissions::permissionsForStaff($staff),
+            ],
             'merchant' => $staff->merchant,
             'location' => $staff->location,
-            'landing_path' => match (strtoupper((string) $staff->role)) {
-                'STOREKEEPER' => "/merchant/{$staff->merchant->username}/retail/storekeeper",
-                default => "/merchant/{$staff->merchant->username}/retail/pos",
-            },
+            'landing_path' => $this->landingPathFor($staff),
         ]);
     }
 
@@ -110,21 +112,45 @@ class StaffAuthController extends Controller
             'pin' => 'required|string|size:4',
         ]);
 
-        // Find any MANAGER or the OWNER (who might have a staff record too) for this merchant
         $staff = MerchantStaff::where('merchant_id', $validated['merchant_id'])
-            ->where('role', 'MANAGER')
             ->where('is_active', true)
             ->get()
-            ->filter(fn($s) => Hash::check($validated['pin'], $s->pin_hash))
+            ->filter(fn($s) => (
+                MerchantPermissions::can($s->user, $s->merchant, 'retail.approve_sale')
+                || MerchantPermissions::can($s->user, $s->merchant, 'retail.void_sale')
+            ) && Hash::check($validated['pin'], $s->pin_hash))
             ->first();
 
         if (!$staff) {
-            return response()->json(['message' => 'Override denied. Invalid Manager PIN.'], 403);
+            return response()->json(['message' => 'Override denied. Invalid approval PIN.'], 403);
         }
 
         return response()->json([
             'message' => 'Override approved.',
             'manager' => $staff->load('user')
         ]);
+    }
+
+    private function landingPathFor(MerchantStaff $staff): string
+    {
+        $permissions = MerchantPermissions::permissionsForStaff($staff);
+        $username = $staff->merchant->username;
+
+        if (
+            in_array('retail.pos', $permissions, true)
+            || in_array('retail.sale', $permissions, true)
+            || in_array('*', $permissions, true)
+        ) {
+            return "/merchant/{$username}/retail/pos";
+        }
+
+        if (
+            in_array('retail.inventory', $permissions, true)
+            || in_array('retail.transfers', $permissions, true)
+        ) {
+            return "/merchant/{$username}/retail/storekeeper";
+        }
+
+        return "/merchant/{$username}/retail/dashboard";
     }
 }

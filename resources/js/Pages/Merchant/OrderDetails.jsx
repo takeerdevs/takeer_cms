@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -139,6 +140,10 @@ function paymentOverview(order) {
 }
 
 export default function MerchantOrderDetails({ merchantUsername, merchantName, orderId }) {
+    const { can } = useMerchantPermissions(merchantUsername);
+    const canDispatch = can('orders.dispatch');
+    const canUpdateOrder = can('orders.update');
+    const canVerifyPickup = can('orders.verify_pickup');
     const [loading, setLoading] = useState(true);
     const [order, setOrder] = useState(null);
     const [dispatchMode, setDispatchMode] = useState('intercity');
@@ -206,6 +211,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     async function submitDispatch(e) {
         e.preventDefault();
+        if (!canDispatch) return;
         if (!canDispatchNow || dispatchSubmitting) return;
 
         if (!dispatchVideo) {
@@ -246,6 +252,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     async function submitCustomDelivery(e) {
         e.preventDefault();
+        if (!canDispatch) return;
         if (!customDeliveryFile || customDeliverySubmitting) return;
 
         const formData = new FormData();
@@ -283,6 +290,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     async function submitQuote(e) {
         e.preventDefault();
+        if (!canUpdateOrder) return;
         if (quoteSubmitting || !shippingFeeInput) return;
 
         setQuoteSubmitting(true);
@@ -302,6 +310,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     async function verifyPickupPin(e) {
         e.preventDefault();
+        if (!canVerifyPickup) return;
         if (!pickupPinInput || pinVerifying) return;
         setPinVerifying(true);
         try {
@@ -320,6 +329,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     async function verifyDeliveryPin(e) {
         e.preventDefault();
+        if (!canVerifyPickup) return;
         if (!releasePinInput || pinVerifying) return;
         setPinVerifying(true);
         try {
@@ -504,7 +514,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             )}
                                         </div>
 
-                                        {order.inquiry_status === 'pending' ? (
+                                        {order.inquiry_status === 'pending' && !canUpdateOrder ? (
+                                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-sm font-semibold text-slate-600">
+                                                Shipping quote is pending. You have view-only access for this order.
+                                            </div>
+                                        ) : order.inquiry_status === 'pending' ? (
                                             <form onSubmit={submitQuote} className="flex flex-col sm:flex-row gap-3">
                                                 <div className="flex-1">
                                                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Enter Shipping Fee (TZS)</label>
@@ -579,7 +593,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </CardContent>
                             </Card>
 
-                            {isCustomDigitalDelivery && (
+                            {isCustomDigitalDelivery && canDispatch && (
                                 <Card className="rounded-2xl md:col-span-2 border-indigo-200 bg-indigo-50/20">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
@@ -655,7 +669,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
-                            {order.is_escrow_order && order.delivery?.delivery_type === 'self_pickup' && order.payment_status === 'awaiting_merchant_confirmation' && (
+                            {order.is_escrow_order && canVerifyPickup && order.delivery?.delivery_type === 'self_pickup' && order.payment_status === 'awaiting_merchant_confirmation' && (
                                 <Card className="rounded-[2rem] md:col-span-2 overflow-hidden border-brand-100 bg-white shadow-xl shadow-brand-100/40">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
@@ -693,7 +707,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
-                            {order.is_escrow_order && order.delivery?.delivery_type !== 'self_pickup' && (
+                            {order.is_escrow_order && (canDispatch || canVerifyPickup) && order.delivery?.delivery_type !== 'self_pickup' && (
                                 <Card className="rounded-2xl md:col-span-2">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
@@ -702,7 +716,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
-                                        {order.payment_status === 'awaiting_merchant_confirmation' && (
+                                        {order.payment_status === 'awaiting_merchant_confirmation' && canDispatch && (
                                             <>
                                                 <div className="grid gap-2 sm:grid-cols-2">
                                                     <button
@@ -798,7 +812,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             </>
                                         )}
 
-                                        {order.payment_status === 'escrow_locked' && order.delivery?.delivery_type === 'local_boda' && (
+                                        {order.payment_status === 'escrow_locked' && canVerifyPickup && order.delivery?.delivery_type === 'local_boda' && (
                                             <div className="bg-brand-50/50 p-4 rounded-xl border border-brand-100 flex flex-col gap-3">
                                                 <p className="text-sm font-semibold text-brand-900">Delivery verification needed:</p>
                                                 <p className="text-sm">Dereva wako akishamkabidhi mteja mzigo, mteja atampa huyo dereva <strong>Release PIN</strong>. Ingiza hapa chini ili kupata pesa zako:</p>

@@ -30,6 +30,8 @@ use App\Services\EntitlementService;
 use App\Services\GalleryImageService;
 use App\Services\MediaUploadService;
 use App\Services\ProductIntelligenceService;
+use App\Support\MerchantPermissions;
+use App\Support\ServiceTemplateRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -58,7 +60,7 @@ class UploadController extends Controller
 
         $query = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'serviceCategory.parent', 'serviceSubcategory.parent', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
             ->with(['variants', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
@@ -87,7 +89,7 @@ class UploadController extends Controller
         $productId = $id ?? $merchantOrId;
         $product = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'variants.locationInventories.location', 'locationInventories.location', 'postTags.post:id,views_count'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories.location', 'locationInventories.location', 'postTags.post:id,views_count', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
             ->withCount('postTags')
             ->withCount([
                 'orders as purchases_count' => fn ($orders) => $orders->whereNotIn('payment_status', ['pending', 'failed']),
@@ -561,9 +563,15 @@ class UploadController extends Controller
             ], 422);
         }
 
+        $actingStaff = $request->user()
+            ? MerchantPermissions::staffFor($request->user(), $merchantProfile)
+            : null;
+
         // 2. Draft the product in the database
         $product = Product::create([
             'merchant_id' => $merchantProfile->id,
+            'created_by_user_id' => $request->user()?->id,
+            'created_by_staff_id' => $actingStaff?->id,
             'title' => $aiTags['category'] . ' - ' . ($aiTags['sub_category'] ?? 'Mpya'),
             'price' => 0,
             'inventory_count' => 0,
@@ -624,8 +632,14 @@ class UploadController extends Controller
             ], 403);
         }
 
+        $actingStaff = $request->user()
+            ? MerchantPermissions::staffFor($request->user(), $merchantProfile)
+            : null;
+
         $product = Product::create([
             'merchant_id' => $merchantProfile->id,
+            'created_by_user_id' => $request->user()?->id,
+            'created_by_staff_id' => $actingStaff?->id,
             'title' => $request->input('title'),
             'price' => 0,
             'inventory_count' => 0,
@@ -796,6 +810,7 @@ class UploadController extends Controller
             'service_category_id' => 'nullable|integer|exists:service_categories,id',
             'service_subcategory' => 'nullable|string|max:120',
             'service_subcategory_id' => 'nullable|integer|exists:service_categories,id',
+            'service_template_key' => 'nullable|string|max:80',
             'service_price_display' => 'nullable|string|in:hidden,fixed,starts_from,hourly,daily,nightly,weekly,monthly,yearly,per_person,per_visit,per_session,per_project,package,quote_only',
             'service_charges' => 'nullable|array',
             'service_charges.*.name' => 'required_with:service_charges|string|max:160',
@@ -817,6 +832,7 @@ class UploadController extends Controller
             'service_options.*.checkin_time' => 'nullable|date_format:H:i',
             'service_options.*.checkout_time' => 'nullable|date_format:H:i',
             'service_options.*.buffer_minutes' => 'nullable|integer|min:0|max:10080',
+            'service_details' => 'nullable|array',
             'service_duration_minutes' => 'nullable|integer|min:1|max:10080',
             'service_location_type' => 'nullable|string|in:provider_location,customer_location,remote,hybrid',
             'service_provider_location' => 'nullable|array',
@@ -1192,6 +1208,8 @@ class UploadController extends Controller
         $serviceParentCategory = $serviceCategoryModel?->parent ?: ($serviceCategoryModel?->parent_id === null ? $serviceCategoryModel : null);
         $serviceCategoryId = $request->integer('service_category_id') ?: $serviceParentCategory?->id;
         $serviceSubcategoryId = $request->integer('service_subcategory_id') ?: ($serviceCategoryModel?->parent_id ? $serviceCategoryModel->id : null);
+        $serviceTemplateKey = $request->input('service_template_key')
+            ?: ($serviceCategoryModel?->service_template_key ?: ServiceTemplateRegistry::templateKeyForCategory($serviceCategoryModel));
         $servicePriceDisplay = $request->input('service_price_display');
         $serviceCharges = collect($request->input('service_charges', []))
             ->map(function (array $charge) {
@@ -1233,6 +1251,9 @@ class UploadController extends Controller
             ->filter(fn (array $option) => $option['name'] !== '')
             ->values()
             ->all();
+        $serviceDetails = $request->input('type') === 'service'
+            ? $this->sanitizeServiceDetails((array) $request->input('service_details', []), $serviceTemplateKey)
+            : [];
         $serviceDurationMinutes = $request->input('service_duration_minutes');
         $serviceLocationType = $request->input('service_location_type');
         $serviceProviderLocation = $request->input('service_provider_location');
@@ -1342,6 +1363,8 @@ class UploadController extends Controller
             $servicePriceDisplay = 'fixed';
             $serviceCharges = [];
             $serviceOptions = [];
+            $serviceTemplateKey = null;
+            $serviceDetails = [];
             $serviceDurationMinutes = null;
             $serviceLocationType = null;
             $serviceProviderLocation = null;
@@ -1374,6 +1397,10 @@ class UploadController extends Controller
                 ->values()
                 ->all();
         }
+
+        $actingStaff = $request->user()
+            ? MerchantPermissions::staffFor($request->user(), $merchantProfile)
+            : null;
 
         $productData = [
             'merchant_id' => $merchantProfile->id,
@@ -1488,9 +1515,11 @@ class UploadController extends Controller
             'service_scheduling_type' => $serviceSchedulingType ?: $this->defaultServiceSchedulingType($serviceMode, $request->input('service_booking_provider')),
             'service_category' => $serviceCategory,
             'service_subcategory' => $serviceSubcategory,
+            'service_template_key' => $serviceTemplateKey,
             'service_price_display' => $servicePriceDisplay ?: 'fixed',
             'service_charges' => $serviceCharges,
             'service_options' => $serviceOptions,
+            'service_details' => $serviceDetails,
             'service_duration_minutes' => $serviceDurationMinutes !== null && $serviceDurationMinutes !== '' ? (int) $serviceDurationMinutes : null,
             'service_location_type' => $serviceLocationType,
             'service_provider_location' => in_array($serviceLocationType, ['provider_location', 'customer_location', 'hybrid'], true) ? $serviceProviderLocation : null,
@@ -1522,6 +1551,8 @@ class UploadController extends Controller
             // We DO NOT delete images here, to preserve relations for old posts.
         } else {
             $productData['slug'] = Str::slug($request->input('title')) . '-' . time();
+            $productData['created_by_user_id'] = $request->user()?->id;
+            $productData['created_by_staff_id'] = $actingStaff?->id;
             $product = Product::create($productData);
         }
 
@@ -1646,6 +1677,8 @@ class UploadController extends Controller
         // 4. Create a social Post for this product
         $post = Post::create([
             'merchant_id' => $merchantProfile->id,
+            'created_by_user_id' => $request->user()?->id ?: $product->created_by_user_id,
+            'created_by_staff_id' => $actingStaff?->id ?: $product->created_by_staff_id,
             'source' => 'catalog_publish',
             'title' => $request->input('title'),
             'caption' => $request->input('description') ?: $request->input('title'),
@@ -2247,6 +2280,58 @@ class UploadController extends Controller
         return 'pay_now';
     }
 
+    private function sanitizeServiceDetails(array $details, ?string $templateKey): array
+    {
+        $stringList = fn (mixed $values, int $limit = 30) => collect((array) $values)
+            ->map(fn ($value) => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->take($limit)
+            ->values()
+            ->all();
+
+        return match ($templateKey) {
+            'tour' => [
+                'destination' => Str::limit(trim((string) ($details['destination'] ?? '')), 160, ''),
+                'duration_label' => Str::limit(trim((string) ($details['duration_label'] ?? '')), 80, ''),
+                'pickup_point' => Str::limit(trim((string) ($details['pickup_point'] ?? '')), 220, ''),
+                'dropoff_point' => Str::limit(trim((string) ($details['dropoff_point'] ?? '')), 220, ''),
+                'itinerary' => collect((array) ($details['itinerary'] ?? []))
+                    ->map(fn ($day, $index) => [
+                        'day' => (int) ($day['day'] ?? ($index + 1)),
+                        'title' => Str::limit(trim((string) ($day['title'] ?? '')), 120, ''),
+                        'description' => Str::limit(trim((string) ($day['description'] ?? '')), 1200, ''),
+                    ])
+                    ->filter(fn ($day) => $day['title'] !== '' || $day['description'] !== '')
+                    ->take(30)
+                    ->values()
+                    ->all(),
+                'included' => $stringList($details['included'] ?? []),
+                'excluded' => $stringList($details['excluded'] ?? []),
+                'requirements' => Str::limit(trim((string) ($details['requirements'] ?? '')), 2000, ''),
+            ],
+            'stay' => [
+                'amenities' => $stringList($details['amenities'] ?? []),
+                'house_rules' => Str::limit(trim((string) ($details['house_rules'] ?? '')), 2000, ''),
+                'cancellation_policy' => Str::limit(trim((string) ($details['cancellation_policy'] ?? '')), 1200, ''),
+            ],
+            'learning' => [
+                'outcomes' => $stringList($details['outcomes'] ?? []),
+                'requirements' => $stringList($details['requirements'] ?? []),
+                'certificate' => Str::limit(trim((string) ($details['certificate'] ?? '')), 300, ''),
+            ],
+            'orderable_service' => [
+                'customization_notes' => Str::limit(trim((string) ($details['customization_notes'] ?? '')), 2000, ''),
+                'lead_time' => Str::limit(trim((string) ($details['lead_time'] ?? '')), 120, ''),
+                'pickup_delivery_notes' => Str::limit(trim((string) ($details['pickup_delivery_notes'] ?? '')), 1200, ''),
+            ],
+            default => collect($details)
+                ->map(fn ($value) => is_string($value) ? Str::limit(trim($value), 2000, '') : $value)
+                ->filter(fn ($value) => $value !== null && $value !== '' && $value !== [])
+                ->all(),
+        };
+    }
+
     private function legacyServicePriceDisplayFromRequest(?string $pricingModel): string
     {
         return match ($pricingModel) {
@@ -2279,14 +2364,16 @@ class UploadController extends Controller
         $user = $request->user();
         $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
         if ($merchantId) {
-            $merchant = $user->merchantProfiles()->where('merchants.id', (int) $merchantId)->first();
+            $merchant = \App\Support\MerchantPermissions::accessibleMerchantsFor($user)
+                ->firstWhere('id', (int) $merchantId);
             if ($merchant) {
                 return $merchant;
             }
         }
 
         $merchant = $user->merchantProfiles()->where('is_default', true)->first()
-            ?? $user->merchantProfiles()->first();
+            ?? $user->merchantProfiles()->first()
+            ?? \App\Support\MerchantPermissions::accessibleMerchantsFor($user)->first();
 
         abort_unless($merchant, 403, 'Merchant profile not found.');
 
@@ -2307,13 +2394,15 @@ class UploadController extends Controller
 
         $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
         if ($merchantId) {
-            $merchant = $user->merchantProfiles()->where('merchants.id', (int) $merchantId)->first();
+            $merchant = \App\Support\MerchantPermissions::accessibleMerchantsFor($user)
+                ->firstWhere('id', (int) $merchantId);
             if ($merchant) {
                 return $merchant;
             }
         }
 
         return $user->merchantProfiles()->where('is_default', true)->first()
-            ?? $user->merchantProfiles()->first();
+            ?? $user->merchantProfiles()->first()
+            ?? \App\Support\MerchantPermissions::accessibleMerchantsFor($user)->first();
     }
 }

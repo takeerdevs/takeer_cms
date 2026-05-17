@@ -21,6 +21,7 @@ use App\Services\EntitlementService;
 use App\Services\LinkPreviewService;
 use App\Services\PhoneService;
 use App\Services\PulseNotificationService;
+use App\Support\MerchantPermissions;
 use App\Support\SeoMeta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -245,8 +246,14 @@ class PostController extends Controller
             : $linkPreviewService->previewForText($previewSourceText);
 
         // 1. Create the Post
+        $actingStaff = $request->user()
+            ? MerchantPermissions::staffFor($request->user(), $merchantProfile)
+            : null;
+
         $post = Post::create([
             'merchant_id' => $merchantProfile->id,
+            'created_by_user_id' => $request->user()?->id,
+            'created_by_staff_id' => $actingStaff?->id,
             'link_preview_id' => $linkPreview?->id,
             'source' => 'authored',
             'caption' => $validated['caption'] ?? null,
@@ -335,6 +342,8 @@ class PostController extends Controller
 
         $post->load([
             'merchant.storefrontSetting',
+            'createdByUser',
+            'createdByStaff',
             'linkPreview',
             'linkedContentItem',
             'media.productImage',
@@ -849,32 +858,46 @@ class PostController extends Controller
     private function merchantFromRequest(Request $request): ?Merchant
     {
         $routeMerchant = $request->route('merchant') ?: $request->attributes->get('resolved_merchant');
+        $user = $request->user();
 
         if ($routeMerchant instanceof Merchant) {
-            return $routeMerchant;
+            return MerchantPermissions::can($user, $routeMerchant, 'posts.create')
+                || MerchantPermissions::can($user, $routeMerchant, 'posts.publish')
+                ? $routeMerchant
+                : null;
         }
 
         if ($routeMerchant) {
-            return Merchant::query()
+            $merchant = Merchant::query()
                 ->where('username', $routeMerchant)
-                ->where('user_id', $request->user()->id)
-                ->firstOrFail();
+                ->first();
+
+            return $merchant && (
+                MerchantPermissions::can($user, $merchant, 'posts.create')
+                || MerchantPermissions::can($user, $merchant, 'posts.publish')
+            ) ? $merchant : null;
         }
 
         $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
 
         if ($merchantId) {
-            $merchant = $request->user()
-                ->merchantProfiles()
-                ->where('id', $merchantId)
-                ->first();
+            $merchant = MerchantPermissions::accessibleMerchantsFor($user)
+                ->firstWhere('id', (int) $merchantId);
 
-            if ($merchant) {
+            if ($merchant && (
+                MerchantPermissions::can($user, $merchant, 'posts.create')
+                || MerchantPermissions::can($user, $merchant, 'posts.publish')
+            )) {
                 return $merchant;
             }
+
+            return null;
         }
 
-        return $request->user()->merchantProfiles()->where('is_default', true)->first()
-            ?? $request->user()->merchantProfiles()->first();
+        return MerchantPermissions::accessibleMerchantsFor($user)
+            ->first(fn (Merchant $merchant) => (
+                MerchantPermissions::can($user, $merchant, 'posts.create')
+                || MerchantPermissions::can($user, $merchant, 'posts.publish')
+            ));
     }
 }

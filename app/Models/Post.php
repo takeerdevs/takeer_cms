@@ -18,6 +18,8 @@ class Post extends Model
     protected $fillable = [
         'public_id',
         'merchant_id',
+        'created_by_user_id',
+        'created_by_staff_id',
         'content_item_id',
         'link_preview_id',
         'source',
@@ -99,6 +101,16 @@ class Post extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class, 'merchant_id');
+    }
+
+    public function createdByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function createdByStaff(): BelongsTo
+    {
+        return $this->belongsTo(MerchantStaff::class, 'created_by_staff_id');
     }
 
     public function media(): HasMany

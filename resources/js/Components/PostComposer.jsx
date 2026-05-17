@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Image, ShoppingBag, BookOpenText, Lock, Crown, Package } from 'lucide-react';
@@ -7,6 +7,7 @@ import LongFormBlockEditor from '@/Components/LongFormBlockEditor';
 import PolicyNotice from '@/Components/PolicyNotice';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { hasMerchantPermission } from '@/lib/merchantPermissions';
 
 const BG_OPTIONS = [
     { key: null, label: 'Normal', preview: '' },
@@ -150,6 +151,14 @@ function MediaGrid({ files, onRemove }) {
 
 export default function PostComposer({ isOpen, onClose, prefillProduct = null, prefillMedia = [], initialMode = 'short' }) {
     const { auth } = usePage().props;
+    const merchantProfiles = auth.user?.merchant_profiles || [];
+    const postableProfiles = useMemo(() => (
+        merchantProfiles.filter((profile) => {
+            const permissions = Array.isArray(profile.permissions) ? profile.permissions : [];
+            return hasMerchantPermission(permissions, 'posts.create')
+                || hasMerchantPermission(permissions, 'posts.publish');
+        })
+    ), [merchantProfiles]);
     const [selectedProfile, setSelectedProfile] = useState(null);
     const [text, setText] = useState('');
     const [bg, setBg] = useState(null);
@@ -215,11 +224,18 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
 
     // Default to is_default profile
     useEffect(() => {
-        if (auth.user?.merchant_profiles?.length > 0 && !selectedProfile) {
-            const def = auth.user.merchant_profiles.find(p => p.is_default) || auth.user.merchant_profiles[0];
+        if (postableProfiles.length > 0 && !selectedProfile) {
+            const def = postableProfiles.find(p => p.is_default) || postableProfiles[0];
             setSelectedProfile(def);
         }
-    }, [auth.user, selectedProfile]);
+    }, [postableProfiles, selectedProfile]);
+
+    useEffect(() => {
+        if (!selectedProfile) return;
+        if (postableProfiles.some((profile) => profile.id === selectedProfile.id)) return;
+
+        setSelectedProfile(postableProfiles.find(p => p.is_default) || postableProfiles[0] || null);
+    }, [postableProfiles, selectedProfile]);
 
     useEffect(() => {
         if (!selectedProfile || selectedProfileKycComplete) return;
@@ -370,6 +386,10 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const handleClose = () => { reset(); onClose(); };
 
     const handlePost = async () => {
+        if (merchantProfiles.length > 0 && !selectedProfile) {
+            toast.error('You do not have permission to post as any business account.');
+            return;
+        }
         if (composerMode === 'short' && !text.trim() && mediaFiles.length === 0) return;
         if (composerMode === 'long' && (!longForm.title.trim() || !longForm.body.trim())) return;
         if (shouldRequireShortTitle && !shortTitle.trim()) {
@@ -512,6 +532,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                             onClick={handlePost}
                             disabled={
                                 submitting
+                                || (merchantProfiles.length > 0 && !selectedProfile)
                                 || (composerMode === 'short' ? (!text.trim() && mediaFiles.length === 0) : (!longForm.title.trim() || !longForm.body.trim()))
                                 || (shouldRequireShortTitle && !shortTitle.trim())
                             }
@@ -525,11 +546,16 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                     <div className="flex-1 flex flex-col w-full max-w-2xl mx-auto px-4 relative overflow-hidden pb-24">
                         <div className="flex-1 overflow-y-auto scrollbar-hide space-y-4 pb-20 pt-2">
                             {/* Instagram-style Account Picker */}
-                            {auth.user?.merchant_profiles?.length > 0 && (
+                            {merchantProfiles.length > 0 && (
                                 <div className="bg-card/40 backdrop-blur-md border border-border/50 rounded-3xl p-4 shadow-sm">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 px-1 text-center sm:text-left">Tuma kama...</p>
-                                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 justify-center sm:justify-start">
-                                        {auth.user.merchant_profiles.map((profile) => {
+                                    {postableProfiles.length === 0 ? (
+                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+                                            You do not have permission to create posts for any business account.
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 justify-center sm:justify-start">
+                                            {postableProfiles.map((profile) => {
                                             const active = selectedProfile?.id === profile.id;
                                             return (
                                                 <button
@@ -560,8 +586,9 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                                     </span>
                                                 </button>
                                             );
-                                        })}
-                                    </div>
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -597,7 +624,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                 )} style={hasBg ? { background: bgStyle } : {}}>
 
                                     {/* Author Info Overlay (if not handled by picker) */}
-                                    {!auth.user?.merchant_profiles?.length && (
+                                    {!merchantProfiles.length && (
                                         <div className="flex items-center gap-3 p-4 backdrop-blur-sm">
                                             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-sm overflow-hidden shadow-inner">
                                                 {(selectedProfile?.display_name || auth.user?.name || 'U').charAt(0).toUpperCase()}

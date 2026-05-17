@@ -8,6 +8,7 @@ use App\Models\ProductLocationInventory;
 use App\Models\RetailAuditLog;
 use App\Models\MerchantLocation;
 use App\Models\ProductVariant;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -33,15 +34,8 @@ class RetailInventoryController extends Controller
         $locationId = (int) $request->input('merchant_location_id');
         $search = trim((string) $request->input('q', ''));
 
-        $staffRole = strtoupper((string) ($staff?->role ?? ''));
-        if ($staffRole === 'STOREKEEPER') {
-            $assignedLocationId = (int) ($staff?->assigned_location_id ?? 0);
-            if ($assignedLocationId <= 0) {
-                return response()->json(['message' => 'Storekeeper has no assigned location.'], 403);
-            }
-            if ($locationId !== $assignedLocationId) {
-                return response()->json(['message' => 'Huna ruhusa ya kuona inventory ya location hii.'], 403);
-            }
+        if (! MerchantPermissions::canAccessLocation($request->user(), $merchant, $locationId)) {
+            return response()->json(['message' => 'Huna ruhusa ya kuona inventory ya location hii.'], 403);
         }
 
         $location = MerchantLocation::where('merchant_id', $merchant->id)
@@ -159,12 +153,8 @@ class RetailInventoryController extends Controller
             'items.*.counted_quantity' => 'required|numeric|min:0',
         ]);
 
-        $staffRole = strtoupper((string) ($staff?->role ?? ''));
-        if ($staffRole === 'STOREKEEPER') {
-            $assignedLocationId = (int) ($staff?->assigned_location_id ?? 0);
-            if ($assignedLocationId <= 0 || (int) $validated['merchant_location_id'] !== $assignedLocationId) {
-                return response()->json(['message' => 'Huna ruhusa ya kuhesabu inventory kwa location hii.'], 403);
-            }
+        if (! MerchantPermissions::canAccessLocation($request->user(), $merchant, (int) $validated['merchant_location_id'])) {
+            return response()->json(['message' => 'Huna ruhusa ya kuhesabu inventory kwa location hii.'], 403);
         }
 
         $location = MerchantLocation::where('merchant_id', $merchant->id)

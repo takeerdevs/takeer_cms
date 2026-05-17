@@ -25,6 +25,7 @@ class ServiceCategorySeeder extends Seeder
             'Technology & Digital' => ['IT Support', 'Web Development', 'App Development', 'Software Installation', 'Cybersecurity', 'Internet Service', 'CCTV & Smart Home'],
             'Creative & Media' => ['Graphic design', 'Video production', 'Music studio', 'Printing', 'Marketing', 'Content creation', 'Branding', 'Photography', 'Videography'],
             'Events & Hospitality' => ['Catering', 'Venue', 'Decoration', 'MC/DJ', 'Event planning', 'Wedding Venue', 'Party Venue', 'Flower Delivery'],
+            'Food & Custom Orders' => ['Bakery', 'Cake order', 'Meal prep', 'Custom gift', 'Custom printing'],
             'Pets & Animals' => ['Veterinary', 'Pet Grooming', 'Dog Walking', 'Pet Sitting', 'Animal Training'],
             'Agriculture & Field Services' => ['Farm consultation', 'Irrigation', 'Soil testing', 'Field survey', 'Pest spraying', 'Livestock Management'],
             'Property & Survey' => ['Land survey', 'Valuation', 'Inspection', 'Real estate service', 'Architecture', 'Property management'],
@@ -42,6 +43,7 @@ class ServiceCategorySeeder extends Seeder
                 null,
                 array_search($name, array_keys($categories), true) + 1,
                 null,
+                null,
                 $this->trustPolicyFor($name)
             );
 
@@ -51,6 +53,7 @@ class ServiceCategorySeeder extends Seeder
                     $parent->id,
                     $childIndex + 1,
                     $this->optionTemplateFor($name, $childName),
+                    $this->serviceTemplateKeyFor($name, $childName),
                     $this->trustPolicyFor($name, $childName)
                 );
             }
@@ -62,6 +65,7 @@ class ServiceCategorySeeder extends Seeder
         ?int $parentId,
         int $sortOrder,
         ?array $optionTemplate = null,
+        ?string $serviceTemplateKey = null,
         array $trustPolicy = []
     ): ServiceCategory
     {
@@ -73,6 +77,7 @@ class ServiceCategorySeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => $sortOrder,
                 'option_template' => $optionTemplate,
+                'service_template_key' => $serviceTemplateKey,
                 'risk_level' => $trustPolicy['risk_level'] ?? 'standard',
                 'required_documents' => $trustPolicy['required_documents'] ?? [],
                 'requires_manual_review' => (bool) ($trustPolicy['requires_manual_review'] ?? false),
@@ -80,6 +85,37 @@ class ServiceCategorySeeder extends Seeder
                 'max_first_quote_amount' => $trustPolicy['max_first_quote_amount'] ?? null,
             ]
         );
+    }
+
+    private function serviceTemplateKeyFor(string $parentName, string $childName): string
+    {
+        $key = Str::lower("{$parentName} {$childName}");
+
+        if (str_contains($key, 'accommodation') || str_contains($key, 'hotel') || str_contains($key, 'guest house') || str_contains($key, 'lodge') || str_contains($key, 'hostel') || str_contains($key, 'resort') || str_contains($key, 'short stay') || str_contains($key, 'serviced apartment') || str_contains($key, 'homestay') || str_contains($key, 'chalet')) {
+            return 'stay';
+        }
+
+        if (str_contains($key, 'tour') || str_contains($key, 'safari') || str_contains($key, 'boat trip') || str_contains($key, 'holiday package')) {
+            return 'tour';
+        }
+
+        if (str_contains($key, 'course') || str_contains($key, 'training') || str_contains($key, 'class') || str_contains($key, 'workshop') || str_contains($key, 'tutoring') || str_contains($key, 'driving school')) {
+            return 'learning';
+        }
+
+        if (str_contains($key, 'venue') || str_contains($key, 'recreation venue') || str_contains($key, 'sports booking')) {
+            return 'space_booking';
+        }
+
+        if (str_contains($key, 'car hire') || str_contains($key, 'boat hire') || str_contains($key, 'bus/van hire') || str_contains($key, 'equipment hire')) {
+            return 'rental';
+        }
+
+        if (str_contains($key, 'catering') || str_contains($key, 'bakery') || str_contains($key, 'cake') || str_contains($key, 'meal prep') || str_contains($key, 'custom gift') || str_contains($key, 'printing') || str_contains($key, 'flower delivery') || str_contains($key, 'pharmacy delivery')) {
+            return 'orderable_service';
+        }
+
+        return 'appointment_or_quote';
     }
 
     private function trustPolicyFor(string $parentName, ?string $childName = null): array
@@ -304,6 +340,23 @@ class ServiceCategorySeeder extends Seeder
                 durationMinutes: false,
                 checkinTime: false,
                 checkoutTime: false,
+            );
+        }
+
+        if (str_contains($key, 'bakery') || str_contains($key, 'cake') || str_contains($key, 'meal prep') || str_contains($key, 'custom gift')) {
+            return $this->template(
+                'Custom order option',
+                'Create orderable sizes, flavors, bundles, or custom packages.',
+                ['Birthday Cake', 'Cupcake Box', 'Meal Package', 'Gift Package'],
+                capacity: false,
+                maxGuests: false,
+                durationMinutes: false,
+                checkinTime: false,
+                checkoutTime: false,
+                placeholder: 'Birthday Cake',
+                descriptionPlaceholder: 'Size, flavor, customization, lead time, or pickup details',
+                defaultPriceDisplay: 'starts_from',
+                capacityType: false,
             );
         }
 

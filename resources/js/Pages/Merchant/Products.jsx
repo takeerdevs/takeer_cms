@@ -13,6 +13,7 @@ import {
 import axios from 'axios';
 import { toast } from 'sonner';
 import { productPriceLabel, productStockLabel } from '@/lib/productUnits';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 export default function MerchantProducts({ merchantUsername, typeScope = 'all', merchantTimezone = 'Africa/Dar_es_Salaam' }) {
     const [products, setProducts] = useState([]);
@@ -41,6 +42,14 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const [serviceSessions, setServiceSessions] = useState([]);
     const [deletingProductId, setDeletingProductId] = useState(null);
     const normalizedTypeScope = ['physical', 'digital', 'service'].includes(typeScope) ? typeScope : 'all';
+    const { can, canAny } = useMerchantPermissions(merchantUsername);
+    const resourceForScope = normalizedTypeScope === 'digital'
+        ? 'digital_products'
+        : (normalizedTypeScope === 'service' ? 'services' : 'products');
+    const canCreate = canAny([`${resourceForScope}.create`, 'products.create', 'digital_products.create', 'services.create']);
+    const canUpdate = canAny([`${resourceForScope}.update`, 'products.update', 'digital_products.update', 'services.update']);
+    const canDelete = canAny([`${resourceForScope}.delete`, 'products.delete', 'digital_products.delete', 'services.delete']);
+    const canSchedule = can('services.schedule');
     const weekdayOptions = [
         { value: 1, short: 'Mon', label: 'Monday' },
         { value: 2, short: 'Tue', label: 'Tuesday' },
@@ -634,13 +643,13 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
         { key: 'inbox', label: 'Inbox', icon: ListChecks },
         { key: 'calendar', label: 'Calendar', icon: CalendarDays },
         { key: 'availability', label: 'Availability', icon: Settings2 },
-    ];
+    ].filter((tab) => tab.key !== 'availability' || canSchedule);
 
     const filteredProducts = products.filter(p =>
         p.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
     const productCardTarget = (product) => (
-        product.status === 'draft'
+        product.status === 'draft' && canUpdate
             ? `/merchant/${merchantUsername}/upload?edit=${product.id}`
             : `/merchant/${merchantUsername}/products/${product.id}`
     );
@@ -694,12 +703,14 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                             {pageMeta.subtitle}
                         </p>
                     </div>
-                    <Button
-                        onClick={() => router.visit(`/merchant/${merchantUsername}/upload${pageMeta.createType ? `?type=${pageMeta.createType}` : ''}`)}
-                        className="bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl h-12 px-6 shadow-lg shadow-brand-600/20"
-                    >
-                        <Plus className="mr-2 h-5 w-5" /> {pageMeta.createLabel}
-                    </Button>
+                    {canCreate && (
+                        <Button
+                            onClick={() => router.visit(`/merchant/${merchantUsername}/upload${pageMeta.createType ? `?type=${pageMeta.createType}` : ''}`)}
+                            className="bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl h-12 px-6 shadow-lg shadow-brand-600/20"
+                        >
+                            <Plus className="mr-2 h-5 w-5" /> {pageMeta.createLabel}
+                        </Button>
+                    )}
                 </div>
 
                 {normalizedTypeScope === 'service' && (
@@ -909,7 +920,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                     </div>
                 )}
 
-                {normalizedTypeScope === 'service' && serviceManagerView === 'availability' && (
+                {normalizedTypeScope === 'service' && serviceManagerView === 'availability' && canSchedule && (
                     <div className="rounded-2xl border bg-white p-4">
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                             <div>
@@ -1263,23 +1274,25 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                         {typeIcon(product.type)} {product.type}
                                                     </span>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    className="h-8 w-8 shrink-0 rounded-xl border border-red-100 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                                    aria-label={product.status === 'draft' ? 'Futa draft' : 'Futa bidhaa'}
-                                                    disabled={deletingProductId === product.id}
-                                                    onClick={(event) => {
-                                                        event.preventDefault();
-                                                        event.stopPropagation();
-                                                        deleteProduct(product);
-                                                    }}
-                                                >
-                                                    {deletingProductId === product.id ? (
-                                                        <Loader2 className="mx-auto h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        <Trash2 className="mx-auto h-4 w-4" />
-                                                    )}
-                                                </button>
+                                                {canDelete && (
+                                                    <button
+                                                        type="button"
+                                                        className="h-8 w-8 shrink-0 rounded-xl border border-red-100 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                        aria-label={product.status === 'draft' ? 'Futa draft' : 'Futa bidhaa'}
+                                                        disabled={deletingProductId === product.id}
+                                                        onClick={(event) => {
+                                                            event.preventDefault();
+                                                            event.stopPropagation();
+                                                            deleteProduct(product);
+                                                        }}
+                                                    >
+                                                        {deletingProductId === product.id ? (
+                                                            <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="mx-auto h-4 w-4" />
+                                                        )}
+                                                    </button>
+                                                )}
                                             </div>
                                             <p className="font-bold text-sm line-clamp-2 text-left hover:text-brand-700">
                                                 {product.title}
@@ -1291,6 +1304,9 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                             )}
                                             <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground flex-wrap">
                                                 <span className="font-black text-foreground">{priceLabel(product)}</span>
+                                                {product.created_by?.label && (
+                                                    <span>{product.created_by.label}</span>
+                                                )}
                                                 {product.type === 'physical' && (
                                                     <span className="flex items-center gap-1">
                                                         <Package className="h-3 w-3" /> {productStockLabel(product)}
@@ -1558,6 +1574,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                     </div>
                                 )}
 
+                                {canUpdate && (
                                 <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 space-y-3">
                                     <p className="font-black">Manage Request</p>
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1727,6 +1744,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                         </div>
                                     )}
                                 </div>
+                                )}
                             </div>
                         </div>
                     </div>

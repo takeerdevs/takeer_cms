@@ -11,6 +11,7 @@ import {
     HardDrive, Wallet, ArrowLeft, ArrowUpRight, ArrowDownLeft, Store, ShieldCheck, HelpCircle, History, Clock, FileCheck
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 export default function MerchantWallet({ merchantUsername, merchantName, wallet, merchant, retailEligible = false, initialLedgerType = null, ledgerMode = false }) {
     const { auth, flash, errors: pageErrors } = usePage().props;
@@ -19,6 +20,9 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
     const [loading, setLoading] = useState(true);
     const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
     const [ledgerType, setLedgerType] = useState(initialLedgerType);
+    const { can } = useMerchantPermissions(merchantUsername);
+    const canWithdraw = can('wallet.withdraw');
+    const canUpdateSettings = can('settings.update');
 
     const storageUsedMb = merchant?.storage_used_mb || 0;
     const storageLimitMb = merchant?.storage_limit_mb || 500;
@@ -49,10 +53,10 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
     }, [initialLedgerType]);
 
     useEffect(() => {
-        if (!ledgerMode && new URLSearchParams(window.location.search).get('withdraw') === '1') {
+        if (canWithdraw && !ledgerMode && new URLSearchParams(window.location.search).get('withdraw') === '1') {
             setIsWithdrawModalOpen(true);
         }
-    }, [ledgerMode, merchantUsername]);
+    }, [canWithdraw, ledgerMode, merchantUsername]);
 
     const fetchHistory = async (page = null) => {
         setLoading(true);
@@ -73,6 +77,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
 
     const handleWithdraw = (e) => {
         e.preventDefault();
+        if (!canWithdraw) return;
         post(`/merchant/${merchantUsername}/wallet/withdraw`, {
             onSuccess: () => {
                 reset();
@@ -230,13 +235,15 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                         <ShieldCheck className="h-3 w-3" /> Pesa tayari kutolewa (Available)
                                     </p>
                                 </div>
-                                <Button
-                                    className="bg-white text-brand-600 hover:bg-white/90 h-12 px-8 rounded-xl font-black shadow-lg shadow-black/5 shrink-0"
-                                    onClick={() => setIsWithdrawModalOpen(true)}
-                                    disabled={wallet.balance < 5000}
-                                >
-                                    <ArrowUpRight className="mr-2 h-5 w-5" /> Toa Pesa
-                                </Button>
+                                {canWithdraw && (
+                                    <Button
+                                        className="bg-white text-brand-600 hover:bg-white/90 h-12 px-8 rounded-xl font-black shadow-lg shadow-black/5 shrink-0"
+                                        onClick={() => setIsWithdrawModalOpen(true)}
+                                        disabled={wallet.balance < 5000}
+                                    >
+                                        <ArrowUpRight className="mr-2 h-5 w-5" /> Toa Pesa
+                                    </Button>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -270,15 +277,17 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                     <p className="text-[10px] text-muted-foreground">{storageUsedMb} MB kati ya {storageLimitMb} MB</p>
                                 </div>
                             </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                type="button"
-                                onClick={() => router.visit(`/merchant/${merchantUsername}/platform-subscriptions/storage`)}
-                                className="w-full text-[10px] font-black h-8 border-brand-200 text-brand-600 hover:bg-brand-50"
-                            >
-                                UPGRADE STORAGE
-                            </Button>
+                            {canUpdateSettings && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    type="button"
+                                    onClick={() => router.visit(`/merchant/${merchantUsername}/platform-subscriptions/storage`)}
+                                    className="w-full text-[10px] font-black h-8 border-brand-200 text-brand-600 hover:bg-brand-50"
+                                >
+                                    UPGRADE STORAGE
+                                </Button>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
@@ -524,7 +533,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
             </div>
 
             {/* Withdraw Modal */}
-            <Dialog open={isWithdrawModalOpen} onOpenChange={(open) => {
+            <Dialog open={canWithdraw && isWithdrawModalOpen} onOpenChange={(open) => {
                 setIsWithdrawModalOpen(open);
                 if (!open) clearErrors();
             }}>

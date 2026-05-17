@@ -190,7 +190,7 @@ export default function RetailSettings({ merchant }) {
                             <div className="flex items-center justify-between">
                                 <div className="space-y-1">
                                     <Label className="text-sm font-black uppercase tracking-wider text-brand-900">PIN for Partial Payments</Label>
-                                    <p className="text-xs text-muted-foreground font-medium">Require Manager PIN whenever an order is not fully paid (Credit/Deni).</p>
+                                    <p className="text-xs text-muted-foreground font-medium">Require an approval PIN whenever an order is not fully paid (Credit/Deni).</p>
                                 </div>
                                 <Switch 
                                     checked={settings.require_pin_for_partial_payment}

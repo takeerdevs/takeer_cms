@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const { auth } = usePage().props;
@@ -31,6 +32,8 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
         || auth?.user?.merchant_profiles?.[0];
     const merchantSlug = merchantUsername || merchantProfile?.username || '';
     const isVerified = merchantProfile?.is_verified ?? false;
+    const { can, canAny } = useMerchantPermissions(merchantSlug);
+    const canCreateItem = canAny(['products.create', 'digital_products.create', 'services.create']);
 
     const statusBadge = (status) => {
         const map = {
@@ -99,14 +102,16 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                     </div>
                     <div className="flex items-center gap-2">
                         <ProfileSwitcher />
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            className="rounded-xl h-9 w-9 border-muted"
-                            onClick={() => router.visit(`/merchant/${merchantSlug}/settings`)}
-                        >
-                            <Settings className="h-4 w-4 text-muted-foreground" />
-                        </Button>
+                        {can('settings.view') && (
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="rounded-xl h-9 w-9 border-muted"
+                                onClick={() => router.visit(`/merchant/${merchantSlug}/settings`)}
+                            >
+                                <Settings className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                        )}
                         <a
                             href={`/m/${merchantSlug}`}
                             target="_blank"
@@ -132,12 +137,14 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 </p>
                             </div>
                         </div>
-                        <Link 
-                            href={`/merchant/${merchantSlug}/verification`}
-                            className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md px-4 py-2 inline-flex items-center"
-                        >
-                            <FileCheck className="mr-2 h-4 w-4" /> Anza Uthibitisho (KYC)
-                        </Link>
+                        {can('kyc.view') && (
+                            <Link
+                                href={`/merchant/${merchantSlug}/verification`}
+                                className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md px-4 py-2 inline-flex items-center"
+                            >
+                                <FileCheck className="mr-2 h-4 w-4" /> Anza Uthibitisho (KYC)
+                            </Link>
+                        )}
                     </div>
                 ) : (
                     <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-900/20 rounded-2xl p-4 flex items-center justify-between gap-4">
@@ -156,39 +163,43 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                 )}
 
                 {/* Wallet */}
-                <div className="grid grid-cols-2 gap-3">
-                    <Card
-                        className="bg-gradient-to-br from-brand-600 to-brand-700 border-0 text-white shadow-xl shadow-brand-600/20 cursor-pointer hover:shadow-brand-600/40 transition-shadow active:scale-[0.98]"
-                        onClick={() => router.visit(`/merchant/${merchantSlug}/wallet`)}
-                    >
-                        <CardContent className="p-5">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Wallet className="h-4 w-4 opacity-80" />
-                                <p className="text-xs font-medium opacity-80 uppercase tracking-wider">Salio</p>
-                            </div>
-                            <p className="text-2xl font-black">TZS {summary.wallet_balance.toLocaleString()}</p>
-                        </CardContent>
-                    </Card>
-                    <Card
-                        className="border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700/30 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors active:scale-[0.98]"
-                        onClick={() => router.visit(`/merchant/${merchantSlug}/wallet`)}
-                    >
-                        <CardContent className="p-5">
-                            <div className="flex items-center gap-2 mb-2">
-                                <ShieldCheck className="h-4 w-4 text-amber-600" />
-                                <p className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wider">Escrow</p>
-                            </div>
-                            <p className="text-2xl font-black text-amber-700 dark:text-amber-400">TZS {summary.frozen_balance.toLocaleString()}</p>
-                        </CardContent>
-                    </Card>
-                </div>
+                {can('wallet.view') && (
+                    <div className="grid grid-cols-2 gap-3">
+                        <Card
+                            className="bg-gradient-to-br from-brand-600 to-brand-700 border-0 text-white shadow-xl shadow-brand-600/20 cursor-pointer hover:shadow-brand-600/40 transition-shadow active:scale-[0.98]"
+                            onClick={() => router.visit(`/merchant/${merchantSlug}/wallet`)}
+                        >
+                            <CardContent className="p-5">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Wallet className="h-4 w-4 opacity-80" />
+                                    <p className="text-xs font-medium opacity-80 uppercase tracking-wider">Salio</p>
+                                </div>
+                                <p className="text-2xl font-black">TZS {summary.wallet_balance.toLocaleString()}</p>
+                            </CardContent>
+                        </Card>
+                        <Card
+                            className="border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700/30 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors active:scale-[0.98]"
+                            onClick={() => router.visit(`/merchant/${merchantSlug}/wallet`)}
+                        >
+                            <CardContent className="p-5">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <ShieldCheck className="h-4 w-4 text-amber-600" />
+                                    <p className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wider">Escrow</p>
+                                </div>
+                                <p className="text-2xl font-black text-amber-700 dark:text-amber-400">TZS {summary.frozen_balance.toLocaleString()}</p>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
 
                 {/* KPI chips */}
                 <div className="grid grid-cols-3 gap-2">
                     {[
-                        { label: 'Bidhaa', value: summary.total_products, icon: Package, color: 'text-brand-600', link: `/merchant/${merchantSlug}/products` },
-                        { label: 'Oda Leo', value: summary.orders_today, icon: TrendingUp, color: 'text-green-600' },
-                        { label: 'Zinasubiri', value: summary.orders_pending, icon: Truck, color: 'text-amber-600' },
+                        ...(can('products.view') ? [{ label: 'Bidhaa', value: summary.total_products, icon: Package, color: 'text-brand-600', link: `/merchant/${merchantSlug}/products` }] : []),
+                        ...(can('orders.view') ? [
+                            { label: 'Oda Leo', value: summary.orders_today, icon: TrendingUp, color: 'text-green-600', link: `/merchant/${merchantSlug}/orders` },
+                            { label: 'Zinasubiri', value: summary.orders_pending, icon: Truck, color: 'text-amber-600', link: `/merchant/${merchantSlug}/orders` },
+                        ] : []),
                     ].map(({ label, value, icon: Icon, color, link }) => (
                         <Card
                             key={label}
@@ -208,30 +219,37 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                 <div>
                     <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">Vitendo vya Haraka</h2>
                     <div className="grid grid-cols-2 gap-3">
-                        <Button
-                            className="h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-brand-600/20"
-                            onClick={() => router.visit(`/merchant/${merchantSlug}/upload`)}
-                        >
-                            <UploadCloud className="h-5 w-5" /> Ongeza Bidhaa
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-14 rounded-2xl font-bold flex items-center gap-2"
-                            onClick={() => router.visit(`/merchant/${merchantSlug}/posts`)}
-                        >
-                            <BookOpenText className="h-5 w-5" /> Posts
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-14 rounded-2xl font-bold flex items-center gap-2 col-span-2"
-                            onClick={() => router.visit(`/merchant/${merchantSlug}/orders`)}
-                        >
-                            <ShoppingBag className="h-5 w-5" /> Angalia Oda Zote <ChevronRight className="h-4 w-4 ml-auto" />
-                        </Button>
+                        {canCreateItem && (
+                            <Button
+                                className="h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-brand-600/20"
+                                onClick={() => router.visit(`/merchant/${merchantSlug}/upload`)}
+                            >
+                                <UploadCloud className="h-5 w-5" /> Ongeza Bidhaa
+                            </Button>
+                        )}
+                        {can('posts.view') && (
+                            <Button
+                                variant="outline"
+                                className="h-14 rounded-2xl font-bold flex items-center gap-2"
+                                onClick={() => router.visit(`/merchant/${merchantSlug}/posts`)}
+                            >
+                                <BookOpenText className="h-5 w-5" /> Posts
+                            </Button>
+                        )}
+                        {can('orders.view') && (
+                            <Button
+                                variant="outline"
+                                className="h-14 rounded-2xl font-bold flex items-center gap-2 col-span-2"
+                                onClick={() => router.visit(`/merchant/${merchantSlug}/orders`)}
+                            >
+                                <ShoppingBag className="h-5 w-5" /> Angalia Oda Zote <ChevronRight className="h-4 w-4 ml-auto" />
+                            </Button>
+                        )}
                     </div>
                 </div>
 
                 {/* Recent Orders */}
+                {can('orders.view') && (
                 <div>
                     <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">Oda za Hivi Karibuni</h2>
                     <div className="space-y-3">
@@ -287,6 +305,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                         )}
                     </div>
                 </div>
+                )}
             </div>
         </AppLayout>
     );

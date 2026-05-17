@@ -1151,14 +1151,14 @@ export default function PosTerminal({ merchant }) {
                                     <>
                                         <div className="flex items-center gap-2 text-amber-700">
                                             <ShieldCheck className="h-5 w-5" />
-                                            <p className="text-[10px] font-black uppercase tracking-widest">Manager Approval Required</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest">Approval Required</p>
                                         </div>
                                         <p className="text-[10px] text-amber-600 font-medium leading-tight">
                                             Punguzo kubwa au malipo ya advance yanahitaji idhini.
                                         </p>
                                         <Input
                                             type="password"
-                                            placeholder="Enter Manager PIN"
+                                            placeholder="Enter approval PIN"
                                             value={managerPin}
                                             onChange={(e) => setManagerPin(e.target.value)}
                                             className="h-12 rounded-xl text-center font-black tracking-[0.5em] text-lg border-amber-200 focus:ring-amber-500 bg-white"
@@ -1179,7 +1179,7 @@ export default function PosTerminal({ merchant }) {
                                                     onClick={requestRemoteApproval}
                                                     disabled={requestingRemote}
                                                 >
-                                                    {requestingRemote ? 'Inatuma...' : 'Omba Idhini kwa Meneja (Remote)'}
+                                                    {requestingRemote ? 'Inatuma...' : 'Omba Idhini (Remote)'}
                                                 </Button>
                                             </div>
                                         )}

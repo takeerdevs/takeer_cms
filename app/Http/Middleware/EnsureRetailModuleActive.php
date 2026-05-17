@@ -6,6 +6,7 @@ use Closure;
 use App\Models\AdminSetting;
 use App\Models\Merchant;
 use App\Models\MerchantPlatformSubscription;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -35,7 +36,8 @@ class EnsureRetailModuleActive
 
         $merchant = $merchant
             ?? $user->merchantProfiles()->where('is_active', true)->first()
-            ?? $user->merchantProfiles()->first();
+            ?? $user->merchantProfiles()->first()
+            ?? MerchantPermissions::accessibleMerchantsFor($user)->first();
 
         if (!$merchant || !$merchant->isRetailEligible()) {
             if ($request->expectsJson()) {

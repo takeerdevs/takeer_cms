@@ -84,10 +84,16 @@ class CheckoutRequest extends FormRequest
             'service_pricing_inputs' => 'nullable|array',
             'service_pricing_inputs.service_option_id' => 'nullable|string|max:80',
             'service_pricing_inputs.people' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.guests' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.attendees' => 'nullable|integer|min:1|max:100000',
             'service_pricing_inputs.hours' => 'nullable|numeric|min:0.25|max:100000',
             'service_pricing_inputs.quantity' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.rooms' => 'nullable|integer|min:1|max:100000',
+            'service_pricing_inputs.units' => 'nullable|integer|min:1|max:100000',
             'service_pricing_inputs.start_date' => 'nullable|date',
             'service_pricing_inputs.end_date' => 'nullable|date|after:service_pricing_inputs.start_date',
+            'service_pricing_inputs.check_in' => 'nullable|date',
+            'service_pricing_inputs.check_out' => 'nullable|date|after:service_pricing_inputs.check_in',
         ];
     }
 
@@ -115,6 +121,27 @@ class CheckoutRequest extends FormRequest
             $this->merge([
                 'purchasable_type' => 'product',
                 'purchasable_id' => $this->input('product_id'),
+            ]);
+        }
+
+        $servicePricingInputs = $this->input('service_pricing_inputs');
+        if (is_array($servicePricingInputs)) {
+            $normalizedInputs = $servicePricingInputs;
+
+            $normalizedInputs['people'] ??= $servicePricingInputs['guests']
+                ?? $servicePricingInputs['attendees']
+                ?? null;
+            $normalizedInputs['quantity'] ??= $servicePricingInputs['rooms']
+                ?? $servicePricingInputs['units']
+                ?? null;
+            $normalizedInputs['start_date'] ??= $servicePricingInputs['check_in'] ?? null;
+            $normalizedInputs['end_date'] ??= $servicePricingInputs['check_out'] ?? null;
+
+            $this->merge([
+                'service_pricing_inputs' => array_filter(
+                    $normalizedInputs,
+                    fn ($value) => $value !== null && $value !== ''
+                ),
             ]);
         }
     }

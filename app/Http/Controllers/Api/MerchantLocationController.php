@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Merchant;
 use App\Models\MerchantLocation;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -53,7 +54,14 @@ class MerchantLocationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $merchant = $this->merchantFromRequest($request);
-        $locations = $merchant->locations()->latest()->get();
+        $locationsQuery = $merchant->locations()->latest();
+        $assignedLocationId = MerchantPermissions::assignedLocationIdFor($request->user(), $merchant);
+
+        if ($assignedLocationId !== null) {
+            $locationsQuery->where('id', $assignedLocationId);
+        }
+
+        $locations = $locationsQuery->get();
 
         return response()->json([
             'data' => $locations

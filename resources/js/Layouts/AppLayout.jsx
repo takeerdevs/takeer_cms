@@ -13,6 +13,7 @@ import ProfileSwitcher from '@/Components/ProfileSwitcher';
 import SeoHead from '@/Components/SeoHead';
 import axios from 'axios';
 import { trackPlatformEvent } from '@/lib/attribution';
+import { hasMerchantPermission } from '@/lib/merchantPermissions';
 
 export default function AppLayout({ children, hideTabBar = false }) {
     const page = usePage();
@@ -83,8 +84,12 @@ export default function AppLayout({ children, hideTabBar = false }) {
     }, []);
 
     // Tab bar nav items (visible on all screen sizes)
-    const canOpenComposer = Boolean(auth?.user?.phone_number);
     const hasMerchantProfile = Boolean(auth?.user?.merchant_profiles?.length);
+    const hasPostableMerchantProfile = Boolean(auth?.user?.merchant_profiles?.some((profile) => (
+        hasMerchantPermission(profile.permissions || [], 'posts.create')
+        || hasMerchantPermission(profile.permissions || [], 'posts.publish')
+    )));
+    const canOpenComposer = Boolean(auth?.user?.phone_number) && (!hasMerchantProfile || hasPostableMerchantProfile);
 
     const openComposerForCurrentUser = async () => {
         if (!auth?.user) {
@@ -93,6 +98,10 @@ export default function AppLayout({ children, hideTabBar = false }) {
         }
 
         if (hasMerchantProfile) {
+            if (!hasPostableMerchantProfile) {
+                toast.error('You do not have permission to create posts for any business account.');
+                return;
+            }
             setComposerOpen(true);
             return;
         }

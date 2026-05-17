@@ -16,8 +16,12 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 export default function MerchantPosts({ merchantUsername = '' }) {
+    const { can } = useMerchantPermissions(merchantUsername);
+    const canCreate = can('posts.create');
+    const canUpdate = can('posts.update');
     const [loading, setLoading] = useState(true);
     const [postsLoading, setPostsLoading] = useState(false);
     const [reportsLoading, setReportsLoading] = useState(false);
@@ -110,6 +114,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
     }
 
     async function updatePostInteractionOverride(postId, field, value) {
+        if (!canUpdate) return;
         const key = `${postId}:${field}`;
         setSavingPostInteraction(key);
         try {
@@ -250,10 +255,12 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                     <option value="long">Long Form</option>
                                 </select>
                             </div>
-                            <Button className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl" onClick={() => window.__openComposer?.()}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                New Post
-                            </Button>
+                            {canCreate && (
+                                <Button className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl" onClick={() => window.__openComposer?.()}>
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    New Post
+                                </Button>
+                            )}
                         </div>
 
                         {postsLoading ? (
@@ -287,11 +294,13 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                                     </div>
                                                     <p className="text-[11px] text-muted-foreground mt-1">
                                                         Views {Number(entry.views_count || 0).toLocaleString()} · Likes {Number(entry.likes_count || 0).toLocaleString()} · Comments {Number(entry.comment_count || 0).toLocaleString()}
+                                                        {entry.created_by?.label ? ` · ${entry.created_by.label}` : ''}
                                                     </p>
                                                 </div>
                                             </div>
                                         </div>
 
+                                        {canUpdate && (
                                         <div className="grid gap-3 md:grid-cols-2">
                                             <div className="space-y-1 min-w-0">
                                                 <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Comments Override</label>
@@ -327,6 +336,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                                 </select>
                                             </div>
                                         </div>
+                                        )}
                                     </div>
                                 ))}
                                 <PaginationControls meta={postsMeta} onPageChange={setPostPage} label="posts" />

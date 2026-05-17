@@ -294,14 +294,15 @@ class MerchantBundleController extends Controller
         $user = $request->user();
         $merchantId = $request->input('merchant_id') ?? $request->query('merchant_id') ?? session('active_merchant_id');
         if ($merchantId) {
-            $merchant = $user->merchantProfiles()->where('merchants.id', (int) $merchantId)->first();
+            $merchant = \App\Support\MerchantPermissions::accessibleMerchantsFor($user)->firstWhere('id', (int) $merchantId);
             if ($merchant) {
                 return $merchant;
             }
         }
 
         $merchant = $user->merchantProfiles()->where('is_default', true)->first()
-            ?? $user->merchantProfiles()->first();
+            ?? $user->merchantProfiles()->first()
+            ?? \App\Support\MerchantPermissions::accessibleMerchantsFor($user)->first();
 
         abort_unless($merchant, 403, 'Merchant profile not found.');
 

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Merchant;
+use App\Support\MerchantPermissions;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -22,7 +23,11 @@ class EnsureUserOwnsMerchant
             $merchant = Merchant::where('username', $merchant)->firstOrFail();
         }
 
-        if (!$request->user() || !$request->user()->merchantProfiles()->where('id', $merchant->id)->exists()) {
+        $user = $request->user();
+        $isOwner = $user && (int) $merchant->user_id === (int) $user->id;
+        $isStaff = $user && MerchantPermissions::staffFor($user, $merchant);
+
+        if (!$user || (!$isOwner && !$isStaff)) {
             abort(403, 'Huna ruhusa ya kufikia dashibodi hii ya biashara.');
         }
 

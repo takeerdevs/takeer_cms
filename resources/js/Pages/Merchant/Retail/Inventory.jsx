@@ -7,21 +7,22 @@ import { Input } from '@/Components/ui/Input';
 import { toast } from 'sonner';
 import { Boxes, Search, Save, ArrowLeftRight, RefreshCw } from 'lucide-react';
 import { formatQuantity, productQuantityLabel } from '@/lib/productUnits';
+import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
 export default function Inventory({ merchant }) {
+    const { can } = useMerchantPermissions(merchant?.username);
     const [locations, setLocations] = useState([]);
     const [selectedLocationId, setSelectedLocationId] = useState('');
     const [rows, setRows] = useState([]);
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [staffRole, setStaffRole] = useState(null);
     const [assignedLocationId, setAssignedLocationId] = useState(null);
 
     const fetchLocations = async () => {
         const res = await window.axios.get('/api/merchant/locations');
         let data = res.data.data || [];
-        if (staffRole === 'STOREKEEPER' && assignedLocationId) {
+        if (assignedLocationId) {
             data = data.filter((loc) => Number(loc.id) === Number(assignedLocationId));
         }
         setLocations(data);
@@ -83,10 +84,8 @@ export default function Inventory({ merchant }) {
         if (savedStaff) {
             try {
                 const parsed = JSON.parse(savedStaff);
-                setStaffRole(String(parsed?.role || '').toUpperCase() || null);
                 setAssignedLocationId(parsed?.assigned_location_id ? Number(parsed.assigned_location_id) : null);
             } catch {
-                setStaffRole(null);
                 setAssignedLocationId(null);
             }
         }
@@ -94,9 +93,9 @@ export default function Inventory({ merchant }) {
 
     useEffect(() => {
         fetchLocations();
-    }, [staffRole, assignedLocationId]);
+    }, [assignedLocationId]);
 
-    const canManageTransfers = !staffRole || staffRole === 'MANAGER';
+    const canManageTransfers = can('retail.transfers');
 
     useEffect(() => {
         if (!selectedLocationId) return;
@@ -178,7 +177,7 @@ export default function Inventory({ merchant }) {
                                 <select
                                     value={selectedLocationId}
                                     onChange={(e) => setSelectedLocationId(e.target.value)}
-                                    disabled={staffRole === 'STOREKEEPER'}
+                                    disabled={Boolean(assignedLocationId)}
                                     className="w-full h-10 rounded-xl border border-input bg-white px-3 text-sm font-bold mt-1"
                                 >
                                     <option value="">Chagua Location</option>

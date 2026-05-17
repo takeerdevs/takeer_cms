@@ -245,6 +245,8 @@ export default function ProductDetail({ product }) {
     );
     const serviceCharges = Array.isArray(product?.service_charges) ? product.service_charges : [];
     const serviceOptions = Array.isArray(product?.service_options) ? product.service_options : [];
+    const serviceDetails = product?.service_details || {};
+    const serviceTemplateKey = product?.service_template?.key || product?.service_template_key || '';
     const serviceRelatedProducts = Array.isArray(product?.service_related_products) ? product.service_related_products : [];
     const selectedServiceOption = serviceOptions.find((option) => String(option.id) === String(selectedServiceOptionId))
         || serviceOptions[0]
@@ -2158,9 +2160,55 @@ export default function ProductDetail({ product }) {
                         </div>
                     )}
 
-                    {product.type === 'service' && ((product.service_area || []).length > 0 || product.service_client_requirements || providerServiceLocation?.address || serviceCharges.length > 0 || serviceOptions.length > 0) && (
+                    {product.type === 'service' && ((product.service_area || []).length > 0 || product.service_client_requirements || providerServiceLocation?.address || serviceCharges.length > 0 || serviceOptions.length > 0 || Object.keys(serviceDetails || {}).length > 0) && (
                         <div className="mb-2">
                             <div className="space-y-4">
+                                {serviceTemplateKey === 'tour' && (
+                                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5">
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-emerald-900">Trip plan</p>
+                                        {(serviceDetails.destination || serviceDetails.duration_label) && (
+                                            <p className="text-sm font-black mt-1 text-emerald-950">
+                                                {[serviceDetails.destination, serviceDetails.duration_label].filter(Boolean).join(' · ')}
+                                            </p>
+                                        )}
+                                        {Array.isArray(serviceDetails.itinerary) && serviceDetails.itinerary.length > 0 && (
+                                            <div className="mt-3 space-y-2">
+                                                {serviceDetails.itinerary.map((day, index) => (
+                                                    <div key={index} className="rounded-lg bg-white/80 border border-emerald-100 px-3 py-2">
+                                                        <p className="text-xs font-black text-emerald-900">Day {day.day || index + 1}: {day.title || 'Itinerary'}</p>
+                                                        {day.description && <p className="text-xs text-emerald-800/80 mt-1">{day.description}</p>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {(serviceDetails.pickup_point || serviceDetails.dropoff_point) && (
+                                            <p className="text-xs text-emerald-800 mt-3">
+                                                {[serviceDetails.pickup_point && `Pickup: ${serviceDetails.pickup_point}`, serviceDetails.dropoff_point && `Drop-off: ${serviceDetails.dropoff_point}`].filter(Boolean).join(' · ')}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                                {serviceTemplateKey === 'stay' && Array.isArray(serviceDetails.amenities) && serviceDetails.amenities.length > 0 && (
+                                    <div className="rounded-xl bg-muted/30 px-3.5 py-3">
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Amenities</p>
+                                        <p className="text-sm text-muted-foreground mt-1">{serviceDetails.amenities.join(' • ')}</p>
+                                    </div>
+                                )}
+                                {serviceTemplateKey === 'learning' && Array.isArray(serviceDetails.outcomes) && serviceDetails.outcomes.length > 0 && (
+                                    <div className="rounded-xl bg-muted/30 px-3.5 py-3">
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">What you will learn</p>
+                                        <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                                            {serviceDetails.outcomes.filter(Boolean).map((item, index) => <li key={index}>• {item}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+                                {serviceTemplateKey === 'orderable_service' && serviceDetails.customization_notes && (
+                                    <div className="rounded-xl bg-muted/30 px-3.5 py-3">
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Customization</p>
+                                        <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{serviceDetails.customization_notes}</p>
+                                        {serviceDetails.lead_time && <p className="text-xs font-bold text-foreground mt-2">Lead time: {serviceDetails.lead_time}</p>}
+                                    </div>
+                                )}
                                 {serviceCharges.length > 0 && (
                                     <div>
                                         <p className="text-[11px] font-black uppercase tracking-wider text-foreground">Gharama zilizojumuishwa</p>

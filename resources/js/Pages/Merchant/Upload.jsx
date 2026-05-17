@@ -205,6 +205,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [servicePriceDisplay, setServicePriceDisplay] = useState('fixed');
     const [serviceCharges, setServiceCharges] = useState([]);
     const [serviceOptions, setServiceOptions] = useState([]);
+    const [serviceTemplateKey, setServiceTemplateKey] = useState('');
+    const [serviceDetails, setServiceDetails] = useState({});
     const [serviceDurationValue, setServiceDurationValue] = useState('');
     const [serviceDurationUnit, setServiceDurationUnit] = useState('minutes');
     const [serviceLocationType, setServiceLocationType] = useState('provider_location');
@@ -504,11 +506,17 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 requires_manual_review: Boolean(category.requires_manual_review),
                 payout_hold_days: category.payout_hold_days ?? 3,
                 max_first_quote_amount: category.max_first_quote_amount ?? null,
+                service_template: category.service_template || null,
+                service_template_key: category.service_template_key || category.service_template?.key || null,
+                template_config: category.template_config || null,
                 subcategories: (category.children || []).map((child) => child.name),
                 subcategoryConfigs: (category.children || []).map((child) => ({
                     id: child.id,
                     label: child.name,
                     option_template: child.option_template || null,
+                    service_template: child.service_template || null,
+                    service_template_key: child.service_template_key || child.service_template?.key || null,
+                    template_config: child.template_config || null,
                     risk_level: child.risk_level || category.risk_level || 'standard',
                     required_documents: child.required_documents || category.required_documents || ['identity'],
                     requires_manual_review: Boolean(child.requires_manual_review ?? category.requires_manual_review),
@@ -882,6 +890,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 setServicePriceDisplay(p.service_price_display || (p.service_pricing_model === 'hourly_rate' ? 'hourly' : p.service_pricing_model === 'contract_quote' ? 'quote_only' : 'fixed'));
                 setServiceCharges(Array.isArray(p.service_charges) ? p.service_charges : []);
                 setServiceOptions(Array.isArray(p.service_options) ? p.service_options : []);
+                setServiceTemplateKey(p.service_template_key || p.service_template?.key || '');
+                setServiceDetails(p.service_details || p.service_template?.saved_details || {});
                 setServiceDurationFromMinutes(p.service_duration_minutes);
                 setServiceLocationType(p.service_location_type || 'provider_location');
                 setServiceProviderLocation(p.service_provider_location || null);
@@ -1101,6 +1111,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const selectedServiceCategory = serviceCategoryOptions.find((option) => option.label === serviceCategory);
     const selectedServiceSubcategoryConfig = selectedServiceCategory?.subcategoryConfigs?.find((option) => option.label === serviceSubcategory);
     const selectedServiceTrustPolicy = selectedServiceSubcategoryConfig || selectedServiceCategory || null;
+    const selectedServiceTemplate = selectedServiceSubcategoryConfig?.service_template
+        || selectedServiceCategory?.service_template
+        || (serviceTemplateKey ? { key: serviceTemplateKey, label: serviceTemplateKey.replace(/_/g, ' ') } : null);
+    const selectedServiceTemplateKey = selectedServiceTemplate?.key || selectedServiceSubcategoryConfig?.service_template_key || selectedServiceCategory?.service_template_key || serviceTemplateKey || '';
+    const selectedServiceTemplateDefaults = selectedServiceTemplate?.recommended_defaults || {};
+    const selectedServiceTemplateSections = selectedServiceTemplate?.merchant_fields?.detail_sections || [];
+    const selectedServiceTemplateSpecialized = selectedServiceTemplate?.merchant_fields?.specialized || [];
     const serviceTrustDocumentLabels = {
         identity: 'KYC',
         tin: 'TIN',
@@ -1119,6 +1136,65 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const serviceOptionFieldConfig = serviceOptionTemplate?.fields || {};
     const serviceOptionFieldEnabled = (key) => Boolean(serviceOptionTemplate) && serviceOptionFieldConfig[key] !== false;
     const serviceOptionDefaultCapacityType = serviceOptionFieldEnabled('capacity_type') ? 'limited' : 'unlimited';
+    const updateServiceDetail = (key, value) => {
+        setServiceDetails((prev) => ({ ...(prev || {}), [key]: value }));
+    };
+    const applyServiceTemplateDefaults = (template) => {
+        if (!template) return;
+
+        const defaults = template.recommended_defaults || {};
+        setServiceTemplateKey(template.key || '');
+        if (defaults.service_mode) {
+            setServiceMode(defaults.service_mode);
+            setServiceIsShowcase(defaults.service_mode === 'showcase_only');
+        }
+        if (defaults.service_scheduling_type) {
+            setServiceSchedulingType(defaults.service_scheduling_type);
+        }
+        if (defaults.service_price_display) {
+            setServicePriceDisplay(defaults.service_price_display);
+        }
+        if (defaults.service_location_type) {
+            setServiceLocationType(defaults.service_location_type);
+        }
+
+        if (template.key === 'stay' && serviceOptions.length === 0) {
+            setServiceOptions([{
+                id: `option_${Date.now()}`,
+                name: 'Standard Room',
+                description: '',
+                price: '',
+                price_display: 'nightly',
+                capacity_type: 'limited',
+                capacity: 1,
+                max_guests: 2,
+                duration_minutes: '',
+                checkin_time: '14:00',
+                checkout_time: '10:00',
+                buffer_minutes: '',
+            }]);
+        }
+
+        if (template.key === 'tour' && (!serviceDetails?.itinerary || serviceDetails.itinerary.length === 0)) {
+            setServiceDetails((prev) => ({
+                ...(prev || {}),
+                itinerary: [
+                    { day: 1, title: '', description: '' },
+                    { day: 2, title: '', description: '' },
+                ],
+                included: prev?.included || [],
+                excluded: prev?.excluded || [],
+            }));
+        }
+
+        if (template.key === 'learning' && (!serviceDetails?.outcomes || serviceDetails.outcomes.length === 0)) {
+            setServiceDetails((prev) => ({
+                ...(prev || {}),
+                outcomes: [''],
+                requirements: prev?.requirements || [],
+            }));
+        }
+    };
     const addServiceCharge = () => {
         setServiceCharges((prev) => ([
             ...prev,
@@ -2334,9 +2410,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 service_scheduling_type: step === 'service' ? serviceSchedulingType : 'none',
                 service_category: step === 'service' ? serviceCategory || null : null,
                 service_subcategory: step === 'service' ? serviceSubcategory || null : null,
+                service_template_key: step === 'service' ? selectedServiceTemplateKey || null : null,
                 service_price_display: step === 'service' ? servicePriceDisplay : 'fixed',
                 service_charges: step === 'service' ? serviceChargesForPayload : [],
                 service_options: step === 'service' ? serviceOptionsForPayload : [],
+                service_details: step === 'service' ? serviceDetails || {} : {},
                 service_duration_minutes: step === 'service' && serviceDurationMinutes ? Number(serviceDurationMinutes) : null,
                 service_location_type: step === 'service' ? serviceLocationType : null,
                 service_provider_location: step === 'service' && ['provider_location', 'customer_location', 'hybrid'].includes(serviceLocationType)
@@ -2524,6 +2602,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         setServiceSubcategory('');
         setServicePriceDisplay('fixed');
         setServiceCharges([]);
+        setServiceOptions([]);
+        setServiceTemplateKey('');
+        setServiceDetails({});
         setServiceDurationValue('');
         setServiceDurationUnit('minutes');
         setServiceLocationType('provider_location');
@@ -5015,9 +5096,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         const nextCategory = e.target.value;
                                                         const nextOption = serviceCategoryOptions.find((option) => option.label === nextCategory);
                                                         setServiceCategory(nextCategory);
+                                                        setServiceTemplateKey(nextOption?.service_template?.key || nextOption?.service_template_key || '');
                                                         setServiceSubcategory((current) => (
                                                             nextOption?.subcategories?.includes(current) ? current : ''
                                                         ));
+                                                        if (!nextOption?.subcategories?.length) {
+                                                            applyServiceTemplateDefaults(nextOption?.service_template);
+                                                        }
                                                     }}
                                                 >
                                                     <option value="">No category</option>
@@ -5031,7 +5116,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 <select
                                                     className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold disabled:opacity-60"
                                                     value={serviceSubcategory}
-                                                    onChange={(e) => setServiceSubcategory(e.target.value)}
+                                                    onChange={(e) => {
+                                                        const nextSubcategory = e.target.value;
+                                                        const nextConfig = selectedServiceCategory?.subcategoryConfigs?.find((option) => option.label === nextSubcategory);
+                                                        setServiceSubcategory(nextSubcategory);
+                                                        applyServiceTemplateDefaults(nextConfig?.service_template || selectedServiceCategory?.service_template);
+                                                    }}
                                                     disabled={!serviceCategory}
                                                 >
                                                     <option value="">No subcategory</option>
@@ -5063,6 +5153,37 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <p className="mt-1 font-semibold">
                                                         Kikomo cha quote ya kwanza: TZS {Number(selectedServiceTrustPolicy.max_first_quote_amount).toLocaleString()}.
                                                     </p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {selectedServiceTemplate && (
+                                            <div className="rounded-xl border border-purple-100 bg-purple-50/70 p-3">
+                                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-700">Operating template</p>
+                                                        <h3 className="text-sm font-black text-purple-950 mt-1">{selectedServiceTemplate.label || selectedServiceTemplate.key}</h3>
+                                                        <p className="text-xs text-purple-800/80 mt-1">
+                                                            Public post layout: <span className="font-bold">{selectedServiceTemplate.post_template?.layout || 'service_card'}</span>
+                                                            {' '}· Admin: <span className="font-bold">{selectedServiceTemplate.admin_module || 'service_requests'}</span>
+                                                        </p>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        className="h-9 rounded-xl bg-white border-purple-200 text-purple-800"
+                                                        onClick={() => applyServiceTemplateDefaults(selectedServiceTemplate)}
+                                                    >
+                                                        Apply defaults
+                                                    </Button>
+                                                </div>
+                                                {selectedServiceTemplateSpecialized.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1.5 mt-3">
+                                                        {selectedServiceTemplateSpecialized.map((field) => (
+                                                            <span key={field} className="rounded-full bg-white border border-purple-100 px-2.5 py-1 text-[10px] font-bold text-purple-800">
+                                                                {field.replace(/_/g, ' ')}
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
@@ -5463,6 +5584,73 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </div>
                                             )}
                                         </div>
+
+                                        {selectedServiceTemplateKey && selectedServiceTemplateSections.length > 0 && (
+                                            <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                <div>
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Template details</label>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        These fields shape the public post and the merchant management view for {selectedServiceTemplate?.label || 'this service'}.
+                                                    </p>
+                                                </div>
+
+                                                {selectedServiceTemplateKey === 'tour' && (
+                                                    <div className="space-y-3">
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                            <Input placeholder="Destination, e.g. Serengeti + Ngorongoro" value={serviceDetails.destination || ''} onChange={(e) => updateServiceDetail('destination', e.target.value)} className="h-11" />
+                                                            <Input placeholder="Duration, e.g. 3 days / 2 nights" value={serviceDetails.duration_label || ''} onChange={(e) => updateServiceDetail('duration_label', e.target.value)} className="h-11" />
+                                                            <Input placeholder="Pickup point" value={serviceDetails.pickup_point || ''} onChange={(e) => updateServiceDetail('pickup_point', e.target.value)} className="h-11" />
+                                                            <Input placeholder="Drop-off point" value={serviceDetails.dropoff_point || ''} onChange={(e) => updateServiceDetail('dropoff_point', e.target.value)} className="h-11" />
+                                                        </div>
+                                                        <div className="rounded-xl border bg-slate-50/60 p-3 space-y-2">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Itinerary</p>
+                                                                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => updateServiceDetail('itinerary', [...(serviceDetails.itinerary || []), { day: (serviceDetails.itinerary || []).length + 1, title: '', description: '' }])}>
+                                                                    <Plus className="h-4 w-4 mr-1" /> Day
+                                                                </Button>
+                                                            </div>
+                                                            {(serviceDetails.itinerary || []).map((day, index) => (
+                                                                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                                                                    <Input className="md:col-span-2 h-11" type="number" min="1" value={day.day || index + 1} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, day: e.target.value } : item))} />
+                                                                    <Input className="md:col-span-4 h-11" placeholder="Day title" value={day.title || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, title: e.target.value } : item))} />
+                                                                    <Input className="md:col-span-5 h-11" placeholder="Stops, meals, activities..." value={day.description || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, description: e.target.value } : item))} />
+                                                                    <button type="button" className="md:col-span-1 h-11 rounded-xl border bg-white text-muted-foreground hover:text-red-600" onClick={() => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).filter((_, itemIndex) => itemIndex !== index))}>
+                                                                        <Trash2 className="h-4 w-4 mx-auto" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <Textarea placeholder="Included items, one per line" value={(serviceDetails.included || []).join('\n')} onChange={(e) => updateServiceDetail('included', e.target.value.split('\n'))} className="min-h-20" />
+                                                        <Textarea placeholder="Excluded items, one per line" value={(serviceDetails.excluded || []).join('\n')} onChange={(e) => updateServiceDetail('excluded', e.target.value.split('\n'))} className="min-h-20" />
+                                                        <Textarea placeholder="Traveler requirements, weather notes, documents, fitness level..." value={serviceDetails.requirements || ''} onChange={(e) => updateServiceDetail('requirements', e.target.value)} className="min-h-20" />
+                                                    </div>
+                                                )}
+
+                                                {selectedServiceTemplateKey === 'stay' && (
+                                                    <div className="space-y-3">
+                                                        <Textarea placeholder="Amenities, one per line" value={(serviceDetails.amenities || []).join('\n')} onChange={(e) => updateServiceDetail('amenities', e.target.value.split('\n'))} className="min-h-24" />
+                                                        <Textarea placeholder="House rules, check-in policy, guest rules..." value={serviceDetails.house_rules || ''} onChange={(e) => updateServiceDetail('house_rules', e.target.value)} className="min-h-24" />
+                                                        <Textarea placeholder="Cancellation policy" value={serviceDetails.cancellation_policy || ''} onChange={(e) => updateServiceDetail('cancellation_policy', e.target.value)} className="min-h-20" />
+                                                    </div>
+                                                )}
+
+                                                {selectedServiceTemplateKey === 'learning' && (
+                                                    <div className="space-y-3">
+                                                        <Textarea placeholder="Learning outcomes, one per line" value={(serviceDetails.outcomes || []).join('\n')} onChange={(e) => updateServiceDetail('outcomes', e.target.value.split('\n'))} className="min-h-24" />
+                                                        <Textarea placeholder="Student requirements, one per line" value={(serviceDetails.requirements || []).join('\n')} onChange={(e) => updateServiceDetail('requirements', e.target.value.split('\n'))} className="min-h-24" />
+                                                        <Input placeholder="Certificate, e.g. Certificate of completion included" value={serviceDetails.certificate || ''} onChange={(e) => updateServiceDetail('certificate', e.target.value)} className="h-11" />
+                                                    </div>
+                                                )}
+
+                                                {selectedServiceTemplateKey === 'orderable_service' && (
+                                                    <div className="space-y-3">
+                                                        <Textarea placeholder="Customization details customers can choose: size, flavor, message, file upload, color..." value={serviceDetails.customization_notes || ''} onChange={(e) => updateServiceDetail('customization_notes', e.target.value)} className="min-h-24" />
+                                                        <Input placeholder="Lead time, e.g. 24 hours notice" value={serviceDetails.lead_time || ''} onChange={(e) => updateServiceDetail('lead_time', e.target.value)} className="h-11" />
+                                                        <Textarea placeholder="Pickup or delivery notes" value={serviceDetails.pickup_delivery_notes || ''} onChange={(e) => updateServiceDetail('pickup_delivery_notes', e.target.value)} className="min-h-20" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
                                             <div>

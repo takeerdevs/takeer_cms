@@ -13,6 +13,7 @@ use App\Models\MerchantLocation;
 use App\Models\StockTransfer;
 use App\Models\MerchantStaff;
 use App\Services\RetailBookkeepingSyncService;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -57,11 +58,9 @@ class PosController extends Controller
         $locationId = $request->input('location_id');
         $activeStaff = $this->activeRetailStaff($request, $merchant);
 
-        if ($activeStaff && strtoupper((string) $activeStaff->role) !== 'MANAGER') {
-            $assignedLocationId = (int) ($activeStaff->assigned_location_id ?? 0);
-            if ($assignedLocationId > 0) {
-                $locationId = $assignedLocationId;
-            }
+        $assignedLocationId = (int) ($activeStaff?->assigned_location_id ?? 0);
+        if ($assignedLocationId > 0) {
+            $locationId = $assignedLocationId;
         }
 
         $productsQuery = Product::where('merchant_id', $merchant->id)
@@ -151,8 +150,7 @@ class PosController extends Controller
         }
 
         $activeStaff = $this->activeRetailStaff($request, $merchant);
-        if ($activeStaff && strtoupper((string) $activeStaff->role) !== 'MANAGER') {
-            // Non-managers can only checkout from their assigned location.
+        if ($activeStaff) {
             $assignedLocationId = (int) ($activeStaff->assigned_location_id ?? 0);
             if ($assignedLocationId > 0 && (int) $validated['location_id'] !== $assignedLocationId) {
                 return response()->json(['message' => 'Huwezi kutumia location nyingine. Tumia location uliyopewa.'], 403);
@@ -164,7 +162,7 @@ class PosController extends Controller
             fn($item) => (int) ($item['source_location_id'] ?? $checkoutLocationId) !== $checkoutLocationId
         );
 
-        // 1. Manager PIN check for payment overrides (skip for transfer-flow requests)
+        // 1. Approval PIN check for payment overrides (skip for transfer-flow requests)
         $isPendingApproval = ($validated['status'] ?? '') === 'pending_approval';
         $hasDiscount = ((float) ($validated['discount_amount'] ?? 0)) > 0;
         $isPayLater = ($validated['payment_mode'] ?? null) === 'store_credit';
@@ -177,20 +175,26 @@ class PosController extends Controller
 
         $isOverridden = $hasDiscount || $isPayLater;
         
-        $staffRole = strtoupper((string) ($staff->role ?? ''));
-        if ($isOverridden && !$requiresTransferFlow && !$isPendingApproval && $staffRole !== 'MANAGER' && $staff->user_id !== $merchant->user_id) {
+        $actorCanApprove = $request->user()
+            && (
+                MerchantPermissions::can($request->user(), $merchant, 'retail.approve_sale')
+                || MerchantPermissions::can($request->user(), $merchant, 'retail.void_sale')
+            );
+
+        if ($isOverridden && !$requiresTransferFlow && !$isPendingApproval && !$actorCanApprove) {
             if (empty($validated['manager_pin'])) {
-                return response()->json(['message' => 'Mhudumu hana mamlaka. PIN ya Meneja inahitajika kwa punguzo au malipo ya sehemu.'], 401);
+                return response()->json(['message' => 'Mhudumu hana mamlaka. PIN ya idhini inahitajika kwa punguzo au malipo ya sehemu.'], 401);
             }
-            // Find any manager for this merchant to verify PIN
             $manager = \App\Models\MerchantStaff::where('merchant_id', $merchant->id)
-                ->where('role', 'MANAGER')
                 ->where('is_active', true)
                 ->get()
-                ->first(fn($m) => \Illuminate\Support\Facades\Hash::check($validated['manager_pin'], $m->pin_hash));
+                ->first(fn($m) => (
+                    MerchantPermissions::can($m->user, $merchant, 'retail.approve_sale')
+                    || MerchantPermissions::can($m->user, $merchant, 'retail.void_sale')
+                ) && \Illuminate\Support\Facades\Hash::check($validated['manager_pin'], $m->pin_hash));
 
             if (!$manager && !\Illuminate\Support\Facades\Hash::check($validated['manager_pin'], $merchant->user->password ?? '')) {
-                 return response()->json(['message' => 'PIN ya Meneja siyo sahihi.'], 401);
+                 return response()->json(['message' => 'PIN ya idhini siyo sahihi.'], 401);
             }
         }
 

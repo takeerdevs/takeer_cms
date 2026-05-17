@@ -94,7 +94,9 @@ export default function ProfileSwitcher({ className, onCreateBusiness }) {
                                                 <p className={cn("font-bold text-sm truncate", isActive ? "text-brand-600" : "text-foreground")}>
                                                     {merchant.display_name}
                                                 </p>
-                                                <p className="text-[10px] text-muted-foreground truncate">@{merchant.username}</p>
+                                                <p className="text-[10px] text-muted-foreground truncate">
+                                                    @{merchant.username} · {merchant.access_type === 'staff' ? (merchant.job_title || merchant.role || 'Team') : 'Owner'}
+                                                </p>
                                             </div>
                                             {isActive && (
                                                 <div className="h-6 w-6 rounded-full bg-brand-600 flex items-center justify-center text-white shrink-0">
@@ -108,7 +110,7 @@ export default function ProfileSwitcher({ className, onCreateBusiness }) {
 
                             <div className="p-2 border-t border-border/50">
                                 {(() => {
-                                    const hasVerifiedProfile = merchants.some(m => m.is_verified || m.kyc?.status === 'verified');
+                                    const hasVerifiedProfile = merchants.some(m => m.access_type === 'owner' && (m.is_verified || m.kyc?.status === 'verified'));
                                     
                                     if (!hasVerifiedProfile) {
                                         return (
