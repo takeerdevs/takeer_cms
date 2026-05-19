@@ -37,6 +37,8 @@ class Product extends Model
 
     protected $fillable = [
         'type',
+        'module_key',
+        'module_details',
         'merchant_id',
         'created_by_user_id',
         'created_by_staff_id',
@@ -136,6 +138,7 @@ class Product extends Model
         return [
             'price' => 'decimal:2',
             'has_variants' => 'boolean',
+            'module_details' => 'array',
             'source_details' => 'array',
             'availability_lead_time_days' => 'integer',
             'available_from' => 'date',

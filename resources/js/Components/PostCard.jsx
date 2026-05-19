@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { MessageCircle, MoreHorizontal, ShoppingBag, Clock, BadgeCheck, Crown, Unlock, Lock, X, Boxes, Loader2, ShieldCheck, AlertTriangle, Trash2, Eye, MessageSquare, SmilePlus } from 'lucide-react';
+import { MessageCircle, MoreHorizontal, ShoppingBag, Clock, BadgeCheck, Crown, Unlock, Lock, X, Boxes, Loader2, ShieldCheck, AlertTriangle, Trash2, Eye, MessageSquare, SmilePlus, Utensils, Flame, BedDouble, Users, MapPin, Route, Presentation, CalendarClock, ConciergeBell, Truck, PenLine, Package } from 'lucide-react';
 import { Link, router, usePage } from '@inertiajs/react';
 import PostManagementMenu from './PostManagementMenu';
 import MediaGrid from './MediaGrid';
@@ -249,6 +249,24 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
     const linkPreview = postData.link_preview || null;
 
     const attachedProduct = postData.product || postData.product_tags?.[0]?.product || null;
+    const attachedProductIsMenu = attachedProduct?.module_key === 'menu';
+    const attachedMenuDetails = attachedProductIsMenu ? (attachedProduct?.module_details || {}) : {};
+    const attachedMenuTags = Array.isArray(attachedMenuDetails?.dietary_tags) ? attachedMenuDetails.dietary_tags : [];
+    const attachedProductIsRoom = attachedProduct?.module_key === 'rooms';
+    const attachedRoomDetails = attachedProductIsRoom ? (attachedProduct?.module_details || {}) : {};
+    const attachedRoomAmenities = Array.isArray(attachedRoomDetails?.amenities) ? attachedRoomDetails.amenities : [];
+    const attachedProductIsTour = attachedProduct?.module_key === 'tour_departures';
+    const attachedTourDetails = attachedProductIsTour ? (attachedProduct?.module_details || {}) : {};
+    const attachedProductIsWorkshop = attachedProduct?.module_key === 'workshops';
+    const attachedWorkshopDetails = attachedProductIsWorkshop ? (attachedProduct?.module_details || {}) : {};
+    const attachedProductIsAppointment = attachedProduct?.module_key === 'appointments';
+    const attachedAppointmentDetails = attachedProductIsAppointment ? (attachedProduct?.module_details || {}) : {};
+    const attachedProductIsReservation = attachedProduct?.module_key === 'reservations';
+    const attachedReservationDetails = attachedProductIsReservation ? (attachedProduct?.module_details || {}) : {};
+    const attachedProductIsRental = attachedProduct?.module_key === 'rentals';
+    const attachedRentalDetails = attachedProductIsRental ? (attachedProduct?.module_details || {}) : {};
+    const attachedProductIsCustomOrder = attachedProduct?.module_key === 'custom_orders';
+    const attachedCustomOrderDetails = attachedProductIsCustomOrder ? (attachedProduct?.module_details || {}) : {};
     const shouldShowOpenCta = !isLocked && isLongForm && !attachedProduct && !isBundlePromotable && !isSubscriptionPromotable;
     const productRouteKey = attachedProduct?.slug || attachedProduct?.id;
     const attachedProductVariants = ((attachedProduct?.variants || []).filter((variant) => (
@@ -309,9 +327,25 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         ? 'View'
         : attachedProduct?.has_access
             ? 'Fungua'
-            : attachedProductIsService
-                ? (attachedProductServiceMode === 'book_appointment' ? 'Book' : 'View Service')
-                : 'Nunua';
+            : attachedProductIsMenu
+                ? 'Order item'
+                : attachedProductIsRoom
+                    ? 'View stay'
+                    : attachedProductIsTour
+                        ? 'View tour'
+                        : attachedProductIsWorkshop
+                            ? 'View workshop'
+                            : attachedProductIsAppointment
+                                ? 'Book appointment'
+                                : attachedProductIsReservation
+                                    ? 'Reserve'
+                                    : attachedProductIsRental
+                                        ? 'Rent'
+                                        : attachedProductIsCustomOrder
+                                            ? 'Request quote'
+                                            : attachedProductIsService
+                                                ? (attachedProductServiceMode === 'book_appointment' ? 'Book' : 'View Service')
+                                                : 'Nunua';
     const variantAttributeSummary = useMemo(() => {
         if (!hasVariantPricing) return [];
 
@@ -829,6 +863,229 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             )}
                         </div>
                     </Link>
+                    {attachedProductIsMenu && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-orange-100 bg-orange-50/80 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-orange-900">
+                                <span className="inline-flex items-center gap-1">
+                                    <Utensils className="h-3.5 w-3.5" />
+                                    Menu item
+                                </span>
+                                {attachedMenuDetails.section && <span>{attachedMenuDetails.section}</span>}
+                                {attachedMenuDetails.prep_time_minutes && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        {attachedMenuDetails.prep_time_minutes} min
+                                    </span>
+                                )}
+                                {attachedMenuDetails.spice_level && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Flame className="h-3.5 w-3.5" />
+                                        {attachedMenuDetails.spice_level}
+                                    </span>
+                                )}
+                            </div>
+                            {attachedMenuTags.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                    {attachedMenuTags.slice(0, 4).map((tag) => (
+                                        <span key={tag} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-orange-800">
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {attachedProductIsRoom && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-sky-100 bg-sky-50/80 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-sky-950">
+                                <span className="inline-flex items-center gap-1">
+                                    <BedDouble className="h-3.5 w-3.5" />
+                                    {attachedRoomDetails.room_type || 'Room'}
+                                </span>
+                                {attachedRoomDetails.max_guests && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Users className="h-3.5 w-3.5" />
+                                        up to {attachedRoomDetails.max_guests}
+                                    </span>
+                                )}
+                                {attachedRoomDetails.bed_type && <span>{attachedRoomDetails.bed_type}</span>}
+                                {attachedRoomDetails.checkin_time && <span>In {attachedRoomDetails.checkin_time}</span>}
+                            </div>
+                            {attachedRoomAmenities.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                    {attachedRoomAmenities.slice(0, 4).map((amenity) => (
+                                        <span key={amenity} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-sky-800">
+                                            {String(amenity).replace(/_/g, ' ')}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {attachedProductIsTour && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-teal-100 bg-teal-50/80 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-teal-950">
+                                <span className="inline-flex items-center gap-1">
+                                    <Route className="h-3.5 w-3.5" />
+                                    Tour
+                                </span>
+                                {attachedTourDetails.destination && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <MapPin className="h-3.5 w-3.5" />
+                                        {attachedTourDetails.destination}
+                                    </span>
+                                )}
+                                {attachedTourDetails.duration_label && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        {attachedTourDetails.duration_label}
+                                    </span>
+                                )}
+                                {attachedTourDetails.group_size && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Users className="h-3.5 w-3.5" />
+                                        {attachedTourDetails.group_size} seats
+                                    </span>
+                                )}
+                            </div>
+                            {attachedTourDetails.departure_type && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-teal-800">
+                                        {String(attachedTourDetails.departure_type).replace(/_/g, ' ')}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {attachedProductIsWorkshop && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-amber-950">
+                                <span className="inline-flex items-center gap-1">
+                                    <Presentation className="h-3.5 w-3.5" />
+                                    Workshop
+                                </span>
+                                {attachedWorkshopDetails.workshop_format && (
+                                    <span>{String(attachedWorkshopDetails.workshop_format).replace(/_/g, ' ')}</span>
+                                )}
+                                {attachedWorkshopDetails.workshop_duration_minutes && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        {attachedWorkshopDetails.workshop_duration_minutes} min
+                                    </span>
+                                )}
+                                {attachedWorkshopDetails.workshop_capacity && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Users className="h-3.5 w-3.5" />
+                                        {attachedWorkshopDetails.workshop_capacity} seats
+                                    </span>
+                                )}
+                            </div>
+                            {attachedWorkshopDetails.workshop_start_note && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                        {attachedWorkshopDetails.workshop_start_note}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {attachedProductIsAppointment && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-sky-100 bg-sky-50/80 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-sky-950">
+                                <span className="inline-flex items-center gap-1">
+                                    <CalendarClock className="h-3.5 w-3.5" />
+                                    Appointment
+                                </span>
+                                {attachedAppointmentDetails.appointment_duration_minutes && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        {attachedAppointmentDetails.appointment_duration_minutes} min
+                                    </span>
+                                )}
+                                {attachedAppointmentDetails.capacity && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Users className="h-3.5 w-3.5" />
+                                        {attachedAppointmentDetails.capacity} capacity
+                                    </span>
+                                )}
+                                {attachedAppointmentDetails.appointment_location_mode && (
+                                    <span>{String(attachedAppointmentDetails.appointment_location_mode).replace(/_/g, ' ')}</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {attachedProductIsReservation && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-orange-100 bg-orange-50/80 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-orange-950">
+                                <span className="inline-flex items-center gap-1">
+                                    <ConciergeBell className="h-3.5 w-3.5" />
+                                    Reservation
+                                </span>
+                                {attachedReservationDetails.reservation_type && (
+                                    <span>{String(attachedReservationDetails.reservation_type).replace(/_/g, ' ')}</span>
+                                )}
+                                {attachedReservationDetails.reservation_duration_minutes && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        {attachedReservationDetails.reservation_duration_minutes} min
+                                    </span>
+                                )}
+                                {attachedReservationDetails.party_size_limit && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Users className="h-3.5 w-3.5" />
+                                        up to {attachedReservationDetails.party_size_limit}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {attachedProductIsRental && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-teal-100 bg-teal-50/80 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-teal-950">
+                                <span className="inline-flex items-center gap-1">
+                                    <Truck className="h-3.5 w-3.5" />
+                                    Rental
+                                </span>
+                                {attachedRentalDetails.rental_type && (
+                                    <span>{String(attachedRentalDetails.rental_type).replace(/_/g, ' ')}</span>
+                                )}
+                                {attachedRentalDetails.rental_unit && (
+                                    <span>per {String(attachedRentalDetails.rental_unit).replace(/_/g, ' ')}</span>
+                                )}
+                                {attachedRentalDetails.available_units && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Users className="h-3.5 w-3.5" />
+                                        {attachedRentalDetails.available_units} available
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {attachedProductIsCustomOrder && (
+                        <div className="mx-3.5 mb-2 rounded-xl border border-purple-100 bg-purple-50/80 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-wide text-purple-950">
+                                <span className="inline-flex items-center gap-1">
+                                    <PenLine className="h-3.5 w-3.5" />
+                                    Custom order
+                                </span>
+                                {attachedCustomOrderDetails.lead_time && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        {attachedCustomOrderDetails.lead_time}
+                                    </span>
+                                )}
+                                {attachedCustomOrderDetails.minimum_order && (
+                                    <span className="inline-flex items-center gap-1">
+                                        <Package className="h-3.5 w-3.5" />
+                                        min {attachedCustomOrderDetails.minimum_order}
+                                    </span>
+                                )}
+                                {attachedCustomOrderDetails.quote_policy && (
+                                    <span>{String(attachedCustomOrderDetails.quote_policy).replace(/_/g, ' ')}</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
                     {attachedProductIsService && (
                         <div className="mx-3.5 mb-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2">
                             <div className="flex items-center justify-between gap-2">

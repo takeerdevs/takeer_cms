@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import PolicyNotice from '@/Components/PolicyNotice';
 import AddressPickerModal from '@/Components/AddressPickerModal';
+import { KNOWN_UPLOAD_MODULE_KEYS, getUploadModuleConfig, publishModuleKey } from '@/lib/uploadModules';
 
 const CATEGORIES = ['Nguo', 'Viatu', 'Simu na Vifaa', 'Chakula', 'Nyumba na Bustani', 'Michezo', 'Watoto', 'Afya & Uzuri', 'Nyingine'];
 
@@ -119,6 +120,27 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     // Flow state: 'select', 'physical', 'digital', 'service'
     const [step, setStep] = useState('select');
+    const [uploadModule, setUploadModule] = useState(null);
+    const [menuDetails, setMenuDetails] = useState({
+        section: 'Main menu',
+        item_type: 'food',
+        prep_time_minutes: '',
+        dietary_tags: [],
+        availability: ['dine_in', 'pickup'],
+        add_ons: [],
+    });
+    const [roomDetails, setRoomDetails] = useState({
+        room_type: 'Standard room',
+        bed_type: 'Double bed',
+        max_guests: 2,
+        room_count: 1,
+        bathrooms: '',
+        checkin_time: '14:00',
+        checkout_time: '10:00',
+        amenities: [],
+        availability: ['available'],
+        booking_policy: 'manual_confirm',
+    });
 
     const [images, setImages] = useState([]); // [{ url, localUrl, isUploading }]
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -424,6 +446,49 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         },
     ];
     const selectedDigitalContentType = digitalContentTypes.find(item => item.key === digitalContentType) || digitalContentTypes[0];
+    const menuSections = ['Breakfast', 'Lunch', 'Dinner', 'Drinks', 'Desserts', 'Snacks', 'Combos', 'Add-ons', 'Main menu'];
+    const menuItemTypes = [
+        { key: 'food', label: 'Food' },
+        { key: 'drink', label: 'Drink' },
+        { key: 'combo', label: 'Combo' },
+        { key: 'addon', label: 'Add-on' },
+    ];
+    const dietaryTagOptions = [
+        { key: 'vegetarian', label: 'Vegetarian' },
+        { key: 'vegan', label: 'Vegan' },
+        { key: 'halal', label: 'Halal' },
+        { key: 'spicy', label: 'Spicy' },
+        { key: 'gluten_free', label: 'Gluten free' },
+        { key: 'contains_nuts', label: 'Contains nuts' },
+    ];
+    const menuAvailabilityOptions = [
+        { key: 'dine_in', label: 'Dine-in' },
+        { key: 'pickup', label: 'Pickup' },
+        { key: 'delivery', label: 'Delivery' },
+    ];
+    const roomTypeOptions = ['Standard room', 'Deluxe room', 'Suite', 'Family room', 'Twin room', 'Single room', 'Apartment', 'Villa', 'Dorm bed'];
+    const bedTypeOptions = ['Single bed', 'Double bed', 'Queen bed', 'King bed', 'Twin beds', 'Bunk beds', 'Multiple beds'];
+    const roomAmenityOptions = [
+        { key: 'wifi', label: 'Wi-Fi' },
+        { key: 'air_conditioning', label: 'A/C' },
+        { key: 'breakfast', label: 'Breakfast' },
+        { key: 'private_bathroom', label: 'Private bath' },
+        { key: 'parking', label: 'Parking' },
+        { key: 'tv', label: 'TV' },
+        { key: 'work_desk', label: 'Work desk' },
+        { key: 'pool', label: 'Pool' },
+    ];
+    const roomAvailabilityOptions = [
+        { key: 'available', label: 'Available' },
+        { key: 'limited', label: 'Limited' },
+        { key: 'occupied', label: 'Occupied' },
+        { key: 'maintenance', label: 'Maintenance' },
+    ];
+    const roomBookingPolicyOptions = [
+        { key: 'instant', label: 'Instant booking' },
+        { key: 'manual_confirm', label: 'Manual confirm' },
+        { key: 'request_quote', label: 'Request first' },
+    ];
     const digitalLicenseOptions = [
         { key: 'personal', label: 'Personal use' },
         { key: 'commercial', label: 'Commercial use' },
@@ -449,6 +514,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         const params = new URLSearchParams(window.location.search);
         const editId = params.get('edit');
         const typeParam = params.get('type');
+        const moduleParam = params.get('module');
+        if (KNOWN_UPLOAD_MODULE_KEYS.includes(moduleParam)) {
+            setUploadModule(moduleParam);
+        }
         if (editId) {
             setProductId(editId);
             loadProductForEdit(editId);
@@ -456,6 +525,57 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setProductType(typeParam);
             setStep(typeParam);
             if (typeParam === 'physical') setShowManualForm(true);
+            if (moduleParam === 'rooms' && typeParam === 'service') {
+                setServiceTemplateKey('stay');
+                setServicePriceDisplay('nightly');
+                setServiceMode('book_appointment');
+                setServiceBookingType('manual_confirm');
+                setServiceSchedulingType('none');
+            } else if (moduleParam === 'tour_departures' && typeParam === 'service') {
+                setServiceTemplateKey('tour');
+                setServicePriceDisplay('per_person');
+                setServiceMode('book_appointment');
+                setServiceBookingType('manual_confirm');
+                setServiceSchedulingType('fixed_sessions');
+            } else if (moduleParam === 'custom_orders' && typeParam === 'service') {
+                setServiceTemplateKey('orderable_service');
+                setServicePriceDisplay('quote_only');
+                setServiceMode('request_quote');
+                setServiceBookingType('request');
+                setServiceSchedulingType('none');
+            } else if (moduleParam === 'appointments' && typeParam === 'service') {
+                setServiceTemplateKey('appointment_or_quote');
+                setServicePriceDisplay('starts_from');
+                setServiceMode('book_appointment');
+                setServiceBookingType('manual_confirm');
+                setServiceSchedulingType('recurring');
+                setServiceDurationValue('60');
+                setServiceDurationUnit('minutes');
+            } else if (moduleParam === 'reservations' && typeParam === 'service') {
+                setServiceTemplateKey('space_booking');
+                setServicePriceDisplay('hidden');
+                setServiceMode('book_appointment');
+                setServiceBookingType('manual_confirm');
+                setServiceSchedulingType('recurring');
+                setServiceDurationValue('90');
+                setServiceDurationUnit('minutes');
+            } else if (moduleParam === 'rentals' && typeParam === 'service') {
+                setServiceTemplateKey('rental');
+                setServicePriceDisplay('daily');
+                setServiceMode('book_appointment');
+                setServiceBookingType('manual_confirm');
+                setServiceSchedulingType('recurring');
+                setServiceDurationValue('1');
+                setServiceDurationUnit('days');
+            } else if (moduleParam === 'workshops' && typeParam === 'service') {
+                setServiceTemplateKey('learning');
+                setServicePriceDisplay('per_session');
+                setServiceMode('book_appointment');
+                setServiceBookingType('manual_confirm');
+                setServiceSchedulingType('fixed_sessions');
+                setServiceDurationValue('2');
+                setServiceDurationUnit('hours');
+            }
         }
         fetchCatalogRoot();
         fetchServiceCategories();
@@ -660,6 +780,71 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
             setProductType(p.type);
             setStep(p.type);
+            setUploadModule(p.module_key || null);
+            if (p.module_key === 'menu') {
+                setMenuDetails({
+                    section: p.module_details?.section || 'Main menu',
+                    item_type: p.module_details?.item_type || 'food',
+                    prep_time_minutes: p.module_details?.prep_time_minutes ?? '',
+                    dietary_tags: Array.isArray(p.module_details?.dietary_tags) ? p.module_details.dietary_tags : [],
+                    availability: Array.isArray(p.module_details?.availability) && p.module_details.availability.length > 0 ? p.module_details.availability : ['dine_in', 'pickup'],
+                    add_ons: Array.isArray(p.module_details?.add_ons) ? p.module_details.add_ons : [],
+                });
+            } else if (p.module_key === 'rooms') {
+                setRoomDetails({
+                    room_type: p.module_details?.room_type || 'Standard room',
+                    bed_type: p.module_details?.bed_type || 'Double bed',
+                    max_guests: p.module_details?.max_guests ?? 2,
+                    room_count: p.module_details?.room_count ?? 1,
+                    bathrooms: p.module_details?.bathrooms ?? '',
+                    checkin_time: p.module_details?.checkin_time || '14:00',
+                    checkout_time: p.module_details?.checkout_time || '10:00',
+                    amenities: Array.isArray(p.module_details?.amenities) ? p.module_details.amenities : [],
+                    availability: Array.isArray(p.module_details?.availability) && p.module_details.availability.length > 0 ? p.module_details.availability : ['available'],
+                    booking_policy: p.module_details?.booking_policy || 'manual_confirm',
+                });
+            } else if (p.module_key === 'tour_departures') {
+                setServiceTemplateKey('tour');
+                setServiceDetails({
+                    ...(p.service_details || {}),
+                    ...(p.module_details || {}),
+                    itinerary: Array.isArray(p.module_details?.itinerary) ? p.module_details.itinerary : (p.service_details?.itinerary || []),
+                    included: Array.isArray(p.module_details?.included) ? p.module_details.included : (p.service_details?.included || []),
+                    excluded: Array.isArray(p.module_details?.excluded) ? p.module_details.excluded : (p.service_details?.excluded || []),
+                });
+            } else if (p.module_key === 'custom_orders') {
+                setServiceTemplateKey('orderable_service');
+                setServiceDetails({
+                    ...(p.service_details || {}),
+                    ...(p.module_details || {}),
+                });
+            } else if (p.module_key === 'appointments') {
+                setServiceTemplateKey('appointment_or_quote');
+                setServiceDetails({
+                    ...(p.service_details || {}),
+                    ...(p.module_details || {}),
+                });
+            } else if (p.module_key === 'reservations') {
+                setServiceTemplateKey('space_booking');
+                setServiceDetails({
+                    ...(p.service_details || {}),
+                    ...(p.module_details || {}),
+                });
+            } else if (p.module_key === 'rentals') {
+                setServiceTemplateKey('rental');
+                setServiceDetails({
+                    ...(p.service_details || {}),
+                    ...(p.module_details || {}),
+                });
+            } else if (p.module_key === 'workshops') {
+                setServiceTemplateKey('learning');
+                setServiceDetails({
+                    ...(p.service_details || {}),
+                    ...(p.module_details || {}),
+                    outcomes: Array.isArray(p.module_details?.learning_outcomes) ? p.module_details.learning_outcomes : (p.service_details?.outcomes || []),
+                    requirements: Array.isArray(p.module_details?.workshop_requirements) ? p.module_details.workshop_requirements : (p.service_details?.requirements || []),
+                });
+            }
             setManualTitle(p.title);
             setPrice(p.price);
             setComparePrice(p.compare_at_price || '');
@@ -1250,6 +1435,52 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         setServiceOptions((prev) => prev.filter((_, optionIndex) => optionIndex !== index));
     };
     const physicalMerchantProducts = merchantProducts.filter((item) => item.type === 'physical' && String(item.id) !== String(productId || ''));
+    const updateMenuDetail = (key, value) => {
+        setMenuDetails((prev) => ({ ...prev, [key]: value }));
+    };
+    const toggleMenuArrayValue = (key, value) => {
+        setMenuDetails((prev) => {
+            const current = Array.isArray(prev[key]) ? prev[key] : [];
+            return {
+                ...prev,
+                [key]: current.includes(value)
+                    ? current.filter((item) => item !== value)
+                    : [...current, value],
+            };
+        });
+    };
+    const updateMenuAddOn = (index, key, value) => {
+        setMenuDetails((prev) => ({
+            ...prev,
+            add_ons: (prev.add_ons || []).map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row),
+        }));
+    };
+    const addMenuAddOn = () => {
+        setMenuDetails((prev) => ({
+            ...prev,
+            add_ons: [...(prev.add_ons || []), { name: '', price: '' }],
+        }));
+    };
+    const removeMenuAddOn = (index) => {
+        setMenuDetails((prev) => ({
+            ...prev,
+            add_ons: (prev.add_ons || []).filter((_, rowIndex) => rowIndex !== index),
+        }));
+    };
+    const updateRoomDetail = (key, value) => {
+        setRoomDetails((prev) => ({ ...prev, [key]: value }));
+    };
+    const toggleRoomArrayValue = (key, value) => {
+        setRoomDetails((prev) => {
+            const current = Array.isArray(prev[key]) ? prev[key] : [];
+            return {
+                ...prev,
+                [key]: current.includes(value)
+                    ? current.filter((item) => item !== value)
+                    : [...current, value],
+            };
+        });
+    };
     const toggleServiceRelatedProduct = (id) => {
         const productIdNumber = Number(id);
         if (!productIdNumber) return;
@@ -1716,9 +1947,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         sum + sumLocationInventory(variant.location_inventories || {})
     ), 0);
     const isUploadingMedia = images.some(img => img.isUploading);
+    const activeUploadModule = getUploadModuleConfig(uploadModule);
+    const isMenuUpload = activeUploadModule?.key === 'menu' && step === 'physical';
+    const isFocusedPhysicalModule = step === 'physical' && Boolean(activeUploadModule?.focusedPhysical);
+    const showGenericPhysicalCatalog = step === 'physical' && !isFocusedPhysicalModule;
+    const showGenericPhysicalFulfillment = step === 'physical' && !isFocusedPhysicalModule;
+    const physicalDetailsReady = isFocusedPhysicalModule || physicalFlowStep >= 3;
     const physicalPublishDisabledReason = (() => {
         if (step !== 'physical') return '';
         if (isUploadingMedia) return 'Subiri media zimalize kupanda.';
+        if (isFocusedPhysicalModule) return '';
         if (requiresLocationInventory && physicalLocations.length === 0) return 'Ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.';
         if (requiresLocationInventory && !hasVariants && locationStockTotal <= 0) return `Weka stock kwenye angalau eneo moja (${stockUnitLabel}).`;
         if (hasVariants && configuredPhysicalVariants.length === 0) return 'Jaza angalau variant moja yenye bei.';
@@ -2147,31 +2385,31 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             toast.error('Tafadhali ongeza angalau picha au video moja ya bidhaa.');
             return;
         }
-        if (step === 'physical' && !selectedCategoryId) {
+        if (step === 'physical' && !isFocusedPhysicalModule && !selectedCategoryId) {
             toast.error('Tafadhali chagua category ya bidhaa.');
             return;
         }
-        if (step === 'physical' && physicalFlowStep < 3) {
+        if (step === 'physical' && !isFocusedPhysicalModule && physicalFlowStep < 3) {
             toast.error('Kamilisha hatua za juu kwanza.');
             return;
         }
-        if (step === 'physical' && requiresLocationInventory && physicalLocations.length === 0) {
+        if (step === 'physical' && !isFocusedPhysicalModule && requiresLocationInventory && physicalLocations.length === 0) {
             toast.error('Tafadhali ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.');
             return;
         }
-        if (step === 'physical' && requiresLocationInventory && !hasVariants && locationStockTotal <= 0) {
+        if (step === 'physical' && !isFocusedPhysicalModule && requiresLocationInventory && !hasVariants && locationStockTotal <= 0) {
             toast.error(`Tafadhali weka stock kwenye angalau eneo moja la stock/pickup (${stockUnitLabel}).`);
             return;
         }
-        if (step === 'physical' && fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) {
+        if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) {
             toast.error('Tafadhali weka jina na simu ya supplier. Taarifa hizi ni za Takeer tu.');
             return;
         }
-        if (step === 'physical' && fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours === '') {
+        if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours === '') {
             toast.error('Tafadhali weka masaa yanayohitajika kuthibitisha au kupata bidhaa.');
             return;
         }
-        if (step === 'physical' && fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') {
+        if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') {
             toast.error('Tafadhali weka siku ngapi zinahitajika kuandaa bidhaa.');
             return;
         }
@@ -2179,19 +2417,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             toast.error('Tafadhali weka siku ngapi zinahitajika kumaliza custom work.');
             return;
         }
-        if (step === 'physical' && ['farm_harvest', 'preorder', 'group_sale'].includes(fulfillmentMode) && !availableFrom) {
+        if (step === 'physical' && !isFocusedPhysicalModule && ['farm_harvest', 'preorder', 'group_sale'].includes(fulfillmentMode) && !availableFrom) {
             toast.error('Tafadhali weka tarehe ambayo bidhaa inatarajiwa kupatikana.');
             return;
         }
-        if (step === 'physical' && fulfillmentMode === 'group_sale' && (!groupSaleGoalQuantity || !groupSaleDeadline)) {
+        if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'group_sale' && (!groupSaleGoalQuantity || !groupSaleDeadline)) {
             toast.error('Group sale inahitaji target quantity na deadline.');
             return;
         }
-        if (step === 'physical' && variantAxisAttributes.length > 0 && variantDecision === null) {
+        if (step === 'physical' && !isFocusedPhysicalModule && variantAxisAttributes.length > 0 && variantDecision === null) {
             toast.error('Chagua kama bidhaa ina variants au la.');
             return;
         }
-        if (step === 'physical' && hasVariants) {
+        if (step === 'physical' && !isFocusedPhysicalModule && hasVariants) {
             const configuredVariants = configuredPhysicalVariants;
             if (configuredVariants.length === 0) {
                 toast.error('Jaza angalau variant moja yenye bei.');
@@ -2224,7 +2462,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             }
             return !(current.value_text || '').toString().trim();
         });
-        if (step === 'physical' && missingRequiredAttribute) {
+        if (step === 'physical' && !isFocusedPhysicalModule && missingRequiredAttribute) {
             toast.error(`Tafadhali jaza ${missingRequiredAttribute.label}.`);
             return;
         }
@@ -2328,6 +2566,74 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             const res = await axios.post(`/merchant/${merchantUsername}/upload/publish`, {
                 ...mediaPayload,
                 type: productType,
+                module_key: publishModuleKey(uploadModule, step),
+                module_details: uploadModule === 'menu' && step === 'physical' ? {
+                    ...menuDetails,
+                    prep_time_minutes: menuDetails.prep_time_minutes !== '' ? Number(menuDetails.prep_time_minutes) : null,
+                    add_ons: (menuDetails.add_ons || []).filter((row) => row.name?.trim()).map((row) => ({
+                        name: row.name.trim(),
+                        price: row.price !== '' ? Number(row.price || 0) : 0,
+                    })),
+                } : uploadModule === 'rooms' && step === 'service' ? {
+                    ...roomDetails,
+                    max_guests: roomDetails.max_guests !== '' ? Number(roomDetails.max_guests || 1) : null,
+                    room_count: roomDetails.room_count !== '' ? Number(roomDetails.room_count || 1) : null,
+                    bathrooms: roomDetails.bathrooms !== '' ? Number(roomDetails.bathrooms || 0) : null,
+                } : uploadModule === 'tour_departures' && step === 'service' ? {
+                    destination: serviceDetails.destination || '',
+                    duration_label: serviceDetails.duration_label || '',
+                    pickup_point: serviceDetails.pickup_point || '',
+                    dropoff_point: serviceDetails.dropoff_point || '',
+                    group_size: serviceDetails.group_size !== '' && serviceDetails.group_size !== undefined ? Number(serviceDetails.group_size || 0) : null,
+                    departure_type: serviceDetails.departure_type || 'scheduled',
+                    itinerary: Array.isArray(serviceDetails.itinerary) ? serviceDetails.itinerary : [],
+                    included: Array.isArray(serviceDetails.included) ? serviceDetails.included.filter(Boolean) : [],
+                    excluded: Array.isArray(serviceDetails.excluded) ? serviceDetails.excluded.filter(Boolean) : [],
+                    requirements: serviceDetails.requirements || '',
+                } : uploadModule === 'custom_orders' && step === 'service' ? {
+                    customization_notes: serviceDetails.customization_notes || '',
+                    lead_time: serviceDetails.lead_time || '',
+                    pickup_delivery_notes: serviceDetails.pickup_delivery_notes || '',
+                    quote_policy: serviceDetails.quote_policy || 'quote_after_request',
+                    minimum_order: serviceDetails.minimum_order !== '' && serviceDetails.minimum_order !== undefined ? Number(serviceDetails.minimum_order || 0) : null,
+                } : uploadModule === 'appointments' && step === 'service' ? {
+                    appointment_duration_minutes: serviceDurationMinutes ? Number(serviceDurationMinutes) : Number(serviceDetails.appointment_duration_minutes || 60),
+                    buffer_minutes: serviceDetails.buffer_minutes !== '' && serviceDetails.buffer_minutes !== undefined ? Number(serviceDetails.buffer_minutes || 0) : 15,
+                    capacity: serviceDetails.capacity !== '' && serviceDetails.capacity !== undefined ? Number(serviceDetails.capacity || 1) : 1,
+                    appointment_location_mode: serviceDetails.appointment_location_mode || serviceLocationType || 'provider_location',
+                    booking_policy: serviceDetails.booking_policy || 'manual_confirm',
+                    preparation_notes: serviceDetails.preparation_notes || '',
+                } : uploadModule === 'reservations' && step === 'service' ? {
+                    reservation_type: serviceDetails.reservation_type || 'table',
+                    seating_type: serviceDetails.seating_type || 'Standard seating',
+                    reservation_duration_minutes: serviceDurationMinutes ? Number(serviceDurationMinutes) : Number(serviceDetails.reservation_duration_minutes || 90),
+                    party_size_limit: serviceDetails.party_size_limit !== '' && serviceDetails.party_size_limit !== undefined ? Number(serviceDetails.party_size_limit || 0) : null,
+                    reservation_policy: serviceDetails.reservation_policy || 'manual_confirm',
+                    deposit_note: serviceDetails.deposit_note || '',
+                    reservation_notes: serviceDetails.reservation_notes || '',
+                } : uploadModule === 'rentals' && step === 'service' ? {
+                    rental_type: serviceDetails.rental_type || 'equipment',
+                    rental_unit: serviceDetails.rental_unit || 'day',
+                    rental_duration_minutes: serviceDurationMinutes ? Number(serviceDurationMinutes) : Number(serviceDetails.rental_duration_minutes || 1440),
+                    available_units: serviceDetails.available_units !== '' && serviceDetails.available_units !== undefined ? Number(serviceDetails.available_units || 1) : 1,
+                    security_deposit: serviceDetails.security_deposit !== '' && serviceDetails.security_deposit !== undefined ? Number(serviceDetails.security_deposit || 0) : null,
+                    rental_policy: serviceDetails.rental_policy || 'manual_confirm',
+                    pickup_return_notes: serviceDetails.pickup_return_notes || '',
+                    included_items: Array.isArray(serviceDetails.included_items) ? serviceDetails.included_items.filter(Boolean) : [],
+                    rental_requirements: serviceDetails.rental_requirements || '',
+                } : uploadModule === 'workshops' && step === 'service' ? {
+                    workshop_format: serviceDetails.workshop_format || 'live_session',
+                    session_count: serviceDetails.session_count !== '' && serviceDetails.session_count !== undefined ? Number(serviceDetails.session_count || 1) : 1,
+                    workshop_duration_minutes: serviceDurationMinutes ? Number(serviceDurationMinutes) : Number(serviceDetails.workshop_duration_minutes || 120),
+                    workshop_capacity: serviceDetails.workshop_capacity !== '' && serviceDetails.workshop_capacity !== undefined ? Number(serviceDetails.workshop_capacity || 0) : null,
+                    workshop_level: serviceDetails.workshop_level || 'All levels',
+                    enrollment_policy: serviceDetails.enrollment_policy || 'manual_confirm',
+                    workshop_location_mode: serviceDetails.workshop_location_mode || serviceLocationType || 'provider_location',
+                    workshop_start_note: serviceDetails.workshop_start_note || '',
+                    learning_outcomes: Array.isArray(serviceDetails.learning_outcomes) ? serviceDetails.learning_outcomes.filter(Boolean) : Array.isArray(serviceDetails.outcomes) ? serviceDetails.outcomes.filter(Boolean) : [],
+                    workshop_requirements: Array.isArray(serviceDetails.workshop_requirements) ? serviceDetails.workshop_requirements.filter(Boolean) : Array.isArray(serviceDetails.requirements) ? serviceDetails.requirements.filter(Boolean) : [],
+                    materials_included: Array.isArray(serviceDetails.materials_included) ? serviceDetails.materials_included.filter(Boolean) : [],
+                } : null,
                 // Digital product: either the uploaded file or external link
                 digital_file_url: (step === 'digital' && digitalDeliveryMode === 'upload') ? digitalFile?.url : null,
                 digital_delivery_type: step === 'digital'
@@ -2442,7 +2748,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 available_from: step === 'physical' && availableFrom ? availableFrom : null,
                 group_sale_goal_quantity: step === 'physical' && groupSaleGoalQuantity !== '' ? Number(groupSaleGoalQuantity) : null,
                 group_sale_deadline: step === 'physical' && groupSaleDeadline ? groupSaleDeadline : null,
-                quantity: step === 'physical' && !hasVariants ? (requiresLocationInventory ? locationStockTotal : 99999) : 99999,
+                quantity: step === 'physical' && !hasVariants ? (isFocusedPhysicalModule ? 99999 : (requiresLocationInventory ? locationStockTotal : 99999)) : 99999,
                 product_unit_type_id: step === 'physical' && selectedUnitTypeId ? Number(selectedUnitTypeId) : null,
                 sellable_quantity: step === 'physical' ? Number(sellableQuantity || 1) : 1,
                 package_content_unit_type_id: step === 'physical' && packageContentUnitTypeId ? Number(packageContentUnitTypeId) : null,
@@ -2520,6 +2826,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const submitManual = async () => {
         if (!manualTitle) {
             toast.error('Tafadhali weka jina la bidhaa.');
+            return;
+        }
+        if (isFocusedPhysicalModule) {
+            setAiResult({ category: activeUploadModule?.title || 'Module item', sub_category: '', colors: [], suggested_description_swahili: manualTitle });
+            setShowManualForm(false);
+            setManualStepCompleted(true);
+            setPhysicalFlowStep(3);
             return;
         }
         if (variantAxisAttributes.length > 0 && variantDecision === null) {
@@ -2631,6 +2944,27 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         setManualTitle('');
         setManualCategory(CATEGORIES[0]);
         setProductId(null);
+        setUploadModule(null);
+        setMenuDetails({
+            section: 'Main menu',
+            item_type: 'food',
+            prep_time_minutes: '',
+            dietary_tags: [],
+            availability: ['dine_in', 'pickup'],
+            add_ons: [],
+        });
+        setRoomDetails({
+            room_type: 'Standard room',
+            bed_type: 'Double bed',
+            max_guests: 2,
+            room_count: 1,
+            bathrooms: '',
+            checkin_time: '14:00',
+            checkout_time: '10:00',
+            amenities: [],
+            availability: ['available'],
+            booking_policy: 'manual_confirm',
+        });
         setAssignedAccessGroup(null);
         setDigitalAccessTab('plan');
         setSelectedCategoryId('');
@@ -2722,7 +3056,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     if (step === 'select') {
         return (
             <AppLayout>
-                <Head title="Chagua Aina ya Bidhaa | Takeer" />
+                <Head title={uploadModule === 'menu' ? 'Ongeza Menu Item | Takeer' : 'Chagua Aina ya Bidhaa | Takeer'} />
                 <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-8 pb-24">
                     <div className="flex flex-col items-center justify-center space-y-6">
                         {/* ── Merchant Identity ── */}
@@ -2747,9 +3081,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         {/* ── Title ── */}
                         <div className="text-center space-y-2">
                             <h1 className="text-3xl font-black tracking-tight flex items-center justify-center gap-2">
-                                Unataka uuze nini leo? <Sparkles className="h-6 w-6 text-brand-600" />
+                                {uploadModule === 'menu' ? 'Ongeza nini kwenye menu?' : 'Unataka uuze nini leo?'} <Sparkles className="h-6 w-6 text-brand-600" />
                             </h1>
-                            <p className="text-muted-foreground">Chagua aina ya bidhaa.</p>
+                            <p className="text-muted-foreground">{uploadModule === 'menu' ? 'Tumia product flow kuongeza chakula, kinywaji, add-on, au combo.' : 'Chagua aina ya bidhaa.'}</p>
                         </div>
                     </div>
 
@@ -2762,8 +3096,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <ShoppingBag className="h-8 w-8 text-brand-600" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-foreground">Bidhaa za Kushikika</h3>
-                                <p className="text-sm text-muted-foreground mt-1">Nguo, viatu, simu, n.k. (Inatumia AI na Hotspots)</p>
+                                <h3 className="text-xl font-bold text-foreground">{uploadModule === 'menu' ? 'Menu Item' : 'Bidhaa za Kushikika'}</h3>
+                                <p className="text-sm text-muted-foreground mt-1">{uploadModule === 'menu' ? 'Chakula, kinywaji, combo, add-on, au bidhaa ya mgahawa.' : 'Nguo, viatu, simu, n.k. (Inatumia AI na Hotspots)'}</p>
                             </div>
                             <ChevronRight className="h-6 w-6 ml-auto text-muted-foreground opacity-50 text-brand-600" />
                         </button>
@@ -2805,7 +3139,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     return (
         <AppLayout>
-            <Head title="Weka Bidhaa Mpya | Takeer" />
+            <Head title={uploadModule === 'menu' ? 'Weka Menu Item | Takeer' : 'Weka Bidhaa Mpya | Takeer'} />
 
             <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6 pb-24">
                 <div className="flex items-center gap-4 mb-2">
@@ -2817,7 +3151,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     </button>
                     <div>
                         <h1 className="text-2xl font-black flex items-center gap-2">
-                            {step === 'physical' ? 'Bidhaa Mpya' : step === 'digital' ? 'Bidhaa ya Digital' : 'Huduma Mpya'}
+                            {step === 'physical' ? (uploadModule === 'menu' ? 'Menu Item Mpya' : 'Bidhaa Mpya') : step === 'digital' ? 'Bidhaa ya Digital' : 'Huduma Mpya'}
                         </h1>
                         <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold opacity-60">
                             {(step || '').toUpperCase()} FLOW
@@ -2830,7 +3164,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 {/* ── SHARED MEDIA SECTION: Sequential Gallery ── */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <label className="text-xs font-black text-muted-foreground uppercase tracking-[0.2em]">Media za Bidhaa</label>
+                        <label className="text-xs font-black text-muted-foreground uppercase tracking-[0.2em]">{uploadModule === 'menu' ? 'Media za Menu Item' : 'Media za Bidhaa'}</label>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -2938,14 +3272,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 </div>
                                 <CardContent className="p-5 space-y-4">
                                     <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jina la Bidhaa</label>
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{uploadModule === 'menu' ? 'Jina la Menu Item' : 'Jina la Bidhaa'}</label>
                                         <Input
-                                            placeholder="Mf. Viatu vya Ngozi Nyekundu"
+                                            placeholder={uploadModule === 'menu' ? 'Mf. Pilau ya Kuku' : 'Mf. Viatu vya Ngozi Nyekundu'}
                                             value={manualTitle}
                                             onChange={e => setManualTitle(e.target.value)}
                                             className="h-12"
                                         />
                                     </div>
+                                    {showGenericPhysicalCatalog && (
                                     <div className="space-y-1.5">
                                         <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Kategoria</label>
                                         <select
@@ -2959,7 +3294,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             ))}
                                         </select>
                                     </div>
-                                    {selectedSubCategories.length > 0 && (
+                                    )}
+                                    {showGenericPhysicalCatalog && selectedSubCategories.length > 0 && (
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subcategory</label>
                                             <select
@@ -2974,7 +3310,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             </select>
                                         </div>
                                     )}
-                                    {step === 'physical' && variantAxisAttributes.length > 0 && (
+                                    {showGenericPhysicalCatalog && variantAxisAttributes.length > 0 && (
                                         <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
                                             <div className="space-y-1">
                                                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Variants Setup</p>
@@ -3032,9 +3368,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <Card className="border-slate-200 shadow-sm overflow-hidden rounded-[2rem]">
                                     <div className="bg-slate-50 p-4 border-b flex items-center gap-2 text-slate-800">
                                         <CheckCircle2 className="h-5 w-5" />
-                                        <h3 className="font-bold uppercase tracking-widest text-xs">Facets & Specifications</h3>
+                                        <h3 className="font-bold uppercase tracking-widest text-xs">{isMenuUpload ? 'Menu setup' : 'Facets & Specifications'}</h3>
                                     </div>
                                     <CardContent className="p-5 space-y-4">
+                                        {showGenericPhysicalCatalog && (
                                         <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4 space-y-3">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
@@ -3081,8 +3418,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </div>
                                             </div>
                                         </div>
+                                        )}
 
-                                        {variantAxisAttributes.length > 0 && (
+                                        {showGenericPhysicalCatalog && variantAxisAttributes.length > 0 && (
                                             <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
                                                 <div className="space-y-1">
                                                     <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Variants Setup</p>
@@ -3122,7 +3460,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             </div>
                                         )}
 
-                                        {selectedSchemaBrands.length > 0 && (
+                                        {showGenericPhysicalCatalog && selectedSchemaBrands.length > 0 && (
                                             <div className="grid sm:grid-cols-2 gap-3">
                                                 <div className="space-y-1.5">
                                                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Brand</label>
@@ -3158,7 +3496,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             </div>
                                         )}
 
-                                        {facetAttributesForForm.length > 0 && (
+                                        {showGenericPhysicalCatalog && facetAttributesForForm.length > 0 && (
                                             <div className="grid sm:grid-cols-2 gap-3">
                                                 {facetAttributesForForm.map((attr) => {
                                                     const current = dynamicAttributeValues[attr.id] || {};
@@ -3288,7 +3626,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             </div>
                                         )}
 
-                                        {hasVariants && variantAxisAttributes.length > 0 && (
+                                        {showGenericPhysicalCatalog && hasVariants && variantAxisAttributes.length > 0 && (
                                             <div className="space-y-3">
                                                 <p className="text-xs text-slate-500">
                                                     Weka taarifa ya {manualTitle} {variantAxisAttributes.map((axis) => axis.label).join(', ')} unazouza tu hapa chini.
@@ -3351,7 +3689,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             </div>
                                         )}
 
-                                        {step === 'physical' && physicalFlowStep >= 3 && (
+                                        {step === 'physical' && physicalDetailsReady && (
                                             <div className="space-y-1.5">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Maelezo ya Bidhaa *</label>
                                                 <Textarea
@@ -3364,7 +3702,108 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             </div>
                                         )}
 
-                                        {step === 'physical' && physicalFlowStep >= 3 && hasVariants && (
+                                        {step === 'physical' && physicalDetailsReady && uploadModule === 'menu' && (
+                                            <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4 space-y-4">
+                                                <div>
+                                                    <p className="text-xs font-black uppercase tracking-wider text-orange-800">Menu details</p>
+                                                    <p className="text-xs text-orange-700 mt-1">These fields shape how this item appears in the restaurant/menu module.</p>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                    <label className="space-y-1.5">
+                                                        <span className="text-[11px] font-semibold text-slate-700">Section</span>
+                                                        <select
+                                                            className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
+                                                            value={menuDetails.section}
+                                                            onChange={(e) => updateMenuDetail('section', e.target.value)}
+                                                        >
+                                                            {menuSections.map(section => <option key={section} value={section}>{section}</option>)}
+                                                        </select>
+                                                    </label>
+                                                    <label className="space-y-1.5">
+                                                        <span className="text-[11px] font-semibold text-slate-700">Item type</span>
+                                                        <select
+                                                            className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
+                                                            value={menuDetails.item_type}
+                                                            onChange={(e) => updateMenuDetail('item_type', e.target.value)}
+                                                        >
+                                                            {menuItemTypes.map(type => <option key={type.key} value={type.key}>{type.label}</option>)}
+                                                        </select>
+                                                    </label>
+                                                    <label className="space-y-1.5">
+                                                        <span className="text-[11px] font-semibold text-slate-700">Prep time</span>
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            className="h-11 bg-white"
+                                                            placeholder="Minutes"
+                                                            value={menuDetails.prep_time_minutes}
+                                                            onChange={(e) => updateMenuDetail('prep_time_minutes', e.target.value)}
+                                                        />
+                                                    </label>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <p className="text-[11px] font-semibold text-slate-700">Available for</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {menuAvailabilityOptions.map(option => (
+                                                            <button
+                                                                key={option.key}
+                                                                type="button"
+                                                                onClick={() => toggleMenuArrayValue('availability', option.key)}
+                                                                className={`rounded-full border px-3 py-1.5 text-xs font-black ${menuDetails.availability.includes(option.key) ? 'border-orange-500 bg-white text-orange-700' : 'border-slate-200 bg-white/60 text-slate-500'}`}
+                                                            >
+                                                                {option.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <p className="text-[11px] font-semibold text-slate-700">Tags</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {dietaryTagOptions.map(option => (
+                                                            <button
+                                                                key={option.key}
+                                                                type="button"
+                                                                onClick={() => toggleMenuArrayValue('dietary_tags', option.key)}
+                                                                className={`rounded-full border px-3 py-1.5 text-xs font-black ${menuDetails.dietary_tags.includes(option.key) ? 'border-emerald-500 bg-white text-emerald-700' : 'border-slate-200 bg-white/60 text-slate-500'}`}
+                                                            >
+                                                                {option.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="text-[11px] font-semibold text-slate-700">Add-ons</p>
+                                                        <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs font-bold bg-white" onClick={addMenuAddOn}>
+                                                            <Plus className="h-3.5 w-3.5 mr-1" /> Add
+                                                        </Button>
+                                                    </div>
+                                                    {(menuDetails.add_ons || []).length === 0 ? (
+                                                        <p className="rounded-xl border border-dashed border-orange-200 bg-white/70 px-3 py-2 text-xs font-semibold text-orange-800">
+                                                            Add-ons are optional, for example extra cheese, chips, sauce, or toppings.
+                                                        </p>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            {menuDetails.add_ons.map((row, index) => (
+                                                                <div key={index} className="grid grid-cols-[1fr_120px_36px] gap-2">
+                                                                    <Input className="h-10 bg-white" placeholder="Add-on name" value={row.name || ''} onChange={(e) => updateMenuAddOn(index, 'name', e.target.value)} />
+                                                                    <Input className="h-10 bg-white" type="number" min="0" placeholder="Price" value={row.price || ''} onChange={(e) => updateMenuAddOn(index, 'price', e.target.value)} />
+                                                                    <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-lg" onClick={() => removeMenuAddOn(index)}>
+                                                                        <X className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {showGenericPhysicalCatalog && physicalFlowStep >= 3 && hasVariants && (
                                             <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
                                                 <div className="space-y-3">
                                                     <div className="space-y-2">
@@ -3522,7 +3961,39 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     </CardContent>
                                 </Card>
 
-                                {(step !== 'physical' || physicalFlowStep >= 3) && !(step === 'physical' && hasVariants) && (
+                                {isMenuUpload && physicalDetailsReady && (
+                                    <Card className="border-orange-100 shadow-sm overflow-hidden rounded-[2rem]">
+                                        <div className="bg-orange-50 p-4 border-b flex items-center gap-2 text-orange-800">
+                                            <ShoppingBag className="h-5 w-5" />
+                                            <h3 className="font-bold uppercase tracking-widest text-xs">Menu Pricing</h3>
+                                        </div>
+                                        <CardContent className="p-5 space-y-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-orange-700 uppercase tracking-wider">Price (TZS)</label>
+                                                    <Input type="number" placeholder="Mf. 12000" className="h-12 text-lg font-black bg-white border-orange-200" value={price} onChange={e => setPrice(e.target.value)} />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Compare price</label>
+                                                    <Input type="number" placeholder="Mf. 15000" className="h-12 text-lg font-black border-dashed bg-white" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
+                                                </div>
+                                            </div>
+                                            {renderProductFaqEditor()}
+                                            <Button
+                                                className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
+                                                onClick={publishProduct}
+                                                disabled={Boolean(physicalPublishDisabledReason)}
+                                            >
+                                                Weka Sokoni <ChevronRight className="ml-2 h-5 w-5" />
+                                            </Button>
+                                            {physicalPublishDisabledReason && (
+                                                <p className="text-center text-xs font-semibold text-slate-500">{physicalPublishDisabledReason}</p>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {showGenericPhysicalFulfillment && physicalFlowStep >= 3 && !hasVariants && (
                                     <Card className="border-brand-100 shadow-sm overflow-hidden rounded-[2rem]">
                                         <div className="bg-brand-50 p-4 border-b flex items-center gap-2 text-brand-800">
                                             <CheckCircle2 className="h-5 w-5" />
@@ -4213,6 +4684,359 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     required
                                 />
                             </div>
+
+                            {step === 'service' && uploadModule === 'rooms' && (
+                                <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-4 space-y-4">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-wider text-sky-900">Room / stay details</p>
+                                        <p className="text-xs text-sky-800 mt-1">These fields shape how this room appears for hotels, motels, lodges, guest houses, and apartments.</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Room type</span>
+                                            <select
+                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
+                                                value={roomDetails.room_type}
+                                                onChange={(e) => updateRoomDetail('room_type', e.target.value)}
+                                            >
+                                                {roomTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Bed type</span>
+                                            <select
+                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
+                                                value={roomDetails.bed_type}
+                                                onChange={(e) => updateRoomDetail('bed_type', e.target.value)}
+                                            >
+                                                {bedTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Booking policy</span>
+                                            <select
+                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
+                                                value={roomDetails.booking_policy}
+                                                onChange={(e) => {
+                                                    updateRoomDetail('booking_policy', e.target.value);
+                                                    setServiceBookingType(e.target.value === 'instant' ? 'instant' : 'manual_confirm');
+                                                    if (e.target.value === 'request_quote') {
+                                                        setServiceMode('request_quote');
+                                                        setServicePriceDisplay('quote_only');
+                                                    }
+                                                }}
+                                            >
+                                                {roomBookingPolicyOptions.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}
+                                            </select>
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Guests</span>
+                                            <Input type="number" min="1" className="h-11 bg-white" value={roomDetails.max_guests} onChange={(e) => updateRoomDetail('max_guests', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Rooms</span>
+                                            <Input type="number" min="1" className="h-11 bg-white" value={roomDetails.room_count} onChange={(e) => updateRoomDetail('room_count', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Bathrooms</span>
+                                            <Input type="number" min="0" step="0.5" className="h-11 bg-white" value={roomDetails.bathrooms} onChange={(e) => updateRoomDetail('bathrooms', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Check-in</span>
+                                            <Input type="time" className="h-11 bg-white" value={roomDetails.checkin_time} onChange={(e) => updateRoomDetail('checkin_time', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Check-out</span>
+                                            <Input type="time" className="h-11 bg-white" value={roomDetails.checkout_time} onChange={(e) => updateRoomDetail('checkout_time', e.target.value)} />
+                                        </label>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <p className="text-[11px] font-semibold text-slate-700">Availability status</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {roomAvailabilityOptions.map(option => (
+                                                <button
+                                                    key={option.key}
+                                                    type="button"
+                                                    onClick={() => updateRoomDetail('availability', [option.key])}
+                                                    className={`rounded-full border px-3 py-1.5 text-xs font-black ${roomDetails.availability.includes(option.key) ? 'border-sky-500 bg-white text-sky-700' : 'border-slate-200 bg-white/70 text-slate-500'}`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <p className="text-[11px] font-semibold text-slate-700">Amenities</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {roomAmenityOptions.map(option => (
+                                                <button
+                                                    key={option.key}
+                                                    type="button"
+                                                    onClick={() => toggleRoomArrayValue('amenities', option.key)}
+                                                    className={`rounded-full border px-3 py-1.5 text-xs font-black ${roomDetails.amenities.includes(option.key) ? 'border-emerald-500 bg-white text-emerald-700' : 'border-slate-200 bg-white/70 text-slate-500'}`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 'service' && uploadModule === 'appointments' && (
+                                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-wider text-indigo-900">Appointment details</p>
+                                        <p className="text-xs text-indigo-800 mt-1">These fields shape booking slots for salons, clinics, consultants, trainers, repair visits, and professional services.</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Buffer after appointment</span>
+                                            <Input type="number" min="0" className="h-11 bg-white" placeholder="15" value={serviceDetails.buffer_minutes ?? ''} onChange={(e) => updateServiceDetail('buffer_minutes', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Capacity per slot</span>
+                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.capacity ?? ''} onChange={(e) => updateServiceDetail('capacity', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Booking policy</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.booking_policy || 'manual_confirm'} onChange={(e) => {
+                                                updateServiceDetail('booking_policy', e.target.value);
+                                                setServiceBookingType(e.target.value === 'instant' ? 'instant' : e.target.value === 'request_first' ? 'request' : 'manual_confirm');
+                                            }}>
+                                                <option value="manual_confirm">Manual confirm</option>
+                                                <option value="instant">Instant booking</option>
+                                                <option value="request_first">Request first</option>
+                                            </select>
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Appointment location</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.appointment_location_mode || serviceLocationType || 'provider_location'} onChange={(e) => {
+                                                updateServiceDetail('appointment_location_mode', e.target.value);
+                                                setServiceLocationType(e.target.value);
+                                            }}>
+                                                <option value="provider_location">At business location</option>
+                                                <option value="customer_location">At customer location</option>
+                                                <option value="remote">Remote / online</option>
+                                                <option value="hybrid">Hybrid</option>
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Preparation notes</span>
+                                            <Input className="h-11 bg-white" placeholder="Arrive 10 minutes early, bring documents..." value={serviceDetails.preparation_notes || ''} onChange={(e) => updateServiceDetail('preparation_notes', e.target.value)} />
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 'service' && uploadModule === 'reservations' && (
+                                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4 space-y-4">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-wider text-rose-900">Reservation details</p>
+                                        <p className="text-xs text-rose-800 mt-1">Use this for table bookings, venue visits, event spaces, lounges, activity slots, and reservation-first businesses.</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Reservation type</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.reservation_type || 'table'} onChange={(e) => updateServiceDetail('reservation_type', e.target.value)}>
+                                                <option value="table">Table</option>
+                                                <option value="venue">Venue</option>
+                                                <option value="visit">Visit</option>
+                                                <option value="event_space">Event space</option>
+                                                <option value="activity">Activity</option>
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Seating / space</span>
+                                            <Input className="h-11 bg-white" placeholder="Indoor, terrace, VIP..." value={serviceDetails.seating_type || ''} onChange={(e) => updateServiceDetail('seating_type', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Party size limit</span>
+                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="8" value={serviceDetails.party_size_limit || ''} onChange={(e) => updateServiceDetail('party_size_limit', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Policy</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.reservation_policy || 'manual_confirm'} onChange={(e) => {
+                                                updateServiceDetail('reservation_policy', e.target.value);
+                                                setServiceBookingType(e.target.value === 'instant' ? 'instant' : e.target.value === 'request_first' ? 'request' : 'manual_confirm');
+                                            }}>
+                                                <option value="manual_confirm">Manual confirm</option>
+                                                <option value="instant">Instant reservation</option>
+                                                <option value="request_first">Request first</option>
+                                            </select>
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Reservation notes: late arrival, hold time, dress code, walk-in policy..." value={serviceDetails.reservation_notes || ''} onChange={(e) => updateServiceDetail('reservation_notes', e.target.value)} />
+                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Deposit or minimum spend note, if any" value={serviceDetails.deposit_note || ''} onChange={(e) => updateServiceDetail('deposit_note', e.target.value)} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 'service' && uploadModule === 'rentals' && (
+                                <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 space-y-4">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-wider text-amber-900">Rental / hire details</p>
+                                        <p className="text-xs text-amber-800 mt-1">Use this for equipment, vehicles, event gear, spaces, costumes, and other rentable items.</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Rental type</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_type || 'equipment'} onChange={(e) => updateServiceDetail('rental_type', e.target.value)}>
+                                                <option value="equipment">Equipment</option>
+                                                <option value="vehicle">Vehicle</option>
+                                                <option value="space">Space</option>
+                                                <option value="event_gear">Event gear</option>
+                                                <option value="costume">Costume / props</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Price unit</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_unit || 'day'} onChange={(e) => {
+                                                updateServiceDetail('rental_unit', e.target.value);
+                                                setServicePriceDisplay(e.target.value === 'hour' ? 'hourly' : e.target.value === 'week' ? 'weekly' : e.target.value === 'month' ? 'monthly' : 'daily');
+                                            }}>
+                                                <option value="hour">Per hour</option>
+                                                <option value="day">Per day</option>
+                                                <option value="night">Per night</option>
+                                                <option value="week">Per week</option>
+                                                <option value="month">Per month</option>
+                                                <option value="trip">Per trip</option>
+                                                <option value="event">Per event</option>
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Available units</span>
+                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.available_units ?? ''} onChange={(e) => updateServiceDetail('available_units', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Policy</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_policy || 'manual_confirm'} onChange={(e) => {
+                                                updateServiceDetail('rental_policy', e.target.value);
+                                                setServiceBookingType(e.target.value === 'instant' ? 'instant' : e.target.value === 'request_first' ? 'request' : 'manual_confirm');
+                                            }}>
+                                                <option value="manual_confirm">Manual confirm</option>
+                                                <option value="instant">Instant booking</option>
+                                                <option value="request_first">Request first</option>
+                                            </select>
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Security deposit</span>
+                                            <Input type="number" min="0" className="h-11 bg-white" placeholder="Optional deposit amount" value={serviceDetails.security_deposit ?? ''} onChange={(e) => updateServiceDetail('security_deposit', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Included items</span>
+                                            <Input
+                                                className="h-11 bg-white"
+                                                placeholder="Helmet, charger, stand..."
+                                                value={Array.isArray(serviceDetails.included_items) ? serviceDetails.included_items.join(', ') : ''}
+                                                onChange={(e) => updateServiceDetail('included_items', e.target.value.split(',').map((item) => item.trim()).filter(Boolean))}
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Pickup and return notes: pickup point, return time, inspection, late return..." value={serviceDetails.pickup_return_notes || ''} onChange={(e) => updateServiceDetail('pickup_return_notes', e.target.value)} />
+                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Rental requirements: ID, license, deposit, operator, damage policy..." value={serviceDetails.rental_requirements || ''} onChange={(e) => updateServiceDetail('rental_requirements', e.target.value)} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 'service' && uploadModule === 'workshops' && (
+                                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-wider text-indigo-900">Workshop / session details</p>
+                                        <p className="text-xs text-indigo-800 mt-1">Use this for short courses, bootcamps, webinars, seminars, and live training sessions.</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Format</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.workshop_format || 'live_session'} onChange={(e) => updateServiceDetail('workshop_format', e.target.value)}>
+                                                <option value="live_session">Live session</option>
+                                                <option value="bootcamp">Bootcamp</option>
+                                                <option value="seminar">Seminar</option>
+                                                <option value="webinar">Webinar</option>
+                                                <option value="cohort">Cohort</option>
+                                                <option value="private_group">Private group</option>
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Sessions</span>
+                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.session_count ?? ''} onChange={(e) => updateServiceDetail('session_count', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Capacity</span>
+                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="Optional" value={serviceDetails.workshop_capacity ?? ''} onChange={(e) => updateServiceDetail('workshop_capacity', e.target.value)} />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Level</span>
+                                            <Input className="h-11 bg-white" placeholder="Beginner, advanced..." value={serviceDetails.workshop_level || ''} onChange={(e) => updateServiceDetail('workshop_level', e.target.value)} />
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Enrollment policy</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.enrollment_policy || 'manual_confirm'} onChange={(e) => {
+                                                updateServiceDetail('enrollment_policy', e.target.value);
+                                                setServiceBookingType(e.target.value === 'instant' ? 'instant' : e.target.value === 'request_first' ? 'request' : 'manual_confirm');
+                                            }}>
+                                                <option value="manual_confirm">Manual confirm</option>
+                                                <option value="instant">Instant enrollment</option>
+                                                <option value="request_first">Request first</option>
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Location mode</span>
+                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.workshop_location_mode || serviceLocationType || 'provider_location'} onChange={(e) => {
+                                                updateServiceDetail('workshop_location_mode', e.target.value);
+                                                setServiceLocationType(e.target.value);
+                                            }}>
+                                                <option value="provider_location">At business location</option>
+                                                <option value="customer_location">At client location</option>
+                                                <option value="remote">Remote / online</option>
+                                                <option value="hybrid">Hybrid</option>
+                                            </select>
+                                        </label>
+                                        <label className="space-y-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-700">Start note</span>
+                                            <Input className="h-11 bg-white" placeholder="Starts June, every Saturday..." value={serviceDetails.workshop_start_note || ''} onChange={(e) => updateServiceDetail('workshop_start_note', e.target.value)} />
+                                        </label>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <Textarea className="min-h-24 rounded-xl bg-white" placeholder="Learning outcomes, one per line" value={(serviceDetails.learning_outcomes || serviceDetails.outcomes || []).join('\n')} onChange={(e) => {
+                                            const list = e.target.value.split('\n');
+                                            updateServiceDetail('learning_outcomes', list);
+                                            updateServiceDetail('outcomes', list);
+                                        }} />
+                                        <Textarea className="min-h-24 rounded-xl bg-white" placeholder="Requirements, one per line" value={(serviceDetails.workshop_requirements || serviceDetails.requirements || []).join('\n')} onChange={(e) => {
+                                            const list = e.target.value.split('\n');
+                                            updateServiceDetail('workshop_requirements', list);
+                                            updateServiceDetail('requirements', list);
+                                        }} />
+                                        <Textarea className="min-h-24 rounded-xl bg-white" placeholder="Materials included, one per line" value={(serviceDetails.materials_included || []).join('\n')} onChange={(e) => updateServiceDetail('materials_included', e.target.value.split('\n'))} />
+                                    </div>
+                                </div>
+                            )}
 
                             {/* ─── DIGITAL: delivery mode toggle ─── */}
                             {step === 'digital' && (
@@ -5601,6 +6425,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             <Input placeholder="Duration, e.g. 3 days / 2 nights" value={serviceDetails.duration_label || ''} onChange={(e) => updateServiceDetail('duration_label', e.target.value)} className="h-11" />
                                                             <Input placeholder="Pickup point" value={serviceDetails.pickup_point || ''} onChange={(e) => updateServiceDetail('pickup_point', e.target.value)} className="h-11" />
                                                             <Input placeholder="Drop-off point" value={serviceDetails.dropoff_point || ''} onChange={(e) => updateServiceDetail('dropoff_point', e.target.value)} className="h-11" />
+                                                            <Input type="number" min="1" placeholder="Group size / seats" value={serviceDetails.group_size || ''} onChange={(e) => updateServiceDetail('group_size', e.target.value)} className="h-11" />
+                                                            <select className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={serviceDetails.departure_type || 'scheduled'} onChange={(e) => updateServiceDetail('departure_type', e.target.value)}>
+                                                                <option value="scheduled">Scheduled departures</option>
+                                                                <option value="private">Private trips</option>
+                                                                <option value="custom">Custom dates</option>
+                                                            </select>
                                                         </div>
                                                         <div className="rounded-xl border bg-slate-50/60 p-3 space-y-2">
                                                             <div className="flex items-center justify-between gap-2">
@@ -5645,7 +6475,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 {selectedServiceTemplateKey === 'orderable_service' && (
                                                     <div className="space-y-3">
                                                         <Textarea placeholder="Customization details customers can choose: size, flavor, message, file upload, color..." value={serviceDetails.customization_notes || ''} onChange={(e) => updateServiceDetail('customization_notes', e.target.value)} className="min-h-24" />
-                                                        <Input placeholder="Lead time, e.g. 24 hours notice" value={serviceDetails.lead_time || ''} onChange={(e) => updateServiceDetail('lead_time', e.target.value)} className="h-11" />
+                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                            <Input className="h-11 md:col-span-1" placeholder="Lead time, e.g. 24 hours notice" value={serviceDetails.lead_time || ''} onChange={(e) => updateServiceDetail('lead_time', e.target.value)} />
+                                                            <Input className="h-11 md:col-span-1" type="number" min="1" placeholder="Minimum order quantity" value={serviceDetails.minimum_order || ''} onChange={(e) => updateServiceDetail('minimum_order', e.target.value)} />
+                                                            <select className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={serviceDetails.quote_policy || 'quote_after_request'} onChange={(e) => updateServiceDetail('quote_policy', e.target.value)}>
+                                                                <option value="quote_after_request">Quote after request</option>
+                                                                <option value="deposit_before_work">Deposit before work</option>
+                                                                <option value="full_payment_after_quote">Full payment after quote</option>
+                                                            </select>
+                                                        </div>
                                                         <Textarea placeholder="Pickup or delivery notes" value={serviceDetails.pickup_delivery_notes || ''} onChange={(e) => updateServiceDetail('pickup_delivery_notes', e.target.value)} className="min-h-20" />
                                                     </div>
                                                 )}

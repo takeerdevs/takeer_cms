@@ -8,14 +8,14 @@ import {
     Package, Plus, Search, Loader2,
     CheckCircle2, Clock, Archive, ShoppingBag,
     Image as ImageIcon, FileText, Calendar, ChevronLeft, ChevronRight, MessageSquare,
-    Phone, Mail, MapPin, X, Copy, CalendarDays, ListChecks, Settings2, ExternalLink, Trash2
+    Phone, Mail, MapPin, X, Copy, CalendarDays, ListChecks, Settings2, ExternalLink, Trash2, BedDouble, Users, Map
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { productPriceLabel, productStockLabel } from '@/lib/productUnits';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
-export default function MerchantProducts({ merchantUsername, typeScope = 'all', merchantTimezone = 'Africa/Dar_es_Salaam' }) {
+export default function MerchantProducts({ merchantUsername, typeScope = 'all', moduleScope = null, merchantTimezone = 'Africa/Dar_es_Salaam' }) {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, published, draft, archived
@@ -32,7 +32,9 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
     const [selectedServiceRequest, setSelectedServiceRequest] = useState(null);
     const [requestAction, setRequestAction] = useState({ status: 'contacted', quoted_amount: '', scheduled_at: '' });
+    const [fulfillmentAction, setFulfillmentAction] = useState({ action: 'confirm', fulfillment_status: '', notes: '', fields: {} });
     const [requestUpdating, setRequestUpdating] = useState(false);
+    const [fulfillmentUpdating, setFulfillmentUpdating] = useState(false);
     const [notificationPreparing, setNotificationPreparing] = useState(false);
     const [scheduling, setScheduling] = useState(null);
     const [schedulingSaving, setSchedulingSaving] = useState(false);
@@ -42,6 +44,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const [serviceSessions, setServiceSessions] = useState([]);
     const [deletingProductId, setDeletingProductId] = useState(null);
     const normalizedTypeScope = ['physical', 'digital', 'service'].includes(typeScope) ? typeScope : 'all';
+    const normalizedModuleScope = ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops'].includes(moduleScope) ? moduleScope : null;
     const { can, canAny } = useMerchantPermissions(merchantUsername);
     const resourceForScope = normalizedTypeScope === 'digital'
         ? 'digital_products'
@@ -64,7 +67,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
     useEffect(() => {
         fetchProducts();
-    }, [filter, page, merchantUsername, normalizedTypeScope]);
+    }, [filter, page, merchantUsername, normalizedTypeScope, normalizedModuleScope]);
 
     useEffect(() => {
         if (normalizedTypeScope === 'service') {
@@ -81,7 +84,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
 
     useEffect(() => {
         setPage(1);
-    }, [filter, normalizedTypeScope]);
+    }, [filter, normalizedTypeScope, normalizedModuleScope]);
 
     useEffect(() => {
         if (normalizedTypeScope !== 'service' || serviceManagerView !== 'availability') return;
@@ -100,6 +103,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             const params = new URLSearchParams();
             if (filter !== 'all') params.set('status', filter);
             if (normalizedTypeScope !== 'all') params.set('type', normalizedTypeScope);
+            if (normalizedModuleScope) params.set('module', normalizedModuleScope);
             params.set('page', String(page));
             const response = await axios.get(`/merchant/${merchantUsername}/products/api${params.toString() ? `?${params.toString()}` : ''}`);
             setProducts(response.data.data || []);
@@ -396,11 +400,30 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     };
 
     const openServiceRequest = (request) => {
+        const moduleKey = request.product?.module_key || request.metadata?.module_key;
+        const config = moduleFulfillmentConfig(moduleKey);
+        const existingFulfillment = request.module_fulfillment || request.metadata?.module_fulfillment || {};
+        const modulePayload = request.metadata?.module_payload || request.client_requirements?.module_payload || {};
+        const defaultFields = {
+            guests: modulePayload.tour_guests || modulePayload.appointment_spots || modulePayload.stay_guests || '',
+            party_size: modulePayload.reservation_party_size || '',
+            attendee_count: modulePayload.workshop_seats || '',
+        };
+
         setSelectedServiceRequest(request);
         setRequestAction({
             status: request.status === 'pending' ? 'contacted' : request.status,
             quoted_amount: request.quoted_amount ?? '',
             scheduled_at: request.scheduled_at ? request.scheduled_at.slice(0, 16) : '',
+        });
+        setFulfillmentAction({
+            action: existingFulfillment.action || 'confirm',
+            fulfillment_status: existingFulfillment.status || config?.statuses?.[0] || '',
+            notes: existingFulfillment.notes || '',
+            fields: {
+                ...defaultFields,
+                ...(existingFulfillment.fields || {}),
+            },
         });
     };
 
@@ -444,6 +467,40 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             toast.error(error?.response?.data?.message || 'Failed to mark service delivered.');
         } finally {
             setRequestUpdating(false);
+        }
+    };
+
+    const updateFulfillmentField = (key, value) => {
+        setFulfillmentAction((prev) => ({
+            ...prev,
+            fields: {
+                ...(prev.fields || {}),
+                [key]: value,
+            },
+        }));
+    };
+
+    const saveModuleFulfillment = async (overrides = {}) => {
+        if (!selectedServiceRequest || fulfillmentUpdating) return;
+        setFulfillmentUpdating(true);
+        try {
+            const response = await axios.patch(
+                `/merchant/${merchantUsername}/service-requests/${selectedServiceRequest.id}/fulfillment`,
+                {
+                    action: overrides.action || fulfillmentAction.action || 'update',
+                    fulfillment_status: overrides.fulfillment_status || fulfillmentAction.fulfillment_status || null,
+                    notes: fulfillmentAction.notes || null,
+                    fields: fulfillmentAction.fields || {},
+                }
+            );
+            toast.success(response.data?.message || 'Fulfillment updated.');
+            setSelectedServiceRequest(response.data?.data || selectedServiceRequest);
+            await fetchServiceRequests();
+            await fetchCalendarRequests();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to update fulfillment.');
+        } finally {
+            setFulfillmentUpdating(false);
         }
     };
 
@@ -560,8 +617,103 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const serviceRequestTypeLabel = (type) => ({
         quote_request: 'Quote request',
         appointment_request: 'Appointment',
+        room_booking_request: 'Room booking',
+        tour_booking_request: 'Tour booking',
+        workshop_enrollment_request: 'Workshop enrollment',
+        reservation_request: 'Reservation',
+        rental_request: 'Rental',
+        custom_order_request: 'Custom order',
         contact_request: 'Contact',
     }[type] || 'Request');
+    const moduleFulfillmentConfig = (moduleKey) => ({
+        rooms: {
+            title: 'Stay fulfillment',
+            hint: 'Assign room, track check-in, check-out, and no-show handling.',
+            statuses: ['reserved', 'checked_in', 'checked_out', 'no_show', 'cancelled'],
+            fields: [
+                { key: 'room_number', label: 'Room number' },
+                { key: 'unit_label', label: 'Unit / floor' },
+                { key: 'guests', label: 'Guests', type: 'number' },
+                { key: 'check_in_at', label: 'Check-in', type: 'datetime-local' },
+                { key: 'check_out_at', label: 'Check-out', type: 'datetime-local' },
+            ],
+        },
+        tour_departures: {
+            title: 'Tour fulfillment',
+            hint: 'Track manifest, pickup, departure, guide assignment, and completion.',
+            statuses: ['reserved', 'checked_in', 'departed', 'completed', 'cancelled'],
+            fields: [
+                { key: 'guests', label: 'Guests', type: 'number' },
+                { key: 'pickup_point', label: 'Pickup point' },
+                { key: 'departure_at', label: 'Departure', type: 'datetime-local' },
+                { key: 'guide_name', label: 'Guide' },
+            ],
+        },
+        workshops: {
+            title: 'Enrollment fulfillment',
+            hint: 'Confirm seats, attendance, and certificate readiness.',
+            statuses: ['enrolled', 'attended', 'completed', 'no_show', 'cancelled'],
+            fields: [
+                { key: 'attendee_count', label: 'Attendees', type: 'number' },
+                { key: 'session_title', label: 'Session / cohort' },
+                { key: 'certificate_status', label: 'Certificate' },
+            ],
+        },
+        appointments: {
+            title: 'Appointment fulfillment',
+            hint: 'Track check-in, practitioner assignment, and completion.',
+            statuses: ['confirmed', 'checked_in', 'completed', 'no_show', 'cancelled'],
+            fields: [
+                { key: 'practitioner', label: 'Practitioner' },
+                { key: 'appointment_room', label: 'Room / desk' },
+                { key: 'guests', label: 'People', type: 'number' },
+            ],
+        },
+        reservations: {
+            title: 'Reservation fulfillment',
+            hint: 'Assign table or space and track arrival through completion.',
+            statuses: ['confirmed', 'seated', 'completed', 'no_show', 'cancelled'],
+            fields: [
+                { key: 'table_label', label: 'Table / space' },
+                { key: 'party_size', label: 'Party size', type: 'number' },
+            ],
+        },
+        rentals: {
+            title: 'Rental fulfillment',
+            hint: 'Assign unit, capture pickup, return due date, and deposit state.',
+            statuses: ['reserved', 'picked_up', 'returned', 'overdue', 'cancelled'],
+            fields: [
+                { key: 'unit_label', label: 'Unit / asset' },
+                { key: 'pickup_at', label: 'Pickup', type: 'datetime-local' },
+                { key: 'return_due_at', label: 'Return due', type: 'datetime-local' },
+                { key: 'deposit_status', label: 'Deposit' },
+            ],
+        },
+        custom_orders: {
+            title: 'Custom order fulfillment',
+            hint: 'Move the job through production, ready, delivery, or cancellation.',
+            statuses: ['accepted', 'in_production', 'ready', 'delivered', 'cancelled'],
+            fields: [
+                { key: 'reference_code', label: 'Job reference' },
+                { key: 'due_at', label: 'Due date', type: 'datetime-local' },
+            ],
+        },
+    }[moduleKey] || null);
+    const formatFulfillmentValue = (value) => {
+        if (!value) return '';
+        if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+            const parsed = new Date(value);
+            if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString();
+        }
+        return String(value).replaceAll('_', ' ');
+    };
+    const formatDateTimeInput = (value) => {
+        if (!value) return '';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return '';
+        const offset = parsed.getTimezoneOffset();
+        return new Date(parsed.getTime() - offset * 60000).toISOString().slice(0, 16);
+    };
     const serviceRequestStatusClass = (status) => ({
         pending: 'bg-amber-100 text-amber-700',
         contacted: 'bg-sky-100 text-sky-700',
@@ -665,6 +817,77 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             };
         }
         if (normalizedTypeScope === 'service') {
+            if (normalizedModuleScope === 'rooms') {
+                return {
+                    title: 'Rooms & Stays',
+                    subtitle: 'Manage room types, nightly pricing, capacity, availability, and booking readiness.',
+                    createLabel: 'Add Room / Stay',
+                    createType: 'service',
+                    createModule: 'rooms',
+                    icon: BedDouble,
+                };
+            }
+            if (normalizedModuleScope === 'tour_departures') {
+                return {
+                    title: 'Tours & Departures',
+                    subtitle: 'Manage itineraries, destinations, pickup points, seats, and tour booking readiness.',
+                    createLabel: 'Add Tour',
+                    createType: 'service',
+                    createModule: 'tour_departures',
+                    icon: Map,
+                };
+            }
+            if (normalizedModuleScope === 'custom_orders') {
+                return {
+                    title: 'Custom Orders & Quotes',
+                    subtitle: 'Manage made-to-order services, customer requirements, quote-first pricing, and fulfillment notes.',
+                    createLabel: 'Add Custom Order',
+                    createType: 'service',
+                    createModule: 'custom_orders',
+                    icon: MessageSquare,
+                };
+            }
+            if (normalizedModuleScope === 'appointments') {
+                return {
+                    title: 'Appointments',
+                    subtitle: 'Manage appointment services, slot duration, booking policy, capacity, and availability.',
+                    createLabel: 'Add Appointment',
+                    createType: 'service',
+                    createModule: 'appointments',
+                    icon: Calendar,
+                };
+            }
+            if (normalizedModuleScope === 'reservations') {
+                return {
+                    title: 'Reservations',
+                    subtitle: 'Manage table, venue, visit, activity, and space reservation offers.',
+                    createLabel: 'Add Reservation',
+                    createType: 'service',
+                    createModule: 'reservations',
+                    icon: CalendarDays,
+                };
+            }
+            if (normalizedModuleScope === 'rentals') {
+                return {
+                    title: 'Rentals & Hire',
+                    subtitle: 'Manage rentable equipment, vehicles, event gear, spaces, deposits, and pickup/return terms.',
+                    createLabel: 'Add Rental',
+                    createType: 'service',
+                    createModule: 'rentals',
+                    icon: Package,
+                };
+            }
+            if (normalizedModuleScope === 'workshops') {
+                return {
+                    title: 'Workshops & Sessions',
+                    subtitle: 'Manage short courses, seminars, webinars, bootcamps, capacity, and session enrollment.',
+                    createLabel: 'Add Workshop',
+                    createType: 'service',
+                    createModule: 'workshops',
+                    icon: CalendarDays,
+                };
+            }
+
             return {
                 title: 'Services & Bookings',
                 subtitle: 'Simamia huduma, namba za mawasiliano, na booking links.',
@@ -674,6 +897,17 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
             };
         }
         if (normalizedTypeScope === 'physical') {
+            if (normalizedModuleScope === 'menu') {
+                return {
+                    title: 'Menu',
+                    subtitle: 'Manage food, drinks, add-ons, and menu pricing for this business.',
+                    createLabel: 'Add Menu Item',
+                    createType: 'physical',
+                    createModule: 'menu',
+                    icon: ShoppingBag,
+                };
+            }
+
             return {
                 title: 'Physical Products',
                 subtitle: 'Simamia bidhaa za stoo na mauzo ya usafirishaji.',
@@ -705,7 +939,12 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                     </div>
                     {canCreate && (
                         <Button
-                            onClick={() => router.visit(`/merchant/${merchantUsername}/upload${pageMeta.createType ? `?type=${pageMeta.createType}` : ''}`)}
+                            onClick={() => {
+                                const params = new URLSearchParams();
+                                if (pageMeta.createType) params.set('type', pageMeta.createType);
+                                if (pageMeta.createModule) params.set('module', pageMeta.createModule);
+                                router.visit(`/merchant/${merchantUsername}/upload${params.toString() ? `?${params.toString()}` : ''}`);
+                            }}
                             className="bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl h-12 px-6 shadow-lg shadow-brand-600/20"
                         >
                             <Plus className="mr-2 h-5 w-5" /> {pageMeta.createLabel}
@@ -1312,6 +1551,81 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                         <Package className="h-3 w-3" /> {productStockLabel(product)}
                                                     </span>
                                                 )}
+                                                {product.module_key === 'menu' && product.module_details?.prep_time_minutes !== null && product.module_details?.prep_time_minutes !== undefined && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" /> {product.module_details.prep_time_minutes} min
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'rooms' && product.module_details?.max_guests && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Users className="h-3 w-3" /> up to {product.module_details.max_guests}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'rooms' && product.module_details?.room_count && (
+                                                    <span className="flex items-center gap-1">
+                                                        <BedDouble className="h-3 w-3" /> {product.module_details.room_count} room{Number(product.module_details.room_count) === 1 ? '' : 's'}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'tour_departures' && product.module_details?.duration_label && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" /> {product.module_details.duration_label}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'tour_departures' && product.module_details?.group_size && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Users className="h-3 w-3" /> {product.module_details.group_size} seats
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'custom_orders' && product.module_details?.lead_time && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" /> {product.module_details.lead_time}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'custom_orders' && product.module_details?.minimum_order && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Package className="h-3 w-3" /> min {product.module_details.minimum_order}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'appointments' && product.module_details?.appointment_duration_minutes && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" /> {product.module_details.appointment_duration_minutes} min
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'appointments' && product.module_details?.capacity && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Users className="h-3 w-3" /> {product.module_details.capacity}/slot
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'reservations' && product.module_details?.reservation_duration_minutes && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" /> {product.module_details.reservation_duration_minutes} min
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'reservations' && product.module_details?.party_size_limit && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Users className="h-3 w-3" /> up to {product.module_details.party_size_limit}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'rentals' && product.module_details?.rental_duration_minutes && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" /> {product.module_details.rental_duration_minutes} min
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'rentals' && product.module_details?.available_units && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Package className="h-3 w-3" /> {product.module_details.available_units} unit{Number(product.module_details.available_units) === 1 ? '' : 's'}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'workshops' && product.module_details?.workshop_duration_minutes && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" /> {product.module_details.workshop_duration_minutes} min
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'workshops' && product.module_details?.workshop_capacity && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Users className="h-3 w-3" /> {product.module_details.workshop_capacity} seats
+                                                    </span>
+                                                )}
                                                 {product.type === 'service' && (
                                                     <span className="flex items-center gap-1">
                                                         <Calendar className="h-3 w-3" /> {serviceModeLabel(product)}
@@ -1332,6 +1646,91 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                 {!!product?.attributes?.sub_category && (
                                                     <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700">
                                                         {product.attributes.sub_category}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'menu' && product.module_details?.section && (
+                                                    <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-1 text-[10px] font-semibold text-orange-700">
+                                                        {product.module_details.section}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'menu' && (product.module_details?.dietary_tags || []).slice(0, 2).map((tag) => (
+                                                    <span key={`${product.id}-${tag}`} className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                                                        {String(tag).replace(/_/g, ' ')}
+                                                    </span>
+                                                ))}
+                                                {product.module_key === 'rooms' && product.module_details?.room_type && (
+                                                    <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700">
+                                                        {product.module_details.room_type}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'rooms' && product.module_details?.bed_type && (
+                                                    <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                                                        {product.module_details.bed_type}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'rooms' && (product.module_details?.amenities || []).slice(0, 2).map((amenity) => (
+                                                    <span key={`${product.id}-${amenity}`} className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                                                        {String(amenity).replace(/_/g, ' ')}
+                                                    </span>
+                                                ))}
+                                                {product.module_key === 'tour_departures' && product.module_details?.destination && (
+                                                    <span className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-[10px] font-semibold text-cyan-700">
+                                                        {product.module_details.destination}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'tour_departures' && product.module_details?.departure_type && (
+                                                    <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                                                        {String(product.module_details.departure_type).replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'custom_orders' && (
+                                                    <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700">
+                                                        Quote after request
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'custom_orders' && product.module_details?.quote_policy && (
+                                                    <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                                                        {String(product.module_details.quote_policy).replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'appointments' && product.module_details?.booking_policy && (
+                                                    <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700">
+                                                        {String(product.module_details.booking_policy).replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'appointments' && product.module_details?.appointment_location_mode && (
+                                                    <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                                                        {String(product.module_details.appointment_location_mode).replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'reservations' && product.module_details?.reservation_type && (
+                                                    <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700">
+                                                        {String(product.module_details.reservation_type).replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'reservations' && product.module_details?.seating_type && (
+                                                    <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                                                        {product.module_details.seating_type}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'rentals' && product.module_details?.rental_type && (
+                                                    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+                                                        {String(product.module_details.rental_type).replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'rentals' && product.module_details?.rental_unit && (
+                                                    <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                                                        per {String(product.module_details.rental_unit).replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'workshops' && product.module_details?.workshop_format && (
+                                                    <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700">
+                                                        {String(product.module_details.workshop_format).replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {product.module_key === 'workshops' && product.module_details?.session_count && (
+                                                    <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                                                        {product.module_details.session_count} session{Number(product.module_details.session_count) === 1 ? '' : 's'}
                                                     </span>
                                                 )}
                                                 {(product.category_attribute_values || [])
@@ -1573,6 +1972,110 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                         </div>
                                     </div>
                                 )}
+
+                                {canUpdate && (() => {
+                                    const moduleKey = selectedServiceRequest.product?.module_key || selectedServiceRequest.metadata?.module_key;
+                                    const config = moduleFulfillmentConfig(moduleKey);
+                                    const current = selectedServiceRequest.module_fulfillment || selectedServiceRequest.metadata?.module_fulfillment || null;
+                                    if (!config) return null;
+
+                                    return (
+                                        <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-4 space-y-3">
+                                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                                <div>
+                                                    <p className="font-black">{config.title}</p>
+                                                    <p className="text-xs text-sky-900/80 mt-1">{config.hint}</p>
+                                                </div>
+                                                {current?.status && (
+                                                    <span className="w-fit rounded-full bg-white px-2 py-1 text-[10px] font-black uppercase tracking-widest text-sky-700">
+                                                        {current.status.replaceAll('_', ' ')}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {current?.fields && Object.keys(current.fields).length > 0 && (
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                    {Object.entries(current.fields).map(([key, value]) => (
+                                                        <div key={key} className="rounded-lg bg-white/80 p-2">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{key.replaceAll('_', ' ')}</p>
+                                                            <p className="text-sm font-semibold mt-1 break-words">{formatFulfillmentValue(value)}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <label className="space-y-1.5">
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Action</span>
+                                                    <select
+                                                        className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                                                        value={fulfillmentAction.action}
+                                                        onChange={(e) => setFulfillmentAction((prev) => ({ ...prev, action: e.target.value }))}
+                                                    >
+                                                        <option value="confirm">Confirm</option>
+                                                        <option value="start">Start / check in</option>
+                                                        <option value="update">Update only</option>
+                                                        <option value="complete">Complete</option>
+                                                        <option value="cancel">Cancel</option>
+                                                    </select>
+                                                </label>
+                                                <label className="space-y-1.5">
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Module status</span>
+                                                    <select
+                                                        className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                                                        value={fulfillmentAction.fulfillment_status}
+                                                        onChange={(e) => setFulfillmentAction((prev) => ({ ...prev, fulfillment_status: e.target.value }))}
+                                                    >
+                                                        {config.statuses.map((status) => (
+                                                            <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
+                                                        ))}
+                                                    </select>
+                                                </label>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                {config.fields.map((field) => (
+                                                    <label key={field.key} className="space-y-1.5">
+                                                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{field.label}</span>
+                                                        <input
+                                                            type={field.type || 'text'}
+                                                            min={field.type === 'number' ? '1' : undefined}
+                                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                                                            value={field.type === 'datetime-local'
+                                                                ? formatDateTimeInput(fulfillmentAction.fields?.[field.key])
+                                                                : (fulfillmentAction.fields?.[field.key] ?? '')}
+                                                            onChange={(e) => updateFulfillmentField(field.key, e.target.value)}
+                                                        />
+                                                    </label>
+                                                ))}
+                                                <label className="space-y-1.5 sm:col-span-2">
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Internal notes</span>
+                                                    <textarea
+                                                        className="w-full min-h-20 rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                                                        value={fulfillmentAction.notes}
+                                                        onChange={(e) => setFulfillmentAction((prev) => ({ ...prev, notes: e.target.value }))}
+                                                        placeholder="Room issue, pickup instructions, production note, handover note..."
+                                                    />
+                                                </label>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                <Button type="button" variant="outline" className="rounded-xl" disabled={fulfillmentUpdating} onClick={() => saveModuleFulfillment({ action: 'confirm' })}>
+                                                    Confirm
+                                                </Button>
+                                                <Button type="button" variant="outline" className="rounded-xl" disabled={fulfillmentUpdating} onClick={() => saveModuleFulfillment({ action: 'start' })}>
+                                                    Start
+                                                </Button>
+                                                <Button type="button" variant="outline" className="rounded-xl" disabled={fulfillmentUpdating} onClick={() => saveModuleFulfillment({ action: 'complete' })}>
+                                                    Complete
+                                                </Button>
+                                                <Button type="button" className="rounded-xl bg-sky-700 hover:bg-sky-800 text-white" disabled={fulfillmentUpdating} onClick={() => saveModuleFulfillment()}>
+                                                    {fulfillmentUpdating ? 'Saving...' : 'Save'}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
 
                                 {canUpdate && (
                                 <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4 space-y-3">

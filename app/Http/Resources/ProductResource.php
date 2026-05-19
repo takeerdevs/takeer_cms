@@ -382,6 +382,8 @@ class ProductResource extends JsonResource
             'service_trust' => $serviceTrust,
             'service_request_payment' => $this->getAttribute('service_request_payment'),
             'service_template' => $this->type === 'service' ? ServiceTemplateRegistry::forProduct($this->resource) : null,
+            'module_key' => $this->module_key,
+            'module_details' => $this->module_details ?? [],
             'delivery_mode' => $this->type === 'digital'
                 ? (in_array($digitalDeliveryType, ['video_stream', 'audio_stream', 'gallery_pack', 'live_event', 'custom_delivery'], true) ? $digitalDeliveryType : ($isExternal ? 'external_link' : 'uploaded_file'))
                 : null,

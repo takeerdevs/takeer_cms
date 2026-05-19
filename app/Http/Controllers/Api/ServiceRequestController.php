@@ -8,6 +8,7 @@ use App\Models\MerchantServiceIntegration;
 use App\Models\Product;
 use App\Models\ServiceAvailabilityRule;
 use App\Models\ServiceRequest;
+use App\Models\ServiceRequestFulfillment;
 use App\Models\ServiceRequestNotification;
 use App\Models\ServiceSession;
 use App\Services\MediaUploadService;
@@ -17,6 +18,7 @@ use App\Services\ServiceRequestNotificationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
@@ -35,7 +37,17 @@ class ServiceRequestController extends Controller
     {
         $validated = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
-            'request_type' => ['nullable', 'string', Rule::in(['contact_request', 'quote_request', 'appointment_request'])],
+            'request_type' => ['nullable', 'string', Rule::in([
+                'contact_request',
+                'quote_request',
+                'appointment_request',
+                'room_booking_request',
+                'tour_booking_request',
+                'workshop_enrollment_request',
+                'reservation_request',
+                'rental_request',
+                'custom_order_request',
+            ])],
             'customer_name' => ['required', 'string', 'max:120'],
             'customer_phone' => ['nullable', 'string', 'max:40'],
             'customer_email' => ['nullable', 'email', 'max:160'],
@@ -49,6 +61,7 @@ class ServiceRequestController extends Controller
             'location_text' => ['nullable', 'string', 'max:255'],
             'message' => ['nullable', 'string', 'max:3000'],
             'client_requirements' => ['nullable', 'array'],
+            'module_payload' => ['nullable', 'array'],
         ]);
 
         $product = Product::query()
@@ -100,11 +113,13 @@ class ServiceRequestController extends Controller
             }
         }
 
-        $requestType = $validated['request_type'] ?? match ($product->service_mode) {
-            'request_quote' => 'quote_request',
-            'book_appointment' => 'appointment_request',
-            default => 'contact_request',
-        };
+        $modulePayload = $this->sanitizeModulePayload($product, $validated['module_payload'] ?? []);
+        $moduleValidationError = $this->validateModulePayload($product, $modulePayload);
+        if ($moduleValidationError) {
+            return response()->json(['message' => $moduleValidationError], 422);
+        }
+
+        $requestType = $validated['request_type'] ?? $this->defaultRequestTypeForProduct($product);
         $selectedServiceOption = null;
         if (! empty($validated['selected_service_option_id'])) {
             $selectedServiceOption = collect($product->service_options ?? [])
@@ -179,10 +194,16 @@ class ServiceRequestController extends Controller
                 : ($selectedServiceOption['duration_minutes'] ?? $product->service_duration_minutes),
             'location_text' => $validated['location_text'] ?? null,
             'message' => $validated['message'] ?? null,
-            'client_requirements' => $validated['client_requirements'] ?? [],
+            'client_requirements' => [
+                ...($validated['client_requirements'] ?? []),
+                ...($modulePayload ? ['module_payload' => $modulePayload] : []),
+            ],
             'deposit_amount' => $product->service_deposit_amount,
             'booking_provider' => $product->service_booking_provider ?: 'manual',
             'metadata' => [
+                'module_key' => $product->module_key,
+                'module_payload' => $modulePayload,
+                'module_details' => $product->module_details ?? [],
                 'service_mode' => $product->service_mode,
                 'service_scheduling_type' => $product->service_scheduling_type,
                 'service_session_id' => $selectedSession?->id,
@@ -206,7 +227,7 @@ class ServiceRequestController extends Controller
 
         return response()->json([
             'message' => 'Ombi lako limetumwa. Provider atawasiliana nawe.',
-            'data' => $this->serialize($serviceRequest->load('product')),
+            'data' => $this->serialize($serviceRequest->load('product', 'fulfillment.events')),
         ], 201);
     }
 
@@ -286,7 +307,8 @@ class ServiceRequestController extends Controller
         $status = $request->query('status');
         $query = ServiceRequest::query()
             ->where('merchant_id', $merchant->id)
-            ->with(['product:id,title,type,slug,url,service_mode,service_price_display,service_intake_form'])
+            ->with(['product:id,title,type,slug,url,module_key,service_template_key,service_mode,service_price_display,service_intake_form'])
+            ->with(['fulfillment.events' => fn ($query) => $query->latest('recorded_at')->limit(20)])
             ->with(['notifications' => fn ($query) => $query->latest()]);
 
         if ($status && $status !== 'all') {
@@ -323,6 +345,124 @@ class ServiceRequestController extends Controller
         ]);
     }
 
+    public function calendar(Request $request, Merchant $merchant): JsonResponse
+    {
+        abort_unless($merchant->user_id === $request->user()->id, 403);
+
+        $validated = $request->validate([
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'status' => ['nullable', 'string'],
+            'module' => ['nullable', 'string', 'max:80'],
+        ]);
+
+        $timezone = $this->merchantTimezone($merchant);
+        $from = ! empty($validated['from'])
+            ? CarbonImmutable::parse($validated['from'], $timezone)->startOfDay()->utc()
+            : CarbonImmutable::now($timezone)->startOfWeek()->utc();
+        $to = ! empty($validated['to'])
+            ? CarbonImmutable::parse($validated['to'], $timezone)->endOfDay()->utc()
+            : CarbonImmutable::now($timezone)->addDays(30)->endOfDay()->utc();
+
+        $serviceProductColumns = [
+            'id',
+            'merchant_id',
+            'title',
+            'slug',
+            'type',
+            'module_key',
+            'service_template_key',
+            'service_mode',
+            'service_scheduling_type',
+            'service_location_type',
+            'service_provider_location',
+        ];
+
+        $requestsQuery = ServiceRequest::query()
+            ->where('merchant_id', $merchant->id)
+            ->with(['product' => fn ($query) => $query->select($serviceProductColumns)])
+            ->where(function ($query) use ($from, $to) {
+                $query->whereBetween('scheduled_at', [$from, $to])
+                    ->orWhere(function ($candidate) use ($from, $to) {
+                        $candidate->whereNull('scheduled_at')
+                            ->whereBetween('preferred_date', [$from->toDateString(), $to->toDateString()]);
+                    });
+            });
+
+        if (($validated['status'] ?? 'all') !== 'all') {
+            $requestsQuery->where('status', $validated['status']);
+        }
+
+        if (! empty($validated['module']) && $validated['module'] !== 'all') {
+            $requestsQuery->whereHas('product', fn ($query) => $query->where('module_key', $validated['module']));
+        }
+
+        $requests = $requestsQuery
+            ->orderByRaw('scheduled_at is null')
+            ->orderBy('scheduled_at')
+            ->orderBy('preferred_date')
+            ->get();
+
+        $sessionsQuery = ServiceSession::query()
+            ->where('merchant_id', $merchant->id)
+            ->with(['product' => fn ($query) => $query->select($serviceProductColumns)])
+            ->whereBetween('starts_at', [$from, $to])
+            ->orderBy('starts_at');
+
+        if (! empty($validated['module']) && $validated['module'] !== 'all') {
+            $sessionsQuery->whereHas('product', fn ($query) => $query->where('module_key', $validated['module']));
+        }
+
+        $sessions = $sessionsQuery->get();
+        $sessionBookingCounts = ServiceRequest::query()
+            ->where('merchant_id', $merchant->id)
+            ->whereIn('status', ['pending', 'contacted', 'quoted', 'confirmed'])
+            ->whereIn('metadata->service_session_id', $sessions->pluck('id')->all())
+            ->get()
+            ->groupBy(fn (ServiceRequest $serviceRequest) => (int) ($serviceRequest->metadata['service_session_id'] ?? 0))
+            ->map->count();
+
+        $requestEvents = $requests
+            ->filter(fn (ServiceRequest $serviceRequest) => $serviceRequest->scheduled_at)
+            ->map(fn (ServiceRequest $serviceRequest) => $this->serializeCalendarRequest($serviceRequest))
+            ->values();
+
+        $sessionEvents = $sessions
+            ->map(fn (ServiceSession $session) => $this->serializeCalendarSession($session, (int) ($sessionBookingCounts[$session->id] ?? 0)))
+            ->values();
+
+        $unscheduled = $requests
+            ->filter(fn (ServiceRequest $serviceRequest) => ! $serviceRequest->scheduled_at)
+            ->map(fn (ServiceRequest $serviceRequest) => $this->serializeCalendarRequest($serviceRequest))
+            ->values();
+
+        $events = $requestEvents
+            ->concat($sessionEvents)
+            ->sortBy('starts_at')
+            ->values();
+
+        $statusCounts = $requests->groupBy('status')->map->count();
+        $moduleCounts = $requests
+            ->groupBy(fn (ServiceRequest $serviceRequest) => $serviceRequest->product?->module_key ?: 'services')
+            ->map->count();
+
+        return response()->json([
+            'summary' => [
+                'events' => $events->count(),
+                'service_requests' => $requests->count(),
+                'sessions' => $sessions->count(),
+                'unscheduled' => $unscheduled->count(),
+                'pending' => (int) ($statusCounts['pending'] ?? 0),
+                'confirmed' => (int) ($statusCounts['confirmed'] ?? 0),
+                'module_counts' => $moduleCounts,
+                'from' => $from->toISOString(),
+                'to' => $to->toISOString(),
+            ],
+            'events' => $events,
+            'unscheduled' => $unscheduled,
+        ]);
+    }
+
     public function updateStatus(Request $request, Merchant $merchant, ServiceRequest $serviceRequest): JsonResponse
     {
         abort_unless($merchant->user_id === $request->user()->id, 403);
@@ -356,14 +496,115 @@ class ServiceRequestController extends Controller
         }
 
         $serviceRequest->update($updates);
-        $serviceRequest = $serviceRequest->fresh(['product', 'notifications']);
+        $serviceRequest = $serviceRequest->fresh(['product', 'notifications', 'fulfillment.events']);
 
         if (($validated['prepare_calendar_event'] ?? false) || ($serviceRequest->scheduled_at && $serviceRequest->status === 'confirmed')) {
-            $serviceRequest = $this->calendarService->prepareEvent($serviceRequest)->fresh(['product', 'notifications']);
+            $serviceRequest = $this->calendarService->prepareEvent($serviceRequest)->fresh(['product', 'notifications', 'fulfillment.events']);
         }
 
         return response()->json([
             'message' => 'Service request imesasishwa.',
+            'data' => $this->serialize($serviceRequest),
+        ]);
+    }
+
+    public function updateFulfillment(Request $request, Merchant $merchant, ServiceRequest $serviceRequest): JsonResponse
+    {
+        abort_unless($merchant->user_id === $request->user()->id, 403);
+        abort_unless((int) $serviceRequest->merchant_id === (int) $merchant->id, 404);
+
+        $serviceRequest->loadMissing('product');
+        $moduleKey = $serviceRequest->product?->module_key ?: ($serviceRequest->metadata['module_key'] ?? null);
+
+        $validated = $request->validate([
+            'action' => ['required', 'string', Rule::in(['confirm', 'start', 'complete', 'cancel', 'update'])],
+            'fulfillment_status' => ['nullable', 'string', 'max:80'],
+            'notes' => ['nullable', 'string', 'max:3000'],
+            'fields' => ['nullable', 'array'],
+            'fields.room_number' => ['nullable', 'string', 'max:80'],
+            'fields.unit_label' => ['nullable', 'string', 'max:120'],
+            'fields.check_in_at' => ['nullable', 'date'],
+            'fields.check_out_at' => ['nullable', 'date'],
+            'fields.departure_at' => ['nullable', 'date'],
+            'fields.pickup_at' => ['nullable', 'date'],
+            'fields.return_due_at' => ['nullable', 'date'],
+            'fields.due_at' => ['nullable', 'date'],
+            'fields.guests' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'fields.party_size' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'fields.attendee_count' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'fields.guide_name' => ['nullable', 'string', 'max:120'],
+            'fields.pickup_point' => ['nullable', 'string', 'max:160'],
+            'fields.practitioner' => ['nullable', 'string', 'max:120'],
+            'fields.appointment_room' => ['nullable', 'string', 'max:120'],
+            'fields.table_label' => ['nullable', 'string', 'max:120'],
+            'fields.session_title' => ['nullable', 'string', 'max:160'],
+            'fields.reference_code' => ['nullable', 'string', 'max:120'],
+            'fields.certificate_status' => ['nullable', 'string', 'max:80'],
+            'fields.deposit_status' => ['nullable', 'string', 'max:80'],
+        ]);
+
+        $fields = $this->sanitizeFulfillmentFields((string) $moduleKey, $validated['fields'] ?? []);
+        $fulfillmentStatus = $this->normalizeFulfillmentStatus(
+            (string) $moduleKey,
+            $validated['fulfillment_status'] ?? null,
+            $validated['action']
+        );
+
+        $updates = [];
+        if ($validated['action'] === 'confirm') {
+            $updates['status'] = 'confirmed';
+        } elseif ($validated['action'] === 'start') {
+            $updates['status'] = in_array($serviceRequest->status, ['pending', 'contacted', 'quoted'], true)
+                ? 'confirmed'
+                : $serviceRequest->status;
+        } elseif ($validated['action'] === 'complete') {
+            $updates['status'] = 'completed';
+            $updates['delivery_status'] = in_array($serviceRequest->delivery_status, [null, '', 'not_started'], true)
+                ? 'provider_marked_delivered'
+                : $serviceRequest->delivery_status;
+            $updates['delivered_at'] = $serviceRequest->delivered_at ?: now();
+        } elseif ($validated['action'] === 'cancel') {
+            $updates['status'] = 'cancelled';
+        }
+
+        $serviceRequest = DB::transaction(function () use ($request, $serviceRequest, $moduleKey, $validated, $fields, $fulfillmentStatus, $updates) {
+            if ($updates) {
+                $serviceRequest->update($updates);
+            }
+
+            $now = now();
+            $base = [
+                'merchant_id' => $serviceRequest->merchant_id,
+                'product_id' => $serviceRequest->product_id,
+                'recorded_by' => $request->user()?->id,
+                'module_key' => $moduleKey,
+                'action' => $validated['action'],
+                'status' => $fulfillmentStatus,
+                'notes' => trim((string) ($validated['notes'] ?? '')) ?: null,
+                'recorded_at' => $now,
+            ];
+
+            /** @var ServiceRequestFulfillment $fulfillment */
+            $fulfillment = ServiceRequestFulfillment::query()->firstOrNew([
+                'service_request_id' => $serviceRequest->id,
+            ]);
+            $fulfillment->fill(array_filter([
+                ...$base,
+                ...$fields,
+            ], fn ($value) => $value !== null && $value !== ''));
+            $fulfillment->save();
+
+            $fulfillment->events()->create(array_filter([
+                ...$base,
+                'service_request_id' => $serviceRequest->id,
+                ...$fields,
+            ], fn ($value) => $value !== null && $value !== ''));
+
+            return $serviceRequest->fresh(['product', 'notifications', 'fulfillment.events']);
+        });
+
+        return response()->json([
+            'message' => 'Module fulfillment imesasishwa.',
             'data' => $this->serialize($serviceRequest),
         ]);
     }
@@ -380,7 +621,7 @@ class ServiceRequestController extends Controller
 
         try {
             $notifications = $this->notificationService->preparePaymentLink(
-                $serviceRequest->fresh(['product']),
+                $serviceRequest->fresh(['product', 'fulfillment.events']),
                 $validated['channels'] ?? []
             );
         } catch (\RuntimeException $e) {
@@ -390,7 +631,7 @@ class ServiceRequestController extends Controller
         return response()->json([
             'message' => 'Notification payloads are ready. They are pending provider integration.',
             'data' => collect($notifications)->map(fn (ServiceRequestNotification $notification) => $this->serializeNotification($notification))->values(),
-            'service_request' => $this->serialize($serviceRequest->fresh(['product', 'notifications'])),
+            'service_request' => $this->serialize($serviceRequest->fresh(['product', 'notifications', 'fulfillment.events'])),
         ]);
     }
 
@@ -414,7 +655,7 @@ class ServiceRequestController extends Controller
 
         return response()->json([
             'message' => 'Huduma imewekwa kama imetolewa. Mteja anaweza kuthibitisha au kufungua mgogoro.',
-            'data' => $this->serialize($serviceRequest->fresh(['product', 'notifications'])),
+            'data' => $this->serialize($serviceRequest->fresh(['product', 'notifications', 'fulfillment.events'])),
         ]);
     }
 
@@ -595,7 +836,7 @@ class ServiceRequestController extends Controller
         abort_unless((int) $serviceRequest->merchant_id === (int) $merchant->id, 404);
 
         try {
-            $serviceRequest = $this->calendarService->prepareEvent($serviceRequest)->fresh(['product', 'notifications']);
+            $serviceRequest = $this->calendarService->prepareEvent($serviceRequest)->fresh(['product', 'notifications', 'fulfillment.events']);
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -686,6 +927,10 @@ class ServiceRequestController extends Controller
             'calendar_event_id' => $serviceRequest->calendar_event_id,
             'calendar_sync_error' => $serviceRequest->calendar_sync_error,
             'calendar_synced_at' => $serviceRequest->calendar_synced_at?->toISOString(),
+            'metadata' => $serviceRequest->metadata ?? [],
+            'module_fulfillment' => $serviceRequest->relationLoaded('fulfillment') && $serviceRequest->fulfillment
+                ? $this->serializeFulfillment($serviceRequest->fulfillment)
+                : null,
             'calendar_event_payload' => $serviceRequest->metadata['calendar_event_payload'] ?? null,
             'service_option' => $serviceRequest->metadata['service_option'] ?? null,
             'service_session' => [
@@ -697,6 +942,8 @@ class ServiceRequestController extends Controller
                 'title' => $serviceRequest->product->title,
                 'slug' => $serviceRequest->product->slug,
                 'type' => $serviceRequest->product->type,
+                'module_key' => $serviceRequest->product->module_key,
+                'service_template_key' => $serviceRequest->product->service_template_key,
                 'service_mode' => $serviceRequest->product->service_mode,
                 'service_intake_form' => $serviceRequest->product->service_intake_form ?? [],
             ] : null,
@@ -705,6 +952,224 @@ class ServiceRequestController extends Controller
                 : [],
             'created_at' => $serviceRequest->created_at?->toISOString(),
         ];
+    }
+
+    private function serializeFulfillment(ServiceRequestFulfillment $fulfillment): array
+    {
+        return [
+            'id' => $fulfillment->id,
+            'module_key' => $fulfillment->module_key,
+            'action' => $fulfillment->action,
+            'status' => $fulfillment->status,
+            'notes' => $fulfillment->notes,
+            'recorded_by' => $fulfillment->recorded_by,
+            'recorded_at' => $fulfillment->recorded_at?->toISOString(),
+            'fields' => $this->fulfillmentFieldsFromModel($fulfillment),
+            'history' => $fulfillment->relationLoaded('events')
+                ? $fulfillment->events
+                    ->sortByDesc(fn ($event) => $event->recorded_at?->timestamp ?? 0)
+                    ->map(fn ($event) => [
+                        'id' => $event->id,
+                        'action' => $event->action,
+                        'status' => $event->status,
+                        'notes' => $event->notes,
+                        'recorded_by' => $event->recorded_by,
+                        'recorded_at' => $event->recorded_at?->toISOString(),
+                        'fields' => $this->fulfillmentFieldsFromModel($event),
+                    ])
+                    ->values()
+                : [],
+        ];
+    }
+
+    private function fulfillmentFieldsFromModel($record): array
+    {
+        return collect([
+            'room_number' => $record->room_number,
+            'unit_label' => $record->unit_label,
+            'pickup_point' => $record->pickup_point,
+            'guide_name' => $record->guide_name,
+            'practitioner' => $record->practitioner,
+            'appointment_room' => $record->appointment_room,
+            'table_label' => $record->table_label,
+            'session_title' => $record->session_title,
+            'reference_code' => $record->reference_code,
+            'certificate_status' => $record->certificate_status,
+            'deposit_status' => $record->deposit_status,
+            'guests' => $record->guests,
+            'party_size' => $record->party_size,
+            'attendee_count' => $record->attendee_count,
+            'check_in_at' => $record->check_in_at?->toISOString(),
+            'check_out_at' => $record->check_out_at?->toISOString(),
+            'departure_at' => $record->departure_at?->toISOString(),
+            'pickup_at' => $record->pickup_at?->toISOString(),
+            'return_due_at' => $record->return_due_at?->toISOString(),
+            'due_at' => $record->due_at?->toISOString(),
+        ])->filter(fn ($value) => $value !== null && $value !== '')->all();
+    }
+
+    private function sanitizeFulfillmentFields(string $moduleKey, array $fields): array
+    {
+        $string = fn (string $key, int $max = 160) => str($fields[$key] ?? '')->trim()->limit($max, '')->toString();
+        $int = fn (string $key) => isset($fields[$key]) && $fields[$key] !== '' ? max(1, min(100000, (int) $fields[$key])) : null;
+        $date = fn (string $key) => ! empty($fields[$key]) ? CarbonImmutable::parse($fields[$key]) : null;
+
+        return match ($moduleKey) {
+            'rooms' => [
+                'room_number' => $string('room_number', 80),
+                'unit_label' => $string('unit_label', 120),
+                'guests' => $int('guests'),
+                'check_in_at' => $date('check_in_at'),
+                'check_out_at' => $date('check_out_at'),
+            ],
+            'tour_departures' => [
+                'guests' => $int('guests'),
+                'pickup_point' => $string('pickup_point', 160),
+                'departure_at' => $date('departure_at'),
+                'guide_name' => $string('guide_name', 120),
+            ],
+            'workshops' => [
+                'attendee_count' => $int('attendee_count'),
+                'session_title' => $string('session_title', 160),
+                'certificate_status' => $string('certificate_status', 80),
+            ],
+            'appointments' => [
+                'practitioner' => $string('practitioner', 120),
+                'appointment_room' => $string('appointment_room', 120),
+                'guests' => $int('guests'),
+            ],
+            'reservations' => [
+                'table_label' => $string('table_label', 120),
+                'party_size' => $int('party_size'),
+            ],
+            'rentals' => [
+                'unit_label' => $string('unit_label', 120),
+                'pickup_at' => $date('pickup_at'),
+                'return_due_at' => $date('return_due_at'),
+                'deposit_status' => $string('deposit_status', 80),
+            ],
+            'custom_orders' => [
+                'reference_code' => $string('reference_code', 120),
+                'due_at' => $date('due_at'),
+            ],
+            default => collect($fields)
+                ->filter(fn ($value) => is_scalar($value) && trim((string) $value) !== '')
+                ->map(fn ($value) => str((string) $value)->trim()->limit(160, '')->toString())
+                ->all(),
+        };
+    }
+
+    private function normalizeFulfillmentStatus(string $moduleKey, ?string $status, string $action): string
+    {
+        $fallback = match ($action) {
+            'confirm' => 'confirmed',
+            'start' => 'in_progress',
+            'complete' => 'completed',
+            'cancel' => 'cancelled',
+            default => 'updated',
+        };
+        $status = str($status ?: $fallback)->trim()->lower()->replace(' ', '_')->limit(80, '')->toString();
+        $allowed = match ($moduleKey) {
+            'rooms' => ['reserved', 'checked_in', 'checked_out', 'no_show', 'cancelled', 'confirmed', 'completed', 'updated'],
+            'tour_departures' => ['reserved', 'checked_in', 'departed', 'completed', 'cancelled', 'confirmed', 'updated'],
+            'workshops' => ['enrolled', 'attended', 'completed', 'no_show', 'cancelled', 'confirmed', 'updated'],
+            'appointments' => ['confirmed', 'checked_in', 'completed', 'no_show', 'cancelled', 'updated'],
+            'reservations' => ['confirmed', 'seated', 'completed', 'no_show', 'cancelled', 'updated'],
+            'rentals' => ['reserved', 'picked_up', 'returned', 'overdue', 'cancelled', 'confirmed', 'completed', 'updated'],
+            'custom_orders' => ['accepted', 'in_production', 'ready', 'delivered', 'cancelled', 'confirmed', 'completed', 'updated'],
+            default => ['confirmed', 'in_progress', 'completed', 'cancelled', 'updated'],
+        };
+
+        return in_array($status, $allowed, true) ? $status : $fallback;
+    }
+
+    private function defaultRequestTypeForProduct(Product $product): string
+    {
+        return match ($product->module_key) {
+            'rooms' => 'room_booking_request',
+            'tour_departures' => 'tour_booking_request',
+            'workshops' => 'workshop_enrollment_request',
+            'appointments' => 'appointment_request',
+            'reservations' => 'reservation_request',
+            'rentals' => 'rental_request',
+            'custom_orders' => 'custom_order_request',
+            default => match ($product->service_mode) {
+                'request_quote' => 'quote_request',
+                'book_appointment' => 'appointment_request',
+                default => 'contact_request',
+            },
+        };
+    }
+
+    private function sanitizeModulePayload(Product $product, array $payload): array
+    {
+        $int = fn (string $key, int $default = 1, int $min = 1, int $max = 100000) => max($min, min($max, (int) ($payload[$key] ?? $default)));
+        $string = fn (string $key, int $max = 255) => str($payload[$key] ?? '')->trim()->limit($max, '')->toString();
+
+        return match ($product->module_key) {
+            'rooms' => [
+                'stay_nights' => $int('stay_nights', 1, 1, 365),
+                'selected_service_option_id' => $string('selected_service_option_id', 80) ?: null,
+            ],
+            'tour_departures' => [
+                'tour_guests' => $int('tour_guests', 1, 1, 100000),
+            ],
+            'workshops' => [
+                'workshop_seats' => $int('workshop_seats', 1, 1, 100000),
+            ],
+            'appointments' => [
+                'appointment_spots' => $int('appointment_spots', 1, 1, 100000),
+            ],
+            'reservations' => [
+                'reservation_party_size' => $int('reservation_party_size', 1, 1, 100000),
+            ],
+            'rentals' => [
+                'rental_units' => $int('rental_units', 1, 1, 100000),
+            ],
+            'custom_orders' => [
+                'custom_order_quantity' => $int('custom_order_quantity', 1, 1, 100000),
+                'custom_order_quote_policy' => $string('custom_order_quote_policy', 160) ?: ($product->module_details['quote_policy'] ?? 'quote_after_request'),
+            ],
+            default => [],
+        };
+    }
+
+    private function validateModulePayload(Product $product, array $payload): ?string
+    {
+        $details = $product->module_details ?? [];
+
+        return match ($product->module_key) {
+            'rooms' => $this->validateRoomPayload($details),
+            'tour_departures' => isset($details['group_size'], $payload['tour_guests']) && (int) $payload['tour_guests'] > (int) $details['group_size']
+                ? 'The requested group size is larger than available seats.'
+                : null,
+            'workshops' => isset($details['workshop_capacity'], $payload['workshop_seats']) && (int) $payload['workshop_seats'] > (int) $details['workshop_capacity']
+                ? 'This workshop does not have enough seats.'
+                : null,
+            'appointments' => isset($details['capacity'], $payload['appointment_spots']) && (int) $payload['appointment_spots'] > (int) $details['capacity']
+                ? 'This appointment does not have enough capacity.'
+                : null,
+            'reservations' => isset($details['party_size_limit'], $payload['reservation_party_size']) && (int) $payload['reservation_party_size'] > (int) $details['party_size_limit']
+                ? 'The party size is larger than this reservation allows.'
+                : null,
+            'rentals' => isset($details['available_units'], $payload['rental_units']) && (int) $payload['rental_units'] > (int) $details['available_units']
+                ? 'Not enough rental units are available.'
+                : null,
+            'custom_orders' => isset($details['minimum_order'], $payload['custom_order_quantity']) && (int) $payload['custom_order_quantity'] < (int) $details['minimum_order']
+                ? 'The quantity is below the minimum order.'
+                : null,
+            default => null,
+        };
+    }
+
+    private function validateRoomPayload(array $details): ?string
+    {
+        $availability = collect($details['availability'] ?? []);
+        if ($availability->contains(fn ($value) => in_array($value, ['occupied', 'maintenance'], true))) {
+            return 'This room is not currently available for booking.';
+        }
+
+        return null;
     }
 
     private function serializeNotification(ServiceRequestNotification $notification): array
@@ -794,6 +1259,103 @@ class ServiceRequestController extends Controller
             'available' => $capacity === null || $bookedCount < $capacity,
             'registration_deadline' => $session->registration_deadline?->toISOString(),
         ];
+    }
+
+    private function serializeCalendarRequest(ServiceRequest $serviceRequest): array
+    {
+        $moduleKey = $serviceRequest->product?->module_key ?: 'services';
+
+        return [
+            'type' => 'service_request',
+            'id' => $serviceRequest->id,
+            'public_id' => $serviceRequest->public_id,
+            'title' => $serviceRequest->product?->title ?: 'Service request',
+            'module_key' => $moduleKey,
+            'module_label' => $this->calendarModuleLabel($moduleKey),
+            'status' => $serviceRequest->status,
+            'payment_status' => $serviceRequest->payment_status,
+            'starts_at' => $serviceRequest->scheduled_at?->toISOString(),
+            'ends_at' => $serviceRequest->scheduled_ends_at?->toISOString(),
+            'preferred_date' => $serviceRequest->preferred_date?->toDateString(),
+            'preferred_time' => $serviceRequest->preferred_time,
+            'timezone' => $serviceRequest->timezone,
+            'customer' => [
+                'name' => $serviceRequest->customer_name,
+                'phone' => $serviceRequest->customer_phone,
+                'email' => $serviceRequest->customer_email,
+            ],
+            'product' => $serviceRequest->product ? [
+                'id' => $serviceRequest->product->id,
+                'title' => $serviceRequest->product->title,
+                'slug' => $serviceRequest->product->slug,
+                'service_template_key' => $serviceRequest->product->service_template_key,
+            ] : null,
+            'location_text' => $serviceRequest->location_text ?: $this->productLocationText($serviceRequest->product),
+            'amount' => $serviceRequest->quoted_amount !== null ? (float) $serviceRequest->quoted_amount : null,
+            'service_option' => $serviceRequest->metadata['service_option'] ?? null,
+            'service_session' => [
+                'id' => $serviceRequest->metadata['service_session_id'] ?? null,
+                'title' => $serviceRequest->metadata['service_session_title'] ?? null,
+            ],
+            'created_at' => $serviceRequest->created_at?->toISOString(),
+        ];
+    }
+
+    private function serializeCalendarSession(ServiceSession $session, int $bookedCount): array
+    {
+        $moduleKey = $session->product?->module_key ?: 'services';
+
+        return [
+            'type' => 'service_session',
+            'id' => $session->id,
+            'title' => $session->title ?: ($session->product?->title ?: 'Service session'),
+            'module_key' => $moduleKey,
+            'module_label' => $this->calendarModuleLabel($moduleKey),
+            'status' => $session->status,
+            'starts_at' => $session->starts_at?->toISOString(),
+            'ends_at' => $session->ends_at?->toISOString(),
+            'timezone' => $session->timezone,
+            'product' => $session->product ? [
+                'id' => $session->product->id,
+                'title' => $session->product->title,
+                'slug' => $session->product->slug,
+                'service_template_key' => $session->product->service_template_key,
+            ] : null,
+            'location_text' => $session->location_text ?: $this->productLocationText($session->product),
+            'capacity' => $session->capacity,
+            'booked_count' => $bookedCount,
+            'remaining' => $session->capacity === null ? null : max(0, $session->capacity - $bookedCount),
+            'registration_deadline' => $session->registration_deadline?->toISOString(),
+        ];
+    }
+
+    private function productLocationText(?Product $product): ?string
+    {
+        if (! $product) {
+            return null;
+        }
+
+        $location = $product->service_provider_location ?? [];
+
+        return collect([
+            $location['address'] ?? null,
+            $location['city'] ?? null,
+            $location['country'] ?? null,
+        ])->filter()->implode(', ') ?: null;
+    }
+
+    private function calendarModuleLabel(?string $moduleKey): string
+    {
+        return match ($moduleKey) {
+            'rooms' => 'Rooms',
+            'tour_departures' => 'Tours',
+            'rentals' => 'Rentals',
+            'workshops' => 'Workshops',
+            'appointments' => 'Appointments',
+            'reservations' => 'Reservations',
+            'custom_orders' => 'Custom orders',
+            default => 'Services',
+        };
     }
 
     private function merchantTimezone(Merchant $merchant): string

@@ -57,6 +57,7 @@ class UploadController extends Controller
         $merchantProfile = $this->merchantFromRequest($request);
         $status = $request->input('status'); // optional filter: all|published|draft
         $type = $request->input('type'); // optional filter: physical|digital|service
+        $module = $request->input('module'); // optional filter: menu, rooms, etc.
 
         $query = Product::query()
             ->where('merchant_id', $merchantProfile->id)
@@ -70,6 +71,10 @@ class UploadController extends Controller
 
         if (in_array($type, ['physical', 'digital', 'service'], true)) {
             $query->where('products.type', $type);
+        }
+
+        if (in_array($module, ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops'], true) && Schema::hasColumn('products', 'module_key')) {
+            $query->where('products.module_key', $module);
         }
 
         if ($status === 'published') {
@@ -709,6 +714,84 @@ class UploadController extends Controller
             'media_items.*.height' => 'nullable|integer|min:0',
             'media_items.*.processing_status' => 'nullable|string|in:pending,processing,ready,failed',
             'type' => 'required|string|in:physical,digital,service',
+            'module_key' => 'nullable|string|in:menu,rooms,tour_departures,custom_orders,appointments,reservations,rentals,workshops',
+            'module_details' => 'nullable|array',
+            'module_details.section' => 'nullable|string|max:80',
+            'module_details.item_type' => 'nullable|string|max:80',
+            'module_details.prep_time_minutes' => 'nullable|integer|min:0|max:1440',
+            'module_details.dietary_tags' => 'nullable|array',
+            'module_details.dietary_tags.*' => 'string|max:40',
+            'module_details.availability' => 'nullable|array',
+            'module_details.availability.*' => 'string|max:80',
+            'module_details.add_ons' => 'nullable|array',
+            'module_details.add_ons.*.name' => 'nullable|string|max:120',
+            'module_details.add_ons.*.price' => 'nullable|numeric|min:0',
+            'module_details.room_type' => 'nullable|string|max:80',
+            'module_details.bed_type' => 'nullable|string|max:80',
+            'module_details.max_guests' => 'nullable|integer|min:1|max:100000',
+            'module_details.room_count' => 'nullable|integer|min:1|max:100000',
+            'module_details.bathrooms' => 'nullable|numeric|min:0|max:1000',
+            'module_details.checkin_time' => 'nullable|date_format:H:i',
+            'module_details.checkout_time' => 'nullable|date_format:H:i',
+            'module_details.amenities' => 'nullable|array',
+            'module_details.amenities.*' => 'string|max:80',
+            'module_details.booking_policy' => 'nullable|string|max:80',
+            'module_details.destination' => 'nullable|string|max:160',
+            'module_details.duration_label' => 'nullable|string|max:80',
+            'module_details.pickup_point' => 'nullable|string|max:160',
+            'module_details.dropoff_point' => 'nullable|string|max:160',
+            'module_details.group_size' => 'nullable|integer|min:1|max:100000',
+            'module_details.departure_type' => 'nullable|string|max:80',
+            'module_details.itinerary' => 'nullable|array',
+            'module_details.itinerary.*.day' => 'nullable|integer|min:1|max:365',
+            'module_details.itinerary.*.title' => 'nullable|string|max:160',
+            'module_details.itinerary.*.description' => 'nullable|string|max:500',
+            'module_details.included' => 'nullable|array',
+            'module_details.included.*' => 'string|max:160',
+            'module_details.excluded' => 'nullable|array',
+            'module_details.excluded.*' => 'string|max:160',
+            'module_details.requirements' => 'nullable|string|max:3000',
+            'module_details.customization_notes' => 'nullable|string|max:3000',
+            'module_details.lead_time' => 'nullable|string|max:160',
+            'module_details.pickup_delivery_notes' => 'nullable|string|max:3000',
+            'module_details.quote_policy' => 'nullable|string|max:160',
+            'module_details.minimum_order' => 'nullable|integer|min:1|max:100000',
+            'module_details.appointment_duration_minutes' => 'nullable|integer|min:1|max:10080',
+            'module_details.buffer_minutes' => 'nullable|integer|min:0|max:10080',
+            'module_details.capacity' => 'nullable|integer|min:1|max:100000',
+            'module_details.appointment_location_mode' => 'nullable|string|max:80',
+            'module_details.preparation_notes' => 'nullable|string|max:3000',
+            'module_details.reservation_type' => 'nullable|string|max:80',
+            'module_details.seating_type' => 'nullable|string|max:80',
+            'module_details.reservation_duration_minutes' => 'nullable|integer|min:1|max:10080',
+            'module_details.party_size_limit' => 'nullable|integer|min:1|max:100000',
+            'module_details.reservation_policy' => 'nullable|string|max:80',
+            'module_details.deposit_note' => 'nullable|string|max:1000',
+            'module_details.reservation_notes' => 'nullable|string|max:3000',
+            'module_details.rental_type' => 'nullable|string|max:80',
+            'module_details.rental_unit' => 'nullable|string|max:80',
+            'module_details.rental_duration_minutes' => 'nullable|integer|min:1|max:525600',
+            'module_details.available_units' => 'nullable|integer|min:1|max:100000',
+            'module_details.security_deposit' => 'nullable|numeric|min:0',
+            'module_details.rental_policy' => 'nullable|string|max:80',
+            'module_details.pickup_return_notes' => 'nullable|string|max:3000',
+            'module_details.included_items' => 'nullable|array',
+            'module_details.included_items.*' => 'string|max:160',
+            'module_details.rental_requirements' => 'nullable|string|max:3000',
+            'module_details.workshop_format' => 'nullable|string|max:80',
+            'module_details.session_count' => 'nullable|integer|min:1|max:1000',
+            'module_details.workshop_duration_minutes' => 'nullable|integer|min:1|max:10080',
+            'module_details.workshop_capacity' => 'nullable|integer|min:1|max:100000',
+            'module_details.workshop_level' => 'nullable|string|max:80',
+            'module_details.enrollment_policy' => 'nullable|string|max:80',
+            'module_details.workshop_location_mode' => 'nullable|string|max:80',
+            'module_details.workshop_start_note' => 'nullable|string|max:160',
+            'module_details.learning_outcomes' => 'nullable|array',
+            'module_details.learning_outcomes.*' => 'string|max:160',
+            'module_details.workshop_requirements' => 'nullable|array',
+            'module_details.workshop_requirements.*' => 'string|max:160',
+            'module_details.materials_included' => 'nullable|array',
+            'module_details.materials_included.*' => 'string|max:160',
             'fulfillment_mode' => 'nullable|string|in:own_stock,made_to_order,supplier_sourced,farm_harvest,preorder,group_sale',
             'source_details' => 'nullable|array',
             'source_details.supplier_name' => 'nullable|string|max:160',
@@ -722,7 +805,7 @@ class UploadController extends Controller
             'group_sale_deadline' => 'nullable|date',
             'price' => 'nullable|numeric|min:0',
             'title' => 'required|string|max:255',
-            'category_id' => [Rule::requiredIf($request->input('type') === 'physical'), 'nullable', 'integer', 'exists:product_categories,id'],
+            'category_id' => [Rule::requiredIf($request->input('type') === 'physical' && $request->input('module_key') !== 'menu'), 'nullable', 'integer', 'exists:product_categories,id'],
             'sub_category_id' => 'nullable|integer|exists:product_categories,id',
             'brand_id' => 'nullable|integer|exists:product_brands,id',
             'model_id' => 'nullable|integer|exists:product_brand_models,id',
@@ -898,11 +981,12 @@ class UploadController extends Controller
 
         $accessGroupType = $request->input('access_group_type');
         $accessGroupId = $request->input('access_group_id');
+        $isFocusedPhysicalModule = $request->input('type') === 'physical' && $request->input('module_key') === 'menu';
         $hasVariants = $request->input('type') === 'physical' && (bool) $request->boolean('has_variants');
         $fulfillmentMode = $request->input('type') === 'physical'
             ? (string) ($request->input('fulfillment_mode') ?: 'own_stock')
             : 'own_stock';
-        $requiresLocationInventory = $request->input('type') === 'physical' && $fulfillmentMode === 'own_stock';
+        $requiresLocationInventory = $request->input('type') === 'physical' && ! $isFocusedPhysicalModule && $fulfillmentMode === 'own_stock';
         $sourceDetails = collect((array) $request->input('source_details', []))
             ->map(fn ($value) => is_string($value) ? trim($value) : $value)
             ->filter(fn ($value) => $value !== null && $value !== '')
@@ -917,7 +1001,7 @@ class UploadController extends Controller
                 ->sum(fn ($quantity) => max(0, (float) $quantity));
         };
 
-        if ($request->input('type') === 'physical') {
+        if ($request->input('type') === 'physical' && ! $isFocusedPhysicalModule) {
             if ($requiresLocationInventory && $merchantLocationIds->isEmpty()) {
                 return response()->json(['message' => 'Tafadhali ongeza angalau eneo moja la stock/pickup kwenye Mipangilio kabla ya kuuza bidhaa uliyonayo mkononi.'], 422);
             }
@@ -1532,6 +1616,32 @@ class UploadController extends Controller
             'service_contact_value' => $serviceContactValue,
             'shipping_profile_id' => $shippingProfileId,
         ];
+
+        if (Schema::hasColumn('products', 'module_key')) {
+            $requestedModule = $request->input('module_key');
+            $productData['module_key'] = match (true) {
+                $requestedModule === 'menu' && $request->input('type') === 'physical' => 'menu',
+                $requestedModule === 'rooms' && $request->input('type') === 'service' => 'rooms',
+                $requestedModule === 'tour_departures' && $request->input('type') === 'service' => 'tour_departures',
+                $requestedModule === 'custom_orders' && $request->input('type') === 'service' => 'custom_orders',
+                $requestedModule === 'appointments' && $request->input('type') === 'service' => 'appointments',
+                $requestedModule === 'reservations' && $request->input('type') === 'service' => 'reservations',
+                $requestedModule === 'rentals' && $request->input('type') === 'service' => 'rentals',
+                $requestedModule === 'workshops' && $request->input('type') === 'service' => 'workshops',
+                default => null,
+            };
+            $productData['module_details'] = match ($productData['module_key']) {
+                'menu' => $this->sanitizeMenuModuleDetails($request->input('module_details', [])),
+                'rooms' => $this->sanitizeRoomModuleDetails($request->input('module_details', [])),
+                'tour_departures' => $this->sanitizeTourModuleDetails($request->input('module_details', [])),
+                'custom_orders' => $this->sanitizeCustomOrderModuleDetails($request->input('module_details', [])),
+                'appointments' => $this->sanitizeAppointmentModuleDetails($request->input('module_details', [])),
+                'reservations' => $this->sanitizeReservationModuleDetails($request->input('module_details', [])),
+                'rentals' => $this->sanitizeRentalModuleDetails($request->input('module_details', [])),
+                'workshops' => $this->sanitizeWorkshopModuleDetails($request->input('module_details', [])),
+                default => null,
+            };
+        }
 
         if ($request->input('type') === 'service' && Schema::hasColumn('products', 'service_category_id')) {
             $productData['service_category_id'] = $serviceCategoryId;
@@ -2339,6 +2449,256 @@ class UploadController extends Controller
             'contract_quote', 'showcase_only' => 'quote_only',
             default => 'fixed',
         };
+    }
+
+    private function sanitizeMenuModuleDetails(array $details): array
+    {
+        $dietaryTags = collect($details['dietary_tags'] ?? [])
+            ->filter(fn ($tag) => is_string($tag) && trim($tag) !== '')
+            ->map(fn ($tag) => Str::limit(Str::slug(trim($tag), '_'), 40, ''))
+            ->unique()
+            ->values()
+            ->all();
+
+        $availability = collect($details['availability'] ?? [])
+            ->filter(fn ($mode) => in_array($mode, ['dine_in', 'pickup', 'delivery'], true))
+            ->unique()
+            ->values()
+            ->all();
+
+        $addOns = collect($details['add_ons'] ?? [])
+            ->map(fn ($row) => [
+                'name' => Str::limit(trim((string) ($row['name'] ?? '')), 120, ''),
+                'price' => isset($row['price']) && $row['price'] !== '' ? max(0, (float) $row['price']) : 0,
+            ])
+            ->filter(fn ($row) => $row['name'] !== '')
+            ->take(20)
+            ->values()
+            ->all();
+
+        return [
+            'section' => Str::limit(trim((string) ($details['section'] ?? 'Main menu')), 80, ''),
+            'item_type' => Str::limit(trim((string) ($details['item_type'] ?? 'food')), 80, ''),
+            'prep_time_minutes' => isset($details['prep_time_minutes']) && $details['prep_time_minutes'] !== ''
+                ? max(0, min(1440, (int) $details['prep_time_minutes']))
+                : null,
+            'dietary_tags' => $dietaryTags,
+            'availability' => $availability ?: ['dine_in', 'pickup'],
+            'add_ons' => $addOns,
+        ];
+    }
+
+    private function sanitizeRoomModuleDetails(array $details): array
+    {
+        $amenities = collect($details['amenities'] ?? [])
+            ->filter(fn ($amenity) => is_string($amenity) && trim($amenity) !== '')
+            ->map(fn ($amenity) => Str::limit(Str::slug(trim($amenity), '_'), 80, ''))
+            ->unique()
+            ->values()
+            ->all();
+
+        $availability = collect($details['availability'] ?? [])
+            ->filter(fn ($mode) => in_array($mode, ['available', 'limited', 'occupied', 'maintenance'], true))
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'room_type' => Str::limit(trim((string) ($details['room_type'] ?? 'Standard room')), 80, ''),
+            'bed_type' => Str::limit(trim((string) ($details['bed_type'] ?? 'Double bed')), 80, ''),
+            'max_guests' => isset($details['max_guests']) && $details['max_guests'] !== ''
+                ? max(1, min(100000, (int) $details['max_guests']))
+                : 2,
+            'room_count' => isset($details['room_count']) && $details['room_count'] !== ''
+                ? max(1, min(100000, (int) $details['room_count']))
+                : 1,
+            'bathrooms' => isset($details['bathrooms']) && $details['bathrooms'] !== ''
+                ? max(0, min(1000, (float) $details['bathrooms']))
+                : null,
+            'checkin_time' => preg_match('/^\d{2}:\d{2}$/', (string) ($details['checkin_time'] ?? ''))
+                ? $details['checkin_time']
+                : '14:00',
+            'checkout_time' => preg_match('/^\d{2}:\d{2}$/', (string) ($details['checkout_time'] ?? ''))
+                ? $details['checkout_time']
+                : '10:00',
+            'amenities' => $amenities,
+            'availability' => $availability ?: ['available'],
+            'booking_policy' => Str::limit(trim((string) ($details['booking_policy'] ?? 'manual_confirm')), 80, ''),
+        ];
+    }
+
+    private function sanitizeTourModuleDetails(array $details): array
+    {
+        $cleanList = fn ($items) => collect($items ?? [])
+            ->filter(fn ($item) => is_string($item) && trim($item) !== '')
+            ->map(fn ($item) => Str::limit(trim($item), 160, ''))
+            ->unique()
+            ->values()
+            ->all();
+
+        $itinerary = collect($details['itinerary'] ?? [])
+            ->map(fn ($row, $index) => [
+                'day' => isset($row['day']) && $row['day'] !== '' ? max(1, min(365, (int) $row['day'])) : $index + 1,
+                'title' => Str::limit(trim((string) ($row['title'] ?? '')), 160, ''),
+                'description' => Str::limit(trim((string) ($row['description'] ?? '')), 500, ''),
+            ])
+            ->filter(fn ($row) => $row['title'] !== '' || $row['description'] !== '')
+            ->take(30)
+            ->values()
+            ->all();
+
+        return [
+            'destination' => Str::limit(trim((string) ($details['destination'] ?? '')), 160, ''),
+            'duration_label' => Str::limit(trim((string) ($details['duration_label'] ?? '')), 80, ''),
+            'pickup_point' => Str::limit(trim((string) ($details['pickup_point'] ?? '')), 160, ''),
+            'dropoff_point' => Str::limit(trim((string) ($details['dropoff_point'] ?? '')), 160, ''),
+            'group_size' => isset($details['group_size']) && $details['group_size'] !== ''
+                ? max(1, min(100000, (int) $details['group_size']))
+                : null,
+            'departure_type' => Str::limit(trim((string) ($details['departure_type'] ?? 'scheduled')), 80, ''),
+            'itinerary' => $itinerary,
+            'included' => $cleanList($details['included'] ?? []),
+            'excluded' => $cleanList($details['excluded'] ?? []),
+            'requirements' => Str::limit(trim((string) ($details['requirements'] ?? '')), 3000, ''),
+        ];
+    }
+
+    private function sanitizeCustomOrderModuleDetails(array $details): array
+    {
+        return [
+            'customization_notes' => Str::limit(trim((string) ($details['customization_notes'] ?? '')), 3000, ''),
+            'lead_time' => Str::limit(trim((string) ($details['lead_time'] ?? '')), 160, ''),
+            'pickup_delivery_notes' => Str::limit(trim((string) ($details['pickup_delivery_notes'] ?? '')), 3000, ''),
+            'quote_policy' => Str::limit(trim((string) ($details['quote_policy'] ?? 'quote_after_request')), 160, ''),
+            'minimum_order' => isset($details['minimum_order']) && $details['minimum_order'] !== ''
+                ? max(1, min(100000, (int) $details['minimum_order']))
+                : null,
+        ];
+    }
+
+    private function sanitizeAppointmentModuleDetails(array $details): array
+    {
+        $locationMode = (string) ($details['appointment_location_mode'] ?? 'provider_location');
+        $bookingPolicy = (string) ($details['booking_policy'] ?? 'manual_confirm');
+
+        return [
+            'appointment_duration_minutes' => isset($details['appointment_duration_minutes']) && $details['appointment_duration_minutes'] !== ''
+                ? max(1, min(10080, (int) $details['appointment_duration_minutes']))
+                : 60,
+            'buffer_minutes' => isset($details['buffer_minutes']) && $details['buffer_minutes'] !== ''
+                ? max(0, min(10080, (int) $details['buffer_minutes']))
+                : 15,
+            'capacity' => isset($details['capacity']) && $details['capacity'] !== ''
+                ? max(1, min(100000, (int) $details['capacity']))
+                : 1,
+            'appointment_location_mode' => in_array($locationMode, ['provider_location', 'customer_location', 'remote', 'hybrid'], true)
+                ? $locationMode
+                : 'provider_location',
+            'booking_policy' => in_array($bookingPolicy, ['instant', 'manual_confirm', 'request_first'], true)
+                ? $bookingPolicy
+                : 'manual_confirm',
+            'preparation_notes' => Str::limit(trim((string) ($details['preparation_notes'] ?? '')), 3000, ''),
+        ];
+    }
+
+    private function sanitizeReservationModuleDetails(array $details): array
+    {
+        $reservationType = (string) ($details['reservation_type'] ?? 'table');
+        $reservationPolicy = (string) ($details['reservation_policy'] ?? 'manual_confirm');
+
+        return [
+            'reservation_type' => in_array($reservationType, ['table', 'venue', 'visit', 'event_space', 'activity'], true)
+                ? $reservationType
+                : 'table',
+            'seating_type' => Str::limit(trim((string) ($details['seating_type'] ?? 'Standard seating')), 80, ''),
+            'reservation_duration_minutes' => isset($details['reservation_duration_minutes']) && $details['reservation_duration_minutes'] !== ''
+                ? max(1, min(10080, (int) $details['reservation_duration_minutes']))
+                : 90,
+            'party_size_limit' => isset($details['party_size_limit']) && $details['party_size_limit'] !== ''
+                ? max(1, min(100000, (int) $details['party_size_limit']))
+                : null,
+            'reservation_policy' => in_array($reservationPolicy, ['instant', 'manual_confirm', 'request_first'], true)
+                ? $reservationPolicy
+                : 'manual_confirm',
+            'deposit_note' => Str::limit(trim((string) ($details['deposit_note'] ?? '')), 1000, ''),
+            'reservation_notes' => Str::limit(trim((string) ($details['reservation_notes'] ?? '')), 3000, ''),
+        ];
+    }
+
+    private function sanitizeRentalModuleDetails(array $details): array
+    {
+        $rentalType = (string) ($details['rental_type'] ?? 'equipment');
+        $rentalUnit = (string) ($details['rental_unit'] ?? 'day');
+        $rentalPolicy = (string) ($details['rental_policy'] ?? 'manual_confirm');
+
+        return [
+            'rental_type' => in_array($rentalType, ['equipment', 'vehicle', 'space', 'event_gear', 'costume', 'other'], true)
+                ? $rentalType
+                : 'equipment',
+            'rental_unit' => in_array($rentalUnit, ['hour', 'day', 'night', 'week', 'month', 'trip', 'event'], true)
+                ? $rentalUnit
+                : 'day',
+            'rental_duration_minutes' => isset($details['rental_duration_minutes']) && $details['rental_duration_minutes'] !== ''
+                ? max(1, min(525600, (int) $details['rental_duration_minutes']))
+                : 1440,
+            'available_units' => isset($details['available_units']) && $details['available_units'] !== ''
+                ? max(1, min(100000, (int) $details['available_units']))
+                : 1,
+            'security_deposit' => isset($details['security_deposit']) && $details['security_deposit'] !== ''
+                ? max(0, (float) $details['security_deposit'])
+                : null,
+            'rental_policy' => in_array($rentalPolicy, ['instant', 'manual_confirm', 'request_first'], true)
+                ? $rentalPolicy
+                : 'manual_confirm',
+            'pickup_return_notes' => Str::limit(trim((string) ($details['pickup_return_notes'] ?? '')), 3000, ''),
+            'included_items' => collect($details['included_items'] ?? [])
+                ->map(fn ($item) => Str::limit(trim((string) $item), 160, ''))
+                ->filter()
+                ->values()
+                ->all(),
+            'rental_requirements' => Str::limit(trim((string) ($details['rental_requirements'] ?? '')), 3000, ''),
+        ];
+    }
+
+    private function sanitizeWorkshopModuleDetails(array $details): array
+    {
+        $stringList = fn ($value, int $limit = 12) => collect((array) $value)
+            ->map(fn ($item) => Str::limit(trim((string) $item), 160, ''))
+            ->filter()
+            ->unique()
+            ->take($limit)
+            ->values()
+            ->all();
+
+        $format = (string) ($details['workshop_format'] ?? 'live_session');
+        $policy = (string) ($details['enrollment_policy'] ?? 'manual_confirm');
+        $locationMode = (string) ($details['workshop_location_mode'] ?? 'provider_location');
+
+        return [
+            'workshop_format' => in_array($format, ['live_session', 'bootcamp', 'seminar', 'webinar', 'cohort', 'private_group'], true)
+                ? $format
+                : 'live_session',
+            'session_count' => isset($details['session_count']) && $details['session_count'] !== ''
+                ? max(1, min(1000, (int) $details['session_count']))
+                : 1,
+            'workshop_duration_minutes' => isset($details['workshop_duration_minutes']) && $details['workshop_duration_minutes'] !== ''
+                ? max(1, min(10080, (int) $details['workshop_duration_minutes']))
+                : 120,
+            'workshop_capacity' => isset($details['workshop_capacity']) && $details['workshop_capacity'] !== ''
+                ? max(1, min(100000, (int) $details['workshop_capacity']))
+                : null,
+            'workshop_level' => Str::limit(trim((string) ($details['workshop_level'] ?? 'All levels')), 80, ''),
+            'enrollment_policy' => in_array($policy, ['instant', 'manual_confirm', 'request_first'], true)
+                ? $policy
+                : 'manual_confirm',
+            'workshop_location_mode' => in_array($locationMode, ['provider_location', 'customer_location', 'remote', 'hybrid'], true)
+                ? $locationMode
+                : 'provider_location',
+            'workshop_start_note' => Str::limit(trim((string) ($details['workshop_start_note'] ?? '')), 160, ''),
+            'learning_outcomes' => $stringList($details['learning_outcomes'] ?? []),
+            'workshop_requirements' => $stringList($details['workshop_requirements'] ?? []),
+            'materials_included' => $stringList($details['materials_included'] ?? []),
+        ];
     }
 
     private function defaultServiceSchedulingType(?string $serviceMode, ?string $bookingProvider): string

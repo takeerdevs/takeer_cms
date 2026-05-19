@@ -28,6 +28,9 @@ class Merchant extends Model
         'avatar_url',
         'bio',
         'type', // 'personal', 'business'
+        'business_category_key',
+        'business_subcategory_key',
+        'business_profile',
         'is_default',
         'successful_sales',
         'unsuccessful_sales',
@@ -55,6 +58,7 @@ class Merchant extends Model
             'storage_limit_mb' => 'integer',
             'storage_used_bytes' => 'integer',
             'active_modules' => 'array',
+            'business_profile' => 'array',
             'retail_settings' => 'array',
         ];
     }
@@ -78,6 +82,34 @@ class Merchant extends Model
     public function hasModule(string $module): bool
     {
         return in_array($module, $this->active_modules ?? []);
+    }
+
+    public function hasAnyModule(array $modules): bool
+    {
+        return collect($modules)->contains(fn (string $module) => $this->hasModule($module));
+    }
+
+    public function hasCommerceMode(string $mode): bool
+    {
+        return in_array($mode, $this->business_profile['commerce_modes'] ?? [], true);
+    }
+
+    public function hasAnyCommerceMode(array $modes): bool
+    {
+        return collect($modes)->contains(fn (string $mode) => $this->hasCommerceMode($mode));
+    }
+
+    public function supportsBusinessArea(array $modules = [], array $commerceModes = []): bool
+    {
+        return $this->hasAnyModule($modules) || $this->hasAnyCommerceMode($commerceModes);
+    }
+
+    public function businessCategory(): ?array
+    {
+        return \App\Support\BusinessCategoryRegistry::get(
+            $this->business_category_key,
+            $this->business_subcategory_key
+        );
     }
 
     public function isBusinessProfile(): bool

@@ -5,6 +5,7 @@ import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
 import axios from 'axios';
 import { toast } from 'sonner';
+import CourseBundleTemplate from '@/Components/public-templates/CourseBundleTemplate';
 
 export default function BundleDetail({ bundle }) {
     const merchant = bundle?.merchant || {};
@@ -137,6 +138,10 @@ export default function BundleDetail({ bundle }) {
             toast.error(error.response?.data?.message || 'Imeshindwa kufungua material.');
         }
     };
+
+    if (bundle?.is_course) {
+        return <CourseBundleTemplate bundle={bundle} />;
+    }
 
     return (
         <AppLayout hideTabBar>

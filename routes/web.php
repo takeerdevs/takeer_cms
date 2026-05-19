@@ -6,17 +6,22 @@ use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\MerchantAuthController;
+use App\Http\Controllers\Api\MerchantBusinessOverviewController;
 use App\Http\Controllers\Api\MerchantBundleController;
+use App\Http\Controllers\Api\MerchantCommunicationController;
 use App\Http\Controllers\Api\MerchantCourseController;
+use App\Http\Controllers\Api\MerchantCustomerController;
 use App\Http\Controllers\Api\MerchantContentController;
 use App\Http\Controllers\Api\EntitlementController;
 use App\Http\Controllers\Api\ContentReportModerationController;
 use App\Http\Controllers\Api\DispatchController;
+use App\Http\Controllers\Api\MerchantModuleSetupController;
 use App\Http\Controllers\Api\MerchantOrderController;
 use App\Http\Controllers\Api\MerchantPlatformSubscriptionController;
 use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
 use App\Http\Controllers\Api\MerchantMarketingController;
 use App\Http\Controllers\Api\MerchantAnalyticsExportController;
+use App\Http\Controllers\Api\MerchantStaffController;
 use App\Http\Controllers\Api\ServiceRequestController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\AdminController;
@@ -1176,6 +1181,10 @@ Route::middleware('auth')->group(function () {
             'creatorMonetization' => $creatorMonetization,
             'countries' => \App\Models\Country::select('id', 'name', 'iso_alpha2 as code', 'default_currency_id')->get(),
             'currencies' => \App\Models\Currency::select('id', 'code', 'symbol', 'name')->get(),
+            'businessCategories' => \App\Support\BusinessCategoryRegistry::all(),
+            'businessOperations' => \App\Support\BusinessOperationRegistry::all(),
+            'businessModules' => \App\Support\BusinessModuleRegistry::all(),
+            'commerceModes' => \App\Support\CommerceModeRegistry::all(),
             'merchantKyc' => $activeMerchant ? $activeMerchant->kyc : null,
             'merchantKycStatus' => $activeMerchant ? ($activeMerchant->kyc_status ?? 'unverified') : 'unverified',
         ]);
@@ -1353,8 +1362,20 @@ Route::middleware('auth')->group(function () {
         })->middleware('merchant_permission:dashboard.view')->name('merchant.pulse');
         Route::get('/pulse/api', [EntitlementController::class, 'merchantPulse'])->middleware('merchant_permission:dashboard.view');
 
+        Route::get('/overview', function (Merchant $merchant) {
+            return Inertia::render('Merchant/Overview', [
+                'merchantUsername' => $merchant->username,
+            ]);
+        })->middleware('merchant_permission:dashboard.view,orders.view,bookkeeping.view');
+        Route::get('/overview/api', [MerchantBusinessOverviewController::class, 'show'])->middleware('merchant_permission:dashboard.view,orders.view,bookkeeping.view');
+
         Route::get('/settings', [MerchantProfileController::class, 'edit'])->middleware('merchant_permission:settings.view')->name('merchant.settings.edit');
         Route::post('/settings', [MerchantProfileController::class, 'update'])->middleware('merchant_permission:settings.update')->name('merchant.settings.update');
+        Route::get('/modules', function (Merchant $merchant) {
+            return Inertia::render('Merchant/Modules', [
+                'merchantUsername' => $merchant->username,
+            ]);
+        })->middleware('merchant_permission:settings.view');
 
         Route::get('/upload', function (Merchant $merchant) {
             abort_unless($merchant->canSellProducts(), 403, 'Complete KYC before uploading products.');
@@ -1381,6 +1402,16 @@ Route::middleware('auth')->group(function () {
             ]);
         })->middleware('merchant_permission:products.view');
 
+        Route::get('/menu', function (Request $request, Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['menu', 'products'], ['food_menu', 'physical_products']), 404);
+
+            return Inertia::render('Merchant/Products', [
+                'merchantUsername' => $merchant->username,
+                'typeScope' => 'physical',
+                'moduleScope' => 'menu',
+            ]);
+        })->middleware('merchant_permission:products.view');
+
         Route::get('/products/{productId}', function (Merchant $merchant, int $productId) {
             return Inertia::render('Merchant/ProductDetails', [
                 'merchantUsername' => $merchant->username,
@@ -1400,6 +1431,25 @@ Route::middleware('auth')->group(function () {
                 'itemPickerDefaultLimit' => (int) AdminSetting::get('catalog_item_picker_default_limit', 5),
             ]);
         })->middleware('merchant_permission:bundles.view');
+
+        Route::get('/courses', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['courses', 'workshops', 'enrollments'], ['courses_learning']), 404);
+
+            return Inertia::render('Merchant/Bundles', [
+                'merchantUsername' => $merchant->username,
+                'itemPickerDefaultLimit' => (int) AdminSetting::get('catalog_item_picker_default_limit', 5),
+                'moduleScope' => 'courses',
+            ]);
+        })->middleware('merchant_permission:bundles.view');
+
+        Route::get('/enrollments', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['enrollments', 'courses', 'workshops'], ['courses_learning']), 404);
+
+            return Inertia::render('Merchant/Enrollments', [
+                'merchantUsername' => $merchant->username,
+            ]);
+        })->middleware('merchant_permission:bundles.manage_course,orders.view');
+
         Route::get('/bundles/{bundle:id}/course', function (Merchant $merchant, Bundle $bundle) {
             abort_unless((int) $bundle->merchant_id === (int) $merchant->id && $bundle->is_course, 404);
 
@@ -1459,6 +1509,111 @@ Route::middleware('auth')->group(function () {
             ]);
         })->middleware('merchant_permission:services.view');
 
+        Route::get('/rooms', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['rooms', 'bookings', 'services'], ['services_bookings']), 404);
+            $merchant->loadMissing('country');
+
+            return Inertia::render('Merchant/Products', [
+                'merchantUsername' => $merchant->username,
+                'typeScope' => 'service',
+                'moduleScope' => 'rooms',
+                'merchantTimezone' => $merchant->defaultTimezone(),
+            ]);
+        })->middleware('merchant_permission:services.view');
+
+        Route::get('/tours', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['tour_departures', 'bookings', 'services'], ['services_bookings', 'custom_orders_quotes']), 404);
+            $merchant->loadMissing('country');
+
+            return Inertia::render('Merchant/Products', [
+                'merchantUsername' => $merchant->username,
+                'typeScope' => 'service',
+                'moduleScope' => 'tour_departures',
+                'merchantTimezone' => $merchant->defaultTimezone(),
+            ]);
+        })->middleware('merchant_permission:services.view');
+
+        Route::get('/custom-orders', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['custom_orders', 'quotes', 'services'], ['custom_orders_quotes']), 404);
+            $merchant->loadMissing('country');
+
+            return Inertia::render('Merchant/Products', [
+                'merchantUsername' => $merchant->username,
+                'typeScope' => 'service',
+                'moduleScope' => 'custom_orders',
+                'merchantTimezone' => $merchant->defaultTimezone(),
+            ]);
+        })->middleware('merchant_permission:services.view');
+
+        Route::get('/appointments', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['appointments', 'bookings', 'services'], ['services_bookings']), 404);
+            $merchant->loadMissing('country');
+
+            return Inertia::render('Merchant/Products', [
+                'merchantUsername' => $merchant->username,
+                'typeScope' => 'service',
+                'moduleScope' => 'appointments',
+                'merchantTimezone' => $merchant->defaultTimezone(),
+            ]);
+        })->middleware('merchant_permission:services.view');
+
+        Route::get('/reservations', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['reservations', 'bookings', 'services'], ['services_bookings', 'food_menu']), 404);
+            $merchant->loadMissing('country');
+
+            return Inertia::render('Merchant/Products', [
+                'merchantUsername' => $merchant->username,
+                'typeScope' => 'service',
+                'moduleScope' => 'reservations',
+                'merchantTimezone' => $merchant->defaultTimezone(),
+            ]);
+        })->middleware('merchant_permission:services.view');
+
+        Route::get('/rentals', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['rentals', 'bookings', 'services'], ['services_bookings', 'custom_orders_quotes']), 404);
+            $merchant->loadMissing('country');
+
+            return Inertia::render('Merchant/Products', [
+                'merchantUsername' => $merchant->username,
+                'typeScope' => 'service',
+                'moduleScope' => 'rentals',
+                'merchantTimezone' => $merchant->defaultTimezone(),
+            ]);
+        })->middleware('merchant_permission:services.view');
+
+        Route::get('/workshops', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea(['workshops', 'bookings', 'services'], ['courses_learning', 'services_bookings']), 404);
+            $merchant->loadMissing('country');
+
+            return Inertia::render('Merchant/Products', [
+                'merchantUsername' => $merchant->username,
+                'typeScope' => 'service',
+                'moduleScope' => 'workshops',
+                'merchantTimezone' => $merchant->defaultTimezone(),
+            ]);
+        })->middleware('merchant_permission:services.view');
+
+        Route::get('/bookings', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea([
+                'bookings', 'availability', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops', 'services',
+            ], ['services_bookings', 'food_menu', 'courses_learning']), 404);
+
+            return Inertia::render('Merchant/BookingCalendar', [
+                'merchantUsername' => $merchant->username,
+            ]);
+        })->middleware('merchant_permission:services.view,services.schedule');
+
+        Route::get('/availability', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea([
+                'availability', 'bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops', 'services',
+            ], ['services_bookings', 'food_menu', 'courses_learning']), 404);
+
+            return Inertia::render('Merchant/Availability', [
+                'merchantUsername' => $merchant->username,
+                'merchantTimezone' => $merchant->defaultTimezone(),
+            ]);
+        })->middleware('merchant_permission:services.view,services.schedule');
+
         Route::get('/downloads', function (Merchant $merchant) {
             return Inertia::render('Merchant/Products', [
                 'merchantUsername' => $merchant->username,
@@ -1472,6 +1627,34 @@ Route::middleware('auth')->group(function () {
                 'merchantName' => $merchant->display_name,
             ]);
         })->middleware('merchant_permission:orders.view');
+
+        Route::get('/customers', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea([
+                'customers', 'orders', 'services', 'bookings', 'courses', 'enrollments', 'subscriptions', 'marketing', 'retail_ops',
+            ], ['physical_products', 'food_menu', 'digital_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships', 'custom_orders_quotes']), 404);
+
+            return Inertia::render('Merchant/Customers', [
+                'merchantUsername' => $merchant->username,
+            ]);
+        })->middleware('merchant_permission:orders.view,marketing.view,retail.customers');
+
+        Route::get('/communications', function (Merchant $merchant) {
+            abort_unless($merchant->supportsBusinessArea([
+                'communications', 'customers', 'marketing', 'orders', 'services', 'bookings', 'enrollments', 'subscriptions', 'retail_ops',
+            ], ['physical_products', 'food_menu', 'digital_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships', 'custom_orders_quotes']), 404);
+
+            return Inertia::render('Merchant/Communications', [
+                'merchantUsername' => $merchant->username,
+            ]);
+        })->middleware('merchant_permission:marketing.view,orders.view,services.view');
+
+        Route::get('/team', function (Merchant $merchant) {
+            abort_unless($merchant->hasModule('team') || $merchant->hasModule('retail_ops'), 404);
+
+            return Inertia::render('Merchant/Team', [
+                'merchant' => $merchant->load('currency'),
+            ]);
+        })->middleware('merchant_permission:team.view');
 
         Route::get('/wallet', [\App\Http\Controllers\Api\MerchantWalletController::class, 'show'])->middleware('merchant_permission:wallet.view')->name('merchant.wallet');
         Route::get('/wallet/ledger', [\App\Http\Controllers\Api\MerchantWalletController::class, 'showLedger'])->middleware('merchant_permission:wallet.ledger')->name('merchant.wallet.ledger');
@@ -1547,6 +1730,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller) => $controller->show($request, $bundle))->middleware('merchant_permission:bundles.view');
         Route::put('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller, EntitlementService $entitlementService) => $controller->update($request, $bundle, $entitlementService))->middleware('merchant_permission:bundles.update');
         Route::delete('/bundles/{bundle:id}/api', fn (Request $request, Merchant $merchant, Bundle $bundle, MerchantBundleController $controller) => $controller->destroy($request, $bundle))->middleware('merchant_permission:bundles.delete');
+        Route::get('/enrollments/api', [MerchantCourseController::class, 'enrollments'])->middleware('merchant_permission:bundles.manage_course,orders.view');
         Route::get('/bundles/{bundle:id}/course/api', [MerchantCourseController::class, 'dashboard'])->middleware('merchant_permission:bundles.manage_course');
         Route::post('/bundles/{bundle:id}/course/sessions/{session:id}/check-in-code', [MerchantCourseController::class, 'generateCheckInCode'])->middleware('merchant_permission:bundles.manage_course');
         Route::post('/bundles/{bundle:id}/course/sessions/{session:id}/attendance', [MerchantCourseController::class, 'markAttendance'])->middleware('merchant_permission:bundles.manage_course');
@@ -1599,12 +1783,25 @@ Route::middleware('auth')->group(function () {
         Route::get('/orders/api', [MerchantOrderController::class, 'index'])->middleware('merchant_permission:orders.view');
         Route::get('/orders/api/summary', [MerchantOrderController::class, 'summary'])->middleware('merchant_permission:orders.view');
         Route::get('/orders/api/commerce-summary', [MerchantOrderController::class, 'commerceSummary'])->middleware('merchant_permission:dashboard.view,orders.view');
+        Route::get('/modules/api', [MerchantModuleSetupController::class, 'show'])->middleware('merchant_permission:settings.view');
+        Route::put('/modules/api', [MerchantModuleSetupController::class, 'update'])->middleware('merchant_permission:settings.update');
+        Route::get('/customers/api', [MerchantCustomerController::class, 'crm'])->middleware('merchant_permission:orders.view,marketing.view,retail.customers');
+        Route::get('/communications/api', [MerchantCommunicationController::class, 'index'])->middleware('merchant_permission:marketing.view,orders.view,services.view');
+        Route::post('/communications/api', [MerchantCommunicationController::class, 'store'])->middleware('merchant_permission:marketing.update,orders.update,services.update');
+        Route::get('/team/api', [MerchantStaffController::class, 'index'])->middleware('merchant_permission:team.view');
+        Route::post('/team/api', [MerchantStaffController::class, 'store'])->middleware('merchant_permission:team.create');
+        Route::patch('/team/{staff:id}/api', [MerchantStaffController::class, 'update'])->middleware('merchant_permission:team.update');
+        Route::patch('/team/{staff:id}/reset-pin/api', [MerchantStaffController::class, 'resetPin'])->middleware('merchant_permission:team.reset_pin');
+        Route::post('/team/{staff:id}/clear-devices/api', [MerchantStaffController::class, 'clearDevices'])->middleware('merchant_permission:team.clear_devices');
+        Route::delete('/team/{staff:id}/api', [MerchantStaffController::class, 'destroy'])->middleware('merchant_permission:team.delete');
         Route::get('/service-requests/api', [ServiceRequestController::class, 'merchantIndex'])->middleware('merchant_permission:services.view,orders.view');
         Route::get('/service-requests/{serviceRequest}/attachments/{field}/{index}', [ServiceRequestController::class, 'showAttachment'])->where('field', '[^/]+')->whereNumber('index')->middleware('merchant_permission:services.view,orders.view');
         Route::patch('/service-requests/{serviceRequest}/status', [ServiceRequestController::class, 'updateStatus'])->middleware('merchant_permission:services.update,orders.update');
+        Route::patch('/service-requests/{serviceRequest}/fulfillment', [ServiceRequestController::class, 'updateFulfillment'])->middleware('merchant_permission:services.update,orders.update');
         Route::post('/service-requests/{serviceRequest}/mark-delivered', [ServiceRequestController::class, 'markDelivered'])->middleware('merchant_permission:services.update,orders.update');
         Route::post('/service-requests/{serviceRequest}/prepare-notification', [ServiceRequestController::class, 'prepareNotification'])->middleware('merchant_permission:services.update,orders.update');
         Route::post('/service-requests/{serviceRequest}/prepare-calendar-event', [ServiceRequestController::class, 'prepareCalendarEvent'])->middleware('merchant_permission:services.schedule');
+        Route::get('/booking-calendar/api', [ServiceRequestController::class, 'calendar'])->middleware('merchant_permission:services.view,services.schedule');
         Route::get('/service-scheduling/api', [ServiceRequestController::class, 'scheduling'])->middleware('merchant_permission:services.view,services.schedule');
         Route::put('/service-scheduling/api', [ServiceRequestController::class, 'updateScheduling'])->middleware('merchant_permission:services.schedule');
         Route::get('/service-sessions/api', [ServiceRequestController::class, 'sessions'])->middleware('merchant_permission:services.view,services.schedule');

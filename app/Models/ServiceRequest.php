@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class ServiceRequest extends Model
@@ -118,5 +119,15 @@ class ServiceRequest extends Model
     public function notifications(): HasMany
     {
         return $this->hasMany(ServiceRequestNotification::class);
+    }
+
+    public function fulfillment(): HasOne
+    {
+        return $this->hasOne(ServiceRequestFulfillment::class);
+    }
+
+    public function fulfillmentEvents(): HasMany
+    {
+        return $this->hasMany(ServiceRequestFulfillmentEvent::class);
     }
 }

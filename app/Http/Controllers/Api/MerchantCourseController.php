@@ -14,9 +14,169 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class MerchantCourseController extends Controller
 {
+    public function enrollments(Request $request, Merchant $merchant): JsonResponse
+    {
+        abort_unless((int) $merchant->user_id === (int) $request->user()->id, 403);
+
+        $courses = Bundle::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('is_course', true)
+            ->with([
+                'cohorts.enrollments.user',
+                'cohorts.enrollments.order',
+                'courseModules.lessons',
+            ])
+            ->withCount([
+                'items',
+                'courseModules',
+                'cohorts',
+            ])
+            ->latest()
+            ->get();
+
+        $courseIds = $courses->pluck('id')->values();
+        $lessonIdsByCourse = $courses->mapWithKeys(fn (Bundle $course) => [
+            $course->id => $course->courseModules->flatMap->lessons->pluck('id')->values(),
+        ]);
+        $allLessonIds = $lessonIdsByCourse->flatten()->unique()->values();
+
+        $entitlements = Entitlement::query()
+            ->where('item_type', 'bundle')
+            ->whereIn('item_id', $courseIds)
+            ->where('status', 'active')
+            ->with('user:id,name,email,phone_number')
+            ->get()
+            ->groupBy('item_id');
+
+        $progressRows = BundleCourseProgress::query()
+            ->whereIn('bundle_course_lesson_id', $allLessonIds)
+            ->select('user_id', 'bundle_course_lesson_id', DB::raw('count(*) as completed_count'), DB::raw('max(completed_at) as last_completed_at'))
+            ->groupBy('user_id', 'bundle_course_lesson_id')
+            ->get();
+
+        $progressByCourseUser = [];
+        foreach ($courses as $course) {
+            $courseLessonIds = $lessonIdsByCourse->get($course->id, collect())->map(fn ($id) => (int) $id)->all();
+            $courseLessonSet = array_flip($courseLessonIds);
+
+            foreach ($progressRows as $row) {
+                if (! isset($courseLessonSet[(int) $row->bundle_course_lesson_id])) {
+                    continue;
+                }
+
+                $key = "{$course->id}:{$row->user_id}";
+                $progressByCourseUser[$key]['completed_lessons'] = (int) (($progressByCourseUser[$key]['completed_lessons'] ?? 0) + 1);
+                $progressByCourseUser[$key]['last_completed_at'] = max(
+                    (string) ($progressByCourseUser[$key]['last_completed_at'] ?? ''),
+                    (string) $row->last_completed_at
+                );
+            }
+        }
+
+        $coursePayload = $courses->map(function (Bundle $course) use ($lessonIdsByCourse, $entitlements, $progressByCourseUser) {
+            $students = collect();
+
+            foreach (($entitlements->get($course->id) ?? collect()) as $entitlement) {
+                if ($entitlement->user) {
+                    $students->push([
+                        'source' => 'purchase',
+                        'user' => $entitlement->user,
+                        'cohort' => null,
+                        'order' => null,
+                        'status' => $entitlement->status,
+                        'enrolled_at' => $entitlement->created_at,
+                    ]);
+                }
+            }
+
+            foreach ($course->cohorts as $cohort) {
+                foreach ($cohort->enrollments as $enrollment) {
+                    if ($enrollment->user) {
+                        $students->push([
+                            'source' => 'cohort',
+                            'user' => $enrollment->user,
+                            'cohort' => $cohort,
+                            'order' => $enrollment->order,
+                            'status' => $enrollment->status,
+                            'enrolled_at' => $enrollment->enrolled_at ?: $enrollment->created_at,
+                        ]);
+                    }
+                }
+            }
+
+            $students = $students
+                ->unique(fn ($row) => (int) $row['user']->id)
+                ->sortBy(fn ($row) => strtolower((string) $row['user']->name))
+                ->values();
+            $lessonCount = $lessonIdsByCourse->get($course->id, collect())->count();
+
+            return [
+                'id' => $course->id,
+                'title' => $course->title,
+                'slug' => $course->slug,
+                'status' => $course->status,
+                'course_format' => $course->course_format,
+                'lesson_count' => $lessonCount,
+                'cohort_count' => $course->cohorts_count,
+                'student_count' => $students->count(),
+                'active_cohorts' => $course->cohorts
+                    ->whereIn('status', ['upcoming', 'active'])
+                    ->map(fn ($cohort) => [
+                        'id' => $cohort->id,
+                        'name' => $cohort->name,
+                        'starts_at' => $cohort->starts_at?->toISOString(),
+                        'enrollment_deadline' => $cohort->enrollment_deadline?->toISOString(),
+                        'capacity' => $cohort->capacity,
+                        'status' => $cohort->status,
+                        'enrolled_count' => $cohort->enrollments->where('status', 'active')->count(),
+                    ])
+                    ->values(),
+                'students' => $students->map(function (array $row) use ($course, $lessonCount, $progressByCourseUser) {
+                    $student = $row['user'];
+                    $progress = $progressByCourseUser["{$course->id}:{$student->id}"] ?? [];
+
+                    return [
+                        'id' => $student->id,
+                        'name' => $student->name,
+                        'email' => $student->email,
+                        'phone_number' => $student->phone_number,
+                        'source' => $row['source'],
+                        'status' => $row['status'],
+                        'enrolled_at' => $row['enrolled_at']?->toISOString(),
+                        'completed_lessons' => (int) ($progress['completed_lessons'] ?? 0),
+                        'total_lessons' => $lessonCount,
+                        'last_completed_at' => filled($progress['last_completed_at'] ?? null) ? (string) $progress['last_completed_at'] : null,
+                        'cohort' => $row['cohort'] ? [
+                            'id' => $row['cohort']->id,
+                            'name' => $row['cohort']->name,
+                            'starts_at' => $row['cohort']->starts_at?->toISOString(),
+                            'status' => $row['cohort']->status,
+                        ] : null,
+                        'order' => $row['order'] ? [
+                            'id' => $row['order']->id,
+                            'public_id' => $row['order']->public_id,
+                            'payment_status' => $row['order']->payment_status,
+                        ] : null,
+                    ];
+                })->values(),
+            ];
+        })->values();
+
+        return response()->json([
+            'summary' => [
+                'courses' => $coursePayload->count(),
+                'students' => $coursePayload->sum('student_count'),
+                'cohorts' => $coursePayload->sum('cohort_count'),
+                'active_cohorts' => $coursePayload->sum(fn ($course) => count($course['active_cohorts'] ?? [])),
+            ],
+            'courses' => $coursePayload,
+        ]);
+    }
+
     public function dashboard(Request $request, Merchant $merchant, Bundle $bundle): JsonResponse
     {
         $this->ensureOwnership($request, $merchant, $bundle);

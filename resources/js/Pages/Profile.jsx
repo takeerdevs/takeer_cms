@@ -9,7 +9,7 @@ import {
     User, UserCircle, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
     Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, Banknote, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
     Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone,
-    Search, Loader2, KeyRound
+    Search, Loader2, KeyRound, BedDouble
 } from 'lucide-react';
 import axios from 'axios';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -38,6 +38,10 @@ export default function Profile({
     activeMerchantAccess = null,
     countries = [],
     currencies = [],
+    businessCategories = {},
+    businessOperations = {},
+    businessModules = {},
+    commerceModes: commerceModeOptions = {},
     merchantKyc = null,
     merchantKycStatus = 'unverified'
 }) {
@@ -61,15 +65,35 @@ export default function Profile({
     const merchantSlug = activeMerchant?.username ?? '';
     const activePermissions = activeMerchantAccess?.permissions ?? activeMerchant?.permissions ?? [];
     const can = (permission) => activePermissions.includes('*') || activePermissions.includes(permission);
+    const activeModules = activeMerchant?.active_modules || [];
+    const commerceModes = activeMerchant?.business_profile?.commerce_modes || [];
+    const hasModule = (module) => activeModules.includes(module);
+    const hasMode = (mode) => commerceModes.includes(mode);
+    const usesConfiguredSetup = activeModules.length > 0 || commerceModes.length > 0;
+    const shouldShowHubItem = (item) => {
+        if (!usesConfiguredSetup) return true;
+
+        return (item.modules || []).some(hasModule) || (item.modes || []).some(hasMode);
+    };
     const commerceHubItems = [
-        { key: 'physical', title: 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view' },
-        { key: 'digital', title: 'Digital Downloads', count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view' },
-        { key: 'services', title: 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view' },
-        { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view' },
-        { key: 'bundles', title: 'Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view' },
-        { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permission: 'subscriptions.view' },
-        { key: 'marketing', title: 'Marketing', count: 0, icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permission: 'marketing.view' },
-    ].filter((item) => can(item.permission));
+        { key: 'physical', title: hasModule('menu') || hasMode('food_menu') ? 'Menu' : 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: hasModule('menu') || hasMode('food_menu') ? ShoppingBag : Package, href: hasModule('menu') || hasMode('food_menu') ? `/merchant/${merchantSlug}/menu` : `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products', 'menu'], modes: ['physical_products', 'food_menu'] },
+        { key: 'digital', title: 'Digital Downloads', count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
+        { key: 'services', title: hasModule('rooms') ? 'Rooms & Bookings' : hasModule('tour_departures') ? 'Tours & Bookings' : hasModule('rentals') ? 'Rentals & Hire' : hasModule('workshops') ? 'Workshops & Sessions' : hasModule('custom_orders') || hasModule('quotes') ? 'Custom Orders & Quotes' : hasModule('appointments') ? 'Appointments' : hasModule('reservations') ? 'Reservations' : 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: hasModule('rooms') ? BedDouble : hasModule('tour_departures') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('workshops') ? CalendarClock : Briefcase, href: hasModule('rooms') ? `/merchant/${merchantSlug}/rooms` : hasModule('tour_departures') ? `/merchant/${merchantSlug}/tours` : hasModule('rentals') ? `/merchant/${merchantSlug}/rentals` : hasModule('workshops') ? `/merchant/${merchantSlug}/workshops` : hasModule('custom_orders') || hasModule('quotes') ? `/merchant/${merchantSlug}/custom-orders` : hasModule('appointments') ? `/merchant/${merchantSlug}/appointments` : hasModule('reservations') ? `/merchant/${merchantSlug}/reservations` : `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services', 'bookings', 'appointments', 'reservations', 'rentals', 'workshops', 'rooms', 'tour_departures', 'custom_orders', 'quotes'], modes: ['services_bookings', 'custom_orders_quotes'] },
+        { key: 'availability', title: 'Availability', count: 0, icon: Settings, href: `/merchant/${merchantSlug}/availability`, permission: 'services.schedule', modules: ['availability', 'bookings', 'appointments', 'reservations', 'rentals', 'workshops', 'rooms', 'tour_departures'], modes: ['services_bookings'] },
+        { key: 'booking-calendar', title: 'Booking Calendar', count: commerceHubSummary.services ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/bookings`, permission: 'services.schedule', modules: ['bookings', 'appointments', 'reservations', 'rentals', 'workshops', 'rooms', 'tour_departures'], modes: ['services_bookings'] },
+        { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view', modules: ['marketing'], modes: [] },
+        { key: 'bundles', title: hasModule('courses') || hasModule('workshops') ? 'Courses & Workshops' : 'Courses & Bundles', count: commerceHubSummary.bundles ?? 0, icon: hasModule('courses') || hasModule('workshops') ? BookOpenText : Boxes, href: hasModule('courses') || hasModule('workshops') ? `/merchant/${merchantSlug}/courses` : `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: ['courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'enrollments', title: 'Enrollments', count: commerceHubSummary.bundles ?? 0, icon: FileCheck, href: `/merchant/${merchantSlug}/enrollments`, permission: 'bundles.manage_course', modules: ['enrollments', 'courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permission: 'subscriptions.view', modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
+        { key: 'customers', title: 'Customers / CRM', count: 0, icon: UserCircle, href: `/merchant/${merchantSlug}/customers`, permission: 'orders.view', modules: ['customers', 'orders', 'marketing', 'retail_ops'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+        { key: 'communications', title: 'Communications', count: 0, icon: MessageSquare, href: `/merchant/${merchantSlug}/communications`, permission: 'orders.view', modules: ['communications', 'customers', 'marketing', 'orders', 'retail_ops'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+        { key: 'business-modules', title: 'Business Modules', count: 0, icon: Settings, href: `/merchant/${merchantSlug}/modules`, permission: 'settings.view', modules: ['products', 'services', 'customers', 'communications', 'reports', 'bookkeeping', 'marketing'], modes: ['physical_products', 'services_bookings', 'digital_products', 'food_menu', 'courses_learning', 'custom_orders_quotes', 'subscriptions_memberships'] },
+        { key: 'marketing', title: 'Marketing', count: 0, icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permission: 'marketing.view', modules: ['marketing'], modes: [] },
+        { key: 'team', title: 'Team', count: 0, icon: User2, href: `/merchant/${merchantSlug}/team`, permission: 'team.view', modules: ['team', 'retail_ops'], modes: [] },
+        { key: 'reports', title: 'Business Overview', count: 0, icon: BarChart3, href: `/merchant/${merchantSlug}/overview`, permission: 'dashboard.view', modules: ['reports', 'bookkeeping', 'orders'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+    ].filter((item) => can(item.permission) && shouldShowHubItem(item));
+    const hasMenuCommerce = hasModule('menu') || hasMode('food_menu');
+    const canAddProduct = can('products.create') && (hasModule('products') || hasMenuCommerce || hasMode('physical_products') || !usesConfiguredSetup);
 
     // Verification State
     const [verifView, setVerifView] = useState('main'); // main, selection, form
@@ -102,9 +126,31 @@ export default function Profile({
     const [bizForm, setBizForm] = useState({
         display_name: '',
         username: '',
-        type: 'sole_proprietor'
+        type: 'sole_proprietor',
+        primary_operation: 'physical_products',
+        operations: ['physical_products'],
     });
     const [creatingBiz, setCreatingBiz] = useState(false);
+    const selectedOperationKeys = Array.from(new Set([bizForm.primary_operation, ...(bizForm.operations || [])].filter(Boolean)));
+    const selectedOperations = selectedOperationKeys.map(key => businessOperations?.[key]).filter(Boolean);
+    const recommendedBusinessModules = Array.from(new Set(selectedOperations.flatMap(operation => operation.modules || [])));
+    const recommendedCommerceModes = Array.from(new Set(selectedOperations.flatMap(operation => operation.commerce_modes || [])));
+    const toggleBusinessOperation = (key) => {
+        setBizForm(prev => {
+            const current = new Set(prev.operations || []);
+            if (current.has(key)) {
+                current.delete(key);
+            } else {
+                current.add(key);
+            }
+            current.add(prev.primary_operation || key);
+
+            return {
+                ...prev,
+                operations: Array.from(current),
+            };
+        });
+    };
 
     const handleCreateBusiness = async (e) => {
         e.preventDefault();
@@ -115,7 +161,10 @@ export default function Profile({
             setIsCreateShopModalOpen(false);
             router.visit('/profile');
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Imefeli kuongeza biashara.');
+            const firstError = err.response?.data?.errors
+                ? Object.values(err.response.data.errors).flat()[0]
+                : null;
+            toast.error(firstError || err.response?.data?.message || 'Imefeli kuongeza biashara.');
         } finally {
             setCreatingBiz(false);
         }
@@ -366,6 +415,72 @@ export default function Profile({
                                                     {bizForm.type === type.id && <CheckCircle2 className="h-4 w-4 text-brand-600" />}
                                                 </button>
                                             ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Primary operation</label>
+                                            <select
+                                                value={bizForm.primary_operation}
+                                                onChange={e => setBizForm(prev => ({
+                                                    ...prev,
+                                                    primary_operation: e.target.value,
+                                                    operations: Array.from(new Set([e.target.value, ...(prev.operations || [])])),
+                                                }))}
+                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
+                                                required
+                                            >
+                                                {Object.entries(businessOperations).map(([key, operation]) => (
+                                                    <option key={key} value={key}>{operation.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Other things this business may do</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {Object.entries(businessOperations).map(([key, operation]) => {
+                                                    const selected = selectedOperationKeys.includes(key);
+                                                    const isPrimary = bizForm.primary_operation === key;
+
+                                                    return (
+                                                        <button
+                                                            key={key}
+                                                            type="button"
+                                                            onClick={() => isPrimary ? null : toggleBusinessOperation(key)}
+                                                            className={cn(
+                                                                "min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black transition-colors",
+                                                                selected
+                                                                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                                                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                                                            )}
+                                                        >
+                                                            {operation.label}
+                                                            {isPrimary && <span className="block text-[10px] font-bold text-brand-500">Primary</span>}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-xl border border-brand-100 bg-white p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Dashboard will suggest</p>
+                                            <div className="mt-2 mb-3 flex flex-wrap gap-1.5">
+                                                {recommendedCommerceModes.map(mode => (
+                                                    <span key={mode} className="rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-black text-blue-700">
+                                                        {commerceModeOptions?.[mode]?.label || mode.replace(/_/g, ' ')}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Recommended modules after approval</p>
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                {recommendedBusinessModules.slice(0, 10).map(module => (
+                                                    <span key={module} className="rounded-lg bg-brand-50 px-2 py-1 text-[10px] font-black text-brand-700">
+                                                        {businessModules?.[module]?.label || module.replace(/_/g, ' ')}
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -665,7 +780,10 @@ export default function Profile({
                                         <div className="space-y-3">
                                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Actions</h3>
                                             <div className="grid grid-cols-2 gap-3">
-                                                {(can('products.create') || can('digital_products.create') || can('services.create')) && (
+                                                {canAddProduct && (
+                                                    <ActionBtn icon={hasMenuCommerce ? ShoppingBag : Package} label={hasMenuCommerce ? 'Add Menu Item' : 'Add Product'} href={`/merchant/${merchantSlug}/upload?type=physical${hasMenuCommerce ? '&module=menu' : ''}`} color="bg-brand-600" textColor="text-white" />
+                                                )}
+                                                {!canAddProduct && (can('products.create') || can('digital_products.create') || can('services.create')) && (
                                                     <ActionBtn icon={Plus} label="New Item" href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
                                                 )}
                                                 {can('orders.verify_pickup') && (
@@ -803,7 +921,7 @@ export default function Profile({
                                                     <div className="space-y-1">
                                                         <h2 className="text-xl font-bold text-slate-900">Taarifa zinahakikiwa</h2>
                                                         <p className="text-slate-600 text-sm max-w-sm mx-auto">
-                                                            Tumeshapokea nyaraka zako. Timu yetu inazihakiki. Huu mchakato huchukua masaa 12-24.
+                                                            Tumepokea nyaraka zako. Timu yetu inazihakiki. Huu mchakato huchukua masaa 12-24.
                                                         </p>
                                                     </div>
                                                 </motion.div>

@@ -25,14 +25,21 @@ const initialBundleForm = {
     items: [],
 };
 
-export default function MerchantBundles({ merchantUsername = '', itemPickerDefaultLimit = 5 }) {
+const initialFormForScope = (moduleScope = null) => ({
+    ...initialBundleForm,
+    is_course: moduleScope === 'courses',
+    course_format: moduleScope === 'courses' ? 'cohort' : 'self_paced',
+});
+
+export default function MerchantBundles({ merchantUsername = '', itemPickerDefaultLimit = 5, moduleScope = null }) {
+    const courseModuleMode = moduleScope === 'courses';
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [products, setProducts] = useState([]);
     const [contentItems, setContentItems] = useState([]);
     const [posts, setPosts] = useState([]);
     const [bundles, setBundles] = useState([]);
-    const [bundleForm, setBundleForm] = useState(initialBundleForm);
+    const [bundleForm, setBundleForm] = useState(() => initialFormForScope(moduleScope));
     const [bundleItemSearch, setBundleItemSearch] = useState('');
     const [bundleItemTypeFilter, setBundleItemTypeFilter] = useState('all');
     const [courseModules, setCourseModules] = useState([]);
@@ -44,6 +51,39 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     const [courseRequirementDraft, setCourseRequirementDraft] = useState('');
     const [commerceSummary, setCommerceSummary] = useState(null);
     const selectableItemsLimit = Math.min(20, Math.max(1, Number(itemPickerDefaultLimit) || 5));
+    const pageCopy = courseModuleMode ? {
+        head: 'Courses & Workshops',
+        loading: 'Inapakia courses...',
+        summaryTitle: 'Learning Summary',
+        summaryDescription: 'Useful performance snapshot for courses, workshops, cohorts, and enrollments.',
+        createTitle: bundleForm.id ? 'Edit Course / Workshop' : 'Create Course / Workshop',
+        createDescription: 'Build a course, short course, cohort, workshop, or training package with enrollment-ready details.',
+        nameLabel: 'Course / Workshop Name',
+        namePlaceholder: 'Mf. Practical Accounting Short Course',
+        descriptionPlaceholder: 'Explain outcomes, target students, schedule, materials, and how enrollment works.',
+        catalogTitle: 'Learning Catalog',
+        catalogDescription: 'All courses and workshops in your merchant catalog.',
+        emptyTitle: 'Hakuna courses bado',
+        emptyBody: 'Create a course or workshop with lessons, cohorts, pricing, and enrollment rules.',
+        saveLabel: bundleForm.id ? 'Update Course' : 'Save Course',
+        newLabel: 'New Course',
+    } : {
+        head: 'Bundles',
+        loading: 'Inapakia bundles...',
+        summaryTitle: 'Bundles Summary',
+        summaryDescription: commerceSummary?.date ? `Daily metrics for ${commerceSummary.date}` : 'Useful performance snapshot for bundles.',
+        createTitle: bundleForm.id ? 'Edit Bundle' : 'Create Bundle',
+        createDescription: 'Group products and post content into one sellable offer.',
+        nameLabel: 'Bundle Name',
+        namePlaceholder: 'Mf. Retail Starter Pack',
+        descriptionPlaceholder: 'Explain what the buyer gets inside this bundle.',
+        catalogTitle: 'Bundle Catalog',
+        catalogDescription: 'All bundles in your merchant catalog.',
+        emptyTitle: 'Hakuna bundles bado',
+        emptyBody: 'Anza kwa kuunganisha bidhaa na content kwenye offer moja.',
+        saveLabel: bundleForm.id ? 'Update Bundle' : 'Save Bundle',
+        newLabel: 'New Bundle',
+    };
 
     const bundleTypeFilters = [
         { key: 'all', label: 'All' },
@@ -55,6 +95,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
     useEffect(() => {
         loadPage();
+        if (courseModuleMode) ensureCourseModuleExists();
     }, []);
 
     const productOptions = useMemo(() => (
@@ -240,12 +281,15 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     const summaryCards = useMemo(() => {
         const data = commerceSummary?.sections?.bundles || {};
         return [
-            { label: 'Bundles', value: data.total_items ?? bundles.length },
+            { label: courseModuleMode ? 'Courses' : 'Bundles', value: data.total_items ?? bundles.length },
             { label: 'Published', value: data.published_items ?? 0 },
             { label: 'Orders Today', value: data.today_orders ?? 0 },
             { label: 'Sales Today', value: `TZS ${Number(data.today_sales ?? 0).toLocaleString()}` },
         ];
-    }, [bundles.length, commerceSummary]);
+    }, [bundles.length, commerceSummary, courseModuleMode]);
+    const visibleBundles = useMemo(() => (
+        courseModuleMode ? bundles.filter((item) => item.is_course) : bundles
+    ), [bundles, courseModuleMode]);
 
     async function loadPage() {
         setLoading(true);
@@ -271,7 +315,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     }
 
     function resetForm() {
-        setBundleForm(initialBundleForm);
+        setBundleForm(initialFormForScope(moduleScope));
         setBundleItemSearch('');
         setBundleItemTypeFilter('all');
         setCourseModules([]);
@@ -982,10 +1026,10 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     if (loading) {
         return (
             <AppLayout>
-                <Head title="Bundles | Takeer" />
+                <Head title={`${pageCopy.head} | Takeer`} />
                 <div className="max-w-6xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-                    <p className="text-sm text-muted-foreground">Inapakia bundles...</p>
+                    <p className="text-sm text-muted-foreground">{pageCopy.loading}</p>
                 </div>
             </AppLayout>
         );
@@ -993,12 +1037,12 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
     return (
         <AppLayout>
-            <Head title="Bundles | Takeer" />
+            <Head title={`${pageCopy.head} | Takeer`} />
             <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
                 <Card className="rounded-[24px] border-brand-200/70">
                     <CardHeader>
-                        <CardTitle className="text-lg font-black">Bundles Summary</CardTitle>
-                        <CardDescription>{commerceSummary?.date ? `Daily metrics for ${commerceSummary.date}` : 'Useful performance snapshot for bundles.'}</CardDescription>
+                        <CardTitle className="text-lg font-black">{pageCopy.summaryTitle}</CardTitle>
+                        <CardDescription>{pageCopy.summaryDescription}</CardDescription>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 gap-3 md:grid-cols-4">
                         {summaryCards.map((item) => (
@@ -1014,16 +1058,16 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                     <Card className="rounded-[24px] border-sky-200/70">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-xl font-black">
-                                <Boxes className="h-5 w-5 text-sky-600" />
-                                {bundleForm.id ? 'Edit Bundle' : 'Create Bundle'}
+                                {courseModuleMode ? <BookOpenText className="h-5 w-5 text-indigo-600" /> : <Boxes className="h-5 w-5 text-sky-600" />}
+                                {pageCopy.createTitle}
                             </CardTitle>
-                            <CardDescription>Group products and post content into one sellable offer.</CardDescription>
+                            <CardDescription>{pageCopy.createDescription}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
                             <div className="grid md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Bundle Name</label>
-                                    <Input value={bundleForm.title} onChange={(e) => setBundleForm({ ...bundleForm, title: e.target.value })} placeholder="Mf. Retail Starter Pack" />
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">{pageCopy.nameLabel}</label>
+                                    <Input value={bundleForm.title} onChange={(e) => setBundleForm({ ...bundleForm, title: e.target.value })} placeholder={pageCopy.namePlaceholder} />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Price (TZS)</label>
@@ -1033,7 +1077,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
                             <div className="space-y-2">
                                 <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Description</label>
-                                <Textarea rows={4} value={bundleForm.description} onChange={(e) => setBundleForm({ ...bundleForm, description: e.target.value })} placeholder="Explain what the buyer gets inside this bundle." />
+                                <Textarea rows={4} value={bundleForm.description} onChange={(e) => setBundleForm({ ...bundleForm, description: e.target.value })} placeholder={pageCopy.descriptionPlaceholder} />
                             </div>
 
                             <div className="grid gap-3 md:grid-cols-2">
@@ -1046,13 +1090,14 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                 </label>
                                 <label className="min-h-[86px] rounded-2xl border border-slate-200 bg-sky-50/50 px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
                                     <div>
-                                        <p className="text-base font-black">Course/Training Mode</p>
-                                        <p className="mt-1 text-sm leading-5 text-muted-foreground">Treat this bundle as a course package.</p>
+                                        <p className="text-base font-black">{courseModuleMode ? 'Learning Mode' : 'Course/Training Mode'}</p>
+                                        <p className="mt-1 text-sm leading-5 text-muted-foreground">{courseModuleMode ? 'Courses and workshops use lessons, cohorts, materials, and enrollments.' : 'Treat this bundle as a course package.'}</p>
                                     </div>
                                     <input
                                         type="checkbox"
                                         className="h-4 w-4"
                                         checked={bundleForm.is_course}
+                                        disabled={courseModuleMode}
                                         onChange={(e) => {
                                             const checked = e.target.checked;
                                             setBundleForm({ ...bundleForm, is_course: checked });
@@ -1130,7 +1175,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                             </div>
                                         </div>
                                     </div>
-                                    {bundleForm.course_format === 'cohort' && (
+                                    {['cohort', 'live'].includes(bundleForm.course_format) && (
                                         <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
@@ -1893,11 +1938,11 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                 </div>
                                 <Button className="bg-sky-600 hover:bg-sky-700 text-white rounded-xl" onClick={saveBundle} disabled={saving}>
                                     {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                    {bundleForm.id ? 'Update Bundle' : 'Save Bundle'}
+                                    {pageCopy.saveLabel}
                                 </Button>
                                 <Button variant="outline" className="rounded-xl" onClick={resetForm}>
                                     <Plus className="mr-2 h-4 w-4" />
-                                    New Bundle
+                                    {pageCopy.newLabel}
                                 </Button>
                             </div>
                         </CardContent>
@@ -1905,16 +1950,16 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
                     <Card className="rounded-[24px]">
                         <CardHeader>
-                            <CardTitle className="text-lg font-black">Bundle Catalog</CardTitle>
-                            <CardDescription>All bundles in your merchant catalog.</CardDescription>
+                            <CardTitle className="text-lg font-black">{pageCopy.catalogTitle}</CardTitle>
+                            <CardDescription>{pageCopy.catalogDescription}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            {bundles.length === 0 ? (
-                                <EmptyState icon={Boxes} title="Hakuna bundles bado" body="Anza kwa kuunganisha bidhaa na content kwenye offer moja." />
-                            ) : bundles.map((item) => (
+                            {visibleBundles.length === 0 ? (
+                                <EmptyState icon={courseModuleMode ? BookOpenText : Boxes} title={pageCopy.emptyTitle} body={pageCopy.emptyBody} />
+                            ) : visibleBundles.map((item) => (
                                 <div key={item.id} className="rounded-2xl border border-border/70 bg-background px-4 py-4 flex items-start gap-3">
                                     <div className="h-11 w-11 rounded-2xl bg-muted flex items-center justify-center shrink-0">
-                                        <Boxes className="h-5 w-5 text-brand-600" />
+                                        {item.is_course ? <BookOpenText className="h-5 w-5 text-indigo-600" /> : <Boxes className="h-5 w-5 text-brand-600" />}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-black text-foreground">{item.title}</p>

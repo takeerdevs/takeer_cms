@@ -12,6 +12,14 @@ import { usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import AddressPickerModal from '@/Components/AddressPickerModal';
+import MenuProductTemplate from '@/Components/public-templates/MenuProductTemplate';
+import RoomProductTemplate from '@/Components/public-templates/RoomProductTemplate';
+import TourProductTemplate from '@/Components/public-templates/TourProductTemplate';
+import WorkshopProductTemplate from '@/Components/public-templates/WorkshopProductTemplate';
+import AppointmentProductTemplate from '@/Components/public-templates/AppointmentProductTemplate';
+import ReservationProductTemplate from '@/Components/public-templates/ReservationProductTemplate';
+import RentalProductTemplate from '@/Components/public-templates/RentalProductTemplate';
+import CustomOrderProductTemplate from '@/Components/public-templates/CustomOrderProductTemplate';
 import { trackAttributionEvent } from '@/lib/attribution';
 import { formatQuantity, productCardPriceLabel, productPriceLabel, productStockLabel, productUnitLabel } from '@/lib/productUnits';
 
@@ -1046,6 +1054,38 @@ export default function ProductDetail({ product }) {
             goToPreviousMedia();
         }
     };
+
+    if (product?.module_key === 'menu') {
+        return <MenuProductTemplate product={product} />;
+    }
+
+    if (product?.module_key === 'rooms') {
+        return <RoomProductTemplate product={product} />;
+    }
+
+    if (product?.module_key === 'tour_departures') {
+        return <TourProductTemplate product={product} />;
+    }
+
+    if (product?.module_key === 'workshops') {
+        return <WorkshopProductTemplate product={product} />;
+    }
+
+    if (product?.module_key === 'custom_orders') {
+        return <CustomOrderProductTemplate product={product} />;
+    }
+
+    if (product?.module_key === 'appointments') {
+        return <AppointmentProductTemplate product={product} />;
+    }
+
+    if (product?.module_key === 'reservations') {
+        return <ReservationProductTemplate product={product} />;
+    }
+
+    if (product?.module_key === 'rentals') {
+        return <RentalProductTemplate product={product} />;
+    }
 
     return (
         <AppLayout hideTabBar>

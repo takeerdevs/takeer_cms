@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Merchant;
 use App\Models\MerchantStaff;
 use App\Models\User;
 use App\Services\MerchantAuditService;
@@ -14,6 +15,20 @@ use Illuminate\Validation\Rule;
 
 class MerchantStaffController extends Controller
 {
+    private const ROLES = [
+        'MANAGER',
+        'CASHIER',
+        'STOREKEEPER',
+        'RECEPTIONIST',
+        'BOOKING_MANAGER',
+        'INSTRUCTOR',
+        'FULFILLMENT',
+        'ACCOUNTANT',
+        'MARKETER',
+        'CONTENT_MANAGER',
+        'SUPPORT',
+    ];
+
     public function __construct(private MerchantAuditService $audit)
     {
     }
@@ -21,9 +36,9 @@ class MerchantStaffController extends Controller
     /**
      * List all staff for the active merchant.
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, ?Merchant $merchant = null): JsonResponse
     {
-        $merchant = $request->attributes->get('active_merchant');
+        $merchant = $merchant ?: $request->attributes->get('active_merchant');
         $user = $request->user();
 
         if (!MerchantPermissions::can($user, $merchant, 'team.view')) {
@@ -41,20 +56,21 @@ class MerchantStaffController extends Controller
             }),
             'permission_registry' => MerchantPermissions::registry(),
             'permission_presets' => MerchantPermissions::presets(),
+            'roles' => self::ROLES,
         ]);
     }
 
     /**
      * Enroll a new staff member (Shadow User flow).
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, ?Merchant $merchant = null): JsonResponse
     {
-        $merchant = $request->attributes->get('active_merchant');
+        $merchant = $merchant ?: $request->attributes->get('active_merchant');
 
         $validated = $request->validate([
             'phone_number' => 'required|string', // Format check usually done by middleware or service
             'name' => 'required|string|max:255',
-            'role' => ['required', Rule::in(['MANAGER', 'CASHIER', 'STOREKEEPER'])],
+            'role' => ['required', Rule::in(self::ROLES)],
             'permissions' => 'nullable|array',
             'permissions.*' => ['string', Rule::in(MerchantPermissions::all())],
             'dashboard_access_enabled' => 'nullable|boolean',
@@ -121,9 +137,10 @@ class MerchantStaffController extends Controller
     /**
      * Update a staff member.
      */
-    public function update(Request $request, MerchantStaff $staff): JsonResponse
+    public function update(Request $request, ?Merchant $merchant = null, ?MerchantStaff $staff = null): JsonResponse
     {
-        $merchant = $request->attributes->get('active_merchant');
+        $merchant = $merchant ?: $request->attributes->get('active_merchant');
+        $staff = $staff ?: $request->route('staff');
         
         if ($staff->merchant_id !== $merchant->id) {
             abort(403);
@@ -132,7 +149,7 @@ class MerchantStaffController extends Controller
         $before = $this->staffAuditSnapshot($staff->fresh(['user', 'location']));
 
         $validated = $request->validate([
-            'role' => [Rule::in(['MANAGER', 'CASHIER', 'STOREKEEPER'])],
+            'role' => [Rule::in(self::ROLES)],
             'permissions' => 'nullable|array',
             'permissions.*' => ['string', Rule::in(MerchantPermissions::all())],
             'dashboard_access_enabled' => 'boolean',
@@ -171,9 +188,10 @@ class MerchantStaffController extends Controller
     /**
      * Reset a staff member's terminal PIN.
      */
-    public function resetPin(Request $request, MerchantStaff $staff): JsonResponse
+    public function resetPin(Request $request, ?Merchant $merchant = null, ?MerchantStaff $staff = null): JsonResponse
     {
-        $merchant = $request->attributes->get('active_merchant');
+        $merchant = $merchant ?: $request->attributes->get('active_merchant');
+        $staff = $staff ?: $request->route('staff');
         if ($staff->merchant_id !== $merchant->id) abort(403);
 
         $validated = $request->validate([
@@ -197,9 +215,10 @@ class MerchantStaffController extends Controller
      * Clear all trusted devices for a staff member.
      * Forces OTP on next login.
      */
-    public function clearDevices(Request $request, MerchantStaff $staff): JsonResponse
+    public function clearDevices(Request $request, ?Merchant $merchant = null, ?MerchantStaff $staff = null): JsonResponse
     {
-        $merchant = $request->attributes->get('active_merchant');
+        $merchant = $merchant ?: $request->attributes->get('active_merchant');
+        $staff = $staff ?: $request->route('staff');
         if ($staff->merchant_id !== $merchant->id) abort(403);
 
         $deviceCount = $staff->authorizedDevices()->count();
@@ -218,9 +237,10 @@ class MerchantStaffController extends Controller
     /**
      * Remove/Deactivate a staff member.
      */
-    public function destroy(Request $request, MerchantStaff $staff): JsonResponse
+    public function destroy(Request $request, ?Merchant $merchant = null, ?MerchantStaff $staff = null): JsonResponse
     {
-        $merchant = $request->attributes->get('active_merchant');
+        $merchant = $merchant ?: $request->attributes->get('active_merchant');
+        $staff = $staff ?: $request->route('staff');
 
         if ($staff->merchant_id !== $merchant->id) {
             abort(403);

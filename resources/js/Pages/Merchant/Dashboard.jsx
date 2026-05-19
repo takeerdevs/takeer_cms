@@ -6,7 +6,8 @@ import { Button } from '@/Components/ui/Button';
 import {
     Wallet, Package, ShoppingBag, Video, UploadCloud,
     TrendingUp, Store, ChevronRight, Truck, ShieldCheck,
-    AlertTriangle, FileCheck, CheckCircle2, Settings, BookOpenText, Boxes, Crown, Download, CalendarClock
+    AlertTriangle, FileCheck, CheckCircle2, Settings, BookOpenText, Boxes, Crown, Download, CalendarClock, MapPin, MessageSquare,
+    Users, ClipboardList, BarChart3, Calculator, UserCog, Utensils, BedDouble, Clock3, Megaphone, LayoutGrid
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -32,8 +33,14 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
         || auth?.user?.merchant_profiles?.[0];
     const merchantSlug = merchantUsername || merchantProfile?.username || '';
     const isVerified = merchantProfile?.is_verified ?? false;
+    const activeModules = merchantProfile?.active_modules || [];
+    const commerceModes = merchantProfile?.business_profile?.commerce_modes || [];
+    const recommendedModules = merchantProfile?.business_profile?.recommended_modules || [];
     const { can, canAny } = useMerchantPermissions(merchantSlug);
     const canCreateItem = canAny(['products.create', 'digital_products.create', 'services.create']);
+    const hasModule = (module) => activeModules.includes(module);
+    const hasMode = (mode) => commerceModes.includes(mode);
+    const usesConfiguredSetup = activeModules.length > 0 || commerceModes.length > 0;
 
     const statusBadge = (status) => {
         const map = {
@@ -74,6 +81,127 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
         };
         return map[key] || Package;
     };
+
+    const setupQuickActions = [
+        ...(canAny(['settings.view', 'settings.update']) ? [{
+            key: 'modules',
+            label: 'Business Modules',
+            icon: Settings,
+            href: `/merchant/${merchantSlug}/modules`,
+        }] : []),
+        ...((hasModule('products') || hasMode('physical_products')) && can('products.create') ? [{
+            key: 'product',
+            label: 'Add Product',
+            icon: Package,
+            href: `/merchant/${merchantSlug}/upload?type=physical`,
+            primary: true,
+        }] : []),
+        ...((hasModule('menu') || hasMode('food_menu')) && can('products.create') ? [{
+            key: 'menu',
+            label: 'Add Menu Item',
+            icon: ShoppingBag,
+            href: `/merchant/${merchantSlug}/upload?type=physical&module=menu`,
+            primary: !hasModule('products') && !hasMode('physical_products'),
+        }] : []),
+        ...((hasModule('services') || hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('workshops') || hasModule('rooms') || hasModule('tour_departures') || hasMode('services_bookings')) && can('services.create') ? [{
+            key: 'service',
+            label: hasModule('rooms') ? 'Add Room / Stay' : hasModule('tour_departures') ? 'Add Tour' : hasModule('rentals') ? 'Add Rental' : hasModule('workshops') ? 'Add Workshop' : hasModule('appointments') ? 'Add Appointment' : hasModule('reservations') ? 'Add Reservation' : 'Add Service',
+            icon: hasModule('tour_departures') && !hasModule('rooms') ? MapPin : CalendarClock,
+            href: `/merchant/${merchantSlug}/upload?type=service${hasModule('rooms') ? '&module=rooms' : hasModule('tour_departures') ? '&module=tour_departures' : hasModule('rentals') ? '&module=rentals' : hasModule('workshops') ? '&module=workshops' : hasModule('appointments') ? '&module=appointments' : hasModule('reservations') ? '&module=reservations' : ''}`,
+            primary: !hasModule('products') && !hasMode('physical_products') && !hasModule('menu') && !hasMode('food_menu'),
+        }] : []),
+        ...((hasModule('availability') || hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('rooms') || hasModule('tour_departures') || hasModule('workshops') || hasMode('services_bookings')) && canAny(['services.view', 'services.schedule']) ? [{
+            key: 'availability',
+            label: 'Availability',
+            icon: Settings,
+            href: `/merchant/${merchantSlug}/availability`,
+        }] : []),
+        ...((hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('rooms') || hasModule('tour_departures') || hasModule('workshops') || hasMode('services_bookings')) && canAny(['services.view', 'services.schedule']) ? [{
+            key: 'booking-calendar',
+            label: 'Booking Calendar',
+            icon: CalendarClock,
+            href: `/merchant/${merchantSlug}/bookings`,
+        }] : []),
+        ...((hasModule('digital_products') || hasMode('digital_products')) && can('digital_products.create') ? [{
+            key: 'digital',
+            label: 'Add Digital Product',
+            icon: Download,
+            href: `/merchant/${merchantSlug}/upload?type=digital`,
+        }] : []),
+        ...((hasModule('custom_orders') || hasModule('quotes') || hasMode('custom_orders_quotes')) && can('services.create') ? [{
+            key: 'custom-order',
+            label: 'Add Custom Order',
+            icon: Boxes,
+            href: `/merchant/${merchantSlug}/upload?type=service&module=custom_orders`,
+        }] : []),
+        ...((hasModule('courses') || hasModule('workshops') || hasMode('courses_learning')) && can('bundles.view') ? [{
+            key: 'course',
+            label: 'Courses / Workshops',
+            icon: BookOpenText,
+            href: `/merchant/${merchantSlug}/courses`,
+        }] : []),
+        ...((hasModule('enrollments') || hasModule('courses') || hasModule('workshops') || hasMode('courses_learning')) && canAny(['bundles.manage_course', 'orders.view']) ? [{
+            key: 'enrollments',
+            label: 'Manage Enrollments',
+            icon: FileCheck,
+            href: `/merchant/${merchantSlug}/enrollments`,
+        }] : []),
+        ...((hasModule('subscriptions') || hasMode('subscriptions_memberships')) && can('subscriptions.view') ? [{
+            key: 'subscriptions',
+            label: 'Subscriptions',
+            icon: Crown,
+            href: `/merchant/${merchantSlug}/subscriptions`,
+        }] : []),
+        ...((hasModule('customers') || hasModule('orders') || hasModule('marketing') || hasMode('physical_products') || hasMode('services_bookings') || hasMode('courses_learning') || hasMode('subscriptions_memberships')) && canAny(['orders.view', 'marketing.view', 'retail.customers']) ? [{
+            key: 'customers',
+            label: 'Customers',
+            icon: ShieldCheck,
+            href: `/merchant/${merchantSlug}/customers`,
+        }] : []),
+        ...((hasModule('communications') || hasModule('customers') || hasModule('marketing') || hasModule('orders') || hasMode('physical_products') || hasMode('services_bookings') || hasMode('courses_learning') || hasMode('subscriptions_memberships')) && canAny(['marketing.view', 'orders.view', 'services.view']) ? [{
+            key: 'communications',
+            label: 'Communications',
+            icon: MessageSquare,
+            href: `/merchant/${merchantSlug}/communications`,
+        }] : []),
+        ...((hasModule('team') || hasModule('retail_ops')) && can('team.view') ? [{
+            key: 'team',
+            label: 'Team',
+            icon: Store,
+            href: `/merchant/${merchantSlug}/team`,
+        }] : []),
+        ...((hasModule('reports') || hasModule('bookkeeping') || hasModule('orders')) && canAny(['dashboard.view', 'orders.view', 'bookkeeping.view']) ? [{
+            key: 'overview',
+            label: 'Business Overview',
+            icon: TrendingUp,
+            href: `/merchant/${merchantSlug}/overview`,
+        }] : []),
+    ];
+    const primaryAction = setupQuickActions.find(action => action.primary) || setupQuickActions[0];
+    const secondaryActions = setupQuickActions.filter(action => action.key !== primaryAction?.key).slice(0, 5);
+    const workspaceItems = [
+        { key: 'products', label: 'Products', description: 'Inventory, variants, stock, and product listings.', icon: Package, href: `/merchant/${merchantSlug}/products`, permissions: ['products.view'], modules: ['products'], modes: ['physical_products'] },
+        { key: 'menu', label: 'Menu', description: 'Food, drinks, add-ons, and menu pricing.', icon: Utensils, href: `/merchant/${merchantSlug}/menu`, permissions: ['products.view'], modules: ['menu'], modes: ['food_menu'] },
+        { key: 'orders', label: 'Orders', description: 'Purchases, payment status, fulfillment, and dispatch.', icon: ShoppingBag, href: `/merchant/${merchantSlug}/orders`, permissions: ['orders.view'], modules: ['orders'], modes: ['physical_products', 'food_menu', 'digital_products', 'custom_orders_quotes', 'subscriptions_memberships'] },
+        { key: 'services', label: hasModule('rooms') ? 'Rooms & Stays' : hasModule('tour_departures') ? 'Tours' : hasModule('rentals') ? 'Rentals' : hasModule('appointments') ? 'Appointments' : hasModule('reservations') ? 'Reservations' : 'Services', description: 'Service listings, packages, enquiry flows, and booking offers.', icon: hasModule('rooms') ? BedDouble : CalendarClock, href: hasModule('rooms') ? `/merchant/${merchantSlug}/rooms` : hasModule('tour_departures') ? `/merchant/${merchantSlug}/tours` : hasModule('rentals') ? `/merchant/${merchantSlug}/rentals` : hasModule('workshops') ? `/merchant/${merchantSlug}/workshops` : hasModule('appointments') ? `/merchant/${merchantSlug}/appointments` : hasModule('reservations') ? `/merchant/${merchantSlug}/reservations` : `/merchant/${merchantSlug}/services`, permissions: ['services.view'], modules: ['services', 'rooms', 'tour_departures', 'rentals', 'appointments', 'reservations', 'workshops'], modes: ['services_bookings'] },
+        { key: 'custom_orders', label: 'Custom Orders', description: 'Customer requirements, quotes, and made-to-order work.', icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permissions: ['services.view'], modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
+        { key: 'availability', label: 'Availability', description: 'Rules, slots, capacity, buffers, and fixed sessions.', icon: Clock3, href: `/merchant/${merchantSlug}/availability`, permissions: ['services.view', 'services.schedule'], modules: ['availability', 'bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
+        { key: 'bookings', label: 'Booking Calendar', description: 'Scheduled requests, sessions, reservations, and upcoming work.', icon: CalendarClock, href: `/merchant/${merchantSlug}/bookings`, permissions: ['services.view', 'services.schedule'], modules: ['bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
+        { key: 'digital_products', label: 'Digital Products', description: 'Downloads, files, content access, and license keys.', icon: Download, href: `/merchant/${merchantSlug}/downloads`, permissions: ['digital_products.view'], modules: ['digital_products'], modes: ['digital_products'] },
+        { key: 'courses', label: 'Courses & Workshops', description: 'Structured learning offers, lessons, cohorts, and materials.', icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permissions: ['bundles.view'], modules: ['courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'enrollments', label: 'Enrollments', description: 'Students, attendees, applicants, and class status.', icon: ClipboardList, href: `/merchant/${merchantSlug}/enrollments`, permissions: ['bundles.manage_course', 'orders.view'], modules: ['enrollments', 'courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'subscriptions', label: 'Subscriptions', description: 'Membership plans, recurring access, and members.', icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permissions: ['subscriptions.view'], modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
+        { key: 'customers', label: 'Customers / CRM', description: 'Buyers, guests, students, members, and repeat customers.', icon: Users, href: `/merchant/${merchantSlug}/customers`, permissions: ['orders.view', 'marketing.view', 'retail.customers'], modules: ['customers'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+        { key: 'communications', label: 'Communications', description: 'Follow-ups, reminders, updates, and contact logs.', icon: MessageSquare, href: `/merchant/${merchantSlug}/communications`, permissions: ['marketing.view', 'orders.view', 'services.view'], modules: ['communications'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+        { key: 'marketing', label: 'Marketing', description: 'Campaigns, coupons, referrals, SMS, social DMs, and WhatsApp.', icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permissions: ['marketing.view'], modules: ['marketing'], modes: [] },
+        { key: 'reports', label: 'Business Overview', description: 'Revenue, customers, bookings, catalog, team, and operations.', icon: BarChart3, href: `/merchant/${merchantSlug}/overview`, permissions: ['dashboard.view', 'orders.view', 'bookkeeping.view'], modules: ['reports'], modes: [] },
+        { key: 'bookkeeping', label: 'Bookkeeping', description: 'Income, expenses, statements, audit support, and tax readiness.', icon: Calculator, href: `/merchant/${merchantSlug}/retail/bookkeeping`, permissions: ['bookkeeping.view'], modules: ['bookkeeping'], modes: [], requiresModules: ['retail_ops'] },
+        { key: 'team', label: 'Team', description: 'Staff roles, workplace access, PINs, and permissions.', icon: UserCog, href: `/merchant/${merchantSlug}/team`, permissions: ['team.view'], modules: ['team', 'retail_ops'], modes: [] },
+        { key: 'retail_ops', label: 'Retail Ops / POS', description: 'POS, inventory, transfers, storekeeper tools, and counters.', icon: Store, href: `/merchant/${merchantSlug}/retail/dashboard`, permissions: ['retail.dashboard', 'retail.pos', 'retail.inventory'], modules: ['retail_ops'], modes: [] },
+    ]
+        .filter(item => item.modules.some(hasModule) || item.modes.some(hasMode))
+        .filter(item => (item.requiresModules || []).every(hasModule))
+        .filter(item => canAny(item.permissions));
 
     return (
         <AppLayout>
@@ -162,6 +290,30 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                     </div>
                 )}
 
+                {isVerified && activeModules.length === 0 && recommendedModules.length > 0 && can('settings.update') && (
+                    <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h3 className="font-black text-brand-950">Choose how this business operates</h3>
+                            <p className="text-sm text-brand-800 mt-1 max-w-2xl">
+                                Your selected operations have recommended modules ready. Pick what this business actually uses: products, menu, rooms, bookings, courses, orders, bookkeeping, and more.
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {recommendedModules.slice(0, 8).map(module => (
+                                    <span key={module} className="rounded-full bg-white border border-brand-100 px-2.5 py-1 text-[10px] font-black text-brand-700">
+                                        {module.replace(/_/g, ' ')}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        <Button
+                            className="shrink-0 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold"
+                            onClick={() => router.visit(`/merchant/${merchantSlug}/settings`)}
+                        >
+                            Set Up Modules
+                        </Button>
+                    </div>
+                )}
+
                 {/* Wallet */}
                 {can('wallet.view') && (
                     <div className="grid grid-cols-2 gap-3">
@@ -219,7 +371,14 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                 <div>
                     <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">Vitendo vya Haraka</h2>
                     <div className="grid grid-cols-2 gap-3">
-                        {canCreateItem && (
+                        {usesConfiguredSetup && primaryAction ? (
+                            <Button
+                                className="h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-brand-600/20"
+                                onClick={() => router.visit(primaryAction.href)}
+                            >
+                                {React.createElement(primaryAction.icon, { className: 'h-5 w-5' })} {primaryAction.label}
+                            </Button>
+                        ) : canCreateItem && (
                             <Button
                                 className="h-14 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-brand-600/20"
                                 onClick={() => router.visit(`/merchant/${merchantSlug}/upload`)}
@@ -227,6 +386,16 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                 <UploadCloud className="h-5 w-5" /> Ongeza Bidhaa
                             </Button>
                         )}
+                        {usesConfiguredSetup && secondaryActions.map(action => (
+                            <Button
+                                key={action.key}
+                                variant="outline"
+                                className="h-14 rounded-2xl font-bold flex items-center gap-2"
+                                onClick={() => router.visit(action.href)}
+                            >
+                                {React.createElement(action.icon, { className: 'h-5 w-5' })} {action.label}
+                            </Button>
+                        ))}
                         {can('posts.view') && (
                             <Button
                                 variant="outline"
@@ -247,6 +416,63 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                         )}
                     </div>
                 </div>
+
+                {/* Workspace launcher */}
+                {usesConfiguredSetup && (
+                    <div>
+                        <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                            <div>
+                                <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Workspace</h2>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {workspaceItems.length} active {workspaceItems.length === 1 ? 'tool' : 'tools'} for this business.
+                                </p>
+                            </div>
+                            {can('settings.view') && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() => router.visit(`/merchant/${merchantSlug}/modules`)}
+                                >
+                                    <LayoutGrid className="mr-2 h-4 w-4" />
+                                    Modules
+                                </Button>
+                            )}
+                        </div>
+
+                        {workspaceItems.length === 0 ? (
+                            <div className="rounded-3xl border border-dashed border-border bg-card/40 p-6 text-center">
+                                <LayoutGrid className="mx-auto h-8 w-8 text-muted-foreground" />
+                                <p className="mt-3 text-sm font-semibold text-muted-foreground">No available module tools for your current permissions.</p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-3 md:grid-cols-2">
+                                {workspaceItems.map((item) => (
+                                    <Card
+                                        key={item.key}
+                                        className="group cursor-pointer overflow-hidden border-border/70 transition-all hover:border-brand-300 hover:bg-brand-50/40 active:scale-[0.99]"
+                                        onClick={() => router.visit(item.href)}
+                                    >
+                                        <CardContent className="p-4">
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground transition-colors group-hover:bg-brand-100 group-hover:text-brand-700">
+                                                    {React.createElement(item.icon, { className: 'h-5 w-5' })}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <h3 className="font-black leading-tight group-hover:text-brand-800">{item.label}</h3>
+                                                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-brand-700" />
+                                                    </div>
+                                                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Recent Orders */}
                 {can('orders.view') && (
