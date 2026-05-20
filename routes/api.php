@@ -158,6 +158,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/bundles/{bundle:id}', [MerchantBundleController::class, 'update'])->middleware('merchant_permission:bundles.update');
         Route::delete('/bundles/{bundle:id}', [MerchantBundleController::class, 'destroy'])->middleware('merchant_permission:bundles.delete');
 
+        Route::get('/offering-groups', [\App\Http\Controllers\Api\MerchantOfferingGroupController::class, 'index'])->middleware('merchant_permission:products.view,services.view,bundles.view,subscriptions.view');
+        Route::post('/offering-groups', [\App\Http\Controllers\Api\MerchantOfferingGroupController::class, 'store'])->middleware('merchant_permission:products.create,services.create,bundles.create,subscriptions.create');
+        Route::get('/offering-groups/catalog', [\App\Http\Controllers\Api\MerchantOfferingGroupController::class, 'catalog'])->middleware('merchant_permission:products.view,services.view,bundles.view,subscriptions.view');
+        Route::get('/offering-groups/{offeringGroup:id}', [\App\Http\Controllers\Api\MerchantOfferingGroupController::class, 'show'])->middleware('merchant_permission:products.view,services.view,bundles.view,subscriptions.view');
+        Route::put('/offering-groups/{offeringGroup:id}', [\App\Http\Controllers\Api\MerchantOfferingGroupController::class, 'update'])->middleware('merchant_permission:products.update,services.update,bundles.update,subscriptions.update');
+        Route::delete('/offering-groups/{offeringGroup:id}', [\App\Http\Controllers\Api\MerchantOfferingGroupController::class, 'destroy'])->middleware('merchant_permission:products.delete,services.delete,bundles.delete,subscriptions.delete');
+
         // Merchant Order PIN Verification
         Route::post('/{merchant:username}/order-checkup/lookup', [MerchantOrderController::class, 'checkupLookup'])->middleware('merchant_permission:orders.verify_pickup');
         Route::post('/{merchant:username}/orders/{order:id}/verify-pickup', [MerchantOrderController::class, 'verifyPickup'])->middleware('merchant_permission:orders.verify_pickup');

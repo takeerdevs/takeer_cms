@@ -31,6 +31,7 @@ export default function ReservationProductTemplate({ product }) {
     const total = price > 0 ? price * partySize : 0;
     const reservationType = String(details.reservation_type || 'table').replace(/_/g, ' ');
     const policy = String(details.reservation_policy || 'manual_confirm').replace(/_/g, ' ');
+    const depositAmount = Number(details.deposit_amount || 0);
 
     const openBooking = () => {
         if (!canReserve) return;
@@ -48,7 +49,7 @@ export default function ReservationProductTemplate({ product }) {
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,#f97316,#111827_58%)]" />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/10" />
-                    <div className="relative z-10 mx-auto flex min-h-[420px] max-w-6xl flex-col justify-between p-4 md:p-8">
+                    <div className="relative z-10 mx-auto flex min-h-[420px] max-w-5xl flex-col justify-between p-4 md:p-8">
                         <button type="button" onClick={() => window.history.back()} className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 backdrop-blur transition hover:bg-black/50" aria-label="Go back">
                             <ArrowLeft className="h-5 w-5" />
                         </button>
@@ -70,7 +71,7 @@ export default function ReservationProductTemplate({ product }) {
                     </div>
                 </section>
 
-                <main className="mx-auto grid max-w-6xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
+                <main className="mx-auto grid max-w-5xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
                     <div className="space-y-5">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
                             <h2 className="text-lg font-black">Reservation details</h2>
@@ -82,10 +83,11 @@ export default function ReservationProductTemplate({ product }) {
                             </div>
                         </section>
 
-                        {(details.deposit_note || details.reservation_notes) && (
+                        {(depositAmount > 0 || details.deposit_note || details.reservation_notes) && (
                             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
                                 <h2 className="text-lg font-black">Policy notes</h2>
-                                {details.deposit_note && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-950">{details.deposit_note}</p>}
+                                {depositAmount > 0 && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-950">Reservation deposit: TZS {depositAmount.toLocaleString()}</p>}
+                                {!depositAmount && details.deposit_note && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-950">{details.deposit_note}</p>}
                                 {details.reservation_notes && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{details.reservation_notes}</p>}
                             </section>
                         )}

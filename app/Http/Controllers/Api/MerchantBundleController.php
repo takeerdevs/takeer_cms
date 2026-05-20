@@ -60,6 +60,11 @@ class MerchantBundleController extends Controller
             'course_cover_image_url' => 'nullable|string|max:1000',
             ...$this->courseValidationRules(),
             'status' => 'nullable|string|in:draft,published,archived',
+            'publish_targets' => 'nullable|array',
+            'publish_targets.takeer' => 'nullable|boolean',
+            'publish_targets.instagram' => 'nullable|boolean',
+            'publish_targets.facebook' => 'nullable|boolean',
+            'publish_targets.x' => 'nullable|boolean',
             'items' => 'nullable|array',
             'items.*.item_type' => 'required_with:items|string|in:product,content_item',
             'items.*.item_id' => 'required_with:items|integer|min:1',
@@ -131,7 +136,7 @@ class MerchantBundleController extends Controller
         });
 
         $entitlementService->syncActiveEntitlementsForBundle((int) $bundle->id);
-        if (($validated['status'] ?? 'draft') === 'published') {
+        if (($validated['status'] ?? 'draft') === 'published' && $this->shouldPublishToTakeer($validated)) {
             $this->syncFeedPostForPublishedBundle($bundle->fresh());
         }
 
@@ -161,6 +166,11 @@ class MerchantBundleController extends Controller
             'course_cover_image_url' => 'nullable|string|max:1000',
             ...$this->courseValidationRules(),
             'status' => 'nullable|string|in:draft,published,archived',
+            'publish_targets' => 'nullable|array',
+            'publish_targets.takeer' => 'nullable|boolean',
+            'publish_targets.instagram' => 'nullable|boolean',
+            'publish_targets.facebook' => 'nullable|boolean',
+            'publish_targets.x' => 'nullable|boolean',
             'items' => 'nullable|array',
             'items.*.item_type' => 'required_with:items|string|in:product,content_item',
             'items.*.item_id' => 'required_with:items|integer|min:1',
@@ -191,7 +201,7 @@ class MerchantBundleController extends Controller
                 && trim((string) $validated['title']) !== (string) $bundle->title;
 
             $bundle->update([
-                ...collect($validated)->except(['items', 'course_modules', 'cohorts'])->toArray(),
+                ...collect($validated)->except(['items', 'course_modules', 'cohorts', 'publish_targets'])->toArray(),
                 'slug' => $titleChanged
                     ? Str::slug($validated['title']) . '-' . Str::lower(Str::random(6))
                     : $bundle->slug,
@@ -233,7 +243,7 @@ class MerchantBundleController extends Controller
         });
 
         $newStatus = $bundle->fresh()->status;
-        if ($newStatus === 'published') {
+        if ($newStatus === 'published' && $this->shouldPublishToTakeer($validated)) {
             $this->syncFeedPostForPublishedBundle($bundle->fresh());
         } else {
             $this->deleteFeedPostForBundle($bundle);
@@ -601,6 +611,14 @@ class MerchantBundleController extends Controller
                 ['media_url' => $bundle->course_cover_image_url]
             );
         }
+    }
+
+    private function shouldPublishToTakeer(array $validated): bool
+    {
+        $targets = (array) ($validated['publish_targets'] ?? []);
+
+        return ! array_key_exists('takeer', $targets)
+            || filter_var($targets['takeer'], FILTER_VALIDATE_BOOLEAN);
     }
 
     private function deleteFeedPostForBundle(Bundle $bundle): void

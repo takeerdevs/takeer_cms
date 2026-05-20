@@ -9,6 +9,7 @@ import { Crown, Loader2, Plus, Save, Trash2, Pencil, Clock3, Users } from 'lucid
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import AutoPostTargetsPanel, { defaultAutoPostTargets } from '@/Components/Merchant/AutoPostTargetsPanel';
 
 const initialPlanForm = {
     id: null,
@@ -22,6 +23,7 @@ const initialPlanForm = {
     trial_days: '',
     tier: 1,
     status: 'draft',
+    publish_targets: defaultAutoPostTargets,
     items: [],
 };
 
@@ -195,6 +197,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
             trial_days: item.trial_days ?? '',
             tier: item.tier || 1,
             status: item.status || 'draft',
+            publish_targets: defaultAutoPostTargets,
             items: (item.items || []).map((entry) => ({
                 item_type: entry.item_type,
                 item_id: entry.item_id,
@@ -214,6 +217,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
                 monthly_day: planForm.monthly_day === '' ? null : Number(planForm.monthly_day),
                 trial_days: planForm.trial_days === '' ? null : Number(planForm.trial_days),
                 tier: Number(planForm.tier || 1),
+                publish_targets: planForm.publish_targets || defaultAutoPostTargets,
                 items: planForm.items.map((item) => ({
                     ...item,
                     unlock_after_days: Number(item.unlock_after_days || 0),
@@ -280,7 +284,7 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
         return (
             <AppLayout>
                 <Head title="Subscriptions | Takeer" />
-                <div className="max-w-6xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
+                <div className="max-w-5xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
                     <p className="text-sm text-muted-foreground">Inapakia subscriptions...</p>
                 </div>
@@ -309,164 +313,171 @@ export default function MerchantSubscriptions({ merchantUsername = '', itemPicke
 
                 <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                     {(canCreate || canUpdate) && (
-                    <Card className="rounded-[24px] border-emerald-200/70">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-xl font-black">
-                                <Crown className="h-5 w-5 text-emerald-600" />
-                                {planForm.id ? 'Edit Creator Club Tier' : 'Create Creator Club Tier'}
-                            </CardTitle>
-                            <CardDescription>Build recurring access plans for member-only posts, digital products, live events, downloads, and course bundles.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Tier Name</label>
-                                    <Input value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} placeholder="Mf. Gold Business Circle" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Price (TZS)</label>
-                                    <Input type="number" min="0" value={planForm.price} onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })} placeholder="10000" />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Description</label>
-                                <Textarea rows={4} value={planForm.description} onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })} placeholder="Describe this tier..." />
-                            </div>
-
-                            <div className="grid md:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Billing Interval</label>
-                                    <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={planForm.billing_interval} onChange={(e) => setPlanForm({ ...planForm, billing_interval: e.target.value })}>
-                                        <option value="hourly">Hourly</option>
-                                        <option value="daily">Daily</option>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="monthly">Monthly</option>
-                                    </select>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Every</label>
-                                    <Input type="number" min="1" value={planForm.interval_count} onChange={(e) => setPlanForm({ ...planForm, interval_count: e.target.value })} placeholder="1" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Tier Rank</label>
-                                    <Input type="number" min="1" value={planForm.tier} onChange={(e) => setPlanForm({ ...planForm, tier: e.target.value })} placeholder="1" />
-                                </div>
-                            </div>
-
-                            {planForm.billing_interval === 'weekly' && (
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Weekly Days</label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {weekDays.map((day) => {
-                                            const selected = planForm.weekly_days.includes(day);
-                                            return (
-                                                <button
-                                                    key={day}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setPlanForm((current) => ({
-                                                            ...current,
-                                                            weekly_days: selected
-                                                                ? current.weekly_days.filter((entry) => entry !== day)
-                                                                : [...current.weekly_days, day],
-                                                        }));
-                                                    }}
-                                                    className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider border ${selected ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-border text-muted-foreground'}`}
-                                                >
-                                                    {day.slice(0, 3)}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {planForm.billing_interval === 'monthly' && (
+                        <Card className="rounded-[24px] border-emerald-200/70">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-xl font-black">
+                                    <Crown className="h-5 w-5 text-emerald-600" />
+                                    {planForm.id ? 'Edit Creator Club Tier' : 'Create Creator Club Tier'}
+                                </CardTitle>
+                                <CardDescription>Build recurring access plans for member-only posts, digital products, live events, downloads, and course bundles.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Billing Day</label>
-                                        <Input type="number" min="1" max="28" value={planForm.monthly_day} onChange={(e) => setPlanForm({ ...planForm, monthly_day: e.target.value })} placeholder="1" />
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Tier Name</label>
+                                        <Input value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} placeholder="Mf. Gold Business Circle" />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Trial Days</label>
-                                        <Input type="number" min="0" max="60" value={planForm.trial_days} onChange={(e) => setPlanForm({ ...planForm, trial_days: e.target.value })} placeholder="0" />
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Price (TZS)</label>
+                                        <Input type="number" min="0" value={planForm.price} onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })} placeholder="10000" />
                                     </div>
                                 </div>
-                            )}
 
-                            <div className="space-y-3">
-                                <div>
-                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Included Access</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Creator Club tiers unlock posts/articles, digital products, live events, and digital/course bundles. Physical products stay outside memberships.</p>
-                                </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Search Items</label>
-                                    <Input
-                                        value={planItemSearch}
-                                        onChange={(e) => setPlanItemSearch(e.target.value)}
-                                        placeholder="Search content, digital products, or course bundles..."
-                                    />
+                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Description</label>
+                                    <Textarea rows={4} value={planForm.description} onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })} placeholder="Describe this tier..." />
                                 </div>
-                                <div className="grid gap-2">
-                                    {planVisibleItems.map((option) => {
-                                        const selectedItem = planForm.items.find((item) => item.item_type === option.item_type && item.item_id === option.item_id);
-                                        const selected = Boolean(selectedItem);
-                                        return (
-                                            <div key={option.key} className={`rounded-2xl border px-4 py-3 ${selected ? 'border-emerald-300 bg-emerald-50/60' : 'border-border bg-background'}`}>
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <button type="button" onClick={() => togglePlanItem(option)} className="text-left flex-1">
-                                                        <p className="text-sm font-bold">{option.label}</p>
-                                                        <p className="text-xs text-muted-foreground">{option.item_type} · {option.meta}</p>
-                                                    </button>
-                                                    <span className={`text-xs font-black uppercase tracking-wider ${selected ? 'text-emerald-700' : 'text-muted-foreground'}`}>
-                                                        {selected ? 'Included' : 'Add'}
-                                                    </span>
-                                                </div>
-                                                {selected && (
-                                                    <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/80 px-3 py-2 border border-emerald-100">
-                                                        <Clock3 className="h-4 w-4 text-emerald-600" />
-                                                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Unlock after days</span>
-                                                        <Input
-                                                            type="number"
-                                                            min="0"
-                                                            className="h-9 max-w-[120px]"
-                                                            value={selectedItem.unlock_after_days}
-                                                            onChange={(e) => updatePlanItemDelay(option.item_type, option.item_id, e.target.value)}
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                    {planVisibleItems.length === 0 && (
-                                        <p className="text-xs text-muted-foreground rounded-xl border border-dashed border-border px-3 py-2">
-                                            No items found for your search.
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
 
-                            <div className="flex flex-wrap items-end gap-3">
-                                <div className="w-full sm:w-[220px] space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Status</label>
-                                    <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={planForm.status} onChange={(e) => setPlanForm({ ...planForm, status: e.target.value })}>
-                                        <option value="draft">Draft</option>
-                                        <option value="active">Active</option>
-                                        <option value="archived">Archived</option>
-                                    </select>
+                                <div className="grid md:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Billing Interval</label>
+                                        <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={planForm.billing_interval} onChange={(e) => setPlanForm({ ...planForm, billing_interval: e.target.value })}>
+                                            <option value="hourly">Hourly</option>
+                                            <option value="daily">Daily</option>
+                                            <option value="weekly">Weekly</option>
+                                            <option value="monthly">Monthly</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Every</label>
+                                        <Input type="number" min="1" value={planForm.interval_count} onChange={(e) => setPlanForm({ ...planForm, interval_count: e.target.value })} placeholder="1" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Tier Rank</label>
+                                        <Input type="number" min="1" value={planForm.tier} onChange={(e) => setPlanForm({ ...planForm, tier: e.target.value })} placeholder="1" />
+                                    </div>
                                 </div>
-                                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl" onClick={savePlan} disabled={saving}>
-                                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                    {planForm.id ? 'Update Tier' : 'Save Tier'}
-                                </Button>
-                                <Button variant="outline" className="rounded-xl" onClick={resetForm}>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    New Tier
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
+
+                                {planForm.billing_interval === 'weekly' && (
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Weekly Days</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {weekDays.map((day) => {
+                                                const selected = planForm.weekly_days.includes(day);
+                                                return (
+                                                    <button
+                                                        key={day}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setPlanForm((current) => ({
+                                                                ...current,
+                                                                weekly_days: selected
+                                                                    ? current.weekly_days.filter((entry) => entry !== day)
+                                                                    : [...current.weekly_days, day],
+                                                            }));
+                                                        }}
+                                                        className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider border ${selected ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-border text-muted-foreground'}`}
+                                                    >
+                                                        {day.slice(0, 3)}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {planForm.billing_interval === 'monthly' && (
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Billing Day</label>
+                                            <Input type="number" min="1" max="28" value={planForm.monthly_day} onChange={(e) => setPlanForm({ ...planForm, monthly_day: e.target.value })} placeholder="1" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Trial Days</label>
+                                            <Input type="number" min="0" max="60" value={planForm.trial_days} onChange={(e) => setPlanForm({ ...planForm, trial_days: e.target.value })} placeholder="0" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-3">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Included Access</p>
+                                        <p className="text-xs text-muted-foreground mt-1">Creator Club tiers unlock posts/articles, digital products, live events, and digital/course bundles. Physical products stay outside memberships.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Search Items</label>
+                                        <Input
+                                            value={planItemSearch}
+                                            onChange={(e) => setPlanItemSearch(e.target.value)}
+                                            placeholder="Search content, digital products, or course bundles..."
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        {planVisibleItems.map((option) => {
+                                            const selectedItem = planForm.items.find((item) => item.item_type === option.item_type && item.item_id === option.item_id);
+                                            const selected = Boolean(selectedItem);
+                                            return (
+                                                <div key={option.key} className={`rounded-2xl border px-4 py-3 ${selected ? 'border-emerald-300 bg-emerald-50/60' : 'border-border bg-background'}`}>
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <button type="button" onClick={() => togglePlanItem(option)} className="text-left flex-1">
+                                                            <p className="text-sm font-bold">{option.label}</p>
+                                                            <p className="text-xs text-muted-foreground">{option.item_type} · {option.meta}</p>
+                                                        </button>
+                                                        <span className={`text-xs font-black uppercase tracking-wider ${selected ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                                                            {selected ? 'Included' : 'Add'}
+                                                        </span>
+                                                    </div>
+                                                    {selected && (
+                                                        <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/80 px-3 py-2 border border-emerald-100">
+                                                            <Clock3 className="h-4 w-4 text-emerald-600" />
+                                                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Unlock after days</span>
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                className="h-9 max-w-[120px]"
+                                                                value={selectedItem.unlock_after_days}
+                                                                onChange={(e) => updatePlanItemDelay(option.item_type, option.item_id, e.target.value)}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        {planVisibleItems.length === 0 && (
+                                            <p className="text-xs text-muted-foreground rounded-xl border border-dashed border-border px-3 py-2">
+                                                No items found for your search.
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-end gap-3">
+                                    <div className="w-full">
+                                        <AutoPostTargetsPanel
+                                            value={planForm.publish_targets}
+                                            onChange={(targets) => setPlanForm((current) => ({ ...current, publish_targets: targets }))}
+                                            description="Choose where this subscription tier is posted when it is active."
+                                        />
+                                    </div>
+                                    <div className="w-full sm:w-[220px] space-y-2">
+                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Status</label>
+                                        <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={planForm.status} onChange={(e) => setPlanForm({ ...planForm, status: e.target.value })}>
+                                            <option value="draft">Draft</option>
+                                            <option value="active">Active</option>
+                                            <option value="archived">Archived</option>
+                                        </select>
+                                    </div>
+                                    <Button className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl" onClick={savePlan} disabled={saving}>
+                                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                        {planForm.id ? 'Update Tier' : 'Save Tier'}
+                                    </Button>
+                                    <Button variant="outline" className="rounded-xl" onClick={resetForm}>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        New Tier
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
                     )}
 
                     <Card className="rounded-[24px]">

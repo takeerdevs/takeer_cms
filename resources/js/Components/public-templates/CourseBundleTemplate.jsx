@@ -80,7 +80,7 @@ export default function CourseBundleTemplate({ bundle }) {
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,#22c55e,#111827_56%)]" />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/15" />
-                    <div className="relative z-10 mx-auto flex min-h-[460px] max-w-6xl flex-col justify-between p-4 md:p-8">
+                    <div className="relative z-10 mx-auto flex min-h-[460px] max-w-5xl flex-col justify-between p-4 md:p-8">
                         <button
                             type="button"
                             onClick={() => window.history.back()}
@@ -114,7 +114,7 @@ export default function CourseBundleTemplate({ bundle }) {
                     </div>
                 </section>
 
-                <main className="mx-auto grid max-w-6xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
+                <main className="mx-auto grid max-w-5xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
                     <div className="space-y-5">
                         {outcomes.length > 0 && (
                             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">

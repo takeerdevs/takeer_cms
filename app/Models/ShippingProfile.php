@@ -12,6 +12,7 @@ class ShippingProfile extends Model
         'merchant_id',
         'name',
         'is_default',
+        'outside_area_policy',
     ];
 
     protected function casts(): array
@@ -19,6 +20,11 @@ class ShippingProfile extends Model
         return [
             'is_default' => 'boolean',
         ];
+    }
+
+    public function blocksOutsideAreas(): bool
+    {
+        return ($this->outside_area_policy ?: 'inquiry') === 'block';
     }
 
     public function merchant(): BelongsTo

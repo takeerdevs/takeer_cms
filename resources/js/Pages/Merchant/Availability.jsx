@@ -234,7 +234,7 @@ export default function Availability({ merchantUsername, merchantTimezone = 'Afr
     return (
         <AppLayout>
             <Head title="Availability | Takeer" />
-            <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24 md:p-8">
+            <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Scheduling</p>

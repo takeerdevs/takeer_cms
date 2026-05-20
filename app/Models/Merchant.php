@@ -196,6 +196,11 @@ class Merchant extends Model
         return $this->hasMany(Product::class, 'merchant_id');
     }
 
+    public function offeringGroups(): HasMany
+    {
+        return $this->hasMany(OfferingGroup::class, 'merchant_id');
+    }
+
     public function returnPolicies(): HasMany
     {
         return $this->hasMany(MerchantReturnPolicy::class);

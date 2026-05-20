@@ -70,7 +70,7 @@ export default function CourseManager({ merchantUsername, bundleId }) {
     return (
         <AppLayout>
             <Head title="Course Manager | Takeer" />
-            <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24 space-y-6">
+            <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <Link href={`/merchant/${merchantUsername}/bundles`} className="inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground">

@@ -7,7 +7,7 @@ import {
     Wallet, Package, ShoppingBag, Video, UploadCloud,
     TrendingUp, Store, ChevronRight, Truck, ShieldCheck,
     AlertTriangle, FileCheck, CheckCircle2, Settings, BookOpenText, Boxes, Crown, Download, CalendarClock, MapPin, MessageSquare,
-    Users, ClipboardList, BarChart3, Calculator, UserCog, Utensils, BedDouble, Clock3, Megaphone, LayoutGrid
+    Users, ClipboardList, BarChart3, Calculator, UserCog, Utensils, BedDouble, Clock3, Megaphone, LayoutGrid, Layers
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -66,6 +66,8 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
             subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-500/15 text-violet-700 dark:text-violet-300' },
             digital_file: { label: 'Digital File', icon: Download, cls: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300' },
             service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
+            offering_group: { label: 'Offering Group', icon: Layers, cls: 'bg-teal-500/15 text-teal-700 dark:text-teal-300' },
+            physical_bundle: { label: 'Physical Bundle', icon: Boxes, cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
         };
         return map[kind] || { label: 'Post Content', icon: BookOpenText, cls: 'bg-muted text-muted-foreground' };
     };
@@ -78,6 +80,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
             calendar_clock: CalendarClock,
             boxes: Boxes,
             crown: Crown,
+            layers: Layers,
         };
         return map[key] || Package;
     };

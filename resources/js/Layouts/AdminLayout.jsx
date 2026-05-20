@@ -112,7 +112,7 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
                         <h1 className="text-sm font-semibold text-slate-700">{title}</h1>
                     </div>
                 )}
-                <div className="p-6 md:p-8 max-w-6xl animate-in fade-in duration-300">
+                <div className="p-6 md:p-8 max-w-5xl animate-in fade-in duration-300">
                     {children}
                 </div>
             </main>

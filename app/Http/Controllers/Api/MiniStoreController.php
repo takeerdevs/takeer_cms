@@ -50,6 +50,7 @@ class MiniStoreController extends Controller
                 'reactions',
                 'promotableBundles',
                 'promotableSubscriptions',
+                'promotableOfferingGroups',
             ])
             ->latest()
             ->paginate(15);
@@ -446,17 +447,32 @@ class MiniStoreController extends Controller
     {
         $merchant = Merchant::where('username', $merchantSlug)->firstOrFail();
         $profileId = $request->query('profile_id');
+        $profile = null;
+
+        if ($profileId) {
+            $profile = \App\Models\ShippingProfile::query()
+                ->where('merchant_id', $merchant->id)
+                ->find($profileId);
+        }
+
+        if (!$profile) {
+            $profile = \App\Models\ShippingProfile::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('is_default', true)
+                ->first();
+        }
 
         $query = \App\Models\ShippingZone::where('merchant_id', $merchant->id)
             ->where('is_active', true);
 
-        if ($profileId) {
-            $query->where('shipping_profile_id', $profileId);
+        if ($profile) {
+            $query->where('shipping_profile_id', $profile->id);
         }
 
         $zones = $query->with('location')->latest()->get();
 
         return response()->json([
+            'profile' => $profile?->only(['id', 'name', 'is_default', 'outside_area_policy']),
             'data' => $zones,
         ]);
     }

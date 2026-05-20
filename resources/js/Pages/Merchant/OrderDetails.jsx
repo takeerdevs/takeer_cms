@@ -17,6 +17,7 @@ import {
     MapPin,
     MessageSquare,
     Image as ImageIcon,
+    Layers,
     Play,
     ReceiptText,
     Save,
@@ -47,6 +48,7 @@ function typeMeta(kind) {
         physical_product: { label: 'Physical Product', icon: ShoppingBag, cls: 'bg-amber-100 text-amber-700' },
         physical_bundle: { label: 'Physical Bundle', icon: Boxes, cls: 'bg-amber-100 text-amber-700' },
         bundle: { label: 'Bundle', icon: Boxes, cls: 'bg-sky-100 text-sky-700' },
+        offering_group: { label: 'Offering Group', icon: Layers, cls: 'bg-teal-100 text-teal-700' },
         course_bundle: { label: 'Course Bundle', icon: BookOpenText, cls: 'bg-indigo-100 text-indigo-700' },
         post_content: { label: 'Post Content', icon: BookOpenText, cls: 'bg-sky-100 text-sky-700' },
         subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-100 text-violet-700' },
@@ -56,6 +58,36 @@ function typeMeta(kind) {
     };
 
     return map[kind] || map.post_content;
+}
+
+function OfferingGroupLines({ lines = [] }) {
+    if (!Array.isArray(lines) || lines.length === 0) return null;
+
+    return (
+        <div className="space-y-2">
+            {lines.map((line, index) => (
+                <div key={`${line.group_item_id || line.item_id}-${index}`} className="rounded-xl border border-slate-100 bg-white p-3">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <p className="font-black text-slate-950">{line.title || 'Offering item'}</p>
+                            <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                                {line.section || 'Main'} · {String(line.role || 'optional').replace(/_/g, ' ')}
+                            </p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-sm font-black text-brand-700">TZS {Number(line.line_total || 0).toLocaleString()}</p>
+                            <p className="text-[11px] font-bold text-muted-foreground">Qty {Number(line.quantity || 1).toLocaleString()}</p>
+                        </div>
+                    </div>
+                    {Array.isArray(line.child_lines) && line.child_lines.length > 0 && (
+                        <div className="mt-3 border-l-2 border-slate-100 pl-3">
+                            <OfferingGroupLines lines={line.child_lines} />
+                        </div>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
 }
 
 function statusMeta(status, isEscrowOrder) {
@@ -455,6 +487,34 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <p><span className="text-muted-foreground">Account phone:</span> <span className="font-semibold">{maskPhone(order.account_phone)}</span></p>
                                 </CardContent>
                             </Card>
+
+                            {order.offering_group_selection?.lines?.length > 0 && (
+                                <Card className="rounded-2xl md:col-span-2 border-teal-100 bg-teal-50/20">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                                            <Layers className="h-4 w-4 text-teal-700" />
+                                            Offering Selection
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="grid gap-3 sm:grid-cols-3">
+                                            <div className="rounded-xl bg-white p-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Offering</p>
+                                                <p className="mt-1 font-black text-slate-950">{order.offering_group_selection?.group?.title || order.display_title}</p>
+                                            </div>
+                                            <div className="rounded-xl bg-white p-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Lines</p>
+                                                <p className="mt-1 font-black text-slate-950">{order.offering_group_selection.lines.length}</p>
+                                            </div>
+                                            <div className="rounded-xl bg-white p-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Subtotal</p>
+                                                <p className="mt-1 font-black text-slate-950">TZS {Number(order.offering_group_selection?.subtotal || 0).toLocaleString()}</p>
+                                            </div>
+                                        </div>
+                                        <OfferingGroupLines lines={order.offering_group_selection.lines} />
+                                    </CardContent>
+                                </Card>
+                            )}
 
                             <Card className="rounded-2xl md:col-span-2">
                                 <CardHeader className="pb-2">

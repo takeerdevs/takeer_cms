@@ -13,6 +13,7 @@ import {
     Download,
     Filter,
     Loader2,
+    Layers,
     Package,
     ShoppingBag,
     Store,
@@ -249,6 +250,7 @@ function OrderCard({ order, merchantUsername }) {
             case 'calendar_clock': return CalendarClock;
             case 'shopping_bag': return ShoppingBag;
             case 'boxes': return Boxes;
+            case 'layers': return Layers;
             case 'crown': return Crown;
             default: return isPos ? Store : Box;
         }
@@ -259,8 +261,8 @@ function OrderCard({ order, merchantUsername }) {
             <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
                 {/* ── Product Image ── */}
                 <div className="h-20 w-20 shrink-0 rounded-2xl bg-muted overflow-hidden border">
-                    {product.image_url ? (
-                        <img src={product.image_url} alt={product.title} className="h-full w-full object-cover group-hover:scale-110 transition-transform" />
+                    {(product.image_url || order.display_image) ? (
+                        <img src={product.image_url || order.display_image} alt={displayTitle} className="h-full w-full object-cover group-hover:scale-110 transition-transform" />
                     ) : (
                         <div className="h-full w-full flex items-center justify-center text-muted-foreground bg-accent">
                             {React.createElement(displayIcon, { className: 'h-8 w-8 opacity-70' })}
@@ -284,7 +286,7 @@ function OrderCard({ order, merchantUsername }) {
                             <Store className="h-3 w-3" /> {isPos ? 'Mteja POS:' : 'Mteja:'} {customerIdentifier}
                         </span>
                         <span>•</span>
-                        <span>Qty: {order.quantity || 1}</span>
+                        <span>{order.purchasable_type === 'offering_group' ? `${order.offering_group_selection?.lines?.length || 0} lines` : `Qty: ${order.quantity || 1}`}</span>
                     </div>
                 </div>
 

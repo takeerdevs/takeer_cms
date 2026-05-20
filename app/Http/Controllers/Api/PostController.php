@@ -60,6 +60,7 @@ class PostController extends Controller
             'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
+            'promotableOfferingGroups',
             'latestModerationAction',
         ])->where('public_id', $postPublicId);
 
@@ -141,6 +142,7 @@ class PostController extends Controller
             'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
+            'promotableOfferingGroups',
             'latestModerationAction',
         ])->where('public_id', $postPublicId);
 
@@ -360,6 +362,7 @@ class PostController extends Controller
             'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
+            'promotableOfferingGroups',
         ]);
 
         return response()->json([
@@ -808,11 +811,13 @@ class PostController extends Controller
             'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
+            'promotableOfferingGroups',
         ]);
 
         $promotables = $post->promotables ?? collect();
+        $gatedPromotables = $promotables->reject(fn ($promotable) => $promotable instanceof \App\Models\OfferingGroup);
         $linkedContentItem = $post->linkedContentItem;
-        $hasPromotableGate = $promotables->isNotEmpty();
+        $hasPromotableGate = $gatedPromotables->isNotEmpty();
         $hasSingleUnlockPrice = $post->restricted_price !== null;
         $hasPaidLinkedContent = $linkedContentItem && $linkedContentItem->price !== null;
         $isRestricted = (bool) ($post->is_restricted ?? false) || $hasPromotableGate || $hasSingleUnlockPrice || $hasPaidLinkedContent;
@@ -845,7 +850,7 @@ class PostController extends Controller
             \App\Models\SubscriptionPlan::class => 'subscription_plan',
         ];
 
-        foreach ($promotables as $promotable) {
+        foreach ($gatedPromotables as $promotable) {
             $shortType = $typeMap[get_class($promotable)] ?? null;
             if ($shortType && $entitlements->hasAccess((int) $user->id, $shortType, (int) $promotable->id)) {
                 return true;

@@ -555,6 +555,7 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
     const [isAddingTemplate, setIsAddingTemplate] = useState(false);
     const [newTemplateName, setNewTemplateName] = useState('');
     const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+    const [isSavingPolicy, setIsSavingPolicy] = useState(false);
 
     // Default to the first profile or the default one
     useEffect(() => {
@@ -611,6 +612,27 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
             if (onRefresh) onRefresh();
         } catch (err) {
             toast.error('Imeshindikana kusasisha default.');
+        }
+    };
+
+    const activeProfile = profiles.find(p => String(p.id) === String(activeProfileId));
+
+    const handleOutsideAreaPolicyChange = async (policy) => {
+        if (!activeProfile) return;
+
+        setIsSavingPolicy(true);
+        try {
+            await window.axios.put(`/api/merchant/shipping-profiles/${activeProfile.id}`, {
+                name: activeProfile.name,
+                is_default: Boolean(activeProfile.is_default),
+                outside_area_policy: policy,
+            });
+            toast.success('Kanuni ya maeneo imesasishwa.');
+            if (onRefresh) onRefresh();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Imeshindikana kusasisha kanuni ya maeneo.');
+        } finally {
+            setIsSavingPolicy(false);
         }
     };
 
@@ -692,12 +714,35 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
 
             <div className="bg-white/50 p-4 rounded-2xl border border-brand-100 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200 min-h-[100px]">
                 {activeProfileId ? (
-                    <ShippingZonesManager
-                        profileId={activeProfileId}
-                        locations={locations}
-                        fixedLocationId={location.id}
-                        onRefresh={onRefresh}
-                    />
+                    <div className="space-y-4">
+                        {activeProfile && (
+                            <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">Fulfillment area rule</p>
+                                        <p className="mt-1 text-xs font-semibold text-sky-900/70">
+                                            Decide what happens when a customer location is outside this profile&apos;s saved areas.
+                                        </p>
+                                    </div>
+                                    <select
+                                        value={activeProfile.outside_area_policy || 'inquiry'}
+                                        disabled={isSavingPolicy}
+                                        onChange={(e) => handleOutsideAreaPolicyChange(e.target.value)}
+                                        className="h-10 rounded-xl border border-sky-200 bg-white px-3 text-xs font-black text-sky-900 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                                    >
+                                        <option value="inquiry">Allow request / ask merchant</option>
+                                        <option value="block">Block outside saved areas</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+                        <ShippingZonesManager
+                            profileId={activeProfileId}
+                            locations={locations}
+                            fixedLocationId={location.id}
+                            onRefresh={onRefresh}
+                        />
+                    </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center py-8 text-muted-foreground italic">
                         <p className="text-xs">Chagua au tengeneza template kwanza.</p>

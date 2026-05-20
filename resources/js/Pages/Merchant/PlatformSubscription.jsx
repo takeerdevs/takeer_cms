@@ -83,7 +83,7 @@ export default function PlatformSubscription({ merchantUsername, merchantName, f
 
             <div className="min-h-screen bg-slate-50 text-slate-900">
                 <div className="border-b border-slate-200 bg-white">
-                    <div className="mx-auto max-w-6xl px-5 py-6">
+                    <div className="mx-auto max-w-5xl px-5 py-6">
                         <Link href="/profile" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900">
                             <ArrowLeft className="h-4 w-4" /> Back to profile
                         </Link>
@@ -103,7 +103,7 @@ export default function PlatformSubscription({ merchantUsername, merchantName, f
                     </div>
                 </div>
 
-                <main className="mx-auto max-w-6xl px-5 py-6 space-y-6">
+                <main className="mx-auto max-w-5xl px-5 py-6 space-y-6">
                     {loading ? (
                         <div className="flex min-h-80 items-center justify-center rounded-2xl border border-slate-200 bg-white">
                             <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
@@ -347,11 +347,10 @@ function StoragePlans({ plans, selectedPlan, onSelect }) {
                             type="button"
                             disabled={plan.disabled}
                             onClick={() => onSelect(plan)}
-                            className={`rounded-lg border p-4 text-left transition ${
-                                active
+                            className={`rounded-lg border p-4 text-left transition ${active
                                     ? 'border-sky-500 bg-sky-50 text-sky-950 shadow-sm'
                                     : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                            } ${plan.disabled ? 'cursor-not-allowed opacity-50 hover:bg-white' : ''}`}
+                                } ${plan.disabled ? 'cursor-not-allowed opacity-50 hover:bg-white' : ''}`}
                         >
                             <div className="flex items-center justify-between gap-3">
                                 <p className="text-sm font-black">{plan.name}</p>
@@ -402,17 +401,17 @@ function PaymentsTable({ payments, featureKey = null }) {
                                 <p className="text-right">Paid</p>
                             </div>
                             <div className="divide-y divide-slate-100">
-                        {payments.map((payment) => (
-                            <div key={payment.id} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-4">
-                                <div>
-                                    <p className="text-sm font-black text-slate-900">{payment.feature === 'retail_ops' ? 'Retail Operations' : 'Storage'}</p>
-                                    <p className="mt-1 text-xs text-slate-500">{payment.provider_reference}</p>
-                                </div>
-                                <p className="text-sm font-black text-slate-900">{formatMoney(payment.amount, payment.currency_code)}</p>
-                                <p><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold uppercase tracking-widest text-emerald-700">{payment.status.replace('_', ' ')}</span></p>
-                                <p className="text-right text-sm text-slate-500">{formatDate(payment.paid_at)}</p>
-                            </div>
-                        ))}
+                                {payments.map((payment) => (
+                                    <div key={payment.id} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-4">
+                                        <div>
+                                            <p className="text-sm font-black text-slate-900">{payment.feature === 'retail_ops' ? 'Retail Operations' : 'Storage'}</p>
+                                            <p className="mt-1 text-xs text-slate-500">{payment.provider_reference}</p>
+                                        </div>
+                                        <p className="text-sm font-black text-slate-900">{formatMoney(payment.amount, payment.currency_code)}</p>
+                                        <p><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold uppercase tracking-widest text-emerald-700">{payment.status.replace('_', ' ')}</span></p>
+                                        <p className="text-right text-sm text-slate-500">{formatDate(payment.paid_at)}</p>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -427,9 +426,8 @@ function PaymentMethodButton({ active, onClick, icon: Icon, label }) {
         <button
             type="button"
             onClick={onClick}
-            className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-sm font-bold transition ${
-                active ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
-            }`}
+            className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-sm font-bold transition ${active ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                }`}
         >
             <Icon className="h-4 w-4" />
             {label}

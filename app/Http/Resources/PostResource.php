@@ -23,7 +23,14 @@ class PostResource extends JsonResource
         }
         $resolvedProduct?->loadMissing(['unitType', 'packageContentUnitType', 'returnPolicy', 'faqs']);
 
-        $this->loadMissing(['media.productImage', 'linkPreview', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id']);
+        $this->loadMissing([
+            'media.productImage',
+            'linkPreview',
+            'createdByUser:id,name',
+            'createdByStaff:id,display_name,job_title,user_id',
+            'promotableOfferingGroups.items.product.images',
+            'promotableOfferingGroups.items.childGroup',
+        ]);
         $mediaItems = $this->media ?? collect();
         $linkedContentItem = $this->relationLoaded('linkedContentItem') ? $this->linkedContentItem : null;
         $fallbackMedia = $mediaItems->first();
@@ -34,7 +41,8 @@ class PostResource extends JsonResource
 
         // ── Access Logic ─────────────────────────────────────────────────────
         $attachedPromotables = $this->promotables ?? collect();
-        $hasPromotableGate = $attachedPromotables->isNotEmpty();
+        $gatedPromotables = $attachedPromotables->reject(fn ($promotable) => $promotable instanceof \App\Models\OfferingGroup);
+        $hasPromotableGate = $gatedPromotables->isNotEmpty();
         $hasSingleUnlockPrice = $this->restricted_price !== null;
         $hasPaidLinkedContent = $linkedContentItem && $linkedContentItem->price !== null;
         $singleUnlockPrice = $this->restricted_price ?? ($hasPaidLinkedContent ? $linkedContentItem->price : null);
@@ -60,7 +68,7 @@ class PostResource extends JsonResource
                         \App\Models\SubscriptionPlan::class => 'subscription_plan',
                     ];
                     
-                    foreach ($attachedPromotables as $promo) {
+                    foreach ($gatedPromotables as $promo) {
                         $shortType = $typeMap[get_class($promo)] ?? null;
                         if ($shortType) {
                             if (app(EntitlementService::class)->hasAccess((int) $user->id, $shortType, (int) $promo->id)) {
@@ -183,6 +191,7 @@ class PostResource extends JsonResource
                         \App\Models\Product::class => 'product',
                         \App\Models\Bundle::class => 'bundle',
                         \App\Models\SubscriptionPlan::class => 'subscription_plan',
+                        \App\Models\OfferingGroup::class => 'offering_group',
                     ];
                     $resolvedType = $typeMap[get_class($promotable)] ?? 'product';
                     $item = $promotable;
@@ -380,6 +389,55 @@ class PostResource extends JsonResource
                             ])->values(),
                             'items_count' => $promotable->items_count ?? ($promotable->relationLoaded('items') ? $promotable->items->count() : $bundleItemCards->count()),
                             'bundle_items' => $bundleItemCards,
+                        ];
+                    }
+
+                    if ($promotable instanceof \App\Models\OfferingGroup) {
+                        $groupItems = $promotable->relationLoaded('items')
+                            ? $promotable->items
+                            : $promotable->items()->limit(8)->get();
+
+                        $item = [
+                            'id' => $promotable->id,
+                            'slug' => $promotable->slug,
+                            'title' => $promotable->title,
+                            'description' => $promotable->description,
+                            'price' => $promotable->base_price !== null ? (float) $promotable->base_price : null,
+                            'status' => $promotable->status,
+                            'group_type' => $promotable->group_type,
+                            'template_key' => $promotable->template_key,
+                            'checkout_mode' => $promotable->checkout_mode,
+                            'pricing_mode' => $promotable->pricing_mode,
+                            'image_url' => $promotable->cover_image_url,
+                            'items_count' => $promotable->relationLoaded('items')
+                                ? $promotable->items->count()
+                                : $promotable->items()->count(),
+                            'items' => $groupItems->map(function ($entry) {
+                                $model = $entry->itemModel();
+                                $isProduct = $model instanceof \App\Models\Product;
+                                $productMedia = $isProduct ? $model->images->first() : null;
+
+                                return [
+                                    'id' => $entry->id,
+                                    'item_type' => $entry->item_type,
+                                    'item_id' => $entry->item_id,
+                                    'title' => $model?->title,
+                                    'description' => $model?->description,
+                                    'section' => $entry->section,
+                                    'role' => $entry->role,
+                                    'pricing_behavior' => $entry->pricing_behavior,
+                                    'price' => $isProduct
+                                        ? ($model->discounted_price !== null ? (float) $model->discounted_price : (float) ($model->price ?? 0))
+                                        : ($model?->base_price !== null ? (float) $model->base_price : null),
+                                    'image_url' => $isProduct ? $model->image_url : ($model?->cover_image_url ?? null),
+                                    'media_type' => $isProduct ? ($productMedia?->media_type ?: 'image') : 'image',
+                                    'thumbnail_url' => $isProduct ? ($productMedia?->thumbnail_url ?: $model->image_url) : ($model?->cover_image_url ?? null),
+                                    'add_ons' => $isProduct && is_array($model->module_details ?? null)
+                                        ? collect($model->module_details['add_ons'] ?? [])->take(4)->values()->all()
+                                        : [],
+                                ];
+                            })->values(),
+                            'url' => url('/offerings/' . $promotable->id),
                         ];
                     }
 

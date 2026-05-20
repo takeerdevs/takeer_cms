@@ -197,7 +197,7 @@ export default function MerchantPosts({ merchantUsername = '' }) {
         return (
             <AppLayout>
                 <Head title="Posts | Takeer" />
-                <div className="max-w-6xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
+                <div className="max-w-5xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
                     <p className="text-sm text-muted-foreground">Inapakia posts...</p>
                 </div>
@@ -301,41 +301,41 @@ export default function MerchantPosts({ merchantUsername = '' }) {
                                         </div>
 
                                         {canUpdate && (
-                                        <div className="grid gap-3 md:grid-cols-2">
-                                            <div className="space-y-1 min-w-0">
-                                                <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Comments Override</label>
-                                                <select
-                                                    className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
-                                                    value={entry.comments_enabled_override === null ? 'inherit' : (entry.comments_enabled_override ? 'on' : 'off')}
-                                                    onChange={(e) => {
-                                                        const next = e.target.value === 'inherit' ? null : e.target.value === 'on';
-                                                        updatePostInteractionOverride(entry.id, 'comments_enabled_override', next);
-                                                    }}
-                                                    disabled={savingPostInteraction === `${entry.id}:comments_enabled_override`}
-                                                >
-                                                    <option value="inherit">Inherit ({entry.global_comments_enabled ? 'ON' : 'OFF'})</option>
-                                                    <option value="on">Force ON</option>
-                                                    <option value="off">Force OFF</option>
-                                                </select>
-                                            </div>
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                                <div className="space-y-1 min-w-0">
+                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Comments Override</label>
+                                                    <select
+                                                        className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
+                                                        value={entry.comments_enabled_override === null ? 'inherit' : (entry.comments_enabled_override ? 'on' : 'off')}
+                                                        onChange={(e) => {
+                                                            const next = e.target.value === 'inherit' ? null : e.target.value === 'on';
+                                                            updatePostInteractionOverride(entry.id, 'comments_enabled_override', next);
+                                                        }}
+                                                        disabled={savingPostInteraction === `${entry.id}:comments_enabled_override`}
+                                                    >
+                                                        <option value="inherit">Inherit ({entry.global_comments_enabled ? 'ON' : 'OFF'})</option>
+                                                        <option value="on">Force ON</option>
+                                                        <option value="off">Force OFF</option>
+                                                    </select>
+                                                </div>
 
-                                            <div className="space-y-1 min-w-0">
-                                                <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Reactions Override</label>
-                                                <select
-                                                    className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
-                                                    value={entry.reactions_enabled_override === null ? 'inherit' : (entry.reactions_enabled_override ? 'on' : 'off')}
-                                                    onChange={(e) => {
-                                                        const next = e.target.value === 'inherit' ? null : e.target.value === 'on';
-                                                        updatePostInteractionOverride(entry.id, 'reactions_enabled_override', next);
-                                                    }}
-                                                    disabled={savingPostInteraction === `${entry.id}:reactions_enabled_override`}
-                                                >
-                                                    <option value="inherit">Inherit ({entry.global_reactions_enabled ? 'ON' : 'OFF'})</option>
-                                                    <option value="on">Force ON</option>
-                                                    <option value="off">Force OFF</option>
-                                                </select>
+                                                <div className="space-y-1 min-w-0">
+                                                    <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Reactions Override</label>
+                                                    <select
+                                                        className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
+                                                        value={entry.reactions_enabled_override === null ? 'inherit' : (entry.reactions_enabled_override ? 'on' : 'off')}
+                                                        onChange={(e) => {
+                                                            const next = e.target.value === 'inherit' ? null : e.target.value === 'on';
+                                                            updatePostInteractionOverride(entry.id, 'reactions_enabled_override', next);
+                                                        }}
+                                                        disabled={savingPostInteraction === `${entry.id}:reactions_enabled_override`}
+                                                    >
+                                                        <option value="inherit">Inherit ({entry.global_reactions_enabled ? 'ON' : 'OFF'})</option>
+                                                        <option value="on">Force ON</option>
+                                                        <option value="off">Force OFF</option>
+                                                    </select>
+                                                </div>
                                             </div>
-                                        </div>
                                         )}
                                     </div>
                                 ))}

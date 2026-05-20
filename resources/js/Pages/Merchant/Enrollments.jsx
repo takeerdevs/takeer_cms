@@ -55,7 +55,7 @@ export default function Enrollments({ merchantUsername }) {
     return (
         <AppLayout>
             <Head title="Enrollments | Takeer" />
-            <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24 space-y-6">
+            <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-3xl font-black tracking-tight">Enrollments</h1>

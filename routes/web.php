@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\AdminSettingsController;
 use App\Http\Controllers\Api\AdminTrackedLinkController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\MerchantProfileController;
+use App\Http\Controllers\OfferingGroupController;
 use App\Http\Controllers\TrackedLinkController;
 use App\Http\Resources\PostResource;
 use App\Http\Resources\ProductResource;
@@ -88,6 +89,8 @@ Route::get('/', function (Request $request) {
         'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
+        'promotableOfferingGroups.items.product.images',
+        'promotableOfferingGroups.items.childGroup',
     ]);
 
     if ($request->user()) {
@@ -121,6 +124,8 @@ Route::get('/go/{code}', [TrackedLinkController::class, 'follow'])
 Route::post('/go/{code}/report', [TrackedLinkController::class, 'report'])
     ->middleware('throttle:12,10')
     ->name('tracked-links.report');
+Route::get('/offerings/{offeringGroup:id}', [OfferingGroupController::class, 'show'])
+    ->name('offering-groups.show');
 Route::get('/r/{code}', [MerchantMarketingController::class, 'followReferral'])->name('referral.follow');
 Route::get('/campaign/{merchant:username}/{code}', [MerchantMarketingController::class, 'showCampaignLanding'])->name('campaign.show');
 Route::get('/group-sale/{slug}', [MerchantMarketingController::class, 'showGroupSale'])->name('group-sale.show');
@@ -793,6 +798,8 @@ Route::get('/feed', function (Request $request) {
         'promotableProducts',
         'promotableBundles',
         'promotableSubscriptions',
+        'promotableOfferingGroups.items.product.images',
+        'promotableOfferingGroups.items.childGroup',
     ]);
 
     if ($request->user()) {
@@ -998,10 +1005,11 @@ Route::middleware('auth')->group(function () {
             'physical' => 0,
             'digital' => 0,
             'services' => 0,
-            'posts' => 0,
-            'bundles' => 0,
-            'subscriptions' => 0,
-        ];
+                'posts' => 0,
+                'bundles' => 0,
+                'offerings' => 0,
+                'subscriptions' => 0,
+            ];
 
         if ($activeMerchant) {
             $productTypeCounts = $activeMerchant->products()
@@ -1015,6 +1023,7 @@ Route::middleware('auth')->group(function () {
                 'services' => (int) ($productTypeCounts['service'] ?? 0),
                 'posts' => (int) $activeMerchant->posts()->count(),
                 'bundles' => (int) $activeMerchant->bundles()->count(),
+                'offerings' => (int) $activeMerchant->offeringGroups()->count(),
                 'subscriptions' => (int) $activeMerchant->subscriptionPlans()->count(),
             ];
         }
@@ -1376,6 +1385,12 @@ Route::middleware('auth')->group(function () {
                 'merchantUsername' => $merchant->username,
             ]);
         })->middleware('merchant_permission:settings.view');
+
+        Route::get('/offering-groups', function (Merchant $merchant) {
+            return Inertia::render('Merchant/OfferingGroups', [
+                'merchantUsername' => $merchant->username,
+            ]);
+        })->middleware('merchant_permission:products.view,services.view,bundles.view,subscriptions.view');
 
         Route::get('/upload', function (Merchant $merchant) {
             abort_unless($merchant->canSellProducts(), 403, 'Complete KYC before uploading products.');

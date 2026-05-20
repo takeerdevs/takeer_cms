@@ -315,6 +315,11 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         return type;
     };
 
+    const formatShippingFee = (fee) => {
+        const amount = Number(fee || 0);
+        return amount > 0 ? `TZS ${amount.toLocaleString()}` : 'Free shipping';
+    };
+
     return (
         <div className="space-y-4">
             {!fixedLocationId && (
@@ -342,7 +347,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                         <p className="text-xs font-black truncate">{zone.zone_name}</p>
                                         <div className="flex flex-wrap gap-1.5 items-center text-[9px] text-muted-foreground mt-0.5 font-bold">
                                             <span className="text-brand-600 font-black">
-                                                TZS {Number(zone.flat_rate_fee).toLocaleString()}
+                                                {formatShippingFee(zone.flat_rate_fee)}
                                             </span>
                                             <span className="opacity-50">•</span>
                                             <span>{formatDeliveryType(zone.delivery_type)}</span>
@@ -407,7 +412,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                             <Input
                                 type="number"
                                 min="0"
-                                placeholder="Gharama (Mf. 3000)"
+                                placeholder="0 means free shipping"
                                 value={newZone.flat_rate_fee}
                                 onChange={e => setNewZone({ ...newZone, flat_rate_fee: e.target.value })}
                                 required

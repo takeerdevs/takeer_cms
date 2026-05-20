@@ -110,13 +110,13 @@ class BusinessModuleRegistry
                 'permissions' => ['orders.dispatch', 'orders.view'],
             ],
             'courses' => [
-                'label' => 'Courses',
+                'label' => 'Courses / curriculum',
                 'description' => 'Create structured learning offers with lessons or materials.',
                 'group' => 'Education',
                 'permissions' => ['bundles.view', 'bundles.create', 'bundles.manage_course'],
             ],
             'workshops' => [
-                'label' => 'Workshops',
+                'label' => 'Live sessions',
                 'description' => 'Run dated sessions, cohorts, bootcamps, and short events.',
                 'group' => 'Education',
                 'permissions' => ['services.view', 'services.create', 'services.schedule'],

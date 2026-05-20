@@ -42,6 +42,7 @@ class MerchantShippingProfileController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'is_default' => 'boolean',
+            'outside_area_policy' => 'nullable|in:inquiry,block',
         ]);
 
         if ($validated['is_default'] ?? false) {
@@ -58,6 +59,7 @@ class MerchantShippingProfileController extends Controller
             'merchant_id' => $merchant->id,
             'name' => $validated['name'],
             'is_default' => $validated['is_default'] ?? false,
+            'outside_area_policy' => $validated['outside_area_policy'] ?? 'inquiry',
         ]);
 
         $profile->rates_count = 0;
@@ -78,6 +80,7 @@ class MerchantShippingProfileController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'is_default' => 'boolean',
+            'outside_area_policy' => 'nullable|in:inquiry,block',
         ]);
 
         if ($validated['is_default'] ?? false) {

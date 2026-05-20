@@ -203,6 +203,7 @@ class SeoMeta
             'promotableProducts',
             'promotableBundles',
             'promotableSubscriptions',
+            'promotableOfferingGroups',
         ]);
         $title = self::clean($post->title ?: self::merchantName($post->merchant) . ' post');
         $description = self::postDescription($post, $title);

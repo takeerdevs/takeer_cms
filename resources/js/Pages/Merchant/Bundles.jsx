@@ -8,6 +8,7 @@ import { Textarea } from '@/Components/ui/Textarea';
 import { AlertTriangle, Boxes, FileUp, Filter, Image, Info, Loader2, Plus, Save, Trash2, Pencil, Package, CalendarClock, BookOpenText } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import AutoPostTargetsPanel, { defaultAutoPostTargets } from '@/Components/Merchant/AutoPostTargetsPanel';
 
 const initialBundleForm = {
     id: null,
@@ -22,6 +23,7 @@ const initialBundleForm = {
     course_cover_image_url: '',
     cohorts: [],
     status: 'draft',
+    publish_targets: defaultAutoPostTargets,
     items: [],
 };
 
@@ -343,6 +345,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
             course_cover_image_url: item.course_cover_image_url || '',
             cohorts: Array.isArray(item.cohorts) ? item.cohorts : [],
             status: item.status || 'draft',
+            publish_targets: defaultAutoPostTargets,
             items: (item.items || []).map((entry) => ({
                 item_type: entry.item_type,
                 item_id: entry.item_id,
@@ -546,6 +549,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                     })),
                 })) : [],
                 cohorts: bundleForm.is_course && bundleForm.course_format === 'cohort' ? (bundleForm.cohorts || []) : [],
+                publish_targets: bundleForm.publish_targets || defaultAutoPostTargets,
                 items: bundleForm.is_course ? [] : bundleForm.items.map((item, index) => ({
                     ...item,
                     selected_variant_id: item.selected_variant_id ? Number(item.selected_variant_id) : null,
@@ -1027,7 +1031,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         return (
             <AppLayout>
                 <Head title={`${pageCopy.head} | Takeer`} />
-                <div className="max-w-6xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
+                <div className="max-w-5xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
                     <p className="text-sm text-muted-foreground">{pageCopy.loading}</p>
                 </div>
@@ -1928,6 +1932,13 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                             )}
 
                             <div className="flex flex-wrap items-end gap-3">
+                                <div className="w-full">
+                                    <AutoPostTargetsPanel
+                                        value={bundleForm.publish_targets}
+                                        onChange={(targets) => setBundleForm((current) => ({ ...current, publish_targets: targets }))}
+                                        description="Choose where this bundle or course is posted when it is published."
+                                    />
+                                </div>
                                 <div className="w-full sm:w-[220px] space-y-2">
                                     <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Status</label>
                                     <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={bundleForm.status} onChange={(e) => setBundleForm({ ...bundleForm, status: e.target.value })}>

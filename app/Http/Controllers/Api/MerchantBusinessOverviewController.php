@@ -7,6 +7,7 @@ use App\Models\Bundle;
 use App\Models\BundleCohortEnrollment;
 use App\Models\Merchant;
 use App\Models\MerchantStaff;
+use App\Models\OfferingGroup;
 use App\Models\Order;
 use App\Models\Post;
 use App\Models\Product;
@@ -109,6 +110,7 @@ class MerchantBusinessOverviewController extends Controller
                 'services' => $products->where('type', 'service')->count(),
                 'posts' => Post::query()->where('merchant_id', $merchant->id)->count(),
                 'bundles' => Bundle::query()->where('merchant_id', $merchant->id)->count(),
+                'offerings' => OfferingGroup::query()->where('merchant_id', $merchant->id)->count(),
                 'subscriptions' => SubscriptionPlan::query()->where('merchant_id', $merchant->id)->count(),
                 'low_stock' => $products->where('type', 'physical')->filter(fn (Product $product) => (int) ($product->inventory_count ?? 0) <= 3)->count(),
             ],
@@ -133,7 +135,7 @@ class MerchantBusinessOverviewController extends Controller
             'module_revenue' => $moduleRevenue,
             'recent_activity' => $orders->take(8)->map(fn (Order $order) => [
                 'type' => 'order',
-                'label' => $order->product?->title ?: 'Order',
+                'label' => $order->offering_group_selection['group']['title'] ?? $order->product?->title ?? 'Order',
                 'status' => $order->payment_status,
                 'amount' => (float) ($order->total_paid ?? 0),
                 'created_at' => $order->created_at?->toISOString(),
@@ -144,6 +146,7 @@ class MerchantBusinessOverviewController extends Controller
     private function commerceBucket(Order $order): string
     {
         if ($order->purchasable_type === 'bundle') return 'courses';
+        if ($order->purchasable_type === 'offering_group') return 'offerings';
         if ($order->purchasable_type === 'subscription_plan') return 'subscriptions';
         if ($order->product?->type === 'service') return 'services';
         if ($order->product?->type === 'digital') return 'digital_products';
@@ -163,6 +166,7 @@ class MerchantBusinessOverviewController extends Controller
             'custom_orders' => 'Custom orders',
             'courses' => 'Courses',
             'subscriptions' => 'Subscriptions',
+            'offerings' => 'Offering Groups',
             'digital_products' => 'Digital',
             'services' => 'Services',
             default => 'Products',

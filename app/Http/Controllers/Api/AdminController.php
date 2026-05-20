@@ -1423,6 +1423,7 @@ class AdminController extends Controller
                 'reactions',
                 'promotableBundles',
                 'promotableSubscriptions',
+                'promotableOfferingGroups',
                 'latestModerationAction',
             ])
             ->when($merchantId > 0, fn($query) => $query->where('merchant_id', $merchantId))
@@ -1609,6 +1610,7 @@ class AdminController extends Controller
                 'reactions',
             'promotableBundles',
             'promotableSubscriptions',
+                'promotableOfferingGroups',
             'latestModerationAction',
         ])
             ->findOrFail($postId);

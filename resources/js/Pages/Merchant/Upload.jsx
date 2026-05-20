@@ -19,6 +19,7 @@ import axios from 'axios';
 import PolicyNotice from '@/Components/PolicyNotice';
 import AddressPickerModal from '@/Components/AddressPickerModal';
 import { KNOWN_UPLOAD_MODULE_KEYS, getUploadModuleConfig, publishModuleKey } from '@/lib/uploadModules';
+import { RepeatableTextList, ServiceModuleCreateFields } from '@/Components/Merchant/ServiceModuleCreateFields';
 
 const CATEGORIES = ['Nguo', 'Viatu', 'Simu na Vifaa', 'Chakula', 'Nyumba na Bustani', 'Michezo', 'Watoto', 'Afya & Uzuri', 'Nyingine'];
 
@@ -52,6 +53,33 @@ const PHYSICAL_FULFILLMENT_MODES = [
         key: 'group_sale',
         label: 'Group sale',
         hint: 'Preorder yenye target quantity na deadline.',
+    },
+];
+
+const AUTO_POST_CHANNELS = [
+    {
+        key: 'takeer',
+        label: 'Takeer',
+        hint: 'Post to your Takeer feed after publishing.',
+        connected: true,
+    },
+    {
+        key: 'instagram',
+        label: 'Instagram',
+        hint: 'Connect Instagram to enable auto-posting.',
+        connected: false,
+    },
+    {
+        key: 'facebook',
+        label: 'Facebook',
+        hint: 'Connect Facebook to enable auto-posting.',
+        connected: false,
+    },
+    {
+        key: 'x',
+        label: 'X',
+        hint: 'Connect X to enable auto-posting.',
+        connected: false,
     },
 ];
 
@@ -244,6 +272,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
     const [price, setPrice] = useState('');
     const [comparePrice, setComparePrice] = useState('');
+    const [showComparePrice, setShowComparePrice] = useState(false);
+    const [autoPostTargets, setAutoPostTargets] = useState({
+        takeer: true,
+        instagram: false,
+        facebook: false,
+        x: false,
+    });
     const [refundPolicy, setRefundPolicy] = useState('standard');
     const [refundWindowDays, setRefundWindowDays] = useState('3');
     const [refundPolicyNote, setRefundPolicyNote] = useState('');
@@ -466,7 +501,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         { key: 'pickup', label: 'Pickup' },
         { key: 'delivery', label: 'Delivery' },
     ];
-    const roomTypeOptions = ['Standard room', 'Deluxe room', 'Suite', 'Family room', 'Twin room', 'Single room', 'Apartment', 'Villa', 'Dorm bed'];
+    const roomTypeOptions = ['Standard room', 'Deluxe room', 'Suite', 'Family room', 'Twin room', 'Single room', 'Apartment', 'Villa', 'House', 'Whole home', 'Cottage', 'Guest house', 'Dorm bed'];
     const bedTypeOptions = ['Single bed', 'Double bed', 'Queen bed', 'King bed', 'Twin beds', 'Bunk beds', 'Multiple beds'];
     const roomAmenityOptions = [
         { key: 'wifi', label: 'Wi-Fi' },
@@ -525,56 +560,21 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setProductType(typeParam);
             setStep(typeParam);
             if (typeParam === 'physical') setShowManualForm(true);
-            if (moduleParam === 'rooms' && typeParam === 'service') {
-                setServiceTemplateKey('stay');
-                setServicePriceDisplay('nightly');
-                setServiceMode('book_appointment');
-                setServiceBookingType('manual_confirm');
-                setServiceSchedulingType('none');
-            } else if (moduleParam === 'tour_departures' && typeParam === 'service') {
-                setServiceTemplateKey('tour');
-                setServicePriceDisplay('per_person');
-                setServiceMode('book_appointment');
-                setServiceBookingType('manual_confirm');
-                setServiceSchedulingType('fixed_sessions');
-            } else if (moduleParam === 'custom_orders' && typeParam === 'service') {
-                setServiceTemplateKey('orderable_service');
-                setServicePriceDisplay('quote_only');
-                setServiceMode('request_quote');
-                setServiceBookingType('request');
-                setServiceSchedulingType('none');
-            } else if (moduleParam === 'appointments' && typeParam === 'service') {
-                setServiceTemplateKey('appointment_or_quote');
-                setServicePriceDisplay('starts_from');
-                setServiceMode('book_appointment');
-                setServiceBookingType('manual_confirm');
-                setServiceSchedulingType('recurring');
-                setServiceDurationValue('60');
-                setServiceDurationUnit('minutes');
-            } else if (moduleParam === 'reservations' && typeParam === 'service') {
-                setServiceTemplateKey('space_booking');
-                setServicePriceDisplay('hidden');
-                setServiceMode('book_appointment');
-                setServiceBookingType('manual_confirm');
-                setServiceSchedulingType('recurring');
-                setServiceDurationValue('90');
-                setServiceDurationUnit('minutes');
-            } else if (moduleParam === 'rentals' && typeParam === 'service') {
-                setServiceTemplateKey('rental');
-                setServicePriceDisplay('daily');
-                setServiceMode('book_appointment');
-                setServiceBookingType('manual_confirm');
-                setServiceSchedulingType('recurring');
-                setServiceDurationValue('1');
-                setServiceDurationUnit('days');
-            } else if (moduleParam === 'workshops' && typeParam === 'service') {
-                setServiceTemplateKey('learning');
-                setServicePriceDisplay('per_session');
-                setServiceMode('book_appointment');
-                setServiceBookingType('manual_confirm');
-                setServiceSchedulingType('fixed_sessions');
-                setServiceDurationValue('2');
-                setServiceDurationUnit('hours');
+            const moduleConfig = getUploadModuleConfig(moduleParam);
+            if (moduleConfig?.type === 'service' && typeParam === 'service') {
+                const defaults = moduleConfig.defaults || {};
+                setServiceCategory(moduleConfig.category || '');
+                setServiceSubcategory(moduleConfig.subcategory || '');
+                setServiceTemplateKey(moduleConfig.serviceTemplateKey || '');
+                if (defaults.servicePriceDisplay) setServicePriceDisplay(defaults.servicePriceDisplay);
+                if (defaults.serviceMode) {
+                    setServiceMode(defaults.serviceMode);
+                    setServiceIsShowcase(defaults.serviceMode === 'showcase_only');
+                }
+                if (defaults.serviceBookingType) setServiceBookingType(defaults.serviceBookingType);
+                if (defaults.serviceSchedulingType) setServiceSchedulingType(defaults.serviceSchedulingType);
+                if (defaults.serviceDurationValue) setServiceDurationValue(defaults.serviceDurationValue);
+                if (defaults.serviceDurationUnit) setServiceDurationUnit(defaults.serviceDurationUnit);
             }
         }
         fetchCatalogRoot();
@@ -848,6 +848,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setManualTitle(p.title);
             setPrice(p.price);
             setComparePrice(p.compare_at_price || '');
+            setShowComparePrice(Boolean(p.compare_at_price));
             setRefundPolicy(p.refund_policy?.policy || 'standard');
             setRefundWindowDays(p.refund_policy?.window_days ?? '3');
             setRefundPolicyNote(p.refund_policy?.note || '');
@@ -1481,6 +1482,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             };
         });
     };
+    const toggleAutoPostTarget = (key) => {
+        const channel = AUTO_POST_CHANNELS.find((item) => item.key === key);
+        if (!channel?.connected) return;
+
+        setAutoPostTargets((prev) => ({
+            ...prev,
+            [key]: !prev[key],
+        }));
+    };
     const toggleServiceRelatedProduct = (id) => {
         const productIdNumber = Number(id);
         if (!productIdNumber) return;
@@ -1563,6 +1573,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (!Number.isFinite(value) || value <= 0) return '';
         if (serviceDurationUnit === 'hours') return Math.round(value * 60);
         if (serviceDurationUnit === 'days') return Math.round(value * 1440);
+        if (serviceDurationUnit === 'weeks') return Math.round(value * 10080);
+        if (serviceDurationUnit === 'months') return Math.round(value * 43200);
+        if (serviceDurationUnit === 'years') return Math.round(value * 525600);
         return Math.round(value);
     })();
     const setServiceDurationFromMinutes = (minutes) => {
@@ -1573,7 +1586,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             return;
         }
 
-        if (numeric % 1440 === 0) {
+        if (numeric % 525600 === 0) {
+            setServiceDurationValue(String(numeric / 525600));
+            setServiceDurationUnit('years');
+        } else if (numeric % 43200 === 0) {
+            setServiceDurationValue(String(numeric / 43200));
+            setServiceDurationUnit('months');
+        } else if (numeric % 10080 === 0) {
+            setServiceDurationValue(String(numeric / 10080));
+            setServiceDurationUnit('weeks');
+        } else if (numeric % 1440 === 0) {
             setServiceDurationValue(String(numeric / 1440));
             setServiceDurationUnit('days');
         } else if (numeric % 60 === 0) {
@@ -1949,6 +1971,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const isUploadingMedia = images.some(img => img.isUploading);
     const activeUploadModule = getUploadModuleConfig(uploadModule);
     const isMenuUpload = activeUploadModule?.key === 'menu' && step === 'physical';
+    const isModuleServiceUpload = step === 'service' && activeUploadModule?.type === 'service';
     const isFocusedPhysicalModule = step === 'physical' && Boolean(activeUploadModule?.focusedPhysical);
     const showGenericPhysicalCatalog = step === 'physical' && !isFocusedPhysicalModule;
     const showGenericPhysicalFulfillment = step === 'physical' && !isFocusedPhysicalModule;
@@ -2609,6 +2632,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     reservation_duration_minutes: serviceDurationMinutes ? Number(serviceDurationMinutes) : Number(serviceDetails.reservation_duration_minutes || 90),
                     party_size_limit: serviceDetails.party_size_limit !== '' && serviceDetails.party_size_limit !== undefined ? Number(serviceDetails.party_size_limit || 0) : null,
                     reservation_policy: serviceDetails.reservation_policy || 'manual_confirm',
+                    deposit_amount: serviceDetails.deposit_amount !== '' && serviceDetails.deposit_amount !== undefined
+                        ? Number(serviceDetails.deposit_amount || 0)
+                        : (serviceDetails.deposit_note !== '' && serviceDetails.deposit_note !== undefined && !Number.isNaN(Number(serviceDetails.deposit_note))
+                            ? Number(serviceDetails.deposit_note || 0)
+                            : null),
                     deposit_note: serviceDetails.deposit_note || '',
                     reservation_notes: serviceDetails.reservation_notes || '',
                 } : uploadModule === 'rentals' && step === 'service' ? {
@@ -2736,6 +2764,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 service_booking_mode: step === 'service' ? serviceBookingMode : 'takeer',
                 service_contact_channel: step === 'service' ? serviceContactType : null,
                 service_contact_value: step === 'service' ? serviceContactValue : null,
+                publish_targets: autoPostTargets,
                 fulfillment_mode: step === 'physical' ? fulfillmentMode : 'own_stock',
                 source_details: step === 'physical' ? sourceDetails : null,
                 availability_lead_time_days: step === 'digital' && digitalDeliveryMode === 'custom_delivery' && availabilityLeadTimeDays !== ''
@@ -2930,6 +2959,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         setServiceBookingProvider('manual');
         setPrice('');
         setComparePrice('');
+        setShowComparePrice(false);
+        setAutoPostTargets({
+            takeer: true,
+            instagram: false,
+            facebook: false,
+            x: false,
+        });
         setQuantity('');
         setFulfillmentMode('own_stock');
         setSourceDetails({ supplier_name: '', supplier_phone: '', supplier_location: '', confirmation_hours: '', source_note: '' });
@@ -4685,7 +4721,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 />
                             </div>
 
-                            {step === 'service' && uploadModule === 'rooms' && (
+                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'rooms' && (
                                 <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-4 space-y-4">
                                     <div>
                                         <p className="text-xs font-black uppercase tracking-wider text-sky-900">Room / stay details</p>
@@ -4789,7 +4825,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 </div>
                             )}
 
-                            {step === 'service' && uploadModule === 'appointments' && (
+                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'appointments' && (
                                 <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
                                     <div>
                                         <p className="text-xs font-black uppercase tracking-wider text-indigo-900">Appointment details</p>
@@ -4839,7 +4875,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 </div>
                             )}
 
-                            {step === 'service' && uploadModule === 'reservations' && (
+                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'reservations' && (
                                 <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4 space-y-4">
                                     <div>
                                         <p className="text-xs font-black uppercase tracking-wider text-rose-900">Reservation details</p>
@@ -4885,7 +4921,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 </div>
                             )}
 
-                            {step === 'service' && uploadModule === 'rentals' && (
+                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'rentals' && (
                                 <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 space-y-4">
                                     <div>
                                         <p className="text-xs font-black uppercase tracking-wider text-amber-900">Rental / hire details</p>
@@ -4959,7 +4995,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 </div>
                             )}
 
-                            {step === 'service' && uploadModule === 'workshops' && (
+                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'workshops' && (
                                 <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
                                     <div>
                                         <p className="text-xs font-black uppercase tracking-wider text-indigo-900">Workshop / session details</p>
@@ -5023,17 +5059,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     </div>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <Textarea className="min-h-24 rounded-xl bg-white" placeholder="Learning outcomes, one per line" value={(serviceDetails.learning_outcomes || serviceDetails.outcomes || []).join('\n')} onChange={(e) => {
-                                            const list = e.target.value.split('\n');
-                                            updateServiceDetail('learning_outcomes', list);
-                                            updateServiceDetail('outcomes', list);
-                                        }} />
-                                        <Textarea className="min-h-24 rounded-xl bg-white" placeholder="Requirements, one per line" value={(serviceDetails.workshop_requirements || serviceDetails.requirements || []).join('\n')} onChange={(e) => {
-                                            const list = e.target.value.split('\n');
-                                            updateServiceDetail('workshop_requirements', list);
-                                            updateServiceDetail('requirements', list);
-                                        }} />
-                                        <Textarea className="min-h-24 rounded-xl bg-white" placeholder="Materials included, one per line" value={(serviceDetails.materials_included || []).join('\n')} onChange={(e) => updateServiceDetail('materials_included', e.target.value.split('\n'))} />
+                                        <RepeatableTextList label="Learning outcomes" value={serviceDetails.learning_outcomes || serviceDetails.outcomes} onChange={(value) => {
+                                            updateServiceDetail('learning_outcomes', value);
+                                            updateServiceDetail('outcomes', value);
+                                        }} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
+                                        <RepeatableTextList label="Requirements" value={serviceDetails.workshop_requirements || serviceDetails.requirements} onChange={(value) => {
+                                            updateServiceDetail('workshop_requirements', value);
+                                            updateServiceDetail('requirements', value);
+                                        }} addLabel="Add requirement" placeholder="Describe one requirement..." />
+                                        <RepeatableTextList label="Materials included" value={serviceDetails.materials_included} onChange={(value) => updateServiceDetail('materials_included', value)} addLabel="Add material" placeholder="Describe one material or resource..." />
                                     </div>
                                 </div>
                             )}
@@ -5898,6 +5932,27 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             {/* ─── SERVICE: unified listing mode ─── */}
                             {step === 'service' && (
                                 <div className="space-y-4">
+                                    {isModuleServiceUpload ? (
+                                        <>
+                                            <ServiceModuleCreateFields
+                                                moduleKey={uploadModule}
+                                                roomDetails={roomDetails}
+                                                setRoomDetails={setRoomDetails}
+                                                serviceDetails={serviceDetails}
+                                                updateServiceDetail={updateServiceDetail}
+                                                serviceDurationValue={serviceDurationValue}
+                                                setServiceDurationValue={setServiceDurationValue}
+                                                serviceDurationUnit={serviceDurationUnit}
+                                                setServiceDurationUnit={setServiceDurationUnit}
+                                                roomTypeOptions={roomTypeOptions}
+                                                bedTypeOptions={bedTypeOptions}
+                                                roomAmenityOptions={roomAmenityOptions}
+                                                roomAvailabilityOptions={roomAvailabilityOptions}
+                                                roomBookingPolicyOptions={roomBookingPolicyOptions}
+                                            />
+                                        </>
+                                    ) : (
+                                        <>
                                     <div className="rounded-2xl border bg-white p-3 sm:p-4 space-y-3">
                                         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
                                             <div>
@@ -6450,15 +6505,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                        <Textarea placeholder="Included items, one per line" value={(serviceDetails.included || []).join('\n')} onChange={(e) => updateServiceDetail('included', e.target.value.split('\n'))} className="min-h-20" />
-                                                        <Textarea placeholder="Excluded items, one per line" value={(serviceDetails.excluded || []).join('\n')} onChange={(e) => updateServiceDetail('excluded', e.target.value.split('\n'))} className="min-h-20" />
+                                                        <RepeatableTextList label="Included items" value={serviceDetails.included} onChange={(value) => updateServiceDetail('included', value)} addLabel="Add included item" placeholder="Describe one included item..." />
+                                                        <RepeatableTextList label="Excluded items" value={serviceDetails.excluded} onChange={(value) => updateServiceDetail('excluded', value)} addLabel="Add excluded item" placeholder="Describe one excluded item..." />
                                                         <Textarea placeholder="Traveler requirements, weather notes, documents, fitness level..." value={serviceDetails.requirements || ''} onChange={(e) => updateServiceDetail('requirements', e.target.value)} className="min-h-20" />
                                                     </div>
                                                 )}
 
                                                 {selectedServiceTemplateKey === 'stay' && (
                                                     <div className="space-y-3">
-                                                        <Textarea placeholder="Amenities, one per line" value={(serviceDetails.amenities || []).join('\n')} onChange={(e) => updateServiceDetail('amenities', e.target.value.split('\n'))} className="min-h-24" />
+                                                        <RepeatableTextList label="Amenities" value={serviceDetails.amenities} onChange={(value) => updateServiceDetail('amenities', value)} addLabel="Add amenity" placeholder="Describe one amenity..." />
                                                         <Textarea placeholder="House rules, check-in policy, guest rules..." value={serviceDetails.house_rules || ''} onChange={(e) => updateServiceDetail('house_rules', e.target.value)} className="min-h-24" />
                                                         <Textarea placeholder="Cancellation policy" value={serviceDetails.cancellation_policy || ''} onChange={(e) => updateServiceDetail('cancellation_policy', e.target.value)} className="min-h-20" />
                                                     </div>
@@ -6466,8 +6521,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                                 {selectedServiceTemplateKey === 'learning' && (
                                                     <div className="space-y-3">
-                                                        <Textarea placeholder="Learning outcomes, one per line" value={(serviceDetails.outcomes || []).join('\n')} onChange={(e) => updateServiceDetail('outcomes', e.target.value.split('\n'))} className="min-h-24" />
-                                                        <Textarea placeholder="Student requirements, one per line" value={(serviceDetails.requirements || []).join('\n')} onChange={(e) => updateServiceDetail('requirements', e.target.value.split('\n'))} className="min-h-24" />
+                                                        <RepeatableTextList label="Learning outcomes" value={serviceDetails.outcomes} onChange={(value) => updateServiceDetail('outcomes', value)} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
+                                                        <RepeatableTextList label="Student requirements" value={serviceDetails.requirements} onChange={(value) => updateServiceDetail('requirements', value)} addLabel="Add requirement" placeholder="Describe one requirement..." />
                                                         <Input placeholder="Certificate, e.g. Certificate of completion included" value={serviceDetails.certificate || ''} onChange={(e) => updateServiceDetail('certificate', e.target.value)} className="h-11" />
                                                     </div>
                                                 )}
@@ -6830,11 +6885,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             </button>
                                                         </div>
                                                         {field.type === 'select' && (
-                                                            <Textarea
-                                                                className="min-h-20 text-sm"
-                                                                placeholder="One option per line"
-                                                                value={(field.options || []).join('\n')}
-                                                                onChange={(e) => updateServiceIntakeField(index, { options: e.target.value.split('\n') })}
+                                                            <RepeatableTextList
+                                                                label="Options"
+                                                                value={field.options}
+                                                                onChange={(value) => updateServiceIntakeField(index, { options: value })}
+                                                                addLabel="Add option"
+                                                                placeholder="Write one selectable option..."
                                                             />
                                                         )}
                                                         <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
@@ -6973,6 +7029,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             </div>
                                         )}
                                     </div>
+                                        </>
+                                    )}
                                 </div>
                             )}
 
@@ -6982,7 +7040,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                {step === 'service' ? 'Bei kuu ya huduma (TZS)' : 'Bei ya Sasa (TZS)'}
+                                                {step === 'service' ? 'Bei ya mteja atalipa (TZS)' : 'Bei ya sasa (TZS)'}
                                             </label>
                                             <Input
                                                 type="number"
@@ -6993,25 +7051,49 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             />
                                             {step === 'service' && (
                                                 <p className="text-[10px] text-muted-foreground">
-                                                    Hii ndiyo bei kuu inayoonekana; extra charges na deposit zitaongezwa sehemu ya huduma.
+                                                    Bei hii inafuata namna huduma inavyouzwa: kwa booking, rental unit, session, au package.
                                                 </p>
                                             )}
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                {step === 'service' ? 'Bei ya awali / reference (TZS)' : 'Bei ya Awali (TZS)'}
-                                            </label>
-                                            <Input
-                                                type="number"
-                                                placeholder="Mf. 15000"
-                                                value={comparePrice}
-                                                onChange={e => setComparePrice(e.target.value)}
-                                                className="h-14 text-xl font-black border-dashed"
-                                            />
-                                            {step === 'service' && (
-                                                <p className="text-[10px] text-muted-foreground">
-                                                    Optional. Tumia kama unataka kuonyesha punguzo au bei ya kawaida.
-                                                </p>
+                                            <div className="flex items-center justify-between gap-3">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                                    {step === 'service' ? 'Bei ya kulinganisha' : 'Bei ya awali'}
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (showComparePrice) {
+                                                            setComparePrice('');
+                                                        }
+                                                        setShowComparePrice((value) => !value);
+                                                    }}
+                                                    className="text-[11px] font-black text-brand-700 hover:text-brand-800"
+                                                >
+                                                    {showComparePrice ? 'Ondoa' : 'Ongeza'}
+                                                </button>
+                                            </div>
+                                            {showComparePrice ? (
+                                                <>
+                                                    <Input
+                                                        type="number"
+                                                        placeholder="Mf. 15000"
+                                                        value={comparePrice}
+                                                        onChange={e => setComparePrice(e.target.value)}
+                                                        className="h-14 text-xl font-black border-dashed"
+                                                    />
+                                                    <p className="text-[10px] text-muted-foreground">
+                                                        Optional. Tumia tu kama unataka kuonyesha punguzo, bei ya kawaida, au reference kwa mteja.
+                                                    </p>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowComparePrice(true)}
+                                                    className="h-14 w-full rounded-xl border border-dashed border-slate-200 bg-white text-sm font-bold text-slate-500 hover:border-brand-200 hover:text-brand-700"
+                                                >
+                                                    Hakuna bei ya kulinganisha
+                                                </button>
                                             )}
                                         </div>
                                     </>
@@ -7020,6 +7102,45 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         Service hii ni ya <span className="font-black uppercase">{serviceMode === 'request_quote' ? 'Request/Quote' : serviceMode === 'showcase_only' ? 'Showcase' : 'Contact/Booking'}</span>. Hakuna bei ya checkout inayohitajika.
                                     </div>
                                 )}
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                                <div>
+                                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">Auto post</h3>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        Choose where this item is posted after publishing. These choices only affect this item.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                                    {AUTO_POST_CHANNELS.map((channel) => {
+                                        const checked = Boolean(autoPostTargets[channel.key]) && channel.connected;
+                                        return (
+                                            <button
+                                                key={channel.key}
+                                                type="button"
+                                                disabled={!channel.connected}
+                                                onClick={() => toggleAutoPostTarget(channel.key)}
+                                                className={`min-h-[76px] rounded-xl border px-3 py-3 text-left transition ${
+                                                    channel.connected
+                                                        ? checked
+                                                            ? 'border-brand-500 bg-brand-50 text-brand-900'
+                                                            : 'border-slate-200 bg-white text-slate-700 hover:border-brand-200'
+                                                        : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                <span className="flex items-center justify-between gap-2">
+                                                    <span className="text-sm font-black">{channel.label}</span>
+                                                    <span className={`h-5 w-9 rounded-full p-0.5 transition ${checked ? 'bg-brand-600' : 'bg-slate-200'}`}>
+                                                        <span className={`block h-4 w-4 rounded-full bg-white shadow-sm transition ${checked ? 'translate-x-4' : ''}`} />
+                                                    </span>
+                                                </span>
+                                                <span className="mt-2 block text-[10px] font-semibold leading-snug opacity-80">
+                                                    {channel.connected ? channel.hint : 'Not connected yet.'}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
 
                             <Button

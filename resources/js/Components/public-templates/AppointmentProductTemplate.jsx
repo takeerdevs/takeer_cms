@@ -48,7 +48,7 @@ export default function AppointmentProductTemplate({ product }) {
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,#38bdf8,#111827_58%)]" />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/10" />
-                    <div className="relative z-10 mx-auto flex min-h-[420px] max-w-6xl flex-col justify-between p-4 md:p-8">
+                    <div className="relative z-10 mx-auto flex min-h-[420px] max-w-5xl flex-col justify-between p-4 md:p-8">
                         <button type="button" onClick={() => window.history.back()} className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 backdrop-blur transition hover:bg-black/50" aria-label="Go back">
                             <ArrowLeft className="h-5 w-5" />
                         </button>
@@ -70,7 +70,7 @@ export default function AppointmentProductTemplate({ product }) {
                     </div>
                 </section>
 
-                <main className="mx-auto grid max-w-6xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
+                <main className="mx-auto grid max-w-5xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
                     <div className="space-y-5">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
                             <h2 className="text-lg font-black">About this appointment</h2>

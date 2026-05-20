@@ -170,6 +170,19 @@ class User extends Authenticatable
             ];
         }
 
+        if ($order->purchasable_type === 'offering_group') {
+            $group = OfferingGroup::find($order->purchasable_id);
+            $selection = $order->offering_group_selection ?: [];
+            $hasPhysicalItems = (bool) ($selection['has_physical_items'] ?? false);
+
+            return [
+                'title' => $selection['group']['title'] ?? $group?->title ?? 'Offering group',
+                'kind' => $hasPhysicalItems ? 'physical_bundle' : 'offering_group',
+                'icon' => 'layers',
+                'image' => $group?->cover_image_url,
+            ];
+        }
+
         if ($order->purchasable_type === 'subscription_plan') {
             $plan = SubscriptionPlan::find($order->purchasable_id);
             return [

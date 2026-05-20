@@ -43,6 +43,7 @@ class MerchantShippingZoneController extends Controller
             ->get();
 
         return response()->json([
+            'profile' => $shippingProfile->only(['id', 'name', 'is_default', 'outside_area_policy']),
             'data' => $zones,
         ]);
     }

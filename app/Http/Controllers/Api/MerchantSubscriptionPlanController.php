@@ -78,6 +78,11 @@ class MerchantSubscriptionPlanController extends Controller
             'trial_days' => 'nullable|integer|min:0|max:60',
             'tier' => 'nullable|integer|min:1|max:100',
             'status' => 'nullable|string|in:draft,active,archived',
+            'publish_targets' => 'nullable|array',
+            'publish_targets.takeer' => 'nullable|boolean',
+            'publish_targets.instagram' => 'nullable|boolean',
+            'publish_targets.facebook' => 'nullable|boolean',
+            'publish_targets.x' => 'nullable|boolean',
             'items' => 'nullable|array',
             'items.*.item_type' => 'required_with:items|string|in:content_item,bundle,product',
             'items.*.item_id' => 'required_with:items|integer|min:1',
@@ -116,6 +121,9 @@ class MerchantSubscriptionPlanController extends Controller
         });
 
         $entitlementService->syncActiveSubscribersForPlan((int) $plan->id);
+        if (($validated['status'] ?? 'draft') === 'active' && $this->shouldPublishToTakeer($validated)) {
+            $this->syncFeedPostForActivePlan($plan->fresh(['items']));
+        }
 
         return response()->json([
             'message' => 'Subscription plan created.',
@@ -143,6 +151,11 @@ class MerchantSubscriptionPlanController extends Controller
             'trial_days' => 'nullable|integer|min:0|max:60',
             'tier' => 'nullable|integer|min:1|max:100',
             'status' => 'nullable|string|in:draft,active,archived',
+            'publish_targets' => 'nullable|array',
+            'publish_targets.takeer' => 'nullable|boolean',
+            'publish_targets.instagram' => 'nullable|boolean',
+            'publish_targets.facebook' => 'nullable|boolean',
+            'publish_targets.x' => 'nullable|boolean',
             'items' => 'nullable|array',
             'items.*.item_type' => 'required_with:items|string|in:content_item,bundle,product',
             'items.*.item_id' => 'required_with:items|integer|min:1',
@@ -158,7 +171,7 @@ class MerchantSubscriptionPlanController extends Controller
 
         DB::transaction(function () use ($validated, $subscriptionPlan, $merchant) {
             $subscriptionPlan->update([
-                ...collect($validated)->except(['items'])->toArray(),
+                ...collect($validated)->except(['items', 'publish_targets'])->toArray(),
                 'slug' => array_key_exists('name', $validated)
                     ? Str::slug($validated['name']) . '-' . Str::lower(Str::random(6))
                     : $subscriptionPlan->slug,
@@ -179,6 +192,12 @@ class MerchantSubscriptionPlanController extends Controller
         });
 
         $entitlementService->syncActiveSubscribersForPlan((int) $subscriptionPlan->id);
+        $freshPlan = $subscriptionPlan->fresh(['items']);
+        if ($freshPlan->status === 'active' && $this->shouldPublishToTakeer($validated)) {
+            $this->syncFeedPostForActivePlan($freshPlan);
+        } else {
+            $this->deleteFeedPostForPlan($subscriptionPlan);
+        }
 
         return response()->json([
             'message' => 'Subscription plan updated.',
@@ -192,6 +211,7 @@ class MerchantSubscriptionPlanController extends Controller
         $subscriptionPlan = $this->subscriptionPlanFromRequest($request);
         $this->ensureOwnership($merchant->id, $subscriptionPlan->merchant_id);
 
+        $this->deleteFeedPostForPlan($subscriptionPlan);
         $subscriptionPlan->delete();
 
         return response()->json(['message' => 'Subscription plan deleted.']);
@@ -375,6 +395,62 @@ class MerchantSubscriptionPlanController extends Controller
         if ($interval === 'monthly' && isset($data['monthly_day']) && ((int) $data['monthly_day'] < 1 || (int) $data['monthly_day'] > 28)) {
             abort(422, 'monthly_day must be between 1 and 28.');
         }
+    }
+
+    private function shouldPublishToTakeer(array $validated): bool
+    {
+        $targets = (array) ($validated['publish_targets'] ?? []);
+
+        return ! array_key_exists('takeer', $targets)
+            || filter_var($targets['takeer'], FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function syncFeedPostForActivePlan(SubscriptionPlan $subscriptionPlan): void
+    {
+        if ($subscriptionPlan->status !== 'active') {
+            return;
+        }
+
+        $subscriptionPlan->loadMissing('items');
+
+        $existingFeedPost = Post::query()
+            ->where('merchant_id', $subscriptionPlan->merchant_id)
+            ->whereHas('promotableSubscriptions', fn ($query) => $query->where('subscription_plans.id', $subscriptionPlan->id))
+            ->where('source', 'subscription_plan_publish')
+            ->first();
+
+        $captionLines = array_filter([
+            $subscriptionPlan->name,
+            trim((string) ($subscriptionPlan->description ?? '')),
+        ]);
+
+        $post = $existingFeedPost ?: new Post([
+            'merchant_id' => $subscriptionPlan->merchant_id,
+            'source' => 'subscription_plan_publish',
+        ]);
+
+        $post->fill([
+            'title' => $subscriptionPlan->name,
+            'source' => 'subscription_plan_publish',
+            'excerpt' => trim((string) ($subscriptionPlan->description ?? '')),
+            'caption' => implode("\n\n", $captionLines),
+            'is_restricted' => true,
+            'restricted_price' => null,
+            'bg_style' => $existingFeedPost?->bg_style,
+        ]);
+        $post->save();
+        $post->promotableSubscriptions()->syncWithoutDetaching([$subscriptionPlan->id]);
+    }
+
+    private function deleteFeedPostForPlan(SubscriptionPlan $subscriptionPlan): void
+    {
+        Post::query()
+            ->where('merchant_id', $subscriptionPlan->merchant_id)
+            ->where('source', 'subscription_plan_publish')
+            ->whereHas('promotableSubscriptions', fn ($query) => $query->where('subscription_plans.id', $subscriptionPlan->id))
+            ->get()
+            ->each
+            ->delete();
     }
 
     private function communityPostQuery(SubscriptionPlan $subscriptionPlan)

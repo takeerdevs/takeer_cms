@@ -20,6 +20,7 @@ class Order extends Model
         'variant_id',
         'variant_snapshot',
         'bundle_item_selection',
+        'offering_group_selection',
         'purchasable_type',
         'purchasable_id',
         'order_kind',
@@ -105,6 +106,7 @@ class Order extends Model
             'variant_id' => 'integer',
             'variant_snapshot' => 'array',
             'bundle_item_selection' => 'array',
+            'offering_group_selection' => 'array',
             'unit_price' => 'decimal:2',
             'shipping_fee' => 'decimal:2',
             'discount_amount' => 'decimal:2',
@@ -310,6 +312,7 @@ class Order extends Model
         return match ($this->purchasable_type) {
             'product' => $this->product,
             'bundle' => Bundle::find($this->purchasable_id),
+            'offering_group' => OfferingGroup::find($this->purchasable_id),
             'content_item' => ContentItem::find($this->purchasable_id),
             'subscription_plan' => SubscriptionPlan::find($this->purchasable_id),
             'post' => Post::find($this->purchasable_id),
@@ -681,11 +684,15 @@ class Order extends Model
 
     public function hasPhysicalBundleItems(): bool
     {
-        if ($this->purchasable_type !== 'bundle' || empty($this->bundle_item_selection)) {
+        if (!in_array($this->purchasable_type, ['bundle', 'offering_group'], true)) {
             return false;
         }
 
-        foreach ($this->bundle_item_selection as $lineItem) {
+        $lines = $this->purchasable_type === 'offering_group'
+            ? $this->flattenOfferingGroupLines($this->offering_group_selection['lines'] ?? [])
+            : ($this->bundle_item_selection ?? []);
+
+        foreach ($lines as $lineItem) {
             if (($lineItem['item_type'] ?? null) === 'product' && ($lineItem['product_type'] ?? null) === 'physical') {
                 return true;
             }
@@ -723,13 +730,17 @@ class Order extends Model
             }
         }
 
-        // 2. Bundles
-        if ($this->purchasable_type === 'bundle' && !empty($this->bundle_item_selection)) {
-            foreach ($this->bundle_item_selection as $lineItem) {
+        // 2. Bundles and offering groups
+        if (in_array($this->purchasable_type, ['bundle', 'offering_group'], true)) {
+            $lines = $this->purchasable_type === 'offering_group'
+                ? $this->flattenOfferingGroupLines($this->offering_group_selection['lines'] ?? [])
+                : ($this->bundle_item_selection ?? []);
+
+            foreach ($lines as $lineItem) {
                 if (($lineItem['item_type'] ?? null) !== 'product') continue;
                 if (($lineItem['product_type'] ?? null) !== 'physical') continue;
-                
-                $qty = (int) ($lineItem['quantity'] ?? 1);
+
+                $qty = max(1, (int) ceil((float) ($lineItem['quantity'] ?? 1)));
                 $productId = (int) ($lineItem['item_id'] ?? 0);
                 $variantId = (int) ($lineItem['selected_variant_id'] ?? 0);
 
@@ -741,5 +752,19 @@ class Order extends Model
         }
 
         $this->forceFill(['inventory_reserved_at' => null])->saveQuietly();
+    }
+
+    private function flattenOfferingGroupLines(array $lines): array
+    {
+        $flat = [];
+
+        foreach ($lines as $line) {
+            $flat[] = $line;
+            if (!empty($line['child_lines']) && is_array($line['child_lines'])) {
+                $flat = array_merge($flat, $this->flattenOfferingGroupLines($line['child_lines']));
+            }
+        }
+
+        return $flat;
     }
 }

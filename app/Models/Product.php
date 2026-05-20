@@ -349,6 +349,12 @@ class Product extends Model
         return $this->hasMany(StockWaitlist::class);
     }
 
+    public function offeringGroupItems(): HasMany
+    {
+        return $this->hasMany(OfferingGroupItem::class, 'item_id')
+            ->where('item_type', OfferingGroupItem::TYPE_PRODUCT);
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
     /** Returns publicly visible stock (inventory minus buffer). */

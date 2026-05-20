@@ -37,6 +37,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [addresses, setAddresses] = useState([]);
     const [selectedAddressId, setSelectedAddressId] = useState(null);
     const [shippingZones, setShippingZones] = useState([]);
+    const [shippingProfile, setShippingProfile] = useState(null);
     const [selectedShippingZoneId, setSelectedShippingZoneId] = useState('');
     const [physicalAddress, setPhysicalAddress] = useState('');
     const [selectedHotspot, setSelectedHotspot] = useState(null);
@@ -252,7 +253,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
     useEffect(() => {
         const isPhysicalCheckout = (itemType === 'product' && activeProduct?.type === 'physical')
-            || (itemType === 'bundle' && activeProduct?.has_physical_items);
+            || (['bundle', 'offering_group'].includes(itemType) && activeProduct?.has_physical_items);
         if (!isOpen || !activeProduct || !isPhysicalCheckout) return;
         const profileId = activeProduct?.shipping_profile_id;
         const merchantSlug = activeProduct?.merchant?.slug || activeProduct?.merchant?.username;
@@ -261,13 +262,14 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         const loadZones = async () => {
             setLoadingZones(true);
             try {
-                const url = profileId
-                    ? `/api/merchant/shipping-profiles/${profileId}/zones`
-                    : `/api/merchant/${merchantSlug}/shipping-zones`;
+                const url = merchantSlug
+                    ? `/api/merchant/${merchantSlug}/shipping-zones${profileId ? `?profile_id=${profileId}` : ''}`
+                    : `/api/merchant/shipping-profiles/${profileId}/zones`;
                 const res = await fetch(url, { headers: { Accept: 'application/json' } });
                 const json = await res.json();
                 if (res.ok && json.data) {
                     setShippingZones(json.data);
+                    setShippingProfile(json.profile || null);
                     // Reset selected zone when zones reload
                     setSelectedShippingZoneId('');
                 }
@@ -277,6 +279,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         };
         loadZones();
     }, [isOpen, activeProduct?.id, activeProduct?.shipping_profile_id, activeProduct?.has_physical_items, itemType]);
+
+    useEffect(() => {
+        if (!isOpen || isSelfPickupChoice || !shippingZones.length || !customerLat || !customerLng) return;
+        findBestShippingZone(customerLat, customerLng, customerRegion);
+    }, [isOpen, isSelfPickupChoice, shippingZones.length, customerLat, customerLng, customerRegion]);
 
     const itemTitle = activeProduct?.title || activeProduct?.name || 'Inapatikana kwa malipo';
     const requiresOwnedStock = activeProduct?.type === 'physical' && (activeProduct?.fulfillment_mode || 'own_stock') === 'own_stock';
@@ -431,7 +438,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const physicalBaseMultiplier = activeProduct?.type === 'physical' ? (requestedPhysicalQuantity / sellableQuantity) : 1;
     const basePrice = (rawBasePrice * serviceBaseMultiplier * physicalBaseMultiplier) + (!hasExplicitCheckoutPrice && activeProduct?.type === 'service' ? checkoutIncludedChargesTotal : 0);
     const isPhysicalProduct = (itemType === 'product' && activeProduct?.type === 'physical')
-        || (itemType === 'bundle' && activeProduct?.has_physical_items);
+        || (['bundle', 'offering_group'].includes(itemType) && activeProduct?.has_physical_items);
     const serviceMode = activeProduct?.service_mode || (
         activeProduct?.service_is_showcase || activeProduct?.service_pricing_model === 'showcase_only'
             ? 'showcase_only'
@@ -487,6 +494,23 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const isPickup = isSelfPickupChoice || activeShippingZone?.delivery_type === 'self_pickup';
     const shippingFee = (activeShippingZone && isPhysicalProduct && !isSelfPickupChoice) ? parseFloat(activeShippingZone.flat_rate_fee || 0) : 0;
     const price = basePrice + shippingFee;
+    const availableFulfillmentAreas = useMemo(() => (
+        shippingZones
+            .filter((zone) => zone?.is_active !== false && zone?.delivery_type !== 'self_pickup')
+            .map((zone) => zone.zone_name || zone.reference_name || zone.destination_region || zone.destination_city)
+            .filter(Boolean)
+            .slice(0, 5)
+    ), [shippingZones]);
+    const hasCustomerDeliveryLocation = Boolean(customerLat && customerLng);
+    const blocksOutsideAreas = (shippingProfile?.outside_area_policy || 'inquiry') === 'block';
+    const isOutsideFulfillmentArea = isPhysicalProduct && !isPickup && hasCustomerDeliveryLocation && !activeShippingZone;
+    const isOutsideAreaBlocked = isOutsideFulfillmentArea && blocksOutsideAreas;
+    const outsideAreaMessage = availableFulfillmentAreas.length
+        ? `Delivery is only available in: ${availableFulfillmentAreas.join(', ')}. Choose another address, pickup, or another seller.`
+        : 'Delivery is not available for the selected location. Choose another address, pickup, or another seller.';
+    const matchedShippingFeeLabel = Number(activeShippingZone?.flat_rate_fee || 0) > 0
+        ? `Fee TZS ${Number(activeShippingZone.flat_rate_fee || 0).toLocaleString()}`
+        : 'Free shipping';
 
     // Step management based on product type
     useEffect(() => {
@@ -617,6 +641,10 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             return toast.error("Tafadhali chagua eneo/mtaa wako kwenye ramani ili tuweze kufikisha mzigo wako kwa usahihi.");
         }
 
+        if (isOutsideAreaBlocked) {
+            return toast.error(outsideAreaMessage);
+        }
+
         if (activeProduct?.type === 'service' && !startsAsServiceInquiry) {
             if (needsPeopleInput && Number(servicePricingInputs.people || 0) < 1) {
                 return toast.error("Tafadhali weka idadi ya watu/wageni.");
@@ -678,9 +706,10 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                     service_option_id: selectedServiceOption?.id || undefined,
                 } : undefined,
                 selected_bundle_items: itemType === 'bundle' ? (activeProduct.selected_bundle_items || undefined) : undefined,
+                selected_offering_group_items: itemType === 'offering_group' ? (activeProduct.selected_offering_group_items || undefined) : undefined,
             };
 
-            const isInquiry = isPhysicalProduct || startsAsServiceInquiry;
+            const isInquiry = isPhysicalProduct || startsAsServiceInquiry || Boolean(activeProduct?.requires_inquiry);
 
             if (isPhysicalProduct && !isPickup) {
                 if (!physicalAddress || physicalAddress.trim().length < 5) {
@@ -721,6 +750,10 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             if (isInquiry) {
                 setTimeout(() => {
                     window.location.href = `/chat/${data.order.public_id}`;
+                }, 1000);
+            } else if (itemType === 'offering_group') {
+                setTimeout(() => {
+                    window.location.href = '/orders';
                 }, 1000);
             } else {
                 // For digital items, poll until access is granted then update the page intelligently
@@ -818,6 +851,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const itemLabel = {
         'product': 'Bei ya Bidhaa',
         'bundle': 'Malipo ya Bundle',
+        'offering_group': 'Malipo ya Offering',
         'subscription_plan': 'Malipo ya Kifurushi',
         'post': 'Malipo ya Maandishi/Picha',
         'content_item': 'Malipo ya Maandishi/Picha',
@@ -982,6 +1016,28 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                 selectedId={selectedAddressId}
                                                 onSelect={applyAddress}
                                             />
+                                            {hasCustomerDeliveryLocation && (
+                                                <div className={`rounded-2xl border px-3 py-3 text-xs font-bold ${
+                                                    activeShippingZone
+                                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                                                        : isOutsideAreaBlocked
+                                                            ? 'border-red-200 bg-red-50 text-red-900'
+                                                            : 'border-amber-200 bg-amber-50 text-amber-900'
+                                                }`}>
+                                                    {activeShippingZone ? (
+                                                        <span>
+                                                            Delivery area matched: {activeShippingZone.zone_name}. {matchedShippingFeeLabel}.
+                                                        </span>
+                                                    ) : isOutsideAreaBlocked ? (
+                                                        <span>{outsideAreaMessage}</span>
+                                                    ) : (
+                                                        <span>
+                                                            This address is outside saved delivery areas. The merchant can still review it and confirm delivery in chat.
+                                                            {availableFulfillmentAreas.length > 0 ? ` Available areas: ${availableFulfillmentAreas.join(', ')}.` : ''}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="p-4 rounded-2xl bg-brand-100/40 border border-brand-100 shadow-sm mt-2">

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
     User, UserCircle, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
     Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, Banknote, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
-    Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone,
+    Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone, Layers,
     Search, Loader2, KeyRound, BedDouble
 } from 'lucide-react';
 import axios from 'axios';
@@ -33,7 +33,7 @@ export default function Profile({
     recentOrders = [],
     thisMonthEarnings = 0,
     salesBreakdown = { digital: 0, physical: 0, services: 0 },
-    commerceHubSummary = { physical: 0, digital: 0, services: 0, posts: 0, bundles: 0, subscriptions: 0 },
+    commerceHubSummary = { physical: 0, digital: 0, services: 0, posts: 0, bundles: 0, offerings: 0, subscriptions: 0 },
     creatorMonetization = null,
     activeMerchantAccess = null,
     countries = [],
@@ -63,6 +63,7 @@ export default function Profile({
 
     const isVerified = activeMerchant?.is_verified ?? false;
     const merchantSlug = activeMerchant?.username ?? '';
+    const isBusinessMerchant = Boolean(activeMerchant && activeMerchant.type !== 'personal');
     const activePermissions = activeMerchantAccess?.permissions ?? activeMerchant?.permissions ?? [];
     const can = (permission) => activePermissions.includes('*') || activePermissions.includes(permission);
     const activeModules = activeMerchant?.active_modules || [];
@@ -76,22 +77,23 @@ export default function Profile({
         return (item.modules || []).some(hasModule) || (item.modes || []).some(hasMode);
     };
     const commerceHubItems = [
-        { key: 'physical', title: hasModule('menu') || hasMode('food_menu') ? 'Menu' : 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: hasModule('menu') || hasMode('food_menu') ? ShoppingBag : Package, href: hasModule('menu') || hasMode('food_menu') ? `/merchant/${merchantSlug}/menu` : `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products', 'menu'], modes: ['physical_products', 'food_menu'] },
+        { key: 'products', title: 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products'], modes: ['physical_products'] },
+        { key: 'menu', title: 'Menu', count: commerceHubSummary.physical ?? 0, icon: ShoppingBag, href: `/merchant/${merchantSlug}/menu`, permission: 'products.view', modules: ['menu'], modes: ['food_menu'] },
         { key: 'digital', title: 'Digital Downloads', count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
-        { key: 'services', title: hasModule('rooms') ? 'Rooms & Bookings' : hasModule('tour_departures') ? 'Tours & Bookings' : hasModule('rentals') ? 'Rentals & Hire' : hasModule('workshops') ? 'Workshops & Sessions' : hasModule('custom_orders') || hasModule('quotes') ? 'Custom Orders & Quotes' : hasModule('appointments') ? 'Appointments' : hasModule('reservations') ? 'Reservations' : 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: hasModule('rooms') ? BedDouble : hasModule('tour_departures') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('workshops') ? CalendarClock : Briefcase, href: hasModule('rooms') ? `/merchant/${merchantSlug}/rooms` : hasModule('tour_departures') ? `/merchant/${merchantSlug}/tours` : hasModule('rentals') ? `/merchant/${merchantSlug}/rentals` : hasModule('workshops') ? `/merchant/${merchantSlug}/workshops` : hasModule('custom_orders') || hasModule('quotes') ? `/merchant/${merchantSlug}/custom-orders` : hasModule('appointments') ? `/merchant/${merchantSlug}/appointments` : hasModule('reservations') ? `/merchant/${merchantSlug}/reservations` : `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services', 'bookings', 'appointments', 'reservations', 'rentals', 'workshops', 'rooms', 'tour_departures', 'custom_orders', 'quotes'], modes: ['services_bookings', 'custom_orders_quotes'] },
-        { key: 'availability', title: 'Availability', count: 0, icon: Settings, href: `/merchant/${merchantSlug}/availability`, permission: 'services.schedule', modules: ['availability', 'bookings', 'appointments', 'reservations', 'rentals', 'workshops', 'rooms', 'tour_departures'], modes: ['services_bookings'] },
-        { key: 'booking-calendar', title: 'Booking Calendar', count: commerceHubSummary.services ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/bookings`, permission: 'services.schedule', modules: ['bookings', 'appointments', 'reservations', 'rentals', 'workshops', 'rooms', 'tour_departures'], modes: ['services_bookings'] },
+        { key: 'services', title: 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services'], modes: ['services_bookings'] },
+        { key: 'rooms', title: 'Rooms & Bookings', count: commerceHubSummary.services ?? 0, icon: BedDouble, href: `/merchant/${merchantSlug}/rooms`, permission: 'services.view', modules: ['rooms'], modes: [] },
+        { key: 'tours', title: 'Tour Departures', count: commerceHubSummary.services ?? 0, icon: Landmark, href: `/merchant/${merchantSlug}/tours`, permission: 'services.view', modules: ['tour_departures'], modes: [] },
+        { key: 'custom-orders', title: 'Custom Orders', count: commerceHubSummary.services ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permission: 'services.view', modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
+        { key: 'appointments', title: 'Appointments', count: commerceHubSummary.services ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/appointments`, permission: 'services.view', modules: ['appointments'], modes: [] },
+        { key: 'reservations', title: 'Reservations', count: commerceHubSummary.services ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/reservations`, permission: 'services.view', modules: ['reservations'], modes: ['food_menu'] },
+        { key: 'rentals', title: 'Rentals & Hire', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/rentals`, permission: 'services.view', modules: ['rentals'], modes: [] },
+        { key: 'workshops', title: 'Live Sessions', count: commerceHubSummary.services ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/workshops`, permission: 'services.view', modules: ['workshops'], modes: [] },
         { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view', modules: ['marketing'], modes: [] },
-        { key: 'bundles', title: hasModule('courses') || hasModule('workshops') ? 'Courses & Workshops' : 'Courses & Bundles', count: commerceHubSummary.bundles ?? 0, icon: hasModule('courses') || hasModule('workshops') ? BookOpenText : Boxes, href: hasModule('courses') || hasModule('workshops') ? `/merchant/${merchantSlug}/courses` : `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: ['courses', 'workshops'], modes: ['courses_learning'] },
-        { key: 'enrollments', title: 'Enrollments', count: commerceHubSummary.bundles ?? 0, icon: FileCheck, href: `/merchant/${merchantSlug}/enrollments`, permission: 'bundles.manage_course', modules: ['enrollments', 'courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'offerings', title: 'Offering Groups', count: commerceHubSummary.offerings ?? 0, icon: Layers, href: `/merchant/${merchantSlug}/offering-groups`, permission: 'services.view', modules: ['services', 'menu', 'courses', 'tour_departures'], modes: ['services_bookings', 'food_menu', 'courses_learning'] },
+        { key: 'bundles', title: 'Courses & Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: [], modes: [] },
+        { key: 'courses', title: 'Courses / Curriculum', count: commerceHubSummary.bundles ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permission: 'bundles.view', modules: ['courses', 'workshops'], modes: ['courses_learning'] },
         { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permission: 'subscriptions.view', modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
-        { key: 'customers', title: 'Customers / CRM', count: 0, icon: UserCircle, href: `/merchant/${merchantSlug}/customers`, permission: 'orders.view', modules: ['customers', 'orders', 'marketing', 'retail_ops'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
-        { key: 'communications', title: 'Communications', count: 0, icon: MessageSquare, href: `/merchant/${merchantSlug}/communications`, permission: 'orders.view', modules: ['communications', 'customers', 'marketing', 'orders', 'retail_ops'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
-        { key: 'business-modules', title: 'Business Modules', count: 0, icon: Settings, href: `/merchant/${merchantSlug}/modules`, permission: 'settings.view', modules: ['products', 'services', 'customers', 'communications', 'reports', 'bookkeeping', 'marketing'], modes: ['physical_products', 'services_bookings', 'digital_products', 'food_menu', 'courses_learning', 'custom_orders_quotes', 'subscriptions_memberships'] },
-        { key: 'marketing', title: 'Marketing', count: 0, icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permission: 'marketing.view', modules: ['marketing'], modes: [] },
-        { key: 'team', title: 'Team', count: 0, icon: User2, href: `/merchant/${merchantSlug}/team`, permission: 'team.view', modules: ['team', 'retail_ops'], modes: [] },
-        { key: 'reports', title: 'Business Overview', count: 0, icon: BarChart3, href: `/merchant/${merchantSlug}/overview`, permission: 'dashboard.view', modules: ['reports', 'bookkeeping', 'orders'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
-    ].filter((item) => can(item.permission) && shouldShowHubItem(item));
+    ].filter((item) => can(item.permission) && (!item.businessOnly || isBusinessMerchant) && shouldShowHubItem(item) && (item.requiresModules || []).every(hasModule));
     const hasMenuCommerce = hasModule('menu') || hasMode('food_menu');
     const canAddProduct = can('products.create') && (hasModule('products') || hasMenuCommerce || hasMode('physical_products') || !usesConfiguredSetup);
 
@@ -193,6 +195,8 @@ export default function Profile({
             subscription_plan: { label: 'Membership', icon: Crown, cls: 'bg-violet-500/10 text-violet-700' },
             digital_file: { label: 'Digital File', icon: DownloadCloud, cls: 'bg-indigo-500/10 text-indigo-700' },
             service_booking: { label: 'Service/Booking', icon: CalendarClock, cls: 'bg-emerald-500/10 text-emerald-700' },
+            offering_group: { label: 'Offering Group', icon: Layers, cls: 'bg-teal-500/10 text-teal-700' },
+            physical_bundle: { label: 'Physical Bundle', icon: Boxes, cls: 'bg-amber-500/10 text-amber-700' },
         };
         return map[kind] || { label: 'Post Content', icon: BookOpenText, cls: 'bg-muted text-muted-foreground' };
     };
@@ -205,6 +209,7 @@ export default function Profile({
             calendar_clock: CalendarClock,
             boxes: Boxes,
             crown: Crown,
+            layers: Layers,
         };
         return map[key] || Package;
     };

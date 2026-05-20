@@ -149,6 +149,7 @@ class UnifiedSearchController extends Controller
                 'promotableProducts',
                 'promotableBundles',
                 'promotableSubscriptions',
+                'promotableOfferingGroups',
             ])
             ->whereIn('id', $sortedIds)
             ->get()

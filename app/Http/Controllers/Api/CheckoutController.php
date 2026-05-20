@@ -12,14 +12,17 @@ use App\Models\Order;
 use App\Models\MerchantCoupon;
 use App\Models\MerchantReferralLink;
 use App\Models\MerchantGroupSaleCampaign;
+use App\Models\OfferingGroup;
 use App\Models\Post;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\ServiceRequest;
+use App\Models\ShippingProfile;
 use App\Models\ShippingZone;
 use App\Models\SubscriptionPlan;
 use App\Payments\GatewayRegistry;
 use App\Services\EntitlementService;
+use App\Services\OfferingGroupCheckoutResolver;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
 use Illuminate\Http\JsonResponse;
@@ -89,6 +92,7 @@ class CheckoutController extends Controller
         $product = $purchasable instanceof Product ? $purchasable : null;
         $selectedVariant = null;
         $selectedBundleItems = [];
+        $selectedOfferingGroup = null;
         $serviceRequest = null;
         $requestedQuantity = 1.0;
 
@@ -166,6 +170,7 @@ class CheckoutController extends Controller
         if ($serviceRequest) {
             $totalPaid = (float) $serviceRequest->quoted_amount;
         }
+        $isInquiry = false;
         if ($purchasable instanceof Bundle) {
             try {
                 $requestedBundleItems = $validated['selected_bundle_items'] ?? [];
@@ -181,17 +186,31 @@ class CheckoutController extends Controller
                 $totalPaid = (float) collect($selectedBundleItems)->sum('line_total');
             }
         }
+        if ($purchasable instanceof OfferingGroup) {
+            try {
+                $selectedOfferingGroup = app(OfferingGroupCheckoutResolver::class)->resolve(
+                    $purchasable,
+                    $validated['selected_offering_group_items'] ?? []
+                );
+            } catch (RuntimeException $e) {
+                return response()->json(['message' => $e->getMessage()], 400);
+            }
+
+            $totalPaid = (float) ($selectedOfferingGroup['subtotal'] ?? 0);
+            if (($selectedOfferingGroup['requires_inquiry'] ?? false) || ($selectedOfferingGroup['has_physical_items'] ?? false)) {
+                $isInquiry = true;
+            }
+        }
 
         $zone = null;
-        $isInquiry = false;
         $deliveryType = null;
 
-        if ($product?->isPhysical()) {
-            $shippingProfileId = $product->shipping_profile_id;
+        if ($product?->isPhysical() || ($selectedOfferingGroup['has_physical_items'] ?? false)) {
+            $shippingProfileId = $product?->shipping_profile_id;
 
             // If product has no profile, try to find the merchant's default profile
             if (!$shippingProfileId) {
-                $shippingProfileId = \App\Models\ShippingProfile::where('merchant_id', $product->merchant_id)
+                $shippingProfileId = ShippingProfile::where('merchant_id', $purchasable->merchant_id)
                     ->where('is_default', true)
                     ->value('id');
             }
@@ -209,7 +228,7 @@ class CheckoutController extends Controller
                 $zone = ShippingZone::where('shipping_profile_id', $shippingProfileId)
                     ->find($zoneId);
 
-                if ($zone && $zone->merchant_id === $product->merchant_id) {
+                if ($zone && $zone->merchant_id === $purchasable->merchant_id) {
                     $totalPaid += $zone->flat_rate_fee;
                     $deliveryType = $zone->delivery_type;
                 } else {
@@ -217,6 +236,17 @@ class CheckoutController extends Controller
                 }
             } else {
                 // If no zone selected, it's definitely an inquiry (already set)
+                $outsideAreaError = $this->outsideAreaErrorForProfile($shippingProfileId, (int) $purchasable->merchant_id);
+                if ($outsideAreaError) {
+                    return response()->json(['message' => $outsideAreaError], 422);
+                }
+            }
+
+            if (!$zone && $deliveryType !== 'self_pickup') {
+                $outsideAreaError = $this->outsideAreaErrorForProfile($shippingProfileId, (int) $purchasable->merchant_id);
+                if ($outsideAreaError) {
+                    return response()->json(['message' => $outsideAreaError], 422);
+                }
             }
         }
 
@@ -264,7 +294,7 @@ class CheckoutController extends Controller
         $transactionRef = 'TXN-' . Str::upper(Str::random(10));
 
         try {
-            $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $purchasable, $totalPaid, $validated, $requestedQuantity, $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $zone, $deliveryType, $isInquiry, $serviceRequest, $servicePricingInputs, $coupon, $discountAmount, $referralLink, $referralCommissionAmount, $groupSaleCampaign) {
+            $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $purchasable, $totalPaid, $validated, $requestedQuantity, $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $selectedOfferingGroup, $zone, $deliveryType, $isInquiry, $serviceRequest, $servicePricingInputs, $coupon, $discountAmount, $referralLink, $referralCommissionAmount, $groupSaleCampaign) {
                 $productInventoryReserved = false;
 
                 if ($product?->isPhysical()) {
@@ -348,6 +378,44 @@ class CheckoutController extends Controller
                         $productInventoryReserved = true;
                     }
                 }
+                if ($purchasable instanceof OfferingGroup && !empty($selectedOfferingGroup['lines'])) {
+                    foreach ($this->flattenOfferingGroupLines($selectedOfferingGroup['lines']) as $lineItem) {
+                        if (($lineItem['item_type'] ?? null) !== 'product' || ($lineItem['product_type'] ?? null) !== 'physical') {
+                            continue;
+                        }
+
+                        $quantity = max(1, (int) ceil((float) ($lineItem['quantity'] ?? 1)));
+                        $selectedProduct = Product::query()->find((int) ($lineItem['item_id'] ?? 0));
+                        if (!$selectedProduct?->isPhysical()) {
+                            continue;
+                        }
+
+                        $selectedVariantId = (int) ($lineItem['selected_variant_id'] ?? 0);
+                        if ($selectedVariantId > 0) {
+                            $variantUpdated = ProductVariant::query()
+                                ->whereKey($selectedVariantId)
+                                ->where('product_id', $selectedProduct->id)
+                                ->where('inventory_count', '>=', $quantity)
+                                ->decrement('inventory_count', $quantity);
+
+                            if ($variantUpdated === 0) {
+                                throw new RuntimeException("{$selectedProduct->title} variant imeisha au haitoshi kwa quantity uliyochagua.");
+                            }
+                        }
+
+                        $updated = Product::query()
+                            ->whereKey($selectedProduct->id)
+                            ->where('inventory_count', '>=', $quantity)
+                            ->decrement('inventory_count', $quantity);
+
+                        if ($updated === 0) {
+                            throw new RuntimeException("{$selectedProduct->title} imeisha au haitoshi kwa quantity uliyochagua.");
+                        }
+
+                        $this->decrementLocationInventory($selectedProduct->id, $selectedVariantId > 0 ? $selectedVariantId : null, $quantity, $selectedProduct->merchant_id);
+                        $productInventoryReserved = true;
+                    }
+                }
 
                 $newOrder = Order::create([
                     'buyer_id' => $buyer->id,
@@ -362,6 +430,7 @@ class CheckoutController extends Controller
                         'swatch_image_url' => $selectedVariant->swatch_image_url,
                     ] : null,
                     'bundle_item_selection' => !empty($selectedBundleItems) ? array_values($selectedBundleItems) : null,
+                    'offering_group_selection' => !empty($selectedOfferingGroup) ? $selectedOfferingGroup : null,
                     'purchasable_type' => $validated['purchasable_type'],
                     'purchasable_id' => $validated['purchasable_id'],
                     'order_kind' => 'one_time',
@@ -385,9 +454,11 @@ class CheckoutController extends Controller
                         'package_contents' => $product->package_contents,
                         'package_content_items' => $product->package_content_items ?: [],
                     ] : null,
-                    'unit_price' => $purchasable instanceof Bundle && !empty($selectedBundleItems)
+                    'unit_price' => $purchasable instanceof OfferingGroup
                         ? $totalPaid + $discountAmount
-                        : ($serviceRequest ? (float) $serviceRequest->quoted_amount : $this->resolveBasePrice($purchasable, $selectedVariant, $servicePricingInputs)),
+                        : ($purchasable instanceof Bundle && !empty($selectedBundleItems)
+                        ? $totalPaid + $discountAmount
+                        : ($serviceRequest ? (float) $serviceRequest->quoted_amount : $this->resolveBasePrice($purchasable, $selectedVariant, $servicePricingInputs))),
                     'discount_amount' => $discountAmount,
                     'merchant_coupon_id' => $coupon?->id,
                     'coupon_code' => $coupon?->code,
@@ -429,7 +500,7 @@ class CheckoutController extends Controller
                     ]);
                 }
 
-                if ($product?->isPhysical() && isset($zone)) {
+                if (($product?->isPhysical() || ($selectedOfferingGroup['has_physical_items'] ?? false)) && isset($zone)) {
                     $isPickup = $zone->delivery_type === 'self_pickup';
 
                     \App\Models\Delivery::create([
@@ -458,7 +529,7 @@ class CheckoutController extends Controller
                         'payment_status' => ($serviceRequest || $newOrder->requiresPhysicalFulfillment() || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid',
                         'custom_delivery_due_at' => $isCustomDelivery ? $newOrder->customDeliveryDueAtFrom() : null,
                     ]);
-                    if (!$newOrder->requiresPhysicalFulfillment()) {
+                    if (!$newOrder->requiresPhysicalFulfillment() && !($purchasable instanceof OfferingGroup)) {
                         app(\App\Services\EntitlementService::class)->grantForOrder($newOrder->fresh(['product']));
                     }
                     if ($serviceRequest) {
@@ -552,18 +623,66 @@ class CheckoutController extends Controller
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private function resolvePurchasable(string $type, int $id): Product|Bundle|ContentItem|SubscriptionPlan|Post
+    private function flattenOfferingGroupLines(array $lines): array
+    {
+        $flat = [];
+
+        foreach ($lines as $line) {
+            $flat[] = $line;
+
+            if (!empty($line['child_lines']) && is_array($line['child_lines'])) {
+                $flat = array_merge($flat, $this->flattenOfferingGroupLines($line['child_lines']));
+            }
+        }
+
+        return $flat;
+    }
+
+    private function resolvePurchasable(string $type, int $id): Product|Bundle|OfferingGroup|ContentItem|SubscriptionPlan|Post
     {
         return match ($type) {
             'product' => Product::findOrFail($id),
             'bundle' => Bundle::findOrFail($id),
+            'offering_group' => OfferingGroup::query()->where('status', 'published')->findOrFail($id),
             'content_item' => ContentItem::findOrFail($id),
             'subscription_plan' => SubscriptionPlan::findOrFail($id),
             'post' => Post::findOrFail($id),
         };
     }
 
-    private function resolveBasePrice(Product|Bundle|ContentItem|SubscriptionPlan|Post $purchasable, ?ProductVariant $variant = null, array $servicePricingInputs = []): float
+    private function outsideAreaErrorForProfile(?int $shippingProfileId, int $merchantId): ?string
+    {
+        if (!$shippingProfileId) {
+            return null;
+        }
+
+        $profile = ShippingProfile::query()
+            ->where('merchant_id', $merchantId)
+            ->find($shippingProfileId);
+
+        if (!$profile?->blocksOutsideAreas()) {
+            return null;
+        }
+
+        $areas = ShippingZone::query()
+            ->where('merchant_id', $merchantId)
+            ->where('shipping_profile_id', $profile->id)
+            ->where('is_active', true)
+            ->orderBy('zone_name')
+            ->pluck('zone_name')
+            ->filter()
+            ->take(5)
+            ->values()
+            ->all();
+
+        $areaText = !empty($areas)
+            ? ' Maeneo yanayopatikana: ' . implode(', ', $areas) . '.'
+            : '';
+
+        return "Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.{$areaText} Chagua eneo jingine, pickup, au angalia muuzaji mwingine.";
+    }
+
+    private function resolveBasePrice(Product|Bundle|OfferingGroup|ContentItem|SubscriptionPlan|Post $purchasable, ?ProductVariant $variant = null, array $servicePricingInputs = []): float
     {
         if ($purchasable instanceof Product) {
             if ($variant) {
@@ -602,6 +721,9 @@ class CheckoutController extends Controller
         }
         if ($purchasable instanceof Post) {
             return (float) ($purchasable->restricted_price ?? 0);
+        }
+        if ($purchasable instanceof OfferingGroup) {
+            return (float) ($purchasable->base_price ?? 0);
         }
         return (float) ($purchasable->price ?? 0);
     }
@@ -1067,9 +1189,15 @@ class CheckoutController extends Controller
     public function inquire(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'purchasable_type' => 'required|in:product,bundle',
+            'purchasable_type' => 'required|in:product,bundle,offering_group',
             'purchasable_id' => 'required|integer',
             'variant_id' => 'nullable|integer',
+            'selected_offering_group_items' => 'nullable|array',
+            'selected_offering_group_items.*.group_item_id' => 'required_with:selected_offering_group_items|integer|min:1',
+            'selected_offering_group_items.*.selected' => 'nullable|boolean',
+            'selected_offering_group_items.*.selected_variant_id' => 'nullable|integer|exists:product_variants,id',
+            'selected_offering_group_items.*.quantity' => 'nullable|numeric|min:0.001|max:100000',
+            'selected_offering_group_items.*.children' => 'nullable|array',
             'selected_bundle_items' => 'nullable|array',
             'selected_bundle_items.*.item_type' => 'required_with:selected_bundle_items|string|in:product,content_item',
             'selected_bundle_items.*.item_id' => 'required_with:selected_bundle_items|integer|min:1',
@@ -1108,7 +1236,9 @@ class CheckoutController extends Controller
         $isServiceInquiry = false;
         $product = null;
         $bundle = null;
+        $offeringGroup = null;
         $selectedBundleItems = [];
+        $selectedOfferingGroup = null;
         $selectedVariant = null;
         $requestedQuantity = 1.0;
         if ($validated['purchasable_type'] === 'product') {
@@ -1139,7 +1269,7 @@ class CheckoutController extends Controller
             } elseif (!empty($servicePricingInputs['service_option_id']) && !$this->selectedServiceOption($product, $servicePricingInputs)) {
                 return response()->json(['message' => 'Chaguo la huduma halipatikani. Tafadhali chagua tena.'], 422);
             }
-        } else {
+        } elseif ($validated['purchasable_type'] === 'bundle') {
             $bundle = Bundle::findOrFail($validated['purchasable_id']);
             try {
                 $requestedBundleItems = $validated['selected_bundle_items'] ?? [];
@@ -1155,11 +1285,52 @@ class CheckoutController extends Controller
             if (!collect($selectedBundleItems)->contains(fn($item) => ($item['item_type'] ?? null) === 'product' && ($item['product_type'] ?? null) === 'physical')) {
                 return response()->json(['message' => 'Bundle hii haina bidhaa za kusafirishwa.'], 400);
             }
+        } else {
+            $offeringGroup = OfferingGroup::query()
+                ->where('status', 'published')
+                ->findOrFail($validated['purchasable_id']);
+            try {
+                $selectedOfferingGroup = app(OfferingGroupCheckoutResolver::class)->resolve(
+                    $offeringGroup,
+                    $validated['selected_offering_group_items'] ?? []
+                );
+            } catch (RuntimeException $e) {
+                return response()->json(['message' => $e->getMessage()], 400);
+            }
+
+            if (
+                !($selectedOfferingGroup['has_physical_items'] ?? false)
+                && !($selectedOfferingGroup['requires_inquiry'] ?? false)
+            ) {
+                return response()->json(['message' => 'This offering can be paid directly.'], 400);
+            }
         }
 
         // Physical address is only required for shipping inquiries.
+        $isOfferingGroupPhysical = (bool) ($selectedOfferingGroup['has_physical_items'] ?? false);
+        if (!$isServiceInquiry && !$isOfferingGroupPhysical && $offeringGroup) {
+            $isServiceInquiry = true;
+        }
+
         if (!$isServiceInquiry && !$isSelfPickup && empty($validated['physical_address'])) {
             return response()->json(['message' => 'Anwani ya uwasilishaji inahitajika.'], 422);
+        }
+
+        if (!$isServiceInquiry && !$isSelfPickup && empty($validated['delivery_zone_id'])) {
+            $merchantId = (int) ($product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id);
+            $shippingProfileId = $product?->shipping_profile_id ?: null;
+
+            if (!$shippingProfileId) {
+                $shippingProfileId = ShippingProfile::query()
+                    ->where('merchant_id', $merchantId)
+                    ->where('is_default', true)
+                    ->value('id');
+            }
+
+            $outsideAreaError = $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId);
+            if ($outsideAreaError) {
+                return response()->json(['message' => $outsideAreaError], 422);
+            }
         }
 
         // Resolve buyer
@@ -1172,9 +1343,11 @@ class CheckoutController extends Controller
         }
 
         $isMenuBundle = $bundle && !empty($validated['selected_bundle_items'] ?? []);
-        $unitPrice = $bundle
+        $unitPrice = $offeringGroup
+            ? (float) ($selectedOfferingGroup['subtotal'] ?? 0)
+            : ($bundle
             ? ($isMenuBundle ? (float) collect($selectedBundleItems)->sum('line_total') : (float) ($bundle->price ?? 0))
-            : $this->resolveBasePrice($product, $selectedVariant, $servicePricingInputs);
+            : $this->resolveBasePrice($product, $selectedVariant, $servicePricingInputs));
         $groupSaleCampaign = null;
         if ($product && !empty($validated['group_sale_campaign_id'])) {
             $groupSaleCampaign = $this->resolveGroupSaleCampaign((int) $validated['group_sale_campaign_id'], $product);
@@ -1185,8 +1358,8 @@ class CheckoutController extends Controller
             : $unitPrice;
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
 
-        $order = DB::transaction(function () use ($buyer, $product, $bundle, $selectedVariant, $selectedBundleItems, $unitPrice, $totalPrice, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $deliveryType, $groupSaleCampaign, $isServiceInquiry) {
-            $merchantId = $product?->merchant_id ?? $bundle?->merchant_id;
+        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $totalPrice, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $deliveryType, $groupSaleCampaign, $isServiceInquiry) {
+            $merchantId = $product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id;
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
                 'merchant_id' => $merchantId,
@@ -1200,8 +1373,9 @@ class CheckoutController extends Controller
                     'swatch_image_url' => $selectedVariant->swatch_image_url,
                 ] : null,
                 'bundle_item_selection' => !empty($selectedBundleItems) ? array_values($selectedBundleItems) : null,
-                'purchasable_type' => $product ? 'product' : 'bundle',
-                'purchasable_id' => $product?->id ?? $bundle?->id,
+                'offering_group_selection' => !empty($selectedOfferingGroup) ? $selectedOfferingGroup : null,
+                'purchasable_type' => $product ? 'product' : ($bundle ? 'bundle' : 'offering_group'),
+                'purchasable_id' => $product?->id ?? $bundle?->id ?? $offeringGroup?->id,
                 'order_kind' => 'one_time',
                 'quantity' => $product ? (int) ceil($requestedQuantity) : 1,
                 'requested_quantity' => $product ? $requestedQuantity : 1,
@@ -1466,6 +1640,47 @@ class CheckoutController extends Controller
 
                 if ($updated === 0) {
                     throw new RuntimeException("{$selectedProduct->title} imeisha au haitoshi kwa bundle hii.");
+                }
+
+                $this->decrementLocationInventory($selectedProduct->id, $selectedVariantId > 0 ? $selectedVariantId : null, $quantity, $selectedProduct->merchant_id);
+            }
+
+            $order->forceFill(['inventory_reserved_at' => now()])->saveQuietly();
+            return;
+        }
+
+        if ($order->purchasable_type === 'offering_group') {
+            foreach ($this->flattenOfferingGroupLines($order->offering_group_selection['lines'] ?? []) as $lineItem) {
+                if (($lineItem['item_type'] ?? null) !== 'product' || ($lineItem['product_type'] ?? null) !== 'physical') {
+                    continue;
+                }
+
+                $quantity = max(1, (int) ceil((float) ($lineItem['quantity'] ?? 1)));
+                $selectedProduct = Product::query()->find((int) ($lineItem['item_id'] ?? 0));
+                if (!$selectedProduct?->isPhysical()) {
+                    continue;
+                }
+
+                $selectedVariantId = (int) ($lineItem['selected_variant_id'] ?? 0);
+                if ($selectedVariantId > 0) {
+                    $variantUpdated = ProductVariant::query()
+                        ->whereKey($selectedVariantId)
+                        ->where('product_id', $selectedProduct->id)
+                        ->where('inventory_count', '>=', $quantity)
+                        ->decrement('inventory_count', $quantity);
+
+                    if ($variantUpdated === 0) {
+                        throw new RuntimeException("{$selectedProduct->title} variant imeisha au haitoshi kwa quantity uliyochagua.");
+                    }
+                }
+
+                $updated = Product::query()
+                    ->whereKey($selectedProduct->id)
+                    ->where('inventory_count', '>=', $quantity)
+                    ->decrement('inventory_count', $quantity);
+
+                if ($updated === 0) {
+                    throw new RuntimeException("{$selectedProduct->title} imeisha au haitoshi kwa offering hii.");
                 }
 
                 $this->decrementLocationInventory($selectedProduct->id, $selectedVariantId > 0 ? $selectedVariantId : null, $quantity, $selectedProduct->merchant_id);

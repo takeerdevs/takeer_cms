@@ -9,6 +9,7 @@ use App\Models\ContentItem;
 use App\Models\Merchant;
 use App\Models\MerchantStaff;
 use App\Models\Message;
+use App\Models\OfferingGroup;
 use App\Models\Order;
 use App\Models\Post;
 use App\Models\Product;
@@ -91,6 +92,8 @@ class MerchantOrderController extends Controller
                 'display_title' => $display['title'],
                 'display_kind' => $display['kind'],
                 'display_icon' => $display['icon'],
+                'display_image' => $display['image'] ?? null,
+                'offering_group_selection' => $order->offering_group_selection ?? null,
                 'is_escrow_order' => $display['is_escrow_order'],
                 'is_inquiry' => (bool) $order->is_inquiry,
                 'inquiry_status' => $order->inquiry_status,
@@ -279,6 +282,7 @@ class MerchantOrderController extends Controller
                 'accepted_at' => $order->custom_delivery_accepted_at?->toISOString(),
             ],
             'bundle_item_selection' => $order->bundle_item_selection ?? [],
+            'offering_group_selection' => $order->offering_group_selection ?? null,
             'buyer' => $order->buyer ? [
                 'id' => $order->buyer->id,
                 'name' => $order->buyer->name,
@@ -419,6 +423,7 @@ class MerchantOrderController extends Controller
                     'custom_work' => 'file_up',
                     default => 'download',
                 },
+                'image' => $order->product->image_url,
                 'is_escrow_order' => $order->requiresPhysicalFulfillment()
                     || (($order->product->digital_delivery_type ?? null) === 'custom_delivery'),
             ];
@@ -430,6 +435,7 @@ class MerchantOrderController extends Controller
                 'title' => $post?->title ?: 'Post content',
                 'kind' => 'post_content',
                 'icon' => 'book_open',
+                'image' => $post?->cover_image_url,
                 'is_escrow_order' => false,
             ];
         }
@@ -440,6 +446,7 @@ class MerchantOrderController extends Controller
                 'title' => $content?->title ?: 'Post content',
                 'kind' => 'post_content',
                 'icon' => 'book_open',
+                'image' => $content?->cover_image_url,
                 'is_escrow_order' => false,
             ];
         }
@@ -452,7 +459,22 @@ class MerchantOrderController extends Controller
                 'title' => $bundle?->title ?: 'Bundle order',
                 'kind' => $isPhysicalBundle ? 'physical_bundle' : ($bundle?->is_course ? 'course_bundle' : 'bundle'),
                 'icon' => 'boxes',
+                'image' => $bundle?->cover_image_url,
                 'is_escrow_order' => $isPhysicalBundle,
+            ];
+        }
+
+        if ($order->purchasable_type === 'offering_group') {
+            $group = OfferingGroup::find($order->purchasable_id);
+            $selection = $order->offering_group_selection ?: [];
+            $isPhysicalGroup = $order->requiresPhysicalFulfillment();
+
+            return [
+                'title' => $selection['group']['title'] ?? $group?->title ?? 'Offering group',
+                'kind' => $isPhysicalGroup ? 'physical_bundle' : 'offering_group',
+                'icon' => 'layers',
+                'image' => $group?->cover_image_url,
+                'is_escrow_order' => $isPhysicalGroup,
             ];
         }
 
@@ -462,6 +484,7 @@ class MerchantOrderController extends Controller
                 'title' => $plan?->name ?: 'Membership plan',
                 'kind' => 'subscription_plan',
                 'icon' => 'crown',
+                'image' => null,
                 'is_escrow_order' => false,
             ];
         }
@@ -470,6 +493,7 @@ class MerchantOrderController extends Controller
             'title' => $order->product?->title ?: 'Order item',
             'kind' => 'post_content',
             'icon' => 'book_open',
+            'image' => $order->product?->image_url,
             'is_escrow_order' => false,
         ];
     }
@@ -480,7 +504,8 @@ class MerchantOrderController extends Controller
             $query->where(function ($productQuery) {
                 $productQuery->where('purchasable_type', 'product')
                     ->whereHas('product', fn($product) => $product->where('type', 'physical'));
-            })->orWhere('purchasable_type', 'bundle');
+            })->orWhere('purchasable_type', 'bundle')
+                ->orWhere('purchasable_type', 'offering_group');
         });
     }
 
@@ -679,7 +704,7 @@ class MerchantOrderController extends Controller
             'public_id' => $order->public_id,
             'title' => $display['title'] ?: ($order->product?->title ?? 'Order'),
             'kind' => $display['kind'],
-            'image_url' => $order->variant?->swatch_image_url ?: $order->product?->image_url,
+            'image_url' => $display['image'] ?? ($order->variant?->swatch_image_url ?: $order->product?->image_url),
             'payment_status' => $order->payment_status,
             'delivery_type' => $isPickup ? 'self_pickup' : $deliveryType,
             'delivery_status' => $isPickup && in_array($order->delivery?->delivery_status, ['awaiting_boda', 'inquiry', null], true)
@@ -703,6 +728,22 @@ class MerchantOrderController extends Controller
 
     private function checkupItems(Order $order): array
     {
+        if ($order->purchasable_type === 'offering_group' && !empty($order->offering_group_selection['lines'])) {
+            return collect($this->flattenOfferingGroupLines($order->offering_group_selection['lines']))
+                ->map(fn (array $line, int $index) => [
+                    'key' => 'offering-'.$index,
+                    'title' => $line['title'] ?? 'Offering item',
+                    'image_url' => $line['image_url'] ?? null,
+                    'quantity' => (float) ($line['quantity'] ?? 1),
+                    'unit_price' => (float) ($line['unit_price'] ?? 0),
+                    'line_total' => (float) ($line['line_total'] ?? 0),
+                    'type' => $line['product_type'] ?? $line['item_type'] ?? null,
+                    'is_main' => $index === 0,
+                ])
+                ->values()
+                ->all();
+        }
+
         $items = [[
             'key' => 'main',
             'title' => $this->resolveDisplay($order)['title'] ?: ($order->product?->title ?? 'Order item'),
@@ -732,6 +773,20 @@ class MerchantOrderController extends Controller
         }
 
         return $items;
+    }
+
+    private function flattenOfferingGroupLines(array $lines): array
+    {
+        $flat = [];
+
+        foreach ($lines as $line) {
+            $flat[] = $line;
+            if (!empty($line['child_lines']) && is_array($line['child_lines'])) {
+                $flat = array_merge($flat, $this->flattenOfferingGroupLines($line['child_lines']));
+            }
+        }
+
+        return $flat;
     }
 
     private function checkupReleaseBlockedReason(Order $order, bool $isPickup): string

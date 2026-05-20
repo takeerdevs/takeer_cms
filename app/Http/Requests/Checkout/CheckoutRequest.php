@@ -6,6 +6,7 @@ use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\Country;
 use App\Models\Merchant;
+use App\Models\OfferingGroup;
 use App\Models\Post;
 use App\Models\Product;
 use App\Models\SubscriptionPlan;
@@ -37,8 +38,16 @@ class CheckoutRequest extends FormRequest
             'buyer_name' => [Rule::requiredIf(!$this->user()), 'nullable', 'string', 'max:255'],
             'product_id' => 'nullable|exists:products,id',
             'variant_id' => 'nullable|integer|exists:product_variants,id',
-            'purchasable_type' => ['nullable', 'string', Rule::in(['product', 'bundle', 'content_item', 'subscription_plan', 'post'])],
+            'purchasable_type' => ['nullable', 'string', Rule::in(['product', 'bundle', 'offering_group', 'content_item', 'subscription_plan', 'post'])],
             'purchasable_id' => 'nullable|integer|min:1',
+            'selected_offering_group_items' => 'nullable|array',
+            'selected_offering_group_items.*.group_item_id' => 'required_with:selected_offering_group_items|integer|min:1',
+            'selected_offering_group_items.*.selected' => 'nullable|boolean',
+            'selected_offering_group_items.*.selected_variant_id' => 'nullable|integer|exists:product_variants,id',
+            'selected_offering_group_items.*.quantity' => 'nullable|numeric|min:0.001|max:100000',
+            'selected_offering_group_items.*.add_ons' => 'nullable|array',
+            'selected_offering_group_items.*.add_ons.*.name' => 'required_with:selected_offering_group_items.*.add_ons|string|max:120',
+            'selected_offering_group_items.*.children' => 'nullable|array',
             'selected_bundle_items' => 'nullable|array',
             'selected_bundle_items.*.item_type' => ['required_with:selected_bundle_items', 'string', Rule::in(['product', 'content_item'])],
             'selected_bundle_items.*.item_id' => 'required_with:selected_bundle_items|integer|min:1',
@@ -64,7 +73,7 @@ class CheckoutRequest extends FormRequest
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'shipping_hotspot_id' => 'nullable|integer|exists:shipping_hotspots,id',
-            'delivery_type' => ['nullable', 'string', Rule::in(['local_boda', 'intercity_bus', 'self_pickup'])],
+            'delivery_type' => ['nullable', 'string', Rule::in(['shipping', 'local_boda', 'intercity_bus', 'self_pickup'])],
             'idempotency_key' => 'required|string|max:255',
             'payment_page_id' => 'nullable|integer|exists:payment_pages,id',
             'coupon_code' => 'nullable|string|max:64',
@@ -182,6 +191,7 @@ class CheckoutRequest extends FormRequest
             $exists = match ($type) {
                 'product' => \App\Models\Product::whereKey($id)->exists(),
                 'bundle' => \App\Models\Bundle::whereKey($id)->exists(),
+                'offering_group' => OfferingGroup::whereKey($id)->where('status', 'published')->exists(),
                 'content_item' => \App\Models\ContentItem::whereKey($id)->exists(),
                 'subscription_plan' => \App\Models\SubscriptionPlan::whereKey($id)->exists(),
                 'post' => \App\Models\Post::whereKey($id)->exists(),
@@ -295,6 +305,7 @@ class CheckoutRequest extends FormRequest
         $merchantId = match ($type) {
             'product' => Product::query()->whereKey($id)->value('merchant_id'),
             'bundle' => Bundle::query()->whereKey($id)->value('merchant_id'),
+            'offering_group' => OfferingGroup::query()->whereKey($id)->value('merchant_id'),
             'content_item' => ContentItem::query()->whereKey($id)->value('merchant_id'),
             'subscription_plan' => SubscriptionPlan::query()->whereKey($id)->value('merchant_id'),
             'post' => Post::query()->whereKey($id)->value('merchant_id'),

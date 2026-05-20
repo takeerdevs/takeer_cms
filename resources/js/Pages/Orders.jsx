@@ -285,7 +285,7 @@ export default function Orders() {
         return (
             <AppLayout>
                 <Head title="Library | Takeer" />
-                <div className="max-w-6xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
+                <div className="max-w-5xl mx-auto p-6 md:p-8 pb-24 flex flex-col items-center justify-center min-h-[60vh] gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
                     <p className="text-sm text-muted-foreground">Inapakia library yako...</p>
                 </div>

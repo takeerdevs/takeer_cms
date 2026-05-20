@@ -64,6 +64,11 @@ class Post extends Model
         return $this->morphedByMany(SubscriptionPlan::class, 'promotable', 'post_promotables');
     }
 
+    public function promotableOfferingGroups()
+    {
+        return $this->morphedByMany(OfferingGroup::class, 'promotable', 'post_promotables');
+    }
+
     public function promotableProducts()
     {
         return $this->morphedByMany(Product::class, 'promotable', 'post_promotables');
@@ -74,7 +79,8 @@ class Post extends Model
         return collect()
             ->concat($this->relationLoaded('promotableProducts') ? $this->promotableProducts : [])
             ->concat($this->relationLoaded('promotableBundles') ? $this->promotableBundles : [])
-            ->concat($this->relationLoaded('promotableSubscriptions') ? $this->promotableSubscriptions : []);
+            ->concat($this->relationLoaded('promotableSubscriptions') ? $this->promotableSubscriptions : [])
+            ->concat($this->relationLoaded('promotableOfferingGroups') ? $this->promotableOfferingGroups : []);
     }
 
     protected static function booted(): void

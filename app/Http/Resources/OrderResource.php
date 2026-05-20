@@ -18,6 +18,7 @@ class OrderResource extends JsonResource
             'variant_id' => $this->variant_id,
             'variant_snapshot' => $this->variant_snapshot,
             'bundle_item_selection' => $this->bundle_item_selection,
+            'offering_group_selection' => $this->offering_group_selection,
             'quantity' => $this->quantity,
             'requested_quantity' => $this->requested_quantity !== null ? (float) $this->requested_quantity : (float) $this->quantity,
             'unit_snapshot' => $this->unit_snapshot,

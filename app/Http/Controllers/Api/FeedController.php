@@ -75,6 +75,7 @@ class FeedController extends Controller
                 'promotableProducts',
                 'promotableBundles',
                 'promotableSubscriptions',
+                'promotableOfferingGroups',
             ]);
 
         if ($request->user()) {

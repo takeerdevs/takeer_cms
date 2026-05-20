@@ -766,11 +766,12 @@ class UploadController extends Controller
             'module_details.reservation_duration_minutes' => 'nullable|integer|min:1|max:10080',
             'module_details.party_size_limit' => 'nullable|integer|min:1|max:100000',
             'module_details.reservation_policy' => 'nullable|string|max:80',
+            'module_details.deposit_amount' => 'nullable|numeric|min:0',
             'module_details.deposit_note' => 'nullable|string|max:1000',
             'module_details.reservation_notes' => 'nullable|string|max:3000',
             'module_details.rental_type' => 'nullable|string|max:80',
             'module_details.rental_unit' => 'nullable|string|max:80',
-            'module_details.rental_duration_minutes' => 'nullable|integer|min:1|max:525600',
+            'module_details.rental_duration_minutes' => 'nullable|integer|min:1|max:5256000',
             'module_details.available_units' => 'nullable|integer|min:1|max:100000',
             'module_details.security_deposit' => 'nullable|numeric|min:0',
             'module_details.rental_policy' => 'nullable|string|max:80',
@@ -916,7 +917,7 @@ class UploadController extends Controller
             'service_options.*.checkout_time' => 'nullable|date_format:H:i',
             'service_options.*.buffer_minutes' => 'nullable|integer|min:0|max:10080',
             'service_details' => 'nullable|array',
-            'service_duration_minutes' => 'nullable|integer|min:1|max:10080',
+            'service_duration_minutes' => 'nullable|integer|min:1|max:5256000',
             'service_location_type' => 'nullable|string|in:provider_location,customer_location,remote,hybrid',
             'service_provider_location' => 'nullable|array',
             'service_provider_location.name' => 'nullable|string|max:160',
@@ -950,6 +951,11 @@ class UploadController extends Controller
             'location_inventories.*' => 'nullable|numeric|min:0',
             'variants.*.location_inventories' => 'nullable|array',
             'variants.*.location_inventories.*' => 'nullable|numeric|min:0',
+            'publish_targets' => 'nullable|array',
+            'publish_targets.takeer' => 'nullable|boolean',
+            'publish_targets.instagram' => 'nullable|boolean',
+            'publish_targets.facebook' => 'nullable|boolean',
+            'publish_targets.x' => 'nullable|boolean',
         ]);
 
         $merchantProfile = $this->merchantFromRequest($request);
@@ -981,6 +987,9 @@ class UploadController extends Controller
 
         $accessGroupType = $request->input('access_group_type');
         $accessGroupId = $request->input('access_group_id');
+        $publishTargets = (array) $request->input('publish_targets', []);
+        $publishToTakeer = ! array_key_exists('takeer', $publishTargets)
+            || filter_var($publishTargets['takeer'], FILTER_VALIDATE_BOOLEAN);
         $isFocusedPhysicalModule = $request->input('type') === 'physical' && $request->input('module_key') === 'menu';
         $hasVariants = $request->input('type') === 'physical' && (bool) $request->boolean('has_variants');
         $fulfillmentMode = $request->input('type') === 'physical'
@@ -1784,16 +1793,19 @@ class UploadController extends Controller
             }
         }
 
-        // 4. Create a social Post for this product
-        $post = Post::create([
-            'merchant_id' => $merchantProfile->id,
-            'created_by_user_id' => $request->user()?->id ?: $product->created_by_user_id,
-            'created_by_staff_id' => $actingStaff?->id ?: $product->created_by_staff_id,
-            'source' => 'catalog_publish',
-            'title' => $request->input('title'),
-            'caption' => $request->input('description') ?: $request->input('title'),
-            'excerpt' => $request->input('description'),
-        ]);
+        // 4. Optionally create a Takeer feed post for this product.
+        $post = null;
+        if ($publishToTakeer) {
+            $post = Post::create([
+                'merchant_id' => $merchantProfile->id,
+                'created_by_user_id' => $request->user()?->id ?: $product->created_by_user_id,
+                'created_by_staff_id' => $actingStaff?->id ?: $product->created_by_staff_id,
+                'source' => 'catalog_publish',
+                'title' => $request->input('title'),
+                'caption' => $request->input('description') ?: $request->input('title'),
+                'excerpt' => $request->input('description'),
+            ]);
+        }
 
         // 4.5 Store detailed records for each image in the gallery
         if (count($mediaItems) > 0) {
@@ -1820,24 +1832,26 @@ class UploadController extends Controller
                     ]
                 );
 
-                // Create PostMedia linking to the ProductImage
-                $postMedia = $post->media()->create([
-                    'product_image_id' => $productImage->id,
-                    'media_url' => $mediaItem['url'], // Fallback if product media is deleted
-                    'media_type' => $mediaItem['media_type'],
-                    'thumbnail_url' => $mediaItem['thumbnail_url'],
-                    'processed_url' => $mediaItem['processed_url'],
-                    'hls_url' => $mediaItem['hls_url'],
-                    'mime' => $mediaItem['mime'],
-                    'size' => $mediaItem['size'],
-                    'duration_seconds' => $mediaItem['duration_seconds'],
-                    'width' => $mediaItem['width'],
-                    'height' => $mediaItem['height'],
-                    'processing_status' => $mediaItem['processing_status'],
-                ]);
+                if ($post) {
+                    // Create PostMedia linking to the ProductImage.
+                    $postMedia = $post->media()->create([
+                        'product_image_id' => $productImage->id,
+                        'media_url' => $mediaItem['url'], // Fallback if product media is deleted
+                        'media_type' => $mediaItem['media_type'],
+                        'thumbnail_url' => $mediaItem['thumbnail_url'],
+                        'processed_url' => $mediaItem['processed_url'],
+                        'hls_url' => $mediaItem['hls_url'],
+                        'mime' => $mediaItem['mime'],
+                        'size' => $mediaItem['size'],
+                        'duration_seconds' => $mediaItem['duration_seconds'],
+                        'width' => $mediaItem['width'],
+                        'height' => $mediaItem['height'],
+                        'processing_status' => $mediaItem['processing_status'],
+                    ]);
 
-                if ($mediaItem['media_type'] === 'video') {
-                    ProcessPromotableVideo::dispatch($productImage->id, $postMedia->id)->afterCommit();
+                    if ($mediaItem['media_type'] === 'video') {
+                        ProcessPromotableVideo::dispatch($productImage->id, $postMedia->id)->afterCommit();
+                    }
                 }
             }
 
@@ -1845,13 +1859,15 @@ class UploadController extends Controller
             $product->images()->where('order', '>=', count($mediaItems))->delete();
         }
 
-        // Connect the specific product to this new feed post
-        PostProductTag::create([
-            'post_id' => $post->id,
-            'product_id' => $product->id,
-            'x_coordinate' => 50, // default center position
-            'y_coordinate' => 50,
-        ]);
+        // Connect the specific product to this new feed post.
+        if ($post) {
+            PostProductTag::create([
+                'post_id' => $post->id,
+                'product_id' => $product->id,
+                'x_coordinate' => 50, // default center position
+                'y_coordinate' => 50,
+            ]);
+        }
 
         // Optional: assign digital product to bundle/subscription group for gated access flow
         if ($request->input('type') === 'digital' && $accessGroupType && $accessGroupId) {
@@ -1868,11 +1884,13 @@ class UploadController extends Controller
                     ]
                 );
 
-                $post->update([
-                    'is_restricted' => true,
-                    'promotable_type' => Bundle::class,
-                    'promotable_id' => $bundle->id,
-                ]);
+                if ($post) {
+                    $post->update([
+                        'is_restricted' => true,
+                        'promotable_type' => Bundle::class,
+                        'promotable_id' => $bundle->id,
+                    ]);
+                }
 
                 $entitlementService->syncActiveEntitlementsForBundle((int) $bundle->id);
             }
@@ -1890,11 +1908,13 @@ class UploadController extends Controller
                     ]
                 );
 
-                $post->update([
-                    'is_restricted' => true,
-                    'promotable_type' => SubscriptionPlan::class,
-                    'promotable_id' => $plan->id,
-                ]);
+                if ($post) {
+                    $post->update([
+                        'is_restricted' => true,
+                        'promotable_type' => SubscriptionPlan::class,
+                        'promotable_id' => $plan->id,
+                    ]);
+                }
 
                 $entitlementService->syncActiveSubscribersForPlan((int) $plan->id);
             }
@@ -2607,7 +2627,7 @@ class UploadController extends Controller
         $reservationPolicy = (string) ($details['reservation_policy'] ?? 'manual_confirm');
 
         return [
-            'reservation_type' => in_array($reservationType, ['table', 'venue', 'visit', 'event_space', 'activity'], true)
+            'reservation_type' => in_array($reservationType, ['table', 'private_room', 'venue', 'seat', 'booth', 'visit', 'event_space', 'activity', 'other'], true)
                 ? $reservationType
                 : 'table',
             'seating_type' => Str::limit(trim((string) ($details['seating_type'] ?? 'Standard seating')), 80, ''),
@@ -2620,6 +2640,9 @@ class UploadController extends Controller
             'reservation_policy' => in_array($reservationPolicy, ['instant', 'manual_confirm', 'request_first'], true)
                 ? $reservationPolicy
                 : 'manual_confirm',
+            'deposit_amount' => isset($details['deposit_amount']) && $details['deposit_amount'] !== ''
+                ? max(0, (float) $details['deposit_amount'])
+                : null,
             'deposit_note' => Str::limit(trim((string) ($details['deposit_note'] ?? '')), 1000, ''),
             'reservation_notes' => Str::limit(trim((string) ($details['reservation_notes'] ?? '')), 3000, ''),
         ];
@@ -2632,14 +2655,14 @@ class UploadController extends Controller
         $rentalPolicy = (string) ($details['rental_policy'] ?? 'manual_confirm');
 
         return [
-            'rental_type' => in_array($rentalType, ['equipment', 'vehicle', 'space', 'event_gear', 'costume', 'other'], true)
+            'rental_type' => in_array($rentalType, ['equipment', 'vehicle', 'space', 'property', 'event_gear', 'costume', 'other'], true)
                 ? $rentalType
                 : 'equipment',
-            'rental_unit' => in_array($rentalUnit, ['hour', 'day', 'night', 'week', 'month', 'trip', 'event'], true)
+            'rental_unit' => in_array($rentalUnit, ['hour', 'day', 'night', 'week', 'month', 'year', 'trip', 'event'], true)
                 ? $rentalUnit
                 : 'day',
             'rental_duration_minutes' => isset($details['rental_duration_minutes']) && $details['rental_duration_minutes'] !== ''
-                ? max(1, min(525600, (int) $details['rental_duration_minutes']))
+                ? max(1, min(5256000, (int) $details['rental_duration_minutes']))
                 : 1440,
             'available_units' => isset($details['available_units']) && $details['available_units'] !== ''
                 ? max(1, min(100000, (int) $details['available_units']))

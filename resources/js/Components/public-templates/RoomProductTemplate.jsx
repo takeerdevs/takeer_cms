@@ -120,7 +120,7 @@ export default function RoomProductTemplate({ product }) {
                     </div>
                 </section>
 
-                <main className="mx-auto grid max-w-6xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
+                <main className="mx-auto grid max-w-5xl gap-5 p-4 md:grid-cols-[minmax(0,1fr)_380px] md:p-8">
                     <div className="space-y-5">
                         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
                             <h2 className="text-lg font-black">About this stay</h2>
