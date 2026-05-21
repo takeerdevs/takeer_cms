@@ -99,6 +99,95 @@ class ServiceModuleRequestTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_instant_booking_request_is_confirmed_and_gets_payment_link_for_deposit(): void
+    {
+        $user = User::factory()->create();
+        $merchant = Merchant::create([
+            'user_id' => $user->id,
+            'username' => 'instant-booker',
+            'display_name' => 'Instant Booker',
+            'is_default' => true,
+        ]);
+        $product = Product::create([
+            'merchant_id' => $merchant->id,
+            'title' => 'Instant Consultation',
+            'slug' => 'instant-consultation',
+            'type' => 'service',
+            'price' => 100000,
+            'service_mode' => 'book_appointment',
+            'service_booking_type' => 'instant',
+            'service_deposit_amount' => 30000,
+            'service_price_display' => 'fixed',
+            'service_duration_minutes' => 60,
+            'service_location_type' => 'provider_location',
+        ]);
+
+        $response = $this->postJson('/api/service-requests', [
+            'product_id' => $product->id,
+            'request_type' => 'appointment_request',
+            'customer_name' => 'Asha Customer',
+            'customer_phone' => '255700000000',
+            'preferred_date' => now()->addDays(2)->toDateString(),
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.status', 'confirmed')
+            ->assertJsonPath('data.payment_status', 'payment_link_created')
+            ->assertJsonPath('data.quoted_amount', 30000)
+            ->assertJsonPath('data.deposit_amount', 30000)
+            ->assertJsonPath('data.payment_summary.total_amount', 100000)
+            ->assertJsonPath('data.payment_summary.advance_amount', 30000)
+            ->assertJsonPath('data.payment_summary.remaining_amount', 100000)
+            ->assertJsonPath('data.payment_summary.is_advance_payment', true);
+
+        $this->assertNotNull($response->json('data.payment_url'));
+        $this->assertDatabaseHas('service_requests', [
+            'product_id' => $product->id,
+            'status' => 'confirmed',
+            'payment_status' => 'payment_link_created',
+            'quoted_amount' => 30000,
+            'deposit_amount' => 30000,
+        ]);
+    }
+
+    public function test_manual_confirm_request_waits_for_merchant_before_payment_link(): void
+    {
+        $user = User::factory()->create();
+        $merchant = Merchant::create([
+            'user_id' => $user->id,
+            'username' => 'manual-booker',
+            'display_name' => 'Manual Booker',
+            'is_default' => true,
+        ]);
+        $product = Product::create([
+            'merchant_id' => $merchant->id,
+            'title' => 'Manual Consultation',
+            'slug' => 'manual-consultation',
+            'type' => 'service',
+            'price' => 100000,
+            'service_mode' => 'book_appointment',
+            'service_booking_type' => 'manual_confirm',
+            'service_deposit_amount' => 30000,
+            'service_price_display' => 'fixed',
+            'service_duration_minutes' => 60,
+            'service_location_type' => 'provider_location',
+        ]);
+
+        $response = $this->postJson('/api/service-requests', [
+            'product_id' => $product->id,
+            'request_type' => 'appointment_request',
+            'customer_name' => 'Asha Customer',
+            'customer_phone' => '255700000000',
+            'preferred_date' => now()->addDays(2)->toDateString(),
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.payment_status', null)
+            ->assertJsonPath('data.payment_url', null)
+            ->assertJsonPath('data.deposit_amount', 30000);
+    }
+
     public function test_merchant_can_record_room_fulfillment(): void
     {
         $user = User::factory()->create();

@@ -224,28 +224,23 @@ class CheckoutController extends Controller
             if ($deliveryType === 'self_pickup') {
                 // If explicit self-pickup, bypass zone lookup and use 0 fee
                 $zone = null;
-            } else if ($zoneId) {
-                $zone = ShippingZone::where('shipping_profile_id', $shippingProfileId)
-                    ->find($zoneId);
+            } else {
+                [$zone, $deliveryZoneError] = $this->resolveCheckoutShippingZone(
+                    zoneId: $zoneId ? (int) $zoneId : null,
+                    shippingProfileId: $shippingProfileId ? (int) $shippingProfileId : null,
+                    merchantId: (int) $purchasable->merchant_id,
+                    buyerLat: isset($validated['buyer_lat']) ? (float) $validated['buyer_lat'] : null,
+                    buyerLng: isset($validated['buyer_lng']) ? (float) $validated['buyer_lng'] : null,
+                    eligibleLocationIds: $this->eligibleServingLocationIds($product, $selectedVariant, $selectedOfferingGroup, $requestedQuantity),
+                );
 
-                if ($zone && $zone->merchant_id === $purchasable->merchant_id) {
+                if ($deliveryZoneError) {
+                    return response()->json(['message' => $deliveryZoneError], 422);
+                }
+
+                if ($zone) {
                     $totalPaid += $zone->flat_rate_fee;
                     $deliveryType = $zone->delivery_type;
-                } else {
-                    $zone = null; // Reset if invalid
-                }
-            } else {
-                // If no zone selected, it's definitely an inquiry (already set)
-                $outsideAreaError = $this->outsideAreaErrorForProfile($shippingProfileId, (int) $purchasable->merchant_id);
-                if ($outsideAreaError) {
-                    return response()->json(['message' => $outsideAreaError], 422);
-                }
-            }
-
-            if (!$zone && $deliveryType !== 'self_pickup') {
-                $outsideAreaError = $this->outsideAreaErrorForProfile($shippingProfileId, (int) $purchasable->merchant_id);
-                if ($outsideAreaError) {
-                    return response()->json(['message' => $outsideAreaError], 422);
                 }
             }
         }
@@ -664,22 +659,229 @@ class CheckoutController extends Controller
             return null;
         }
 
-        $areas = ShippingZone::query()
+        $coverageAnchors = ShippingZone::query()
             ->where('merchant_id', $merchantId)
             ->where('shipping_profile_id', $profile->id)
             ->where('is_active', true)
-            ->orderBy('zone_name')
-            ->pluck('zone_name')
-            ->filter()
-            ->take(5)
-            ->values()
-            ->all();
+            ->where('delivery_type', 'local_boda')
+            ->whereNotNull('max_distance_km')
+            ->with('location')
+            ->get()
+            ->reduce(function (array $anchors, ShippingZone $zone): array {
+                $location = $zone->location;
+                $label = $location?->address
+                    ?: $location?->name
+                    ?: $zone->reference_name
+                    ?: $zone->zone_name
+                    ?: 'eneo la biashara';
+                $key = $location?->id
+                    ? 'location-' . $location->id
+                    : $label;
+                $radius = (float) $zone->max_distance_km;
 
-        $areaText = !empty($areas)
-            ? ' Maeneo yanayopatikana: ' . implode(', ', $areas) . '.'
+                if (!isset($anchors[$key]) || $anchors[$key]['radius'] < $radius) {
+                    $anchors[$key] = [
+                        'radius' => $radius,
+                        'label' => $label,
+                    ];
+                }
+
+                return $anchors;
+            }, []);
+
+        $coverageText = !empty($coverageAnchors)
+            ? ' Tunafikisha ndani ya ' . collect($coverageAnchors)
+                ->map(fn (array $anchor) => 'kilomita ' . rtrim(rtrim(number_format($anchor['radius'], 1), '0'), '.') . ' kutoka ' . $anchor['label'])
+                ->implode(', ') . '.'
             : '';
 
-        return "Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.{$areaText} Chagua eneo jingine, pickup, au angalia muuzaji mwingine.";
+        return "Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.{$coverageText} Chagua anwani iliyo karibu, pickup, au angalia muuzaji mwingine.";
+    }
+
+    private function resolveCheckoutShippingZone(?int $zoneId, ?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?array $eligibleLocationIds = null): array
+    {
+        if (!$zoneId) {
+            return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId)];
+        }
+
+        $eligibleLocationIds = $this->normalizeEligibleLocationIds($eligibleLocationIds);
+
+        $zoneQuery = ShippingZone::query()
+            ->where('id', $zoneId)
+            ->where('merchant_id', $merchantId)
+            ->where('is_active', true)
+            ->with('location');
+
+        if ($shippingProfileId) {
+            $zoneQuery->where('shipping_profile_id', $shippingProfileId);
+        }
+
+        if ($eligibleLocationIds !== null) {
+            $zoneQuery->where(function ($query) use ($eligibleLocationIds) {
+                $query->whereNull('merchant_location_id')
+                    ->orWhereIn('merchant_location_id', $eligibleLocationIds);
+            });
+        }
+
+        $zone = $zoneQuery->first();
+
+        if (!$zone) {
+            return [null, 'Chaguo la usafirishaji halipatikani. Tafadhali chagua anwani au pickup tena.'];
+        }
+
+        if ($zone->delivery_type !== 'local_boda') {
+            return [$zone, null];
+        }
+
+        $bestLocalZone = $this->bestLocalShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $eligibleLocationIds);
+        if ($bestLocalZone) {
+            return [$bestLocalZone, null];
+        }
+
+        $shopLat = $zone->location?->latitude;
+        $shopLng = $zone->location?->longitude;
+        $radiusKm = (float) $zone->max_distance_km;
+
+        if ($buyerLat === null || $buyerLng === null || $shopLat === null || $shopLng === null || $radiusKm <= 0) {
+            return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId)];
+        }
+
+        $distanceKm = ShippingZone::calculateDistance(
+            (float) $buyerLat,
+            (float) $buyerLng,
+            (float) $shopLat,
+            (float) $shopLng,
+        );
+
+        if ($distanceKm <= $radiusKm) {
+            return [$zone, null];
+        }
+
+        return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId)];
+    }
+
+    private function bestLocalShippingZone(?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?array $eligibleLocationIds = null): ?ShippingZone
+    {
+        if ($buyerLat === null || $buyerLng === null) {
+            return null;
+        }
+
+        $eligibleLocationIds = $this->normalizeEligibleLocationIds($eligibleLocationIds);
+
+        $zones = ShippingZone::query()
+            ->where('merchant_id', $merchantId)
+            ->where('is_active', true)
+            ->where('delivery_type', 'local_boda')
+            ->whereNotNull('max_distance_km')
+            ->with('location')
+            ->when($shippingProfileId, fn ($query) => $query->where('shipping_profile_id', $shippingProfileId))
+            ->when($eligibleLocationIds !== null, fn ($query) => $query->whereIn('merchant_location_id', $eligibleLocationIds))
+            ->get()
+            ->map(function (ShippingZone $zone) use ($buyerLat, $buyerLng) {
+                $shopLat = $zone->location?->latitude;
+                $shopLng = $zone->location?->longitude;
+                $radiusKm = (float) $zone->max_distance_km;
+
+                if ($shopLat === null || $shopLng === null || $radiusKm <= 0) {
+                    return null;
+                }
+
+                $distanceKm = ShippingZone::calculateDistance(
+                    (float) $buyerLat,
+                    (float) $buyerLng,
+                    (float) $shopLat,
+                    (float) $shopLng,
+                );
+
+                if ($distanceKm > $radiusKm) {
+                    return null;
+                }
+
+                return [
+                    'zone' => $zone,
+                    'distance' => $distanceKm,
+                    'radius' => $radiusKm,
+                    'fee' => (float) $zone->flat_rate_fee,
+                ];
+            })
+            ->filter()
+            ->sortBy([
+                ['radius', 'asc'],
+                ['fee', 'asc'],
+                ['distance', 'asc'],
+            ])
+            ->values();
+
+        return $zones->first()['zone'] ?? null;
+    }
+
+    private function normalizeEligibleLocationIds(?array $locationIds): ?array
+    {
+        if ($locationIds === null) {
+            return null;
+        }
+
+        return collect($locationIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function eligibleServingLocationIds(?Product $product, ?ProductVariant $variant, ?array $selectedOfferingGroup, float $quantity = 1.0): ?array
+    {
+        if ($product) {
+            $explicitIds = $product->locationAvailabilities()
+                ->where('availability_type', 'serves')
+                ->where('is_enabled', true)
+                ->pluck('merchant_location_id')
+                ->map(fn ($id) => (int) $id)
+                ->values();
+
+            if ($explicitIds->isNotEmpty()) {
+                return $explicitIds->all();
+            }
+
+            if ($product->isPhysical()) {
+                $inventoryQuery = $variant
+                    ? $variant->locationInventories()
+                    : $product->locationInventories();
+
+                $stockLocationIds = $inventoryQuery
+                    ->get()
+                    ->filter(fn ($row) => (float) ($row->quantity_decimal ?? $row->quantity ?? 0) >= $quantity)
+                    ->pluck('merchant_location_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values();
+
+                if ($stockLocationIds->isNotEmpty()) {
+                    return $stockLocationIds->all();
+                }
+            }
+
+            return null;
+        }
+
+        $groupId = (int) data_get($selectedOfferingGroup, 'group.id', 0);
+        if ($groupId <= 0) {
+            return null;
+        }
+
+        $group = OfferingGroup::query()->find($groupId);
+        if (! $group) {
+            return null;
+        }
+
+        $explicitIds = $group->locationAvailabilities()
+            ->where('availability_type', 'serves')
+            ->where('is_enabled', true)
+            ->pluck('merchant_location_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        return $explicitIds->isNotEmpty() ? $explicitIds->all() : null;
     }
 
     private function resolveBasePrice(Product|Bundle|OfferingGroup|ContentItem|SubscriptionPlan|Post $purchasable, ?ProductVariant $variant = null, array $servicePricingInputs = []): float
@@ -1197,6 +1399,10 @@ class CheckoutController extends Controller
             'selected_offering_group_items.*.selected' => 'nullable|boolean',
             'selected_offering_group_items.*.selected_variant_id' => 'nullable|integer|exists:product_variants,id',
             'selected_offering_group_items.*.quantity' => 'nullable|numeric|min:0.001|max:100000',
+            'selected_offering_group_items.*.add_ons' => 'nullable|array',
+            'selected_offering_group_items.*.add_ons.*.name' => 'required_with:selected_offering_group_items.*.add_ons|string|max:120',
+            'selected_offering_group_items.*.children.*.add_ons' => 'nullable|array',
+            'selected_offering_group_items.*.children.*.add_ons.*.name' => 'required_with:selected_offering_group_items.*.children.*.add_ons|string|max:120',
             'selected_offering_group_items.*.children' => 'nullable|array',
             'selected_bundle_items' => 'nullable|array',
             'selected_bundle_items.*.item_type' => 'required_with:selected_bundle_items|string|in:product,content_item',
@@ -1333,6 +1539,37 @@ class CheckoutController extends Controller
             }
         }
 
+        $resolvedShippingZone = null;
+
+        if (!$isServiceInquiry && !$isSelfPickup && !empty($validated['delivery_zone_id'])) {
+            $merchantId = (int) ($product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id);
+            $shippingProfileId = $product?->shipping_profile_id ?: null;
+
+            if (!$shippingProfileId) {
+                $shippingProfileId = ShippingProfile::query()
+                    ->where('merchant_id', $merchantId)
+                    ->where('is_default', true)
+                    ->value('id');
+            }
+
+            [$resolvedShippingZone, $deliveryZoneError] = $this->resolveCheckoutShippingZone(
+                zoneId: (int) $validated['delivery_zone_id'],
+                shippingProfileId: $shippingProfileId ? (int) $shippingProfileId : null,
+                merchantId: $merchantId,
+                buyerLat: isset($validated['buyer_lat']) ? (float) $validated['buyer_lat'] : null,
+                buyerLng: isset($validated['buyer_lng']) ? (float) $validated['buyer_lng'] : null,
+                eligibleLocationIds: $this->eligibleServingLocationIds($product, $selectedVariant, $selectedOfferingGroup, $requestedQuantity),
+            );
+
+            if ($deliveryZoneError) {
+                return response()->json(['message' => $deliveryZoneError], 422);
+            }
+
+            if (!$resolvedShippingZone) {
+                $validated['delivery_zone_id'] = null;
+            }
+        }
+
         // Resolve buyer
         $buyer = $request->user();
         if (!$buyer) {
@@ -1356,9 +1593,17 @@ class CheckoutController extends Controller
         $totalPrice = $product
             ? round($unitPrice * $requestedQuantity, 2)
             : $unitPrice;
+        $resolvedShippingFee = (!$isServiceInquiry && !$isSelfPickup && $resolvedShippingZone)
+            ? (float) $resolvedShippingZone->flat_rate_fee
+            : 0.0;
+        $quotedTotalPrice = round($totalPrice + $resolvedShippingFee, 2);
+        $resolvedDeliveryType = $isSelfPickup
+            ? 'self_pickup'
+            : ($resolvedShippingZone?->delivery_type ?: $deliveryType);
+        $inquiryStatus = ($isSelfPickup || $resolvedShippingZone) ? 'quoted' : 'pending';
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
 
-        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $totalPrice, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $deliveryType, $groupSaleCampaign, $isServiceInquiry) {
+        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus) {
             $merchantId = $product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id;
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
@@ -1398,11 +1643,11 @@ class CheckoutController extends Controller
                     'package_content_items' => $product->package_content_items ?: [],
                 ] : null,
                 'unit_price' => $unitPrice,
-                'total_paid' => $totalPrice, // No shipping fee for pickup
-                'shipping_fee' => ($isSelfPickup || $isServiceInquiry) ? 0 : null,
+                'total_paid' => $quotedTotalPrice,
+                'shipping_fee' => ($isSelfPickup || $isServiceInquiry || $inquiryStatus === 'quoted') ? $resolvedShippingFee : null,
                 'payment_status' => 'pending',
                 'is_inquiry' => true,
-                'inquiry_status' => $isSelfPickup ? 'quoted' : 'pending', // Pickup is auto-quoted (no shipping cost needed)
+                'inquiry_status' => $inquiryStatus,
                 'group_sale_campaign_id' => $groupSaleCampaign?->id,
                 'idempotency_key' => $validated['idempotency_key'],
                 'transaction_ref' => $transactionRef,
@@ -1415,13 +1660,14 @@ class CheckoutController extends Controller
                 \App\Models\Delivery::create([
                     'order_id' => $newOrder->id,
                     'shipping_zone_id' => $isSelfPickup ? null : ($validated['delivery_zone_id'] ?? null),
-                    'delivery_type' => $deliveryType,
+                    'delivery_type' => $resolvedDeliveryType,
                     'physical_address' => $isSelfPickup ? null : ($validated['physical_address'] ?? null),
                     'shipping_hotspot_id' => $validated['shipping_hotspot_id'] ?? null,
                     'latitude' => $validated['buyer_lat'] ?? null,
                     'longitude' => $validated['buyer_lng'] ?? null,
                     'delivery_status' => $isSelfPickup ? 'awaiting_pickup' : 'inquiry',
                     'pickup_pin' => $isSelfPickup ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
+                    'buyer_release_pin' => $isSelfPickup ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
                 ]);
             }
 
@@ -1451,6 +1697,10 @@ class CheckoutController extends Controller
 
         if ($order->payment_status !== 'pending') {
             return response()->json(['message' => 'Payment has already been initiated or processed.'], 400);
+        }
+
+        if (!$order->merchant_confirmed_at) {
+            return response()->json(['message' => 'Subiri muuzaji athibitishe upatikanaji wa order kabla ya kulipa.'], 400);
         }
 
         $paymentPhone = $request->input('payment_number') ?? $order->payment_phone;
@@ -1502,7 +1752,7 @@ class CheckoutController extends Controller
             ]);
             $order->update([
                 'payment_status' => $targetStatus,
-                'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
+                'merchant_confirmed_at' => $isPhysical ? ($order->merchant_confirmed_at ?: now()) : $order->merchant_confirmed_at,
             ]);
 
             if (!$isPhysical) {
@@ -1575,20 +1825,26 @@ class CheckoutController extends Controller
         $merchantUser = $order->merchant->user;
         $buyerUser = $order->buyer;
 
-        $body = "Habari, order mpya imewekwa kwa ajili ya: " . ($order->product->title ?? $order->resolved_purchasable?->title ?? 'Bidhaa yako') . ".\n";
+        $title = $order->product->title ?? $order->resolved_purchasable?->title ?? 'Bidhaa yako';
+        $merchantBody = "Habari, order mpya imewekwa kwa ajili ya: {$title}.\n";
+        $buyerBody = "Habari, order yako imeanzishwa kwa ajili ya: {$title}.\n";
 
         // Check delivery type for personalized messages
         $delivery = $order->delivery ?? $order->load('delivery')->delivery;
         $deliveryType = $delivery?->delivery_type ?? null;
 
         if ($deliveryType === 'self_pickup') {
-            $body .= "Mteja amechagua KUCHUKUA DUKANI. Baada ya malipo kukamilika, Takeer itamtumia mteja Pickup PIN. Mteja au dereva wake akifika, ingiza PIN hiyo kwenye order chat au order details ili kuthibitisha pickup na kukamilisha oda.";
+            $merchantBody .= "Mteja amechagua KUCHUKUA DUKANI. Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipa. Baada ya malipo, Takeer itamtumia mteja Pickup PIN.";
+            $buyerBody .= "Umechagua KUCHUKUA DUKANI. Subiri muuzaji athibitishe kuwa order ipo; baada ya hapo utaweza kulipia. Ukishalipa, Takeer itakutumia Pickup PIN.";
         } elseif ($order->product?->isService() && $order->is_inquiry) {
-            $body .= "Hii ni enquiry ya huduma. Tafadhali ongea na mteja hapa, mkubaliane mahitaji na bei ya huduma, kisha tuma offer ya mwisho.";
+            $merchantBody .= "Hii ni enquiry ya huduma. Tafadhali ongea na mteja hapa, mkubaliane mahitaji na bei ya huduma, kisha tuma offer ya mwisho.";
+            $buyerBody .= "Ombi lako la huduma limefika kwa muuzaji. Mtakubaliana mahitaji na bei hapa kwenye chat kabla ya malipo.";
         } elseif ($order->is_inquiry) {
-            $body .= "Haya ni mapendekezo ya usafirishaji. Tafadhali thibitisha gharama ya usafiri kwa mteja.";
+            $merchantBody .= "Haya ni mapendekezo ya usafirishaji. Tafadhali hakiki/rekebisha gharama ya usafiri na uthibitishe stock/uwezo wa kutimiza order.";
+            $buyerBody .= "Tumeangalia eneo lako na kupata makadirio ya usafiri. Subiri muuzaji ahakiki gharama na kuthibitisha kuwa order ipo kabla ya kulipa.";
         } else {
-            $body .= "Malipo yamefanikiwa na yamehifadhiwa (Escrow). Tafadhali anza mchakato wa kusafirisha. Mteja akapopokea bidhaa pesa itatumwa moja kwa moja kwako kama umechagua automatic payout au utahitajika kuomba kuitoa wakati wowote.";
+            $merchantBody .= "Malipo yamefanikiwa na yamehifadhiwa (Escrow). Tafadhali anza mchakato wa kusafirisha. Mteja akapopokea bidhaa pesa itatumwa moja kwa moja kwako kama umechagua automatic payout au utahitajika kuomba kuitoa wakati wowote.";
+            $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji ataanza mchakato wa kukutumia order.";
         }
 
         \App\Models\Message::create([
@@ -1596,7 +1852,11 @@ class CheckoutController extends Controller
             'sender_id' => $buyerUser->id,
             'receiver_id' => $merchantUser->id,
             'type' => 'system',
-            'body' => $body,
+            'body' => $merchantBody,
+            'payload' => [
+                'buyer_body' => $buyerBody,
+                'merchant_body' => $merchantBody,
+            ],
         ]);
     }
 

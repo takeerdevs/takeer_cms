@@ -13,6 +13,7 @@ use App\Models\ContentItem;
 use App\Models\ContentReport;
 use App\Models\Entitlement;
 use App\Models\Merchant;
+use App\Models\OfferingGroup;
 use App\Models\Post;
 use App\Models\Product;
 use App\Models\ProductLicenseKey;
@@ -29,9 +30,27 @@ class EntitlementController extends Controller
     public function myPulse(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 12), 1), 50);
+        $customerEventTypes = [
+            'order_started',
+            'order_quote_updated',
+            'payment_completed',
+            'payment_held',
+            'merchant_confirmation_needed',
+            'issue_reported',
+            'order_cancelled',
+            'digital_access_used',
+            'pickup_pin_ready',
+            'delivery_updated',
+            'membership_started',
+            'membership_content_added',
+            'custom_delivery_ready',
+            'custom_delivery_revision_requested',
+            'custom_delivery_accepted',
+        ];
 
         $events = PulseNotification::query()
             ->where('user_id', $request->user()->id)
+            ->whereIn('event_type', $customerEventTypes)
             ->latest('occurred_at')
             ->paginate($perPage);
 
@@ -131,7 +150,9 @@ class EntitlementController extends Controller
                 $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
             });
 
-        if (in_array($filterType, ['physical_product', 'digital_file', 'service_booking'], true)) {
+        if ($filterType === 'physical_product') {
+            $itemsQuery->whereIn('item_type', ['product', 'offering_group']);
+        } elseif (in_array($filterType, ['digital_file', 'service_booking'], true)) {
             $itemsQuery->where('item_type', 'product');
         } elseif ($filterType === 'post_content') {
             $itemsQuery->whereIn('item_type', ['post', 'content_item', 'bundle', 'subscription_plan']);
@@ -175,6 +196,9 @@ class EntitlementController extends Controller
                     'product' => $resolved ? ProductResource::make($resolved->loadMissing(['attributes', 'images', 'merchant']))->resolve($request) : null,
                     'content_item' => $resolved ? ContentItemResource::make($resolved->loadMissing('merchant'))->resolve($request) : null,
                     'bundle' => $resolved ? BundleResource::make($resolved->loadMissing(['merchant', 'items', 'courseModules.lessons.assets', 'courseModules.lessons.liveSession', 'cohorts']))->resolve($request) : null,
+                    'offering_group' => $resolved instanceof OfferingGroup
+                        ? $this->orderLibraryItemPayload(Order::find((int) $entitlement->source_id) ?: new Order(['merchant_id' => $entitlement->merchant_id]), $resolved, $request)
+                        : null,
                     'subscription_plan' => $resolved ? SubscriptionPlanResource::make($resolved->loadMissing(['merchant', 'items']))->resolve($request) : null,
                     'post' => $resolved ? PostResource::make($resolved->loadMissing([
                         'merchant.user',
@@ -194,15 +218,15 @@ class EntitlementController extends Controller
                     ]))->resolve($request) : null,
                     default => null,
                 },
-                'order_details' => ($entitlement->source_type === 'order' && $entitlement->item_type === 'product' && $resolved instanceof Product)
-                    ? $this->buildProductOrderDetails((int) $entitlement->source_id, $resolved)
+                'order_details' => $entitlement->source_type === 'order'
+                    ? $this->buildEntitlementOrderDetails((int) $entitlement->source_id, $resolved)
                     : null,
             ];
         });
 
         $inquiries = collect();
         if (in_array($filterType, ['all', 'physical_product'], true)) {
-            $inquiriesQuery = Order::with(['merchant', 'product'])
+            $inquiriesQuery = Order::with(['merchant', 'product', 'delivery.shippingZone', 'delivery.events.actor'])
                 ->where('buyer_id', $request->user()->id)
                 ->where('is_inquiry', true)
                 ->whereNotIn('payment_status', ['resolved_buyer_refunded']);
@@ -219,14 +243,15 @@ class EntitlementController extends Controller
         }
 
         $mappedInquiries = $inquiries->map(function (Order $order) use ($request) {
-            $resolved = $order->product;
+            $resolved = $this->resolveOrderLibraryItem($order);
             if (!$resolved) return null;
+            $itemType = $order->purchasable_type ?: ($order->product_id ? 'product' : 'order');
             
             $searchBlob = trim(strtolower(($resolved->title ?? $resolved->name ?? '') . ' ' . ($resolved->excerpt ?? $resolved->description ?? '') . ' ' . ($order->merchant?->display_name ?? '')));
             
             return [
                 'id' => 'inquiry_' . $order->id,
-                'item_type' => 'product',
+                'item_type' => $itemType,
                 'item_id' => $resolved->id,
                 'library_type' => 'physical_product',
                 'source_type' => 'order',
@@ -242,29 +267,26 @@ class EntitlementController extends Controller
                     'name' => $order->merchant->display_name,
                     'slug' => $order->merchant->username,
                 ] : null,
-                'item' => ProductResource::make($resolved->loadMissing(['attributes', 'images', 'merchant']))->resolve($request),
-                'order_details' => [
-                    'id' => $order->id,
-                    'public_id' => $order->public_id,
-                    'is_inquiry' => true,
-                    'inquiry_status' => $order->inquiry_status,
-                    'shipping_fee' => $order->shipping_fee,
-                    'total_paid' => $order->total_paid,
-                    'payment_status' => $order->payment_status,
-                    'delivery' => $order->delivery ? [
-                        'status' => $order->delivery->delivery_status,
-                        'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
-                        'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
-                        'pickup_pin' => $order->delivery->pickup_pin,
-                        'buyer_release_pin' => $order->delivery->buyer_release_pin,
-                    ] : null,
-                ],
+                'item' => $this->orderLibraryItemPayload($order, $resolved, $request),
+                'order_details' => $this->buildOrderDetails($order),
             ];
         })->filter();
 
         $unfilteredTotal = $items->count() + $inquiries->count();
 
         $combined = $entitlements->concat($mappedInquiries)->sortByDesc('sort_date')->values();
+        $summary = [
+            'total' => (int) $combined->count(),
+            'content' => (int) $combined->filter(fn (array $entry) => ($entry['library_type'] ?? null) === 'post_content')->count(),
+            'bundles' => (int) $combined->filter(fn (array $entry) => ($entry['item_type'] ?? null) === 'bundle')->count(),
+            'purchases' => (int) $combined->filter(function (array $entry) {
+                $libraryType = $entry['library_type'] ?? null;
+
+                return ($entry['source_type'] ?? null) === 'order'
+                    || in_array($libraryType, ['physical_product', 'digital_file', 'custom_work', 'service_booking'], true)
+                    || ($entry['item_type'] ?? null) === 'product';
+            })->count(),
+        ];
 
         $filtered = $combined->filter(function (array $entry) use ($filterType, $search) {
             $matchesType = $filterType === 'all' || $entry['library_type'] === $filterType;
@@ -296,6 +318,7 @@ class EntitlementController extends Controller
                 'per_page' => $perPage,
                 'total' => $filteredTotal,
                 'unfiltered_total' => $unfilteredTotal,
+                'summary' => $summary,
             ],
             'links' => [
                 'next' => $safePage < $lastPage
@@ -508,20 +531,65 @@ class EntitlementController extends Controller
         ];
     }
 
-    private function resolveEntitledItem(string $itemType, int $itemId): Product|ContentItem|Bundle|SubscriptionPlan|Post|null
+    private function resolveEntitledItem(string $itemType, int $itemId): Product|ContentItem|Bundle|SubscriptionPlan|Post|OfferingGroup|null
     {
         return match ($itemType) {
             'product' => Product::find($itemId),
             'content_item' => ContentItem::withTrashed()->find($itemId),
             'bundle' => Bundle::find($itemId),
+            'offering_group' => OfferingGroup::find($itemId),
             'subscription_plan' => SubscriptionPlan::find($itemId),
             'post' => Post::withTrashed()->find($itemId),
             default => null,
         };
     }
 
-    private function classifyLibraryType(Entitlement $entitlement, Product|ContentItem|Bundle|SubscriptionPlan|Post|null $resolved): string
+    private function resolveOrderLibraryItem(Order $order): Product|Bundle|OfferingGroup|null
     {
+        if ($order->purchasable_type === 'product') {
+            return $order->product ?: Product::find($order->purchasable_id);
+        }
+
+        return match ($order->purchasable_type) {
+            'bundle' => Bundle::find($order->purchasable_id),
+            'offering_group' => OfferingGroup::find($order->purchasable_id),
+            default => $order->product,
+        };
+    }
+
+    private function orderLibraryItemPayload(Order $order, Product|Bundle|OfferingGroup $resolved, Request $request): array
+    {
+        if ($resolved instanceof Product) {
+            return ProductResource::make($resolved->loadMissing(['attributes', 'images', 'merchant']))->resolve($request);
+        }
+
+        if ($resolved instanceof Bundle) {
+            return BundleResource::make($resolved->loadMissing(['merchant', 'items']))->resolve($request);
+        }
+
+        return [
+            'id' => $resolved->id,
+            'title' => $resolved->title,
+            'name' => $resolved->title,
+            'slug' => $resolved->slug,
+            'description' => $resolved->description,
+            'cover_image' => $resolved->cover_image_url,
+            'image_url' => $resolved->cover_image_url,
+            'type' => 'physical',
+            'merchant' => $order->merchant ? [
+                'id' => $order->merchant->id,
+                'name' => $order->merchant->display_name,
+                'slug' => $order->merchant->username,
+            ] : null,
+        ];
+    }
+
+    private function classifyLibraryType(Entitlement $entitlement, Product|ContentItem|Bundle|SubscriptionPlan|Post|OfferingGroup|null $resolved): string
+    {
+        if ($entitlement->item_type === 'offering_group') {
+            return 'physical_product';
+        }
+
         if ($entitlement->item_type === 'product') {
             $productType = $resolved instanceof Product ? $resolved->type : null;
 
@@ -536,51 +604,16 @@ class EntitlementController extends Controller
         return 'post_content';
     }
 
-    private function buildProductOrderDetails(int $orderId, Product $product): ?array
+    private function buildEntitlementOrderDetails(int $orderId, Product|ContentItem|Bundle|SubscriptionPlan|Post|OfferingGroup|null $resolved): ?array
     {
-        $order = Order::with('delivery.shippingZone')->find($orderId);
+        $order = Order::with(['delivery.shippingZone', 'delivery.events.actor', 'review'])->find($orderId);
         if (!$order) {
             return null;
         }
 
-        $details = [
-            'id' => $order->id,
-            'public_id' => $order->public_id,
-            'payment_status' => $order->payment_status,
-            'shipping_fee' => $order->shipping_fee,
-            'total_paid' => $order->total_paid,
-            'is_inquiry' => (bool) $order->is_inquiry,
-            'inquiry_status' => $order->inquiry_status,
-            'download_count' => (int) $order->download_count,
-            'first_downloaded_at' => $order->first_downloaded_at?->toISOString(),
-            'refund_policy' => $order->refundPolicyContext(),
-            'custom_delivery' => [
-                'file_name' => $order->custom_delivery_file_name,
-                'file_mime' => $order->custom_delivery_file_mime,
-                'file_size' => $order->custom_delivery_file_size !== null ? (int) $order->custom_delivery_file_size : null,
-                'message' => $order->custom_delivery_message,
-                'due_at' => $order->custom_delivery_due_at?->toISOString(),
-                'delivered_at' => $order->custom_delivery_delivered_at?->toISOString(),
-                'status' => $order->custom_delivery_status,
-                'revision_message' => $order->custom_delivery_revision_message,
-                'revision_requested_at' => $order->custom_delivery_revision_requested_at?->toISOString(),
-                'revision_count' => (int) $order->custom_delivery_revision_count,
-                'revision_limit' => Order::CUSTOM_DELIVERY_REVISION_LIMIT,
-                'accepted_at' => $order->custom_delivery_accepted_at?->toISOString(),
-            ],
-            'delivery' => $order->delivery ? [
-                'status' => $order->delivery->delivery_status,
-                'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
-                'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
-                'pickup_pin' => $order->delivery->pickup_pin,
-                'buyer_release_pin' => $order->delivery->buyer_release_pin,
-                'bus_company' => $order->delivery->bus_company,
-                'waybill_tracking_number' => $order->delivery->waybill_tracking_number,
-                'waybill_photo_url' => $order->delivery->waybill_photo_url,
-            ] : null,
-        ];
+        $details = $this->buildOrderDetails($order);
 
-        if ($product->type === 'service') {
+        if ($resolved instanceof Product && $resolved->type === 'service') {
             $serviceRequest = ServiceRequest::query()
                 ->where('payment_order_id', $order->id)
                 ->first();
@@ -615,7 +648,95 @@ class EntitlementController extends Controller
         return $details;
     }
 
-    private function buildSearchBlob(Entitlement $entitlement, Product|ContentItem|Bundle|SubscriptionPlan|Post|null $resolved): string
+    private function buildOrderDetails(Order $order): array
+    {
+        $this->ensureCustomerPins($order);
+
+        return [
+            'id' => $order->id,
+            'public_id' => $order->public_id,
+            'payment_status' => $order->payment_status,
+            'shipping_fee' => $order->shipping_fee,
+            'total_paid' => $order->total_paid,
+            'is_inquiry' => (bool) $order->is_inquiry,
+            'inquiry_status' => $order->inquiry_status,
+            'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
+            'is_merchant_confirmed' => $order->merchant_confirmed_at !== null,
+            'download_count' => (int) $order->download_count,
+            'first_downloaded_at' => $order->first_downloaded_at?->toISOString(),
+            'refund_policy' => $order->refundPolicyContext(),
+            'custom_delivery' => [
+                'file_name' => $order->custom_delivery_file_name,
+                'file_mime' => $order->custom_delivery_file_mime,
+                'file_size' => $order->custom_delivery_file_size !== null ? (int) $order->custom_delivery_file_size : null,
+                'message' => $order->custom_delivery_message,
+                'due_at' => $order->custom_delivery_due_at?->toISOString(),
+                'delivered_at' => $order->custom_delivery_delivered_at?->toISOString(),
+                'status' => $order->custom_delivery_status,
+                'revision_message' => $order->custom_delivery_revision_message,
+                'revision_requested_at' => $order->custom_delivery_revision_requested_at?->toISOString(),
+                'revision_count' => (int) $order->custom_delivery_revision_count,
+                'revision_limit' => Order::CUSTOM_DELIVERY_REVISION_LIMIT,
+                'accepted_at' => $order->custom_delivery_accepted_at?->toISOString(),
+            ],
+            'delivery' => $order->delivery ? [
+                'status' => $order->delivery->delivery_status,
+                'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
+                'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
+                'pickup_pin' => $order->delivery->pickup_pin,
+                'buyer_release_pin' => $order->delivery->buyer_release_pin,
+                'bus_company' => $order->delivery->bus_company,
+                'waybill_tracking_number' => $order->delivery->waybill_tracking_number,
+                'waybill_photo_url' => $order->delivery->waybill_photo_url,
+                'events' => $order->delivery->events->sortBy('created_at')->map(fn ($event) => [
+                    'id' => $event->id,
+                    'status' => $event->status,
+                    'actor_type' => $event->actor_type,
+                    'actor_name' => $event->actor?->name,
+                    'proof_url' => $event->proof_url,
+                    'proof_mime' => $event->proof_mime,
+                    'proof_type' => $event->proof_type,
+                    'note' => $event->note,
+                    'metadata' => $event->metadata,
+                    'created_at' => $event->created_at?->toISOString(),
+                ])->values(),
+            ] : null,
+            'review' => $order->review ? [
+                'id' => $order->review->id,
+                'rating' => (int) $order->review->rating,
+                'comment' => $order->review->comment,
+                'created_at' => $order->review->created_at?->toISOString(),
+            ] : null,
+        ];
+    }
+
+    private function ensureCustomerPins(Order $order): void
+    {
+        $delivery = $order->delivery;
+        if (! $delivery) {
+            return;
+        }
+
+        if ($delivery->delivery_type === 'self_pickup') {
+            if (! $delivery->pickup_pin) {
+                $delivery->forceFill([
+                    'pickup_pin' => str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+                ])->save();
+                $order->setRelation('delivery', $delivery->fresh(['shippingZone', 'events.actor']));
+            }
+
+            return;
+        }
+
+        if (! $delivery->buyer_release_pin && in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'], true)) {
+            $delivery->forceFill([
+                'buyer_release_pin' => str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+            ])->save();
+            $order->setRelation('delivery', $delivery->fresh(['shippingZone', 'events.actor']));
+        }
+    }
+
+    private function buildSearchBlob(Entitlement $entitlement, Product|ContentItem|Bundle|SubscriptionPlan|Post|OfferingGroup|null $resolved): string
     {
         $merchantName = (string) ($entitlement->merchant?->display_name ?? '');
         $title = '';

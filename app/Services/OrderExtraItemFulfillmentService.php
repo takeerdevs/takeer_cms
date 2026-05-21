@@ -166,6 +166,7 @@ class OrderExtraItemFulfillmentService
                 'delivery_type' => $parent->delivery->delivery_type,
                 'delivery_status' => $parent->delivery->delivery_type === 'self_pickup' ? 'awaiting_pickup' : ($parent->delivery->delivery_status ?: 'inquiry'),
                 'pickup_pin' => $parent->delivery->delivery_type === 'self_pickup' ? str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
+                'buyer_release_pin' => $parent->delivery->delivery_type === 'self_pickup' ? null : str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
             ]
         );
     }

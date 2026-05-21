@@ -56,6 +56,7 @@ export default function Orders() {
     const [libraryPage, setLibraryPage] = useState(1);
     const [libraryPerPage, setLibraryPerPage] = useState(12);
     const [libraryMeta, setLibraryMeta] = useState({ current_page: 1, last_page: 1, total: 0, unfiltered_total: 0 });
+    const [librarySummary, setLibrarySummary] = useState({ total: 0, content: 0, bundles: 0, purchases: 0 });
     const [libraryLoading, setLibraryLoading] = useState(false);
     const [subscriptionPerPage, setSubscriptionPerPage] = useState(12);
     const [pulsePage, setPulsePage] = useState(1);
@@ -147,11 +148,14 @@ export default function Orders() {
 
             if (entitlementsRes.status === 'fulfilled') {
                 const base = entitlementsRes.value.data?.entitlements || [];
+                const meta = entitlementsRes.value.data?.meta || { current_page: 1, last_page: 1, total: base.length, unfiltered_total: base.length };
                 setEntitlements(base);
-                setLibraryMeta(entitlementsRes.value.data?.meta || { current_page: 1, last_page: 1, total: base.length, unfiltered_total: base.length });
+                setLibraryMeta(meta);
+                setLibrarySummary(meta.summary || { total: base.length, content: 0, bundles: 0, purchases: base.filter((entry) => entry.source_type === 'order' || entry.item_type === 'product').length });
             } else {
                 setEntitlements([]);
                 setLibraryMeta({ current_page: 1, last_page: 1, total: 0, unfiltered_total: 0 });
+                setLibrarySummary({ total: 0, content: 0, bundles: 0, purchases: 0 });
             }
 
             if (subscriptionsRes.status === 'fulfilled') {
@@ -208,7 +212,11 @@ export default function Orders() {
 
             const res = await sessionApi.get('/orders/data/entitlements', { params });
             setEntitlements(res.data?.entitlements || []);
-            setLibraryMeta(res.data?.meta || { current_page: 1, last_page: 1, total: 0, unfiltered_total: 0 });
+            const meta = res.data?.meta || { current_page: 1, last_page: 1, total: 0, unfiltered_total: 0 };
+            setLibraryMeta(meta);
+            if (typeFilter === 'all' && !searchTerm.trim() && dateFilter === 'all') {
+                setLibrarySummary(meta.summary || { total: res.data?.entitlements?.length || 0, content: 0, bundles: 0, purchases: 0 });
+            }
         } catch (error) {
             toast.error('Imeshindwa kuchuja library.');
         } finally {
@@ -248,18 +256,16 @@ export default function Orders() {
     }
 
     const stats = useMemo(() => {
-        const contentCount = entitlements.filter((entry) => ['content_item', 'post'].includes(entry.item_type)).length;
-        const bundleCount = entitlements.filter((entry) => entry.item_type === 'bundle').length;
-        const productCount = entitlements.filter((entry) => entry.item_type === 'product').length;
+        const summary = librarySummary || {};
         const activeSubs = subscriptions.filter((entry) => ['active', 'pending', 'past_due'].includes(entry.status)).length;
 
         return [
-            { label: 'Owned Content', value: contentCount, icon: BookOpenText, tone: 'from-amber-500/15 to-orange-500/10 text-amber-700' },
-            { label: 'Owned Bundles', value: bundleCount, icon: Boxes, tone: 'from-sky-500/15 to-cyan-500/10 text-sky-700' },
-            { label: 'Products', value: productCount, icon: ShoppingBag, tone: 'from-violet-500/15 to-indigo-500/10 text-violet-700' },
+            { label: 'Library Items', value: Number(summary.total || 0), icon: Library, tone: 'from-amber-500/15 to-orange-500/10 text-amber-700' },
+            { label: 'Content', value: Number(summary.content || 0), icon: BookOpenText, tone: 'from-sky-500/15 to-cyan-500/10 text-sky-700' },
+            { label: 'Purchases', value: Number(summary.purchases || 0), icon: ShoppingBag, tone: 'from-violet-500/15 to-indigo-500/10 text-violet-700' },
             { label: 'Memberships', value: activeSubs, icon: Crown, tone: 'from-emerald-500/15 to-teal-500/10 text-emerald-700' },
         ];
-    }, [entitlements, subscriptions]);
+    }, [librarySummary, subscriptions]);
 
     const pulseLastPage = pulseMeta.last_page || 1;
     const safePulsePage = pulseMeta.current_page || 1;
@@ -665,12 +671,58 @@ function notificationHref(entry) {
 function orderStatusLabel(orderDetails) {
     if (!orderDetails) return 'Product purchase added to your orders.';
     if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending') return 'Waiting for the merchant to quote or confirm shipping.';
+    if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && !(orderDetails.is_merchant_confirmed || orderDetails.merchant_confirmed_at)) return 'Waiting for the merchant to confirm availability.';
     if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted') return 'Shipping quote is ready for payment.';
     if (orderDetails.payment_status === 'awaiting_merchant_confirmation') return 'Paid order is waiting for merchant confirmation.';
     if (orderDetails.payment_status === 'escrow_locked') return 'Payment is protected while delivery is in progress.';
     if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Order completed and merchant has been paid.';
     if (orderDetails.payment_status === 'disputed') return 'A claim is open for this order.';
     return String(orderDetails.payment_status || 'Order update').replaceAll('_', ' ');
+}
+
+function deliveryStatusText(status) {
+    const map = {
+        inquiry: 'Inasubiri taarifa',
+        packing: 'Inaandaliwa',
+        ready_for_pickup: 'Tayari kuchukuliwa',
+        awaiting_boda: 'Inasubiri usafirishaji',
+        awaiting_pickup: 'Inasubiri kuchukuliwa',
+        dispatched: 'Imetumwa',
+        with_boda: 'Ipo kwa dereva',
+        in_transit: 'Ipo njiani',
+        arrived: 'Imefika eneo la mteja',
+        ready_at_terminal: 'Ipo terminal',
+        delivered: 'Imekabidhiwa',
+        issue_reported: 'Kuna taarifa ya tatizo',
+        disputed: 'Mgogoro',
+        customer_confirmed: 'Mteja amethibitisha',
+    };
+
+    return map[status] || (status ? String(status).replaceAll('_', ' ') : 'Inaendelea');
+}
+
+function isActiveDeliveryStatus(status) {
+    return ['with_boda', 'in_transit', 'arrived', 'ready_at_terminal', 'issue_reported'].includes(status);
+}
+
+function compactDeliveryStatus(orderDetails) {
+    const delivery = orderDetails?.delivery || null;
+    const status = delivery?.status || delivery?.delivery_status;
+    const type = delivery?.delivery_type || delivery?.type;
+
+    if (!delivery) return null;
+    if (type === 'self_pickup') return 'Kuchukua dukani';
+    if (status === 'delivered' || orderDetails?.payment_status === 'resolved_merchant_paid') return 'Imekabidhiwa';
+    if (status === 'ready_at_terminal') return 'Ipo terminal';
+    if (status === 'arrived') return 'Imefika eneo la mteja';
+    if (status === 'in_transit') return 'Ipo njiani';
+    if (status === 'with_boda') return 'Ipo kwa dereva';
+    if (status === 'issue_reported') return 'Kuna tatizo kwenye delivery';
+    if (status === 'dispatched') return 'Imetumwa';
+    if (status === 'packing') return 'Inaandaliwa';
+    if (status) return deliveryStatusText(status);
+
+    return null;
 }
 
 function serviceStatusLabel(orderDetails) {
@@ -716,8 +768,14 @@ function OwnedCard({ entry }) {
         ? customDeliveryDueDate.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
         : null;
     const customDeliveryIsOverdue = customDeliveryDueDate && !customDelivery?.delivered_at && customDeliveryDueDate.getTime() < Date.now();
+    const deliveryEvents = Array.isArray(orderDetails?.delivery?.events) ? orderDetails.delivery.events : [];
+    const latestDeliveryEvent = deliveryEvents.length ? deliveryEvents[deliveryEvents.length - 1] : null;
+    const activeDeliveryLabel = compactDeliveryStatus(orderDetails);
+    const isDeliveryActive = isActiveDeliveryStatus(orderDetails?.delivery?.status || orderDetails?.delivery?.delivery_status);
+    const hasReview = Boolean(orderDetails?.review?.id);
     const refundPolicy = orderDetails?.refund_policy || null;
     const canOpenRefundClaim = !refundPolicy || refundPolicy.status === 'eligible';
+    const shouldShowRefundPolicy = refundPolicy && (canOpenRefundClaim || (!isDeliveryActive && orderDetails?.payment_status !== 'escrow_locked'));
     const refundPolicyTone = canOpenRefundClaim
         ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
         : 'border-amber-100 bg-amber-50 text-amber-900';
@@ -749,6 +807,7 @@ function OwnedCard({ entry }) {
         toast.error('Fungua order chat ili kukamilisha malipo.');
     };
     const orderId = entry.source_type === 'order' ? entry.source_id : null;
+    const merchantConfirmed = Boolean(orderDetails?.is_merchant_confirmed || orderDetails?.merchant_confirmed_at);
     const orderChatUrl = orderDetails?.public_id ? `/chat/${orderDetails.public_id}?acting_as=buyer` : null;
     const targetUrl = String(item.url || item.download_link || '').trim();
     const isLinkDigital = isDigitalProduct && /^[a-z][a-z0-9+\-.]*:\/\//i.test(targetUrl);
@@ -856,6 +915,7 @@ function OwnedCard({ entry }) {
         },
         subscription_plan: { icon: Crown, label: 'Membership', href: item.slug || item.id ? `/plan/${item.slug || item.id}` : null },
         product: { icon: ShoppingBag, label: 'Physical Product', href: item.slug ? route('product.show', item.slug) : null },
+        offering_group: { icon: ShoppingBag, label: 'Menu Order', href: item.slug ? `/offerings/${item.id}` : null },
     };
 
     let config = labelMap[entry.item_type] || { icon: Library, label: entry.item_type, href: null };
@@ -974,14 +1034,14 @@ function OwnedCard({ entry }) {
                     <p className="mt-2 text-xs font-semibold text-muted-foreground">
                         Added {formatDate(entry.granted_at || entry.starts_at)}
                     </p>
-                    <div className={`mt-3 rounded-2xl border px-3 py-2 text-xs leading-5 ${isTemporaryAccess ? 'border-emerald-100 bg-emerald-50 text-emerald-800' : 'border-sky-100 bg-sky-50 text-sky-800'}`}>
-                        <p className="font-black uppercase tracking-widest">
+                    <div className={`mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${isTemporaryAccess ? 'border-emerald-100 bg-emerald-50 text-emerald-800' : 'border-sky-100 bg-sky-50 text-sky-800'}`}>
+                        <p className="shrink-0 font-black uppercase tracking-widest">
                             {isTemporaryAccess ? 'Membership item' : 'Owned item'}
                         </p>
-                        <p className="mt-1">
+                        <p className="min-w-0 truncate font-semibold">
                             {isTemporaryAccess
-                                ? `Available here while your membership is active${accessTimeLeft ? `: ${accessTimeLeft}` : ''}${accessExpiresLabel ? ` (ends ${accessExpiresLabel})` : ''}.`
-                                : 'This access came from a direct purchase or permanent grant and will remain in your library.'}
+                                ? `Active${accessTimeLeft ? ` · ${accessTimeLeft}` : ''}${accessExpiresLabel ? ` · ends ${accessExpiresLabel}` : ''}`
+                                : 'Saved in your library.'}
                         </p>
                     </div>
                 </div>
@@ -1201,7 +1261,9 @@ function OwnedCard({ entry }) {
                             )}
                             {/* Shipping Status Badge */}
                             <div className="flex items-center justify-between p-2 rounded-xl bg-muted/30 border border-muted-foreground/10">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Shipping:</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                    {activeDeliveryLabel ? 'Delivery:' : 'Shipping:'}
+                                </span>
                                 <span className={`text-[10px] font-black uppercase tracking-widest ${orderDetails.payment_status === 'resolved_merchant_paid' ? 'text-green-600' :
                                     orderDetails.payment_status === 'disputed' ? 'text-red-600' :
                                         orderDetails.payment_status === 'failed' ? 'text-red-600' :
@@ -1209,21 +1271,27 @@ function OwnedCard({ entry }) {
                                     }`}>
                                     {(() => {
                                         const delivType = orderDetails.delivery?.delivery_type || orderDetails.delivery?.type;
+                                        const deliveryLabel = compactDeliveryStatus(orderDetails);
                                         // Final status takes precedence
                                         if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Imekamilika';
                                         if (orderDetails.payment_status === 'failed') return 'Imesitishwa';
                                         if (orderDetails.payment_status === 'confirmed') return 'Imepokelewa';
                                         if (orderDetails.payment_status === 'disputed') return 'Mgogoro';
+                                        if (deliveryLabel && delivType !== 'self_pickup') return deliveryLabel;
 
                                         // Inquiry pending — merchant hasn't set shipping yet
                                         if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending') return 'Inasubiri Bei ya Usafiri';
                                         // Inquiry quoted — shipping fee provided, waiting for buyer to pay
-                                        if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted') return 'Bei Imewekwa — Lipia Sasa';
+                                        if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && !merchantConfirmed) return 'Inasubiri Uthibitisho';
+                                        if (orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted') {
+                                            if (['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status)) return 'Imelipwa — Inasubiri Utumaji';
+                                            return 'Bei Imewekwa — Lipia Sasa';
+                                        }
                                         // Self pickup orders
                                         if (delivType === 'self_pickup') return 'Kuchukua Dukani';
                                         // Shipping statuses
                                         if (orderDetails.payment_status === 'awaiting_merchant_confirmation') return 'Inasubiri Utumaji';
-                                        if (orderDetails.payment_status === 'escrow_locked') return orderDetails.delivery?.status || 'Ikiwa Safehold';
+                                        if (orderDetails.payment_status === 'escrow_locked') return deliveryStatusText(orderDetails.delivery?.status);
                                         if (orderDetails.payment_status === 'shipped') return 'Imetumwa';
                                         // Fallback: show delivery type if known
                                         if (delivType) return delivType.replace(/_/g, ' ');
@@ -1231,6 +1299,27 @@ function OwnedCard({ entry }) {
                                     })()}
                                 </span>
                             </div>
+
+                            {latestDeliveryEvent && (
+                                <div className="rounded-2xl border border-slate-100 bg-white px-3 py-2">
+                                    <div className="flex items-start gap-2">
+                                        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-600" />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Taarifa ya delivery</p>
+                                            <p className="mt-0.5 truncate text-xs font-black text-slate-950">
+                                                {deliveryStatusText(latestDeliveryEvent.status)}
+                                            </p>
+                                            {latestDeliveryEvent.note && (
+                                                <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-muted-foreground">{latestDeliveryEvent.note}</p>
+                                            )}
+                                            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                {latestDeliveryEvent.created_at ? new Date(latestDeliveryEvent.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+                                                {deliveryEvents.length > 1 ? ` · ${deliveryEvents.length} updates` : ''}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Inquiry Action for Buyer */}
                             {orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending' && orderDetails.payment_status === 'pending' && (
@@ -1248,7 +1337,22 @@ function OwnedCard({ entry }) {
                                 </div>
                             )}
 
-                            {orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && orderDetails.payment_status === 'pending' && (
+                            {orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && !merchantConfirmed && orderDetails.payment_status === 'pending' && (
+                                <div className="p-3 rounded-2xl bg-amber-50 border border-amber-100 text-center">
+                                    <p className="text-[10px] font-black uppercase text-amber-800 mb-1 leading-tight">Muuzaji bado hajathibitisha oda.</p>
+                                    <p className="text-[10px] text-amber-900 leading-tight mb-3">Malipo yatafunguka baada ya muuzaji kuthibitisha kuwa order ipo.</p>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full text-xs font-bold border-amber-200 text-amber-800 hover:bg-amber-100"
+                                        onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
+                                    >
+                                        <MessageSquare className="h-4 w-4 mr-2" />
+                                        Fungua Chat
+                                    </Button>
+                                </div>
+                            )}
+
+                            {orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && merchantConfirmed && orderDetails.payment_status === 'pending' && (
                                 <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
                                     <div className="flex justify-between items-center mb-2">
                                         <p className="text-[10px] font-black uppercase text-emerald-700">Shipping Fee:</p>
@@ -1278,11 +1382,11 @@ function OwnedCard({ entry }) {
                             )}
 
                             {/* PIN Display for Escrow */}
-                            {orderDetails.payment_status === 'awaiting_merchant_confirmation' && orderDetails.delivery?.type === 'self_pickup' && (
+                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(orderDetails.payment_status) && orderDetails.delivery?.type === 'self_pickup' && orderDetails.delivery?.pickup_pin && (
                                 <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-brand-700 mb-1">Your Pickup PIN</p>
                                     <p className="text-xl font-mono font-black tracking-widest text-brand-600">
-                                        {showPin ? (orderDetails.delivery?.pickup_pin || '0000') : '****'}
+                                        {showPin ? orderDetails.delivery.pickup_pin : '****'}
                                     </p>
                                     <button
                                         type="button"
@@ -1295,11 +1399,11 @@ function OwnedCard({ entry }) {
                                 </div>
                             )}
 
-                            {orderDetails.payment_status === 'escrow_locked' && orderDetails.delivery?.type === 'local_boda' && (
+                            {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && orderDetails.delivery?.type !== 'self_pickup' && orderDetails.delivery?.buyer_release_pin && (
                                 <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-indigo-700 mb-1">Your Release PIN</p>
                                     <p className="text-xl font-mono font-black tracking-widest text-indigo-600">
-                                        {showPin ? (orderDetails.delivery?.buyer_release_pin || '0000') : '****'}
+                                        {showPin ? orderDetails.delivery.buyer_release_pin : '****'}
                                     </p>
                                     <button
                                         type="button"
@@ -1308,7 +1412,7 @@ function OwnedCard({ entry }) {
                                     >
                                         {showPin ? 'Hide PIN' : 'Reveal PIN'}
                                     </button>
-                                    <p className="mt-2 text-[10px] text-indigo-800 leading-tight">Mpe boda wa muuzaji PIN hii akishakukabidhi mzigo wako.</p>
+                                    <p className="mt-2 text-[10px] text-indigo-800 leading-tight">Mpe msafirishaji/muuzaji PIN hii baada ya kupokea na kukagua mzigo wako.</p>
                                 </div>
                             )}
 
@@ -1333,12 +1437,12 @@ function OwnedCard({ entry }) {
                                 </div>
                             )}
 
-                            {(orderDetails.payment_status === 'confirmed' || orderDetails.payment_status === 'resolved_merchant_paid') && (
+                            {!hasReview && (orderDetails.payment_status === 'confirmed' || orderDetails.payment_status === 'resolved_merchant_paid') && (
                                 <Button
                                     className="w-full h-11 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black uppercase tracking-widest text-[10px]"
                                     onClick={() => router.visit(orderDetails?.public_id ? `/chat/${orderDetails.public_id}` : `/orders/${orderDetails.id}`)}
                                 >
-                                    Fungua Chat / Toa Review
+                                    Leave Review
                                 </Button>
                             )}
 
@@ -1360,17 +1464,19 @@ function OwnedCard({ entry }) {
                     )}
                 </div>
 
-                {refundPolicy && (
-                    <div className={`mt-3 rounded-2xl border px-3 py-3 text-xs leading-5 ${refundPolicyTone}`}>
+                {shouldShowRefundPolicy && (
+                    <div className={`mt-3 rounded-xl border px-3 py-2 text-xs ${refundPolicyTone}`}>
                         <p className="font-black uppercase tracking-widest">
                             {canOpenRefundClaim ? 'Refund review available' : 'Refund claim unavailable'}
                         </p>
-                        <p className="mt-1">{refundPolicy.reason}</p>
+                        <p className="mt-1 truncate font-semibold">
+                            {canOpenRefundClaim ? 'You can open a claim while SafePay holds funds.' : 'Claim is closed for this order.'}
+                        </p>
                         {refundPolicy.window_ends_at && (
-                            <p className="mt-1 font-bold">Window ends {new Date(refundPolicy.window_ends_at).toLocaleDateString()}</p>
+                            <p className="mt-1 font-bold">Ends {new Date(refundPolicy.window_ends_at).toLocaleDateString()}</p>
                         )}
                         {Number(refundPolicy.download_count || 0) > 0 && (
-                            <p className="mt-1 font-bold">Access count: {refundPolicy.download_count}</p>
+                            <p className="mt-1 font-bold">Accessed {refundPolicy.download_count}x</p>
                         )}
                     </div>
                 )}

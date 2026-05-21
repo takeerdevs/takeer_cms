@@ -24,7 +24,7 @@ class DispatchController extends Controller
 
     /**
      * POST /api/merchant/dispatch/{order}/intercity
-     * Merchant uploads dispatch video + bus waybill photo
+     * Merchant uploads packing proof + bus waybill photo
      */
     public function intercity(Request $request, Order $order): JsonResponse
     {
@@ -33,13 +33,13 @@ class DispatchController extends Controller
         $this->ensurePaidDispatchableOrder($order);
 
         $validated = $request->validate([
-            'dispatch_video' => 'required|file|mimetypes:video/mp4,video/quicktime,video/webm,video/x-matroska|max:51200',
+            'dispatch_video' => 'required|file|mimetypes:image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-matroska|max:51200',
             'transport_receipt' => 'required|image|max:10240',
             'bus_company' => 'nullable|string|max:120',
             'waybill_tracking_number' => 'nullable|string|max:100',
         ]);
 
-        $videoPath = $request->file('dispatch_video')->store('dispatch-videos', 'public');
+        $videoPath = $request->file('dispatch_video')->store('dispatch-proofs', 'public');
         $photoPath = $request->file('transport_receipt')->store('dispatch-receipts', 'public');
 
         $videoUrl = Storage::disk('public')->url($videoPath);
@@ -76,7 +76,7 @@ class DispatchController extends Controller
 
         $pin = $order->delivery?->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        Delivery::updateOrCreate([
+        $delivery = Delivery::updateOrCreate([
             'order_id' => $order->id,
         ], [
             'delivery_type' => 'intercity_bus',
@@ -92,6 +92,23 @@ class DispatchController extends Controller
             'buyer_release_pin' => $pin,
         ]);
 
+        $delivery->events()->create([
+            'order_id' => $order->id,
+            'status' => 'in_transit',
+            'actor_type' => 'merchant',
+            'actor_user_id' => $request->user()?->id,
+            'proof_url' => $videoUrl,
+            'proof_mime' => $request->file('dispatch_video')->getClientMimeType(),
+            'proof_type' => str_starts_with((string) $request->file('dispatch_video')->getClientMimeType(), 'image/') ? 'photo' : 'video',
+            'note' => 'Intercity dispatch confirmed.',
+            'metadata' => [
+                'mode' => 'intercity',
+                'bus_company' => $busCompany,
+                'waybill_tracking_number' => $trackingNumber,
+                'waybill_photo_url' => $photoUrl,
+            ],
+        ]);
+
         // Trigger buyer SMS
         if (!empty($order->buyer?->phone_number)) {
             $this->smsService->sendIntercityDispatchNotification(
@@ -105,7 +122,7 @@ class DispatchController extends Controller
         }
 
         return response()->json([
-            'message' => 'Dispatch imehifadhiwa. Video na risiti ya usafirishaji zimepakiwa.',
+            'message' => 'Dispatch imehifadhiwa. Packing proof na risiti ya usafirishaji zimepakiwa.',
             'delivery' => $order->fresh('delivery')->delivery,
             'ocr' => $ocr,
         ]);
@@ -122,11 +139,12 @@ class DispatchController extends Controller
         $this->ensurePaidDispatchableOrder($order);
 
         $validated = $request->validate([
-            'dispatch_video' => 'required|file|mimetypes:video/mp4,video/quicktime,video/webm,video/x-matroska|max:51200',
+            'dispatch_video' => 'required|file|mimetypes:image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-matroska|max:51200',
             'boda_phone' => 'nullable|string',
+            'delivery_person_name' => 'nullable|string|max:120',
         ]);
 
-        $videoPath = $request->file('dispatch_video')->store('dispatch-videos', 'public');
+        $videoPath = $request->file('dispatch_video')->store('dispatch-proofs', 'public');
         $videoUrl = Storage::disk('public')->url($videoPath);
 
         $order->update([
@@ -137,7 +155,7 @@ class DispatchController extends Controller
 
         $pin = $order->delivery?->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        Delivery::updateOrCreate([
+        $delivery = Delivery::updateOrCreate([
             'order_id' => $order->id,
         ], [
             'delivery_type' => 'local_boda',
@@ -146,9 +164,26 @@ class DispatchController extends Controller
             'physical_address' => $order->delivery?->physical_address,
             'latitude' => $order->delivery?->latitude,
             'longitude' => $order->delivery?->longitude,
-            'delivery_status' => 'in_transit',
+            'delivery_status' => 'with_boda',
             'buyer_release_pin' => $pin,
             'boda_phone' => $validated['boda_phone'] ?? null,
+            'delivery_person_name' => $validated['delivery_person_name'] ?? null,
+        ]);
+
+        $delivery->events()->create([
+            'order_id' => $order->id,
+            'status' => 'with_boda',
+            'actor_type' => 'merchant',
+            'actor_user_id' => $request->user()?->id,
+            'proof_url' => $videoUrl,
+            'proof_mime' => $request->file('dispatch_video')->getClientMimeType(),
+            'proof_type' => str_starts_with((string) $request->file('dispatch_video')->getClientMimeType(), 'image/') ? 'photo' : 'video',
+            'note' => 'Local delivery dispatched.',
+            'metadata' => [
+                'mode' => 'local',
+                'boda_phone' => $validated['boda_phone'] ?? null,
+                'delivery_person_name' => $validated['delivery_person_name'] ?? null,
+            ],
         ]);
 
         if (!empty($order->buyer?->phone_number)) {

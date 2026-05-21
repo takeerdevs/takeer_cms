@@ -25,6 +25,8 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [savingFeeId, setSavingFeeId] = useState(null);
+    const [feeDrafts, setFeeDrafts] = useState({});
     const formRef = useRef(null);
     const [newZone, setNewZone] = useState({
         zone_name: '',
@@ -82,12 +84,43 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                 fetchedZones = fetchedZones.filter(z => String(z.merchant_location_id) === String(fixedLocationId));
             }
             setZones(fetchedZones);
+            setFeeDrafts(fetchedZones.reduce((drafts, zone) => ({
+                ...drafts,
+                [zone.id]: zone.flat_rate_fee ?? '',
+            }), {}));
         } catch (err) {
             console.error('Failed to load shipping zones', err);
             const msg = err.response?.data?.message || 'Imeshindikana kupakia njia za usafirishaji.';
             toast.error(msg);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleFeeDraftChange = (zoneId, value) => {
+        setFeeDrafts(prev => ({ ...prev, [zoneId]: value }));
+    };
+
+    const handleQuickFeeSave = async (zone) => {
+        const draftValue = feeDrafts[zone.id];
+        if (draftValue === '' || Number(draftValue) < 0) {
+            toast.error('Tafadhali weka gharama sahihi ya usafiri.');
+            return;
+        }
+
+        setSavingFeeId(zone.id);
+        try {
+            const res = await window.axios.put(`/api/merchant/shipping-zones/${zone.id}`, {
+                flat_rate_fee: draftValue,
+            });
+            setZones(prev => prev.map(item => item.id === zone.id ? res.data.data : item));
+            setFeeDrafts(prev => ({ ...prev, [zone.id]: res.data.data.flat_rate_fee ?? draftValue }));
+            toast.success('Gharama ya usafiri imesasishwa.');
+            if (onParentRefresh) onParentRefresh();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Imeshindikana kusasisha gharama.');
+        } finally {
+            setSavingFeeId(null);
         }
     };
 
@@ -342,8 +375,9 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                         </p>
                         ) : (
                             zones.map(zone => (
-                                <div key={zone.id} className="flex items-center justify-between p-2.5 rounded-xl border border-input bg-background/50 group h-full">
-                                    <div className="min-w-0 pr-2">
+                                <div key={zone.id} className="p-2.5 rounded-xl border border-input bg-background/50 group h-full space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
                                         <p className="text-xs font-black truncate">{zone.zone_name}</p>
                                         <div className="flex flex-wrap gap-1.5 items-center text-[9px] text-muted-foreground mt-0.5 font-bold">
                                             <span className="text-brand-600 font-black">
@@ -371,6 +405,26 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                         </Button>
                                         <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(zone.id)}>
                                             <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            value={feeDrafts[zone.id] ?? ''}
+                                            onChange={(e) => handleFeeDraftChange(zone.id, e.target.value)}
+                                            className="h-8 rounded-lg bg-white text-xs font-black"
+                                            aria-label="Gharama ya usafiri"
+                                        />
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            disabled={savingFeeId === zone.id || String(feeDrafts[zone.id] ?? '') === String(zone.flat_rate_fee ?? '')}
+                                            onClick={() => handleQuickFeeSave(zone)}
+                                            className="h-8 rounded-lg px-3 text-[10px] font-black uppercase bg-brand-600 hover:bg-brand-700"
+                                        >
+                                            {savingFeeId === zone.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
                                         </Button>
                                     </div>
                                 </div>

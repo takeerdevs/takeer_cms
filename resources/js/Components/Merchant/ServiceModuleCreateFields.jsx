@@ -126,6 +126,7 @@ export function ServiceModuleCreateFields({
     const moduleConfig = getUploadModuleConfig(moduleKey);
 
     if (!moduleConfig || moduleConfig.type !== 'service') return null;
+    if (moduleKey === 'appointments') return null;
 
     const updateRoom = (key, value) => {
         setRoomDetails((prev) => ({ ...(prev || {}), [key]: value }));
@@ -160,9 +161,6 @@ export function ServiceModuleCreateFields({
                         <TextField label="Max guests" type="number" min="1" value={roomDetails.max_guests} onChange={(value) => updateRoom('max_guests', value)} />
                         <TextField label="Rooms available" type="number" min="1" value={roomDetails.room_count} onChange={(value) => updateRoom('room_count', value)} />
                         <TextField label="Bathrooms" type="number" min="0" value={roomDetails.bathrooms} onChange={(value) => updateRoom('bathrooms', value)} />
-                        <SelectField label="Booking policy" value={roomDetails.booking_policy || 'manual_confirm'} onChange={(value) => updateRoom('booking_policy', value)}>
-                            {roomBookingPolicyOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-                        </SelectField>
                         <TextField label="Check-in" type="time" value={roomDetails.checkin_time} onChange={(value) => updateRoom('checkin_time', value)} />
                         <TextField label="Checkout" type="time" value={roomDetails.checkout_time} onChange={(value) => updateRoom('checkout_time', value)} />
                     </div>
@@ -238,22 +236,6 @@ export function ServiceModuleCreateFields({
                 </div>
             )}
 
-            {moduleKey === 'appointments' && (
-                <div className="space-y-3">
-                    {durationFields}
-                    <div className="grid gap-3 md:grid-cols-3">
-                        <TextField label="Buffer minutes" type="number" min="0" value={serviceDetails.buffer_minutes ?? 15} onChange={(value) => updateServiceDetail('buffer_minutes', value)} />
-                        <TextField label="Capacity per slot" type="number" min="1" value={serviceDetails.capacity ?? 1} onChange={(value) => updateServiceDetail('capacity', value)} />
-                        <SelectField label="Booking policy" value={serviceDetails.booking_policy || 'manual_confirm'} onChange={(value) => updateServiceDetail('booking_policy', value)}>
-                            <option value="manual_confirm">Manual confirm</option>
-                            <option value="instant">Instant</option>
-                            <option value="request">Request first</option>
-                        </SelectField>
-                    </div>
-                    <TextAreaField label="Preparation notes" value={serviceDetails.preparation_notes} onChange={(value) => updateServiceDetail('preparation_notes', value)} className="min-h-20" />
-                </div>
-            )}
-
             {moduleKey === 'reservations' && (
                 <div className="space-y-3">
                     <div className="grid gap-3 md:grid-cols-2">
@@ -265,24 +247,8 @@ export function ServiceModuleCreateFields({
                         </SelectField>
                     </div>
                     {durationFields}
-                    <div className="grid gap-3 md:grid-cols-3">
+                    <div className="grid gap-3 md:grid-cols-2">
                         <TextField label="Party size limit" type="number" min="1" value={serviceDetails.party_size_limit} onChange={(value) => updateServiceDetail('party_size_limit', value)} />
-                        <SelectField label="Policy" value={serviceDetails.reservation_policy || 'manual_confirm'} onChange={(value) => updateServiceDetail('reservation_policy', value)}>
-                            <option value="manual_confirm">Manual confirm</option>
-                            <option value="instant">Instant</option>
-                            <option value="request_first">Request first</option>
-                        </SelectField>
-                        <TextField
-                            label="Reservation deposit (TZS)"
-                            type="number"
-                            min="0"
-                            value={serviceDetails.deposit_amount ?? serviceDetails.deposit_note}
-                            onChange={(value) => {
-                                updateServiceDetail('deposit_amount', value);
-                                updateServiceDetail('deposit_note', value);
-                            }}
-                            placeholder="Optional"
-                        />
                     </div>
                     <TextAreaField label="Reservation notes" value={serviceDetails.reservation_notes} onChange={(value) => updateServiceDetail('reservation_notes', value)} className="min-h-20" />
                 </div>
@@ -319,13 +285,13 @@ export function ServiceModuleCreateFields({
                                 <option value="trip">Per trip</option>
                                 <option value="event">Per event</option>
                             </SelectField>
-                            <TextField label="Security deposit" type="number" min="0" value={serviceDetails.security_deposit} onChange={(value) => updateServiceDetail('security_deposit', value)} placeholder="Optional" />
+                            <TextField label="Refundable security deposit" type="number" min="0" value={serviceDetails.security_deposit} onChange={(value) => updateServiceDetail('security_deposit', value)} placeholder="Optional refundable amount" />
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <SectionHeading title="Booking rules" description="Set the minimum rental period and how bookings are accepted." />
-                        <div className="grid gap-3 md:grid-cols-3">
+                        <SectionHeading title="Rental duration" description="Set the minimum rental period for this item." />
+                        <div className="grid gap-3 md:grid-cols-2">
                             <TextField label="Minimum duration" type="number" min="1" value={serviceDurationValue} onChange={setServiceDurationValue} placeholder="1" />
                             <SelectField label="Duration unit" value={serviceDurationUnit} onChange={setServiceDurationUnit}>
                                 <option value="minutes">Minutes</option>
@@ -334,11 +300,6 @@ export function ServiceModuleCreateFields({
                                 <option value="weeks">Weeks</option>
                                 <option value="months">Months</option>
                                 <option value="years">Years</option>
-                            </SelectField>
-                            <SelectField label="Rental policy" value={serviceDetails.rental_policy || 'manual_confirm'} onChange={(value) => updateServiceDetail('rental_policy', value)}>
-                                <option value="manual_confirm">Manual confirm</option>
-                                <option value="instant">Instant</option>
-                                <option value="request_first">Request first</option>
                             </SelectField>
                         </div>
                     </div>
@@ -372,13 +333,8 @@ export function ServiceModuleCreateFields({
                         <TextField label="Capacity" type="number" min="1" value={serviceDetails.workshop_capacity} onChange={(value) => updateServiceDetail('workshop_capacity', value)} />
                     </div>
                     {durationFields}
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-1">
                         <TextField label="Level" value={serviceDetails.workshop_level || 'All levels'} onChange={(value) => updateServiceDetail('workshop_level', value)} />
-                        <SelectField label="Enrollment policy" value={serviceDetails.enrollment_policy || 'manual_confirm'} onChange={(value) => updateServiceDetail('enrollment_policy', value)}>
-                            <option value="manual_confirm">Manual confirm</option>
-                            <option value="instant">Instant</option>
-                            <option value="application">Application first</option>
-                        </SelectField>
                     </div>
                     <TextField label="Start note" value={serviceDetails.workshop_start_note} onChange={(value) => updateServiceDetail('workshop_start_note', value)} placeholder="Starts when cohort is full" />
                     <RepeatableTextList label="Learning outcomes" value={serviceDetails.outcomes || serviceDetails.learning_outcomes} onChange={(value) => {

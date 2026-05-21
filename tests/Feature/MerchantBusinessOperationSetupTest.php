@@ -53,4 +53,36 @@ class MerchantBusinessOperationSetupTest extends TestCase
         $this->assertContains('custom_orders', $merchant->business_profile['recommended_modules']);
         $this->assertContains('physical_products', $merchant->business_profile['commerce_modes']);
     }
+
+    public function test_user_can_create_business_profile_without_default_operations_or_modules(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'merchant',
+            'phone_number' => '255700111222',
+            'phone_verified_at' => now(),
+        ]);
+
+        Merchant::create([
+            'user_id' => $user->id,
+            'username' => 'asha-personal',
+            'display_name' => 'Asha Personal',
+            'type' => 'personal',
+            'is_default' => true,
+        ]);
+
+        $response = $this->actingAs($user)->postJson('/merchant/add-business', [
+            'display_name' => 'Asha New Business',
+            'username' => 'asha-new-business',
+            'type' => 'sole_proprietor',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('merchant.business_profile.primary_operation', null)
+            ->assertJsonPath('merchant.business_profile.operations', [])
+            ->assertJsonPath('merchant.business_profile.recommended_modules', [])
+            ->assertJsonPath('merchant.business_profile.recommended_commerce_modes', [])
+            ->assertJsonPath('merchant.business_profile.commerce_modes', [])
+            ->assertJsonPath('merchant.business_profile.module_setup_status', 'not_configured')
+            ->assertJsonPath('merchant.active_modules', []);
+    }
 }

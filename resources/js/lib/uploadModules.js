@@ -14,6 +14,7 @@ export const UPLOAD_MODULES = {
         category: 'Accommodation & Stays',
         subcategory: 'Hotel',
         serviceTemplateKey: 'stay',
+        serviceSubtypeKey: 'room',
         defaults: {
             servicePriceDisplay: 'nightly',
             serviceMode: 'book_appointment',

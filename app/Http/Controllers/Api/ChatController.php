@@ -132,9 +132,14 @@ class ChatController extends Controller
                 // Prevent duplicate reviews for the same order
                 $exists = \App\Models\ProductReview::where('order_id', $order->id)->exists();
                 if (!$exists) {
+                    $reviewProductId = $order->product_id ?: $this->firstReviewableProductId($order);
+                    if (! $reviewProductId) {
+                        return response()->json(['message' => 'Hakuna bidhaa ya kuwekea review kwenye order hii.'], 422);
+                    }
+
                     $review = \App\Models\ProductReview::create([
                         'order_id' => $order->id,
-                        'product_id' => $order->product_id,
+                        'product_id' => $reviewProductId,
                         'user_id' => $userId,
                         'rating' => $validated['payload']['stars'] ?? 5,
                         'comment' => $validated['payload']['comment'] ?? ''
@@ -326,6 +331,9 @@ class ChatController extends Controller
                         if ($deliveryType === 'self_pickup' && !$delivery->pickup_pin) {
                             $delivery->pickup_pin = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
                         }
+                        if ($deliveryType !== 'self_pickup' && !$delivery->buyer_release_pin) {
+                            $delivery->buyer_release_pin = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+                        }
 
                         if ($delivery->delivery_status === 'inquiry') {
                             $delivery->delivery_status = ($deliveryType === 'self_pickup') ? 'awaiting_pickup' : 'inquiry';
@@ -346,7 +354,7 @@ class ChatController extends Controller
 
         return response()->json([
             'message' => $message,
-            'order' => $order->fresh()->load(['product.unitType', 'product.images', 'merchant.locations', 'delivery', 'dispute', 'review'])
+            'order' => $order->fresh()->load(['product.unitType', 'product.images', 'merchant.locations', 'delivery.events', 'dispute', 'review'])
         ], 201);
     }
 
@@ -370,6 +378,31 @@ class ChatController extends Controller
 
         $delivery->save();
         $order->setRelation('delivery', $delivery);
+    }
+
+    private function firstReviewableProductId(Order $order): ?int
+    {
+        $lines = data_get($order->offering_group_selection, 'lines', []);
+        $stack = is_array($lines) ? $lines : [];
+
+        while ($stack !== []) {
+            $line = array_shift($stack);
+            if (! is_array($line)) {
+                continue;
+            }
+
+            if (($line['item_type'] ?? null) === 'product' && ! empty($line['item_id'])) {
+                return (int) $line['item_id'];
+            }
+
+            foreach (($line['child_lines'] ?? []) as $childLine) {
+                if (is_array($childLine)) {
+                    $stack[] = $childLine;
+                }
+            }
+        }
+
+        return null;
     }
 
     private function orderHasPhysicalItems(Order $order): bool
@@ -396,6 +429,10 @@ class ChatController extends Controller
 
         if ($order->requiresPhysicalFulfillment() && $order->inquiry_status !== 'quoted') {
             throw new \Exception('Merchant must confirm stock and send the agreed quote before payment.');
+        }
+
+        if ($order->is_inquiry && !$order->merchant_confirmed_at) {
+            throw new \Exception('Subiri muuzaji athibitishe upatikanaji wa order kabla ya kulipa.');
         }
 
         // 1. Precise recalculation to avoid discrepancies
@@ -441,7 +478,7 @@ class ChatController extends Controller
                 $order->update([
                     'payment_status' => $targetStatus,
                     'custom_delivery_due_at' => $isCustomDelivery ? $order->customDeliveryDueAtFrom() : $order->custom_delivery_due_at,
-                    'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
+                    'merchant_confirmed_at' => $isPhysical ? ($order->merchant_confirmed_at ?: now()) : $order->merchant_confirmed_at,
                 ]);
             });
 
@@ -513,7 +550,7 @@ class ChatController extends Controller
                 }
             }
 
-            return $order->fresh()->load(['product', 'merchant.locations', 'delivery', 'dispute', 'review']);
+            return $order->fresh()->load(['product', 'merchant.locations', 'delivery.events', 'dispute', 'review']);
 
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('ChatController@triggerPaymentPush error', [

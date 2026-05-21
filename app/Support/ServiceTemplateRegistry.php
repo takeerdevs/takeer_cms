@@ -8,12 +8,62 @@ use Illuminate\Support\Str;
 
 class ServiceTemplateRegistry
 {
+    public static function all(): array
+    {
+        return collect(self::keys())
+            ->mapWithKeys(fn (string $key) => [$key => self::template($key, null)])
+            ->all();
+    }
+
+    public static function keys(): array
+    {
+        return [
+            'appointment_or_quote',
+            'stay',
+            'learning',
+            'tour',
+            'space_booking',
+            'rental',
+            'orderable_service',
+        ];
+    }
+
+    public static function normalizeKeys(array $keys): array
+    {
+        $valid = self::keys();
+
+        return collect($keys)
+            ->filter(fn ($key) => is_string($key) && in_array($key, $valid, true))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     public static function forCategory(?ServiceCategory $category): array
     {
         $templateKey = $category?->service_template_key ?: self::templateKeyFor($category);
         $payload = self::template($templateKey, $category);
 
         return array_replace_recursive($payload, $category?->template_config ?: []);
+    }
+
+    public static function allowedForCategory(?ServiceCategory $category): array
+    {
+        if (! $category) {
+            return self::all();
+        }
+
+        $default = $category->service_template_key ?: self::templateKeyFor($category);
+        $keys = self::normalizeKeys($category->allowed_template_keys ?: []);
+        $keys = self::normalizeKeys([$default, ...$keys]);
+
+        return collect($keys)
+            ->map(fn (string $key) => array_replace_recursive(
+                self::template($key, $category),
+                ($category->template_config ?: [])[$key] ?? []
+            ))
+            ->values()
+            ->all();
     }
 
     public static function forProduct(Product $product): array
@@ -117,6 +167,14 @@ class ServiceTemplateRegistry
                 'specialized' => [],
                 'detail_sections' => [],
             ],
+            'subtypes' => [
+                ['key' => 'none', 'label' => 'Standard service', 'description' => 'Use the normal service creation flow without extra subtype rules.'],
+                ['key' => 'appointment', 'label' => 'Appointment', 'description' => 'Customer books or requests time with the provider.'],
+                ['key' => 'home_visit', 'label' => 'Home visit', 'description' => 'Provider visits the customer location.'],
+                ['key' => 'site_inspection', 'label' => 'Site inspection', 'description' => 'Provider inspects before quoting or starting work.'],
+                ['key' => 'emergency_request', 'label' => 'Emergency request', 'description' => 'Urgent request with manual confirmation.'],
+                ['key' => 'quote_project', 'label' => 'Quote / project', 'description' => 'Customer requests a custom quote or project scope.'],
+            ],
             'buyer_checkout' => [
                 'mode' => 'contact_or_pay',
                 'required_inputs' => ['customer_name', 'customer_phone'],
@@ -147,6 +205,13 @@ class ServiceTemplateRegistry
                 'merchant_fields' => [
                     'specialized' => ['room_or_unit_options', 'max_guests', 'checkin_time', 'checkout_time', 'house_rules', 'amenities'],
                     'detail_sections' => ['amenities', 'house_rules'],
+                ],
+                'subtypes' => [
+                    ['key' => 'none', 'label' => 'Standard stay', 'description' => 'Use the normal stay workflow without extra subtype rules.'],
+                    ['key' => 'room', 'label' => 'Room', 'description' => 'Single room or suite.'],
+                    ['key' => 'apartment', 'label' => 'Apartment / unit', 'description' => 'Entire apartment, house, or serviced unit.'],
+                    ['key' => 'bed', 'label' => 'Bed / shared stay', 'description' => 'Hostel bed or shared stay option.'],
+                    ['key' => 'homestay', 'label' => 'Homestay', 'description' => 'Hosted stay in a home setting.'],
                 ],
                 'buyer_checkout' => [
                     'mode' => 'book_or_request',
@@ -182,6 +247,14 @@ class ServiceTemplateRegistry
                     'specialized' => ['levels_or_cohorts', 'sessions', 'capacity', 'learning_outcomes', 'materials'],
                     'detail_sections' => ['outcomes', 'requirements', 'certificate'],
                 ],
+                'subtypes' => [
+                    ['key' => 'none', 'label' => 'Standard learning', 'description' => 'Use the normal learning workflow without extra subtype rules.'],
+                    ['key' => 'course', 'label' => 'Course', 'description' => 'Structured course or class.'],
+                    ['key' => 'tutoring', 'label' => 'Tutoring', 'description' => 'One-on-one or small group tutoring.'],
+                    ['key' => 'workshop', 'label' => 'Workshop', 'description' => 'Short practical training session.'],
+                    ['key' => 'cohort', 'label' => 'Cohort', 'description' => 'Scheduled cohort with seats and sessions.'],
+                    ['key' => 'driving_school', 'label' => 'Driving school', 'description' => 'Driving lessons or road training.'],
+                ],
                 'buyer_checkout' => [
                     'mode' => 'enroll_or_request',
                     'required_inputs' => ['student_name', 'customer_phone'],
@@ -215,6 +288,13 @@ class ServiceTemplateRegistry
                     'specialized' => ['itinerary_days', 'departures', 'seats', 'pickup_dropoff', 'inclusions', 'exclusions', 'traveler_requirements'],
                     'detail_sections' => ['itinerary', 'included', 'excluded', 'pickup', 'requirements'],
                 ],
+                'subtypes' => [
+                    ['key' => 'none', 'label' => 'Standard tour', 'description' => 'Use the normal tour workflow without extra subtype rules.'],
+                    ['key' => 'tour_package', 'label' => 'Tour package', 'description' => 'Packaged trip with itinerary and inclusions.'],
+                    ['key' => 'safari', 'label' => 'Safari', 'description' => 'Safari or nature travel package.'],
+                    ['key' => 'boat_trip', 'label' => 'Boat trip', 'description' => 'Boat trip or water experience.'],
+                    ['key' => 'guided_trip', 'label' => 'Guided trip', 'description' => 'Guide-led destination experience.'],
+                ],
                 'buyer_checkout' => [
                     'mode' => 'book_tour',
                     'required_inputs' => ['customer_name', 'customer_phone', 'departure', 'adults'],
@@ -242,6 +322,22 @@ class ServiceTemplateRegistry
                     'specialized' => ['bookable_units', 'capacity', 'availability_rules', 'deposit_or_terms'],
                     'detail_sections' => ['terms', 'included', 'requirements'],
                 ],
+                'subtypes' => $key === 'rental'
+                    ? [
+                        ['key' => 'none', 'label' => 'Standard rental', 'description' => 'Use the normal rental workflow without extra subtype rules.'],
+                        ['key' => 'tools_equipment', 'label' => 'Tools / equipment', 'description' => 'Tools, machines, electronics, or equipment hire.'],
+                        ['key' => 'vehicle', 'label' => 'Vehicle', 'description' => 'Cars, vans, motorcycles, boats, or transport units.'],
+                        ['key' => 'event_equipment', 'label' => 'Event equipment', 'description' => 'Sound, tents, chairs, lighting, decor, or party gear.'],
+                        ['key' => 'space', 'label' => 'Space', 'description' => 'A rentable space managed as a rental item.'],
+                        ['key' => 'other', 'label' => 'Other rental', 'description' => 'Another rentable item or unit.'],
+                    ]
+                    : [
+                        ['key' => 'none', 'label' => 'Standard space booking', 'description' => 'Use the normal booking workflow without extra subtype rules.'],
+                        ['key' => 'venue', 'label' => 'Venue', 'description' => 'Hall, garden, wedding venue, or event venue.'],
+                        ['key' => 'sports_court', 'label' => 'Sports court', 'description' => 'Court, pitch, field, or sports facility.'],
+                        ['key' => 'meeting_room', 'label' => 'Meeting room', 'description' => 'Meeting, training, or conference room.'],
+                        ['key' => 'recreation_space', 'label' => 'Recreation space', 'description' => 'Recreation or activity space.'],
+                    ],
                 'buyer_checkout' => [
                     'mode' => 'reserve_or_request',
                     'required_inputs' => ['customer_name', 'customer_phone', 'start_date', 'end_date', 'service_option_id'],
@@ -269,6 +365,14 @@ class ServiceTemplateRegistry
                 'merchant_fields' => [
                     'specialized' => ['packages', 'quantity_units', 'lead_time', 'delivery_or_pickup_area'],
                     'detail_sections' => ['customization', 'lead_time', 'delivery_pickup'],
+                ],
+                'subtypes' => [
+                    ['key' => 'none', 'label' => 'Standard custom order', 'description' => 'Use the normal custom order workflow without extra subtype rules.'],
+                    ['key' => 'catering', 'label' => 'Catering', 'description' => 'Food service, meal prep, or event catering.'],
+                    ['key' => 'bakery_cake', 'label' => 'Bakery / cake', 'description' => 'Cakes, baked goods, or custom desserts.'],
+                    ['key' => 'printing', 'label' => 'Printing', 'description' => 'Print jobs, branding, merchandise, or custom printing.'],
+                    ['key' => 'delivery', 'label' => 'Delivery', 'description' => 'Delivery-led services such as pharmacy or flowers.'],
+                    ['key' => 'custom_made', 'label' => 'Custom made item', 'description' => 'Made-to-order item or custom package.'],
                 ],
                 'buyer_checkout' => [
                     'mode' => 'order_or_request',

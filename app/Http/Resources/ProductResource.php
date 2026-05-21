@@ -488,6 +488,21 @@ class ProductResource extends JsonResource
                 'quantity' => (int) $inv->quantity,
                 'quantity_decimal' => $inv->quantity_decimal !== null ? (float) $inv->quantity_decimal : (float) $inv->quantity,
             ])),
+            'availability_location_ids' => $this->whenLoaded('locationAvailabilities', fn() => $this->locationAvailabilities
+                ->where('availability_type', 'serves')
+                ->where('is_enabled', true)
+                ->pluck('merchant_location_id')
+                ->map(fn ($id) => (int) $id)
+                ->values()),
+            'location_availabilities' => $this->whenLoaded('locationAvailabilities', fn() => $this->locationAvailabilities
+                ->where('availability_type', 'serves')
+                ->where('is_enabled', true)
+                ->map(fn ($row) => [
+                    'merchant_location_id' => (int) $row->merchant_location_id,
+                    'location_name' => $row->location?->name,
+                    'availability_type' => $row->availability_type,
+                ])
+                ->values()),
             'variants' => $this->whenLoaded('variants', fn() => $this->variants->map(fn($variant) => [
                 'id' => $variant->id,
                 'name' => $variant->name,

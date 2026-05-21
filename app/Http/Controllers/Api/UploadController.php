@@ -23,6 +23,7 @@ use App\Models\SubscriptionPlanItem;
 use App\Models\PostProductTag;
 use App\Models\ProductImage;
 use App\Models\MerchantGroupSaleCampaign;
+use App\Models\MerchantLocationable;
 use App\Jobs\ProcessPremiumProductVideo;
 use App\Jobs\ProcessPromotableVideo;
 use App\Http\Resources\ProductResource;
@@ -61,7 +62,7 @@ class UploadController extends Controller
 
         $query = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'serviceCategory.parent', 'serviceSubcategory.parent', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'serviceCategory.parent', 'serviceSubcategory.parent', 'locationAvailabilities.location', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
             ->with(['variants', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
@@ -94,7 +95,7 @@ class UploadController extends Controller
         $productId = $id ?? $merchantOrId;
         $product = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories.location', 'locationInventories.location', 'postTags.post:id,views_count', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories.location', 'locationInventories.location', 'locationAvailabilities.location', 'postTags.post:id,views_count', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
             ->withCount('postTags')
             ->withCount([
                 'orders as purchases_count' => fn ($orders) => $orders->whereNotIn('payment_status', ['pending', 'failed']),
@@ -949,6 +950,8 @@ class UploadController extends Controller
             'shipping_profile_id' => 'nullable|integer|exists:shipping_profiles,id',
             'location_inventories' => 'nullable|array', // { location_id: quantity }
             'location_inventories.*' => 'nullable|numeric|min:0',
+            'availability_location_ids' => 'nullable|array',
+            'availability_location_ids.*' => 'integer|exists:merchant_locations,id',
             'variants.*.location_inventories' => 'nullable|array',
             'variants.*.location_inventories.*' => 'nullable|numeric|min:0',
             'publish_targets' => 'nullable|array',
@@ -1004,6 +1007,19 @@ class UploadController extends Controller
         $merchantLocationIds = $request->input('type') === 'physical'
             ? $merchantProfile->locations()->pluck('id')->map(fn ($id) => (int) $id)
             : collect();
+        $allMerchantLocationIds = $merchantProfile->locations()->pluck('id')->map(fn ($id) => (int) $id);
+        $availabilityLocationIds = collect((array) $request->input('availability_location_ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+        $invalidAvailabilityLocationIds = $availabilityLocationIds
+            ->filter(fn ($locationId) => ! $allMerchantLocationIds->contains((int) $locationId))
+            ->values();
+
+        if ($invalidAvailabilityLocationIds->isNotEmpty()) {
+            return response()->json(['message' => 'Huduma/bidhaa inaweza kuhusishwa na maeneo yako pekee.'], 422);
+        }
         $sumMerchantLocationStock = function (array $inventories) use ($merchantLocationIds): float {
             return collect($inventories)
                 ->filter(fn ($quantity, $locationId) => $merchantLocationIds->contains((int) $locationId))
@@ -1679,6 +1695,10 @@ class UploadController extends Controller
             ProcessPremiumProductVideo::dispatch($product->id)->afterCommit();
         }
 
+        if ($request->has('availability_location_ids')) {
+            $this->syncLocationAvailability($product, $merchantProfile, $availabilityLocationIds->all());
+        }
+
         if ($request->input('type') === 'physical') {
             if ($hasVariants) {
                 // Delete existing and re-create to keep sync simple
@@ -2003,6 +2023,38 @@ class UploadController extends Controller
                 'url' => url('/group-sale/'.$groupSaleCampaign->slug),
             ] : null,
         ]);
+    }
+
+    private function syncLocationAvailability(Product $product, Merchant $merchant, array $locationIds): void
+    {
+        $requestedLocationIds = collect($locationIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        $validLocationIds = $merchant->locations()
+            ->whereIn('id', $requestedLocationIds->all())
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        abort_if($requestedLocationIds->count() !== $validLocationIds->count(), 422, 'Huduma/bidhaa inaweza kuhusishwa na maeneo yako pekee.');
+
+        $product->locationAvailabilities()
+            ->where('availability_type', 'serves')
+            ->whereNotIn('merchant_location_id', $validLocationIds->all())
+            ->delete();
+
+        foreach ($validLocationIds as $locationId) {
+            MerchantLocationable::updateOrCreate(
+                [
+                    'merchant_location_id' => $locationId,
+                    'locationable_type' => Product::class,
+                    'locationable_id' => $product->id,
+                    'availability_type' => 'serves',
+                ],
+                [
+                    'merchant_id' => $merchant->id,
+                    'is_enabled' => true,
+                ]
+            );
+        }
     }
 
     private function syncFulfillmentGroupSaleCampaign(Product $product, Merchant $merchant, Request $request): ?MerchantGroupSaleCampaign
@@ -2412,6 +2464,7 @@ class UploadController extends Controller
 
     private function sanitizeServiceDetails(array $details, ?string $templateKey): array
     {
+        $serviceSubtype = Str::limit(Str::slug(trim((string) ($details['service_subtype'] ?? ($details['rental_type'] ?? ''))), '_'), 80, '');
         $stringList = fn (mixed $values, int $limit = 30) => collect((array) $values)
             ->map(fn ($value) => trim((string) $value))
             ->filter()
@@ -2422,6 +2475,7 @@ class UploadController extends Controller
 
         return match ($templateKey) {
             'tour' => [
+                'service_subtype' => $serviceSubtype,
                 'destination' => Str::limit(trim((string) ($details['destination'] ?? '')), 160, ''),
                 'duration_label' => Str::limit(trim((string) ($details['duration_label'] ?? '')), 80, ''),
                 'pickup_point' => Str::limit(trim((string) ($details['pickup_point'] ?? '')), 220, ''),
@@ -2441,16 +2495,19 @@ class UploadController extends Controller
                 'requirements' => Str::limit(trim((string) ($details['requirements'] ?? '')), 2000, ''),
             ],
             'stay' => [
+                'service_subtype' => $serviceSubtype,
                 'amenities' => $stringList($details['amenities'] ?? []),
                 'house_rules' => Str::limit(trim((string) ($details['house_rules'] ?? '')), 2000, ''),
                 'cancellation_policy' => Str::limit(trim((string) ($details['cancellation_policy'] ?? '')), 1200, ''),
             ],
             'learning' => [
+                'service_subtype' => $serviceSubtype,
                 'outcomes' => $stringList($details['outcomes'] ?? []),
                 'requirements' => $stringList($details['requirements'] ?? []),
                 'certificate' => Str::limit(trim((string) ($details['certificate'] ?? '')), 300, ''),
             ],
             'orderable_service' => [
+                'service_subtype' => $serviceSubtype,
                 'customization_notes' => Str::limit(trim((string) ($details['customization_notes'] ?? '')), 2000, ''),
                 'lead_time' => Str::limit(trim((string) ($details['lead_time'] ?? '')), 120, ''),
                 'pickup_delivery_notes' => Str::limit(trim((string) ($details['pickup_delivery_notes'] ?? '')), 1200, ''),
@@ -2650,14 +2707,17 @@ class UploadController extends Controller
 
     private function sanitizeRentalModuleDetails(array $details): array
     {
-        $rentalType = (string) ($details['rental_type'] ?? 'equipment');
+        $rentalType = (string) ($details['rental_type'] ?? ($details['service_subtype'] ?? 'tools_equipment'));
         $rentalUnit = (string) ($details['rental_unit'] ?? 'day');
         $rentalPolicy = (string) ($details['rental_policy'] ?? 'manual_confirm');
 
         return [
-            'rental_type' => in_array($rentalType, ['equipment', 'vehicle', 'space', 'property', 'event_gear', 'costume', 'other'], true)
+            'service_subtype' => in_array($rentalType, ['none', 'tools_equipment', 'equipment', 'vehicle', 'space', 'property', 'event_equipment', 'event_gear', 'costume', 'other'], true)
                 ? $rentalType
-                : 'equipment',
+                : 'tools_equipment',
+            'rental_type' => in_array($rentalType, ['none', 'tools_equipment', 'equipment', 'vehicle', 'space', 'property', 'event_equipment', 'event_gear', 'costume', 'other'], true)
+                ? $rentalType
+                : 'tools_equipment',
             'rental_unit' => in_array($rentalUnit, ['hour', 'day', 'night', 'week', 'month', 'year', 'trip', 'event'], true)
                 ? $rentalUnit
                 : 'day',

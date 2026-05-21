@@ -175,12 +175,30 @@ class ServiceRequestController extends Controller
             }
         }
 
+        $bookingType = $product->service_booking_type ?: 'instant';
+        $instantConfirmableTypes = [
+            'appointment_request',
+            'room_booking_request',
+            'tour_booking_request',
+            'workshop_enrollment_request',
+            'reservation_request',
+            'rental_request',
+            'custom_order_request',
+        ];
+        $isInstantConfirmation = $bookingType === 'instant'
+            && in_array($requestType, $instantConfirmableTypes, true)
+            && ! in_array($product->service_mode, ['request_quote', 'showcase_only'], true);
+        $instantPayableAmount = $isInstantConfirmation
+            ? $this->initialPayableAmountForProduct($product, $selectedServiceOption ? (array) $selectedServiceOption : null)
+            : null;
+        $serviceTotalAmount = $this->serviceTotalAmountForProduct($product, $selectedServiceOption ? (array) $selectedServiceOption : null);
+
         $serviceRequest = ServiceRequest::create([
             'merchant_id' => $product->merchant_id,
             'product_id' => $product->id,
             'buyer_id' => $request->user()?->id,
             'request_type' => $requestType,
-            'status' => 'pending',
+            'status' => $isInstantConfirmation ? 'confirmed' : 'pending',
             'customer_name' => $validated['customer_name'],
             'customer_phone' => $validated['customer_phone'] ?? null,
             'customer_email' => $validated['customer_email'] ?? null,
@@ -198,17 +216,24 @@ class ServiceRequestController extends Controller
                 ...($validated['client_requirements'] ?? []),
                 ...($modulePayload ? ['module_payload' => $modulePayload] : []),
             ],
+            'quoted_amount' => $instantPayableAmount,
             'deposit_amount' => $product->service_deposit_amount,
             'booking_provider' => $product->service_booking_provider ?: 'manual',
+            'payment_token' => $instantPayableAmount && $instantPayableAmount > 0 ? ServiceRequest::generatePaymentToken() : null,
+            'payment_status' => $instantPayableAmount && $instantPayableAmount > 0 ? 'payment_link_created' : null,
+            'payment_link_expires_at' => $instantPayableAmount && $instantPayableAmount > 0 ? now()->addDays(14) : null,
             'metadata' => [
                 'module_key' => $product->module_key,
                 'module_payload' => $modulePayload,
                 'module_details' => $product->module_details ?? [],
                 'service_mode' => $product->service_mode,
+                'service_booking_type' => $bookingType,
                 'service_scheduling_type' => $product->service_scheduling_type,
                 'service_session_id' => $selectedSession?->id,
                 'service_session_title' => $selectedSession?->title,
                 'service_price_display' => $product->service_price_display,
+                'service_total_amount' => $serviceTotalAmount,
+                'service_advance_amount' => $product->service_deposit_amount !== null ? (float) $product->service_deposit_amount : null,
                 'service_option_id' => $selectedServiceOption['id'] ?? null,
                 'service_option' => $selectedServiceOption ? [
                     'id' => $selectedServiceOption['id'] ?? null,
@@ -921,6 +946,7 @@ class ServiceRequestController extends Controller
             'client_requirements' => $serviceRequest->client_requirements ?? [],
             'quoted_amount' => $serviceRequest->quoted_amount !== null ? (float) $serviceRequest->quoted_amount : null,
             'deposit_amount' => $serviceRequest->deposit_amount !== null ? (float) $serviceRequest->deposit_amount : null,
+            'payment_summary' => $this->servicePaymentSummary($serviceRequest),
             'booking_provider' => $serviceRequest->booking_provider,
             'calendar_provider' => $serviceRequest->calendar_provider,
             'calendar_sync_status' => $serviceRequest->calendar_sync_status,
@@ -1342,6 +1368,50 @@ class ServiceRequestController extends Controller
             $location['city'] ?? null,
             $location['country'] ?? null,
         ])->filter()->implode(', ') ?: null;
+    }
+
+    private function initialPayableAmountForProduct(Product $product, ?array $selectedServiceOption = null): ?float
+    {
+        if ($product->service_deposit_amount !== null && (float) $product->service_deposit_amount > 0) {
+            return (float) $product->service_deposit_amount;
+        }
+
+        return $this->serviceTotalAmountForProduct($product, $selectedServiceOption);
+    }
+
+    private function serviceTotalAmountForProduct(Product $product, ?array $selectedServiceOption = null): ?float
+    {
+        if ($selectedServiceOption && isset($selectedServiceOption['price']) && $selectedServiceOption['price'] !== '') {
+            return max(0, (float) $selectedServiceOption['price']);
+        }
+
+        $price = (float) ($product->discounted_price > 0 ? $product->discounted_price : ($product->price ?? 0));
+
+        return $price > 0 ? $price : null;
+    }
+
+    private function servicePaymentSummary(ServiceRequest $serviceRequest): array
+    {
+        $quotedAmount = $serviceRequest->quoted_amount !== null ? (float) $serviceRequest->quoted_amount : null;
+        $totalAmount = isset($serviceRequest->metadata['service_total_amount']) && $serviceRequest->metadata['service_total_amount'] !== null
+            ? (float) $serviceRequest->metadata['service_total_amount']
+            : $quotedAmount;
+        $paidAmount = in_array($serviceRequest->payment_status, ['paid', 'held', 'released'], true)
+            ? ($quotedAmount ?? 0.0)
+            : 0.0;
+
+        return [
+            'total_amount' => $totalAmount,
+            'advance_amount' => $serviceRequest->deposit_amount !== null ? (float) $serviceRequest->deposit_amount : null,
+            'payment_request_amount' => $quotedAmount,
+            'paid_amount' => $paidAmount,
+            'remaining_amount' => $totalAmount !== null ? max(0, $totalAmount - $paidAmount) : null,
+            'is_advance_payment' => $serviceRequest->deposit_amount !== null
+                && $quotedAmount !== null
+                && $totalAmount !== null
+                && (float) $serviceRequest->deposit_amount === $quotedAmount
+                && $totalAmount > $quotedAmount,
+        ];
     }
 
     private function calendarModuleLabel(?string $moduleKey): string

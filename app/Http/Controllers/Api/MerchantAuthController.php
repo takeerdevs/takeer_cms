@@ -296,16 +296,18 @@ class MerchantAuthController extends Controller
             'display_name' => 'required|string|max:255',
             'username' => 'required|string|max:255|unique:merchants,username',
             'type' => 'required|string|in:sole_proprietor,business,ngo',
-            'primary_operation' => ['required', 'string', Rule::in(BusinessOperationRegistry::keys())],
+            'primary_operation' => ['nullable', 'string', Rule::in(BusinessOperationRegistry::keys())],
             'operations' => ['nullable', 'array'],
             'operations.*' => ['string', Rule::in(BusinessOperationRegistry::keys())],
         ]);
 
         $user = $request->user();
-        $businessConfig = BusinessOperationRegistry::get(
-            $request->input('primary_operation'),
-            $request->input('operations', [])
-        );
+        $businessConfig = $request->filled('primary_operation')
+            ? BusinessOperationRegistry::get(
+                $request->input('primary_operation'),
+                $request->input('operations', [])
+            )
+            : null;
 
         // Get defaults from existing merchant profile if available
         $baseMerchant = \App\Models\Merchant::where('user_id', $user->id)->first();
@@ -323,13 +325,13 @@ class MerchantAuthController extends Controller
             'business_category_key' => null,
             'business_subcategory_key' => null,
             'business_profile' => [
-                'primary_operation' => $businessConfig['primary_operation'],
-                'operations' => $businessConfig['operations'],
-                'operation_labels' => $businessConfig['operation_labels'],
-                'recommended_modules' => $businessConfig['recommended_modules'],
-                'recommended_commerce_modes' => $businessConfig['recommended_commerce_modes'],
-                'commerce_modes' => $businessConfig['recommended_commerce_modes'],
-                'module_setup_status' => 'pending_approval',
+                'primary_operation' => $businessConfig['primary_operation'] ?? null,
+                'operations' => $businessConfig['operations'] ?? [],
+                'operation_labels' => $businessConfig['operation_labels'] ?? [],
+                'recommended_modules' => $businessConfig['recommended_modules'] ?? [],
+                'recommended_commerce_modes' => $businessConfig['recommended_commerce_modes'] ?? [],
+                'commerce_modes' => $businessConfig['recommended_commerce_modes'] ?? [],
+                'module_setup_status' => $businessConfig ? 'pending_approval' : 'not_configured',
             ],
             'active_modules' => [],
         ]);

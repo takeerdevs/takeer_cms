@@ -30,6 +30,7 @@ class OrderResource extends JsonResource
             'agreement_snapshot' => $this->agreement_snapshot,
             'agreed_at' => $this->agreed_at?->toISOString(),
             'merchant_confirmed_at' => $this->merchant_confirmed_at?->toISOString(),
+            'is_merchant_confirmed' => $this->merchant_confirmed_at !== null,
             'paid_out_at' => $this->paid_out_at?->toISOString(),
             'transaction_ref' => $this->transaction_ref,
             'source' => $this->source,
@@ -51,6 +52,20 @@ class OrderResource extends JsonResource
                 'waybill_tracking' => $this->delivery?->waybill_tracking_number,
                 'waybill_tracking_number' => $this->delivery?->waybill_tracking_number,
                 'waybill_photo_url' => $this->delivery?->waybill_photo_url,
+                'events' => $this->delivery?->relationLoaded('events')
+                    ? $this->delivery->events->sortBy('created_at')->map(fn ($event) => [
+                        'id' => $event->id,
+                        'status' => $event->status,
+                        'actor_type' => $event->actor_type,
+                        'actor_name' => $event->actor?->name,
+                        'proof_url' => $event->proof_url,
+                        'proof_mime' => $event->proof_mime,
+                        'proof_type' => $event->proof_type,
+                        'note' => $event->note,
+                        'metadata' => $event->metadata,
+                        'created_at' => $event->created_at?->toISOString(),
+                    ])->values()
+                    : [],
             ]),
             'dispute' => $this->whenLoaded('dispute', fn() => [
                 'status' => $this->dispute?->status,

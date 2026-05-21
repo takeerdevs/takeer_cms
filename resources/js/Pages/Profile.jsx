@@ -39,9 +39,6 @@ export default function Profile({
     countries = [],
     currencies = [],
     businessCategories = {},
-    businessOperations = {},
-    businessModules = {},
-    commerceModes: commerceModeOptions = {},
     merchantKyc = null,
     merchantKycStatus = 'unverified'
 }) {
@@ -78,16 +75,16 @@ export default function Profile({
     };
     const commerceHubItems = [
         { key: 'products', title: 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products'], modes: ['physical_products'] },
-        { key: 'menu', title: 'Menu', count: commerceHubSummary.physical ?? 0, icon: ShoppingBag, href: `/merchant/${merchantSlug}/menu`, permission: 'products.view', modules: ['menu'], modes: ['food_menu'] },
+        { key: 'menu', title: 'Menu', count: commerceHubSummary.menu ?? 0, icon: ShoppingBag, href: `/merchant/${merchantSlug}/menu`, permission: 'products.view', modules: ['menu'], modes: ['food_menu'] },
         { key: 'digital', title: 'Digital Downloads', count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
         { key: 'services', title: 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services'], modes: ['services_bookings'] },
-        { key: 'rooms', title: 'Rooms & Bookings', count: commerceHubSummary.services ?? 0, icon: BedDouble, href: `/merchant/${merchantSlug}/rooms`, permission: 'services.view', modules: ['rooms'], modes: [] },
-        { key: 'tours', title: 'Tour Departures', count: commerceHubSummary.services ?? 0, icon: Landmark, href: `/merchant/${merchantSlug}/tours`, permission: 'services.view', modules: ['tour_departures'], modes: [] },
-        { key: 'custom-orders', title: 'Custom Orders', count: commerceHubSummary.services ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permission: 'services.view', modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
-        { key: 'appointments', title: 'Appointments', count: commerceHubSummary.services ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/appointments`, permission: 'services.view', modules: ['appointments'], modes: [] },
-        { key: 'reservations', title: 'Reservations', count: commerceHubSummary.services ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/reservations`, permission: 'services.view', modules: ['reservations'], modes: ['food_menu'] },
-        { key: 'rentals', title: 'Rentals & Hire', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/rentals`, permission: 'services.view', modules: ['rentals'], modes: [] },
-        { key: 'workshops', title: 'Live Sessions', count: commerceHubSummary.services ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/workshops`, permission: 'services.view', modules: ['workshops'], modes: [] },
+        { key: 'rooms', title: 'Rooms & Bookings', count: commerceHubSummary.rooms ?? 0, icon: BedDouble, href: `/merchant/${merchantSlug}/rooms`, permission: 'services.view', modules: ['rooms'], modes: [] },
+        { key: 'tours', title: 'Tour Departures', count: commerceHubSummary.tour_departures ?? 0, icon: Landmark, href: `/merchant/${merchantSlug}/tours`, permission: 'services.view', modules: ['tour_departures'], modes: [] },
+        { key: 'custom-orders', title: 'Custom Orders', count: commerceHubSummary.custom_orders ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permission: 'services.view', modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
+        { key: 'appointments', title: 'Appointments', count: commerceHubSummary.appointments ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/appointments`, permission: 'services.view', modules: ['appointments'], modes: [] },
+        { key: 'reservations', title: 'Reservations', count: commerceHubSummary.reservations ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/reservations`, permission: 'services.view', modules: ['reservations'], modes: ['food_menu'] },
+        { key: 'rentals', title: 'Rentals & Hire', count: commerceHubSummary.rentals ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/rentals`, permission: 'services.view', modules: ['rentals'], modes: [] },
+        { key: 'workshops', title: 'Live Sessions', count: commerceHubSummary.workshops ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/workshops`, permission: 'services.view', modules: ['workshops'], modes: [] },
         { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view', modules: ['marketing'], modes: [] },
         { key: 'offerings', title: 'Offering Groups', count: commerceHubSummary.offerings ?? 0, icon: Layers, href: `/merchant/${merchantSlug}/offering-groups`, permission: 'services.view', modules: ['services', 'menu', 'courses', 'tour_departures'], modes: ['services_bookings', 'food_menu', 'courses_learning'] },
         { key: 'bundles', title: 'Courses & Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: [], modes: [] },
@@ -129,30 +126,8 @@ export default function Profile({
         display_name: '',
         username: '',
         type: 'sole_proprietor',
-        primary_operation: 'physical_products',
-        operations: ['physical_products'],
     });
     const [creatingBiz, setCreatingBiz] = useState(false);
-    const selectedOperationKeys = Array.from(new Set([bizForm.primary_operation, ...(bizForm.operations || [])].filter(Boolean)));
-    const selectedOperations = selectedOperationKeys.map(key => businessOperations?.[key]).filter(Boolean);
-    const recommendedBusinessModules = Array.from(new Set(selectedOperations.flatMap(operation => operation.modules || [])));
-    const recommendedCommerceModes = Array.from(new Set(selectedOperations.flatMap(operation => operation.commerce_modes || [])));
-    const toggleBusinessOperation = (key) => {
-        setBizForm(prev => {
-            const current = new Set(prev.operations || []);
-            if (current.has(key)) {
-                current.delete(key);
-            } else {
-                current.add(key);
-            }
-            current.add(prev.primary_operation || key);
-
-            return {
-                ...prev,
-                operations: Array.from(current),
-            };
-        });
-    };
 
     const handleCreateBusiness = async (e) => {
         e.preventDefault();
@@ -420,72 +395,6 @@ export default function Profile({
                                                     {bizForm.type === type.id && <CheckCircle2 className="h-4 w-4 text-brand-600" />}
                                                 </button>
                                             ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Primary operation</label>
-                                            <select
-                                                value={bizForm.primary_operation}
-                                                onChange={e => setBizForm(prev => ({
-                                                    ...prev,
-                                                    primary_operation: e.target.value,
-                                                    operations: Array.from(new Set([e.target.value, ...(prev.operations || [])])),
-                                                }))}
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-brand-500"
-                                                required
-                                            >
-                                                {Object.entries(businessOperations).map(([key, operation]) => (
-                                                    <option key={key} value={key}>{operation.label}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Other things this business may do</label>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {Object.entries(businessOperations).map(([key, operation]) => {
-                                                    const selected = selectedOperationKeys.includes(key);
-                                                    const isPrimary = bizForm.primary_operation === key;
-
-                                                    return (
-                                                        <button
-                                                            key={key}
-                                                            type="button"
-                                                            onClick={() => isPrimary ? null : toggleBusinessOperation(key)}
-                                                            className={cn(
-                                                                "min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black transition-colors",
-                                                                selected
-                                                                    ? "border-brand-500 bg-brand-50 text-brand-700"
-                                                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                                                            )}
-                                                        >
-                                                            {operation.label}
-                                                            {isPrimary && <span className="block text-[10px] font-bold text-brand-500">Primary</span>}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        <div className="rounded-xl border border-brand-100 bg-white p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Dashboard will suggest</p>
-                                            <div className="mt-2 mb-3 flex flex-wrap gap-1.5">
-                                                {recommendedCommerceModes.map(mode => (
-                                                    <span key={mode} className="rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-black text-blue-700">
-                                                        {commerceModeOptions?.[mode]?.label || mode.replace(/_/g, ' ')}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Recommended modules after approval</p>
-                                            <div className="mt-2 flex flex-wrap gap-1.5">
-                                                {recommendedBusinessModules.slice(0, 10).map(module => (
-                                                    <span key={module} className="rounded-lg bg-brand-50 px-2 py-1 text-[10px] font-black text-brand-700">
-                                                        {businessModules?.[module]?.label || module.replace(/_/g, ' ')}
-                                                    </span>
-                                                ))}
-                                            </div>
                                         </div>
                                     </div>
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
@@ -10,7 +11,9 @@ import {
     Boxes,
     CalendarClock,
     Camera,
+    CheckCircle2,
     CircleAlert,
+    Copy,
     Download,
     FileUp,
     Loader2,
@@ -21,6 +24,7 @@ import {
     Play,
     ReceiptText,
     Save,
+    Share2,
     ShieldCheck,
     ShoppingBag,
     Star,
@@ -31,6 +35,7 @@ import {
     Crown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DeliveryFlowTimeline, DeliveryDirectionsButton } from '@/Components/DeliveryFlowTimeline';
 import { orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
 import axios from 'axios';
@@ -65,28 +70,61 @@ function OfferingGroupLines({ lines = [] }) {
 
     return (
         <div className="space-y-2">
-            {lines.map((line, index) => (
-                <div key={`${line.group_item_id || line.item_id}-${index}`} className="rounded-xl border border-slate-100 bg-white p-3">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="font-black text-slate-950">{line.title || 'Offering item'}</p>
-                            <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                                {line.section || 'Main'} · {String(line.role || 'optional').replace(/_/g, ' ')}
-                            </p>
+            {lines.map((line, index) => {
+                const addOns = Array.isArray(line.selected_add_ons) ? line.selected_add_ons : [];
+                const addOnsTotal = Number(line.add_ons_unit_total || 0) * Number(line.quantity || 1);
+
+                return (
+                    <div key={`${line.group_item_id || line.item_id}-${index}`} className="rounded-xl border border-slate-100 bg-white p-3">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-start gap-3">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50 text-slate-300">
+                                    {line.image_url ? (
+                                        <img src={line.image_url} alt={line.title || 'Offering item'} className="h-full w-full object-cover" />
+                                    ) : (
+                                        <ImageIcon className="h-5 w-5" />
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="break-words font-black text-slate-950">{line.title || 'Offering item'}</p>
+                                    <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                                        {line.section || 'Main'} · {String(line.role || 'optional').replace(/_/g, ' ')}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                                <p className="text-sm font-black text-brand-700">TZS {Number(line.line_total || 0).toLocaleString()}</p>
+                                <p className="text-[11px] font-bold text-muted-foreground">Qty {Number(line.quantity || 1).toLocaleString()}</p>
+                            </div>
                         </div>
-                        <div className="text-right">
-                            <p className="text-sm font-black text-brand-700">TZS {Number(line.line_total || 0).toLocaleString()}</p>
-                            <p className="text-[11px] font-bold text-muted-foreground">Qty {Number(line.quantity || 1).toLocaleString()}</p>
-                        </div>
+
+                        {addOns.length > 0 && (
+                            <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Add-ons</p>
+                                        <p className="mt-1 text-xs font-bold text-emerald-900">
+                                            {addOns.map((addOn) => addOn.name).join(', ')}
+                                        </p>
+                                    </div>
+                                    {addOnsTotal > 0 && (
+                                        <p className="shrink-0 text-xs font-black text-emerald-700">
+                                            + TZS {addOnsTotal.toLocaleString()}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {Array.isArray(line.child_lines) && line.child_lines.length > 0 && (
+                            <div className="mt-3 border-l-2 border-slate-100 pl-3">
+                                <OfferingGroupLines lines={line.child_lines} />
+                            </div>
+                        )}
                     </div>
-                    {Array.isArray(line.child_lines) && line.child_lines.length > 0 && (
-                        <div className="mt-3 border-l-2 border-slate-100 pl-3">
-                            <OfferingGroupLines lines={line.child_lines} />
+                );
+            })}
                         </div>
-                    )}
-                </div>
-            ))}
-        </div>
     );
 }
 
@@ -121,9 +159,81 @@ function deliveryStatusLabel(delivery) {
     const type = delivery?.delivery_type || delivery?.type || '';
     const status = delivery?.delivery_status || delivery?.status || '';
     if (type === 'self_pickup' && ['awaiting_boda', 'inquiry', 'awaiting_pickup'].includes(status)) {
-        return 'awaiting_pickup';
+        return deliveryStatusText('awaiting_pickup');
     }
-    return status || 'N/A';
+    return deliveryStatusText(status);
+}
+
+function deliveryStatusText(status) {
+    const map = {
+        inquiry: 'Inquiry',
+        packing: 'Packing order',
+        ready_for_pickup: 'Ready for pickup',
+        awaiting_boda: 'Awaiting delivery',
+        awaiting_pickup: 'Awaiting pickup',
+        dispatched: 'Dispatched',
+        with_boda: 'With delivery rider',
+        in_transit: 'In transit',
+        arrived: 'Arrived at customer area',
+        ready_at_terminal: 'Ready at terminal',
+        delivered: 'Delivered',
+        issue_reported: 'Issue reported',
+        disputed: 'Disputed',
+        customer_confirmed: 'Customer confirmed',
+    };
+
+    return map[status] || (status ? status.replaceAll('_', ' ') : 'N/A');
+}
+
+function deliveryStatusOptions(delivery) {
+    const type = delivery?.delivery_type || delivery?.type || '';
+    if (type === 'self_pickup') {
+        return [
+            { value: 'ready_for_pickup', label: 'Ready for pickup' },
+            { value: 'issue_reported', label: 'Issue reported' },
+        ];
+    }
+    if (type === 'intercity_bus') {
+        return [
+            { value: 'packing', label: 'Packing order' },
+            { value: 'dispatched', label: 'Dispatched to bus' },
+            { value: 'in_transit', label: 'In transit' },
+            { value: 'ready_at_terminal', label: 'Ready at terminal (Bus Terminal)' },
+            { value: 'issue_reported', label: 'Issue reported' },
+        ];
+    }
+    return [
+        { value: 'packing', label: 'Packing order' },
+        { value: 'ready_for_pickup', label: 'Ready for rider' },
+        { value: 'with_boda', label: 'With delivery rider' },
+        { value: 'arrived', label: 'Arrived at customer area' },
+        { value: 'issue_reported', label: 'Issue reported' },
+    ];
+}
+
+function distanceKm(aLat, aLng, bLat, bLng) {
+    const toRad = (value) => (Number(value) * Math.PI) / 180;
+    const radius = 6371;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const lat1 = toRad(aLat);
+    const lat2 = toRad(bLat);
+    const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+
+    return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function googleRouteUrl(origin, destination) {
+    if (origin?.latitude && origin?.longitude && destination?.latitude && destination?.longitude) {
+        return `https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&travelmode=driving`;
+    }
+
+    if (destination?.latitude && destination?.longitude) {
+        return `https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}`;
+    }
+
+    return null;
 }
 
 function paymentOverview(order) {
@@ -195,13 +305,34 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     // Inquiry Quote State
     const [shippingFeeInput, setShippingFeeInput] = useState('');
     const [quoteSubmitting, setQuoteSubmitting] = useState(false);
+    const [showRouteShare, setShowRouteShare] = useState(false);
     const [customDeliveryFile, setCustomDeliveryFile] = useState(null);
     const [customDeliveryMessage, setCustomDeliveryMessage] = useState('');
     const [customDeliverySubmitting, setCustomDeliverySubmitting] = useState(false);
+    const [deliveryStatusInput, setDeliveryStatusInput] = useState('packing');
+    const [deliveryStatusNote, setDeliveryStatusNote] = useState('');
+    const [deliveryStatusProof, setDeliveryStatusProof] = useState(null);
+    const [deliveryStatusSubmitting, setDeliveryStatusSubmitting] = useState(false);
+    const [riderLink, setRiderLink] = useState('');
+    const [riderLinkExpiresAt, setRiderLinkExpiresAt] = useState(null);
+    const [riderLinkGenerating, setRiderLinkGenerating] = useState(false);
 
     useEffect(() => {
         loadOrder();
     }, [merchantUsername, orderId]);
+
+    useEffect(() => {
+        if (order?.shipping_fee !== null && order?.shipping_fee !== undefined) {
+            setShippingFeeInput(String(order.shipping_fee));
+        }
+    }, [order?.shipping_fee]);
+
+    useEffect(() => {
+        const options = deliveryStatusOptions(order?.delivery);
+        if (!options.some((option) => option.value === deliveryStatusInput)) {
+            setDeliveryStatusInput(options[0]?.value || 'packing');
+        }
+    }, [order?.delivery?.delivery_type]);
 
     async function loadOrder() {
         setLoading(true);
@@ -237,6 +368,45 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const canDispatchNow = !!order
         && order.is_escrow_order
         && ['awaiting_merchant_confirmation', 'escrow_locked'].includes(order.payment_status);
+    const merchantConfirmed = Boolean(order?.is_merchant_confirmed || order?.merchant_confirmed_at);
+    const customerLocation = order?.delivery?.latitude && order?.delivery?.longitude
+        ? {
+            latitude: Number(order.delivery.latitude),
+            longitude: Number(order.delivery.longitude),
+            address: order.delivery.physical_address,
+        }
+        : null;
+    const closestLocation = useMemo(() => {
+        const locations = order?.merchant?.locations || [];
+        if (!customerLocation || !locations.length) return null;
+
+        return locations
+            .filter((location) => location.latitude && location.longitude)
+            .map((location) => ({
+                ...location,
+                distance: distanceKm(
+                    Number(location.latitude),
+                    Number(location.longitude),
+                    customerLocation.latitude,
+                    customerLocation.longitude
+                ),
+            }))
+            .sort((a, b) => a.distance - b.distance)[0] || null;
+    }, [order?.merchant?.locations, customerLocation?.latitude, customerLocation?.longitude]);
+    const routeUrl = googleRouteUrl(closestLocation, customerLocation);
+    const routeShareText = routeUrl
+        ? `Delivery route: ${closestLocation?.name ? `${closestLocation.name} to ` : ''}${order?.delivery?.physical_address || 'customer location'} ${routeUrl}`
+        : '';
+    const canEditShipping = canUpdateOrder
+        && order?.is_inquiry
+        && order?.payment_status === 'pending'
+        && order?.delivery?.delivery_type !== 'self_pickup';
+    const statusOptions = deliveryStatusOptions(order?.delivery);
+    const deliveryEvents = Array.isArray(order?.delivery?.events) ? order.delivery.events : [];
+    const canUpdateDeliveryStatus = !!order
+        && order.is_escrow_order
+        && (canDispatch || canUpdateOrder)
+        && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'].includes(order.payment_status);
     const isSubscriptionOrder = order?.purchasable_type === 'subscription_plan';
     const isCustomDigitalDelivery = order?.product?.type === 'digital'
         && order?.product?.digital_delivery_type === 'custom_delivery';
@@ -247,7 +417,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         if (!canDispatchNow || dispatchSubmitting) return;
 
         if (!dispatchVideo) {
-            toast.error('Tafadhali chagua video ya packing kwanza.');
+            toast.error('Tafadhali chagua picha au video ya packing kwanza.');
             return;
         }
         if (dispatchMode === 'intercity' && !transportReceipt) {
@@ -279,6 +449,72 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi dispatch evidence.');
         } finally {
             setDispatchSubmitting(false);
+        }
+    }
+
+    async function submitDeliveryStatus(e) {
+        e.preventDefault();
+        if (!canUpdateDeliveryStatus || deliveryStatusSubmitting) return;
+
+        const formData = new FormData();
+        formData.append('status', deliveryStatusInput);
+        if (deliveryStatusNote.trim()) {
+            formData.append('note', deliveryStatusNote.trim());
+        }
+        if (deliveryStatusProof) {
+            formData.append('proof', deliveryStatusProof);
+        }
+        if ((order?.delivery?.delivery_type === 'local_boda' || deliveryStatusInput === 'with_boda') && bodaPhone.trim()) {
+            formData.append('boda_phone', bodaPhone.trim());
+        }
+
+        setDeliveryStatusSubmitting(true);
+        try {
+            await axios.post(`/merchant/${merchantUsername}/orders/${orderId}/delivery-status`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            toast.success('Delivery status imehifadhiwa.');
+            setDeliveryStatusNote('');
+            setDeliveryStatusProof(null);
+            await loadOrder();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi delivery status.');
+        } finally {
+            setDeliveryStatusSubmitting(false);
+        }
+    }
+
+    async function generateRiderLink() {
+        if (!canUpdateDeliveryStatus || riderLinkGenerating) return;
+
+        setRiderLinkGenerating(true);
+        try {
+            const res = await axios.post(`/merchant/${merchantUsername}/orders/${orderId}/rider-access`, {
+                expires_in_hours: 24,
+            });
+            setRiderLink(res.data.url || '');
+            setRiderLinkExpiresAt(res.data.expires_at || null);
+            if (res.data.url) {
+                await navigator.clipboard?.writeText(res.data.url);
+                toast.success('Rider link imetengenezwa na kunakiliwa.');
+            } else {
+                toast.success('Rider link imetengenezwa.');
+            }
+            await loadOrder();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kutengeneza rider link.');
+        } finally {
+            setRiderLinkGenerating(false);
+        }
+    }
+
+    async function copyRiderLink() {
+        if (!riderLink) return;
+        try {
+            await navigator.clipboard.writeText(riderLink);
+            toast.success('Rider link imenakiliwa.');
+        } catch (error) {
+            toast.error('Imeshindwa kunakili rider link.');
         }
     }
 
@@ -338,6 +574,51 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         } finally {
             setQuoteSubmitting(false);
         }
+    }
+
+    async function confirmAvailability() {
+        if (!canUpdateOrder || quoteSubmitting) return;
+
+        setQuoteSubmitting(true);
+        try {
+            await axios.post(`/api/merchant/orders/${orderId}/confirm-availability`);
+            toast.success('Order imethibitishwa. Mteja anaweza kulipia sasa.');
+            await loadOrder();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindwa kuthibitisha order.');
+        } finally {
+            setQuoteSubmitting(false);
+        }
+    }
+
+    async function copyRouteLink() {
+        if (!routeUrl) return;
+
+        try {
+            await navigator.clipboard.writeText(routeShareText || routeUrl);
+            toast.success('Route link imenakiliwa.');
+        } catch (error) {
+            toast.error('Imeshindwa kunakili route link.');
+        }
+    }
+
+    async function shareRouteLink() {
+        if (!routeUrl) return;
+
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: 'Delivery route',
+                    text: routeShareText,
+                    url: routeUrl,
+                });
+                return;
+            } catch (error) {
+                if (error?.name === 'AbortError') return;
+            }
+        }
+
+        await copyRouteLink();
     }
 
     async function verifyPickupPin(e) {
@@ -542,10 +823,129 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             {order.delivery.delivery_type !== 'self_pickup' && order.delivery.buyer_release_pin && (
                                                 <p><span className="text-muted-foreground">Expected PIN from Buyer:</span> <span className="font-mono font-bold text-brand-600 ml-1">Needed for payout</span></p>
                                             )}
+                                            {order.delivery.delivery_type !== 'self_pickup' && (
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    <DeliveryDirectionsButton routeUrl={routeUrl} />
+                                                    {order.delivery.boda_phone && (
+                                                        <a href={`tel:${order.delivery.boda_phone}`} className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-sky-700">
+                                                            Delivery phone
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {canUpdateDeliveryStatus && order.delivery.delivery_type !== 'self_pickup' && (
+                                                <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
+                                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                        <div>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Temporary rider link</p>
+                                                            <p className="mt-1 text-xs font-semibold text-sky-900">
+                                                                Let a boda/rider update package status and upload proof without merchant login.
+                                                            </p>
+                                                            {order.delivery.rider_access_active && !riderLink && (
+                                                                <p className="mt-2 text-[11px] font-bold text-sky-700">
+                                                                    Existing link active until {order.delivery.rider_access_expires_at ? new Date(order.delivery.rider_access_expires_at).toLocaleString() : 'expiry'}.
+                                                                    Regenerate if you need to copy it again.
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        <Button type="button" variant="outline" onClick={generateRiderLink} disabled={riderLinkGenerating} className="h-11 rounded-xl border-sky-200 bg-white font-bold text-sky-700 hover:bg-sky-50">
+                                                            {riderLinkGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
+                                                            Generate Link
+                                                        </Button>
+                                                    </div>
+                                                    {riderLink && (
+                                                        <div className="mt-3 rounded-xl border border-sky-100 bg-white p-3">
+                                                            <p className="break-all text-xs font-bold text-slate-700">{riderLink}</p>
+                                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                                <Button type="button" size="sm" onClick={copyRiderLink} className="rounded-lg font-bold">
+                                                                    <Copy className="mr-2 h-3.5 w-3.5" />
+                                                                    Copy
+                                                                </Button>
+                                                                <a
+                                                                    href={`https://wa.me/?text=${encodeURIComponent(`Delivery update link: ${riderLink}`)}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="inline-flex h-9 items-center rounded-lg border border-emerald-100 bg-emerald-50 px-3 text-xs font-black uppercase tracking-wider text-emerald-700"
+                                                                >
+                                                                    WhatsApp
+                                                                </a>
+                                                                <a
+                                                                    href={`sms:?&body=${encodeURIComponent(`Delivery update link: ${riderLink}`)}`}
+                                                                    className="inline-flex h-9 items-center rounded-lg border border-sky-100 bg-sky-50 px-3 text-xs font-black uppercase tracking-wider text-sky-700"
+                                                                >
+                                                                    SMS
+                                                                </a>
+                                                            </div>
+                                                            {riderLinkExpiresAt && (
+                                                                <p className="mt-2 text-[11px] font-semibold text-muted-foreground">
+                                                                    Expires {new Date(riderLinkExpiresAt).toLocaleString()}.
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </>
                                     )}
                                     {!order.delivery && (
                                         <p className="text-muted-foreground">Hakuna taarifa za delivery kwa order hii.</p>
+                                    )}
+                                    {canUpdateDeliveryStatus && order.delivery && (
+                                        <form onSubmit={submitDeliveryStatus} className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                    Delivery Status
+                                                    <select
+                                                        value={deliveryStatusInput}
+                                                        onChange={(e) => setDeliveryStatusInput(e.target.value)}
+                                                        className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                    >
+                                                        {statusOptions.map((option) => (
+                                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </label>
+                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                    Proof Photo/Video
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*,video/*"
+                                                        onChange={(e) => setDeliveryStatusProof(e.target.files?.[0] || null)}
+                                                        className="mt-2 block w-full rounded-xl border border-input bg-white px-3 py-2 text-xs normal-case tracking-normal text-slate-700"
+                                                    />
+                                                </label>
+                                                {(order.delivery.delivery_type === 'local_boda' || deliveryStatusInput === 'with_boda') && (
+                                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                        Delivery Phone
+                                                        <input
+                                                            value={bodaPhone}
+                                                            onChange={(e) => setBodaPhone(e.target.value)}
+                                                            placeholder={order.delivery.boda_phone || '+2557...'}
+                                                            className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                        />
+                                                    </label>
+                                                )}
+                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground md:col-span-2">
+                                                    Note
+                                                    <textarea
+                                                        value={deliveryStatusNote}
+                                                        onChange={(e) => setDeliveryStatusNote(e.target.value)}
+                                                        placeholder="Mf. Package handed to rider, waiting for customer PIN."
+                                                        className="mt-2 min-h-[84px] w-full rounded-xl border border-input bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-950"
+                                                    />
+                                                </label>
+                                            </div>
+                                            <div className="mt-3 flex items-center justify-between gap-3">
+                                                <p className="text-xs text-muted-foreground">Delivery updates stay separate from payment status and build a proof timeline for both sides.</p>
+                                                <Button type="submit" className="rounded-xl font-bold" disabled={deliveryStatusSubmitting}>
+                                                    {deliveryStatusSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                    Save Status
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    )}
+                                    {deliveryEvents.length > 0 && (
+                                        <DeliveryFlowTimeline delivery={order.delivery} className="mt-4" />
                                     )}
                                 </CardContent>
                             </Card>
@@ -562,46 +962,118 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                         <div className="bg-white/60 p-4 rounded-xl border border-brand-100/50">
                                             <p className="text-xs font-black uppercase tracking-widest text-brand-700/80 mb-2">Customer Address:</p>
                                             <p className="font-bold text-brand-900 mb-2">{order.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
-                                            {order.delivery?.latitude && (
+                                            {closestLocation && (
+                                                <div className="mt-3 rounded-xl border border-brand-100 bg-brand-50/70 p-3">
+                                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center text-brand-600 shadow-sm">
+                                                                <Store className="h-5 w-5" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Nearest shop</p>
+                                                                <p className="text-sm font-black text-brand-950">{closestLocation.name}</p>
+                                                                <p className="text-xs font-bold text-brand-800">{closestLocation.distance.toFixed(1)} km from customer</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {routeUrl && (
+                                                                <a
+                                                                    href={routeUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="inline-flex items-center gap-1.5 text-[10px] font-black text-brand-700 bg-white px-3 py-2 rounded-xl border border-brand-100 hover:bg-brand-50 transition-colors"
+                                                                >
+                                                                    <MapPin className="h-3 w-3" /> ROUTE
+                                                                </a>
+                                                            )}
+                                                            {routeUrl && (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    onClick={() => setShowRouteShare(true)}
+                                                                    className="h-8 rounded-xl border-brand-100 bg-white px-3 text-[10px] font-black text-brand-700 hover:bg-brand-50"
+                                                                >
+                                                                    <Share2 className="h-3 w-3 mr-1" />
+                                                                    SHARE
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {!closestLocation && routeUrl && (
                                                 <a
-                                                    href={`https://www.google.com/maps/search/?api=1&query=${order.delivery.latitude},${order.delivery.longitude}`}
+                                                    href={routeUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1.5 text-[10px] font-bold text-brand-600 bg-brand-50 px-2.5 py-1 rounded-lg border border-brand-100 hover:bg-brand-100 transition-colors"
                                                 >
-                                                    <MapPin className="h-3 w-3" /> FUNGUA KWENY RAMANI
+                                                    <MapPin className="h-3 w-3" /> FUNGUA KWENYE RAMANI
                                                 </a>
                                             )}
                                         </div>
 
-                                        {order.inquiry_status === 'pending' && !canUpdateOrder ? (
-                                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-sm font-semibold text-slate-600">
-                                                Shipping quote is pending. You have view-only access for this order.
-                                            </div>
-                                        ) : order.inquiry_status === 'pending' ? (
-                                            <form onSubmit={submitQuote} className="flex flex-col sm:flex-row gap-3">
-                                                <div className="flex-1">
-                                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Enter Shipping Fee (TZS)</label>
-                                                    <Input
-                                                        type="number"
-                                                        placeholder="Mf. 5000"
-                                                        value={shippingFeeInput}
-                                                        onChange={e => setShippingFeeInput(e.target.value)}
-                                                        className="font-bold rounded-xl h-11"
-                                                        required
-                                                    />
-                                                </div>
-                                                <div className="flex items-end">
+                                        {canEditShipping ? (
+                                            <form onSubmit={submitQuote} className="rounded-xl border border-slate-100 bg-white/80 p-4">
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                                    <div className="flex-1">
+                                                        <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">
+                                                            {order.shipping_fee !== null && order.shipping_fee !== undefined ? 'Update Shipping Fee (TZS)' : 'Enter Shipping Fee (TZS)'}
+                                                        </label>
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            placeholder="Mf. 5000"
+                                                            value={shippingFeeInput}
+                                                            onChange={e => setShippingFeeInput(e.target.value)}
+                                                            className="font-bold rounded-xl h-11"
+                                                            required
+                                                        />
+                                                    </div>
                                                     <Button
                                                         type="submit"
                                                         className="h-11 rounded-xl px-8 bg-brand-600 hover:bg-brand-700 font-bold"
-                                                        disabled={quoteSubmitting || !shippingFeeInput}
+                                                        disabled={quoteSubmitting || shippingFeeInput === ''}
                                                     >
                                                         {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                                                        TUMA GHARAMA
+                                                        {order.shipping_fee !== null && order.shipping_fee !== undefined ? 'SASISHA GHARAMA' : 'TUMA GHARAMA'}
                                                     </Button>
                                                 </div>
+                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Current shipping</p>
+                                                        <p className="text-sm font-black text-slate-950">TZS {Number(order.shipping_fee || 0).toLocaleString()}</p>
+                                                    </div>
+                                                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Items total</p>
+                                                        <p className="text-sm font-black text-slate-950">TZS {Number((order.total_paid || 0) - (order.shipping_fee || 0)).toLocaleString()}</p>
+                                                    </div>
+                                                    <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Customer total</p>
+                                                        <p className="text-sm font-black text-brand-700">TZS {Number(order.total_paid || 0).toLocaleString()}</p>
+                                                    </div>
+                                                </div>
                                             </form>
+                                        ) : order.inquiry_status === 'pending' && !canUpdateOrder ? (
+                                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-sm font-semibold text-slate-600">
+                                                Shipping quote is pending. You have view-only access for this order.
+                                            </div>
+                                        ) : order.inquiry_status === 'quoted' && !merchantConfirmed ? (
+                                            <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase text-amber-700 mb-1">Inasubiri uthibitisho wako:</p>
+                                                    <p className="text-sm font-bold text-amber-900">Gharama ipo tayari. Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipa.</p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    onClick={confirmAvailability}
+                                                    disabled={quoteSubmitting || !canUpdateOrder}
+                                                    className="h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold"
+                                                >
+                                                    {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                                                    THIBITISHA
+                                                </Button>
+                                            </div>
                                         ) : (
                                             <div className="p-4 rounded-xl bg-green-50 border border-green-100 flex items-center justify-between">
                                                 <div>
@@ -614,7 +1086,26 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 </div>
                                             </div>
                                         )}
-                                        <p className="text-[11px] text-muted-foreground italic font-medium">Ukishatuma gharama, mteja ataiona na atakuwa na chaguo la kulipia ili kukamilisha order.</p>
+                                        {order.inquiry_status === 'quoted' && !merchantConfirmed && order.payment_status === 'pending' && (
+                                            <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase text-amber-700 mb-1">Inasubiri uthibitisho wako:</p>
+                                                    <p className="text-sm font-bold text-amber-900">Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipa.</p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    onClick={confirmAvailability}
+                                                    disabled={quoteSubmitting || !canUpdateOrder}
+                                                    className="h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold"
+                                                >
+                                                    {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                                                    THIBITISHA
+                                                </Button>
+                                            </div>
+                                        )}
+                                        <p className="text-[11px] text-muted-foreground italic font-medium">
+                                            Kabla ya mteja kulipa, unaweza kusasisha gharama ya usafiri kulingana na makubaliano ya boda au mabadiliko ya haraka. Baada ya malipo, gharama inafungwa.
+                                        </p>
                                     </CardContent>
                                 </Card>
                             )}
@@ -799,11 +1290,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     <label className="rounded-xl border border-input bg-background p-3 text-sm">
                                                         <span className="mb-2 inline-flex items-center gap-2 font-semibold">
                                                             <Camera className="h-4 w-4 text-brand-600" />
-                                                            Packing Video
+                                                            Packing Proof
                                                         </span>
                                                         <input
                                                             type="file"
-                                                            accept="video/*"
+                                                            accept="image/*,video/*"
                                                             onChange={(e) => setDispatchVideo(e.target.files?.[0] || null)}
                                                             className="mt-2 block w-full text-xs"
                                                             required
@@ -901,7 +1392,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                         {(order.merchant_dispatch_video_url || order.delivery?.waybill_photo_url) && (
                                             <div className="grid gap-2 text-sm md:grid-cols-2 pt-2 border-t mt-2">
                                                 <p className="truncate">
-                                                    <span className="text-muted-foreground text-xs uppercase font-black">Packing video:</span>{' '}
+                                                    <span className="text-muted-foreground text-xs uppercase font-black">Packing proof:</span>{' '}
                                                     {order.merchant_dispatch_video_url ? <a className="font-semibold text-brand-600 underline" href={order.merchant_dispatch_video_url} target="_blank" rel="noreferrer">View</a> : 'N/A'}
                                                 </p>
                                                 <p className="truncate">
@@ -976,6 +1467,70 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                     </>
                 )}
             </div>
+            {showRouteShare && routeUrl && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-700">Share route</p>
+                                <h3 className="mt-1 text-xl font-black text-slate-950">Delivery Route</h3>
+                                <p className="mt-1 text-sm font-semibold text-muted-foreground">
+                                    {closestLocation?.name || 'Shop'} to {order?.delivery?.physical_address || 'customer location'}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowRouteShare(false)}
+                                className="h-9 w-9 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="mt-5 flex justify-center rounded-3xl border border-slate-100 bg-slate-50 p-5">
+                            <QRCodeCanvas value={routeUrl} size={220} includeMargin />
+                        </div>
+                        <p className="mt-3 text-center text-xs font-semibold text-muted-foreground">
+                            Boda mwenye smartphone anaweza kuscan hii QR kufungua route Google Maps.
+                        </p>
+
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                            <Button type="button" onClick={shareRouteLink} className="h-11 rounded-xl bg-brand-600 font-black">
+                                <Share2 className="h-4 w-4 mr-2" />
+                                Share
+                            </Button>
+                            <Button type="button" variant="outline" onClick={copyRouteLink} className="h-11 rounded-xl font-black">
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy
+                            </Button>
+                            <a
+                                href={`https://wa.me/?text=${encodeURIComponent(routeShareText)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex h-11 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-xs font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-100"
+                            >
+                                WhatsApp
+                            </a>
+                            <a
+                                href={`sms:?&body=${encodeURIComponent(routeShareText)}`}
+                                className="inline-flex h-11 items-center justify-center rounded-xl border border-sky-100 bg-sky-50 text-xs font-black uppercase tracking-widest text-sky-700 hover:bg-sky-100"
+                            >
+                                SMS
+                            </a>
+                        </div>
+
+                        <a
+                            href={routeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-xl border border-brand-100 bg-brand-50 text-xs font-black uppercase tracking-widest text-brand-700 hover:bg-brand-100"
+                        >
+                            <MapPin className="h-4 w-4 mr-2" />
+                            Open Google Maps
+                        </a>
+                    </div>
+                </div>
+            )}
         </AppLayout>
     );
 }

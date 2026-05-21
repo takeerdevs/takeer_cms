@@ -461,11 +461,19 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                         <Card className="glass-card shadow-sm border-blue-100">
                             <CardHeader className="p-5 pb-2">
                                 <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-blue-700 uppercase tracking-wider">
-                                    <LayoutDashboard className="h-4 w-4" /> Business Category & Modules
+                                    <LayoutDashboard className="h-4 w-4" /> Operations & Modules
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="p-5 space-y-4">
                                 <div className="space-y-3">
+                                    {selectedOperationKeys.length === 0 && (
+                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                            <p className="text-sm font-black text-amber-900">Choose this business setup when you are ready.</p>
+                                            <p className="mt-1 text-xs font-semibold text-amber-800">
+                                                New businesses start without default modules. Pick the main operation here, then turn on only the tools this business actually uses.
+                                            </p>
+                                        </div>
+                                    )}
                                     <label className="space-y-1 block">
                                         <span className="text-sm font-bold text-muted-foreground">Primary operation</span>
                                         <select

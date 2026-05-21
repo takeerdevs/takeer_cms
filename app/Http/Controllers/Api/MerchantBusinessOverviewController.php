@@ -42,6 +42,8 @@ class MerchantBusinessOverviewController extends Controller
         $paidOrders = $orders->whereIn('payment_status', $paidStatuses);
 
         $products = Product::query()->where('merchant_id', $merchant->id)->get(['id', 'type', 'module_key', 'inventory_count']);
+        $menuProducts = $products->where('type', 'physical')->where('module_key', 'menu');
+        $serviceProducts = $products->where('type', 'service');
         $serviceRequests = ServiceRequest::query()->where('merchant_id', $merchant->id)->where('created_at', '>=', $from)->get();
         $upcomingBookings = ServiceRequest::query()
             ->where('merchant_id', $merchant->id)
@@ -105,9 +107,19 @@ class MerchantBusinessOverviewController extends Controller
                 'bookkeeping_profit' => (float) $income - (float) $expenses,
             ],
             'catalog' => [
-                'physical' => $products->where('type', 'physical')->count(),
+                'physical' => $products->where('type', 'physical')->reject(fn (Product $product) => $product->module_key === 'menu')->count(),
+                'menu' => $menuProducts->count(),
                 'digital' => $products->where('type', 'digital')->count(),
-                'services' => $products->where('type', 'service')->count(),
+                'services' => $serviceProducts
+                    ->reject(fn (Product $product) => in_array($product->module_key, ['rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops'], true))
+                    ->count(),
+                'rooms' => $serviceProducts->where('module_key', 'rooms')->count(),
+                'tour_departures' => $serviceProducts->where('module_key', 'tour_departures')->count(),
+                'custom_orders' => $serviceProducts->where('module_key', 'custom_orders')->count(),
+                'appointments' => $serviceProducts->where('module_key', 'appointments')->count(),
+                'reservations' => $serviceProducts->where('module_key', 'reservations')->count(),
+                'rentals' => $serviceProducts->where('module_key', 'rentals')->count(),
+                'workshops' => $serviceProducts->where('module_key', 'workshops')->count(),
                 'posts' => Post::query()->where('merchant_id', $merchant->id)->count(),
                 'bundles' => Bundle::query()->where('merchant_id', $merchant->id)->count(),
                 'offerings' => OfferingGroup::query()->where('merchant_id', $merchant->id)->count(),

@@ -210,6 +210,12 @@ export default function ProductDetail({ product }) {
         external_booking: 'External booking',
     };
     const serviceSchedulingType = product?.service_scheduling_type || (serviceMode === 'external_booking' ? 'external' : 'none');
+    const serviceBookingType = product?.service_booking_type || 'instant';
+    const serviceBookingTypeLabels = {
+        request: 'Request first',
+        manual_confirm: 'Manual confirmation',
+        instant: 'Instant booking',
+    };
     const serviceLocationLabels = {
         provider_location: 'At provider location',
         customer_location: 'At client location',
@@ -351,15 +357,24 @@ export default function ProductDetail({ product }) {
             || servicePricingModel === 'contract_quote'
             || servicePriceDisplay === 'quote_only'
         );
+    const serviceNeedsManagedRequest = product?.type === 'service'
+        && !payableServiceRequest
+        && (
+            startsAsServiceInquiry
+            || ['request', 'manual_confirm'].includes(serviceBookingType)
+            || serviceMode === 'book_appointment'
+            || ['recurring', 'fixed_sessions'].includes(serviceSchedulingType)
+        );
     const shouldOpenServiceRequest = product?.type === 'service'
         && !payableServiceRequest
-        && !startsAsServiceInquiry
         && !serviceTrustBlocksBooking
-        && ['showcase_only', 'request_quote', 'book_appointment'].includes(serviceMode);
+        && serviceNeedsManagedRequest
+        && !['showcase_only', 'external_booking'].includes(serviceMode)
+        && serviceSchedulingType !== 'external';
     const isServiceContactOnly = product?.type === 'service' && !payableServiceRequest && (
         ['showcase_only', 'external_booking'].includes(serviceMode)
         || serviceSchedulingType === 'external'
-        || servicePriceDisplay === 'hidden'
+        || (servicePriceDisplay === 'hidden' && !serviceNeedsManagedRequest)
     );
 
     const hotspots = images[currentImageIndex]?.hotspots || [];
@@ -542,6 +557,7 @@ export default function ProductDetail({ product }) {
         if ((servicePriceDisplay === 'quote_only' || serviceMode === 'request_quote') && !selectedOptionHasPrice) return 'Quote after request';
         if (selectedServiceOption && !selectedOptionHasPrice) return 'Price varies';
         const amount = `TZS ${parseFloat(checkoutPrice || 0).toLocaleString()}`;
+        if (servicePricingModel === 'deposit_required') return `${amount} advance`;
         if (effectiveServicePriceDisplay === 'starts_from') return `From ${amount}`;
         if (effectiveServicePriceDisplay === 'package') return `${amount} package`;
         if (servicePriceUnitLabels[effectiveServicePriceDisplay]) return `${amount} / ${servicePriceUnitLabels[effectiveServicePriceDisplay]}`;
@@ -715,9 +731,12 @@ export default function ProductDetail({ product }) {
         }
 
         if (product.type === 'service' && servicePricingModel === 'deposit_required') {
-            return 'Lipa Deposit';
+            return 'Lipa Advance';
         }
-        if (startsAsServiceInquiry) {
+        if (serviceNeedsManagedRequest) {
+            if (serviceBookingType === 'manual_confirm') return 'Request Confirmation';
+            if (serviceBookingType === 'request') return serviceMode === 'request_quote' ? 'Request Quote' : 'Send Request';
+            if (serviceMode === 'book_appointment') return 'Book Instantly';
             return 'Start Enquiry';
         }
         if (product.type === 'service' && serviceMode === 'book_appointment') {
@@ -736,7 +755,7 @@ export default function ProductDetail({ product }) {
     };
 
     const serviceRequestType = (() => {
-        if (serviceMode === 'request_quote') return 'quote_request';
+        if (serviceMode === 'request_quote' || servicePricingModel === 'contract_quote' || servicePriceDisplay === 'quote_only' || serviceBookingType === 'request') return 'quote_request';
         if (serviceMode === 'book_appointment') return 'appointment_request';
         return 'contact_request';
     })();
@@ -883,7 +902,8 @@ export default function ProductDetail({ product }) {
             if (!res.ok) {
                 throw new Error(data.message || 'Imeshindwa kutuma ombi.');
             }
-            toast.success(data.message || 'Ombi limetumwa.');
+            const paymentUrl = data?.data?.payment_url;
+            toast.success(paymentUrl ? 'Booking imethibitishwa. Tunaelekeza kwenye malipo.' : (data.message || 'Ombi limetumwa.'));
             setServiceRequestOpen(false);
             setServiceRequestForm((prev) => ({
                 ...prev,
@@ -896,6 +916,9 @@ export default function ProductDetail({ product }) {
                 message: '',
             }));
             setServiceIntakeAnswers({});
+            if (paymentUrl) {
+                window.location.href = paymentUrl;
+            }
         } catch (error) {
             toast.error(error.message || 'Imeshindwa kutuma ombi.');
         } finally {
@@ -2436,10 +2459,14 @@ export default function ProductDetail({ product }) {
                             onClick={() => setServiceRequestOpen(true)}
                         >
                             {serviceMode === 'book_appointment'
-                                ? 'Request Appointment'
+                                ? (serviceBookingType === 'instant' ? 'Book Instantly' : 'Request Appointment')
                                 : serviceMode === 'request_quote'
                                     ? 'Request Quote'
-                                    : 'Contact Provider'}
+                                    : serviceBookingType === 'manual_confirm'
+                                        ? 'Request Confirmation'
+                                        : serviceBookingType === 'request'
+                                            ? 'Send Request'
+                                            : 'Contact Provider'}
                         </Button>
                     ) : merchantCanTransactInApp && !isServiceContactOnly ? (
                         <div className="flex-[1.5] flex flex-col gap-1">

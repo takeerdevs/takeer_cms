@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Merchant;
+use App\Models\MerchantLocationable;
 use App\Models\OfferingGroup;
 use App\Models\OfferingGroupItem;
 use App\Models\Post;
@@ -50,11 +51,14 @@ class MerchantOfferingGroupController extends Controller
         ]);
 
         $this->syncItems($group, $validated['items'] ?? []);
+        if (array_key_exists('availability_location_ids', $validated)) {
+            $this->syncLocationAvailability($group, $merchant, $validated['availability_location_ids'] ?? []);
+        }
         $this->syncFeedPostForGroup($group->fresh(['items']), $this->shouldPublishToTakeer($validated));
 
         return response()->json([
             'message' => 'Offering group created.',
-            'group' => $this->groupPayload($group->fresh(['items'])),
+            'group' => $this->groupPayload($group->fresh(['items', 'locationAvailabilities.location'])),
         ], 201);
     }
 
@@ -65,7 +69,7 @@ class MerchantOfferingGroupController extends Controller
 
         return response()->json([
             'templates' => OfferingGroupTemplateRegistry::all(),
-            'group' => $this->groupPayload($offeringGroup->load('items')),
+            'group' => $this->groupPayload($offeringGroup->load(['items', 'locationAvailabilities.location'])),
         ]);
     }
 
@@ -131,12 +135,15 @@ class MerchantOfferingGroupController extends Controller
         if (array_key_exists('items', $validated)) {
             $this->syncItems($offeringGroup, $validated['items'] ?? []);
         }
+        if (array_key_exists('availability_location_ids', $validated)) {
+            $this->syncLocationAvailability($offeringGroup, $merchant, $validated['availability_location_ids'] ?? []);
+        }
 
         $this->syncFeedPostForGroup($offeringGroup->fresh(['items']), $this->shouldPublishToTakeer($validated));
 
         return response()->json([
             'message' => 'Offering group updated.',
-            'group' => $this->groupPayload($offeringGroup->fresh(['items'])),
+            'group' => $this->groupPayload($offeringGroup->fresh(['items', 'locationAvailabilities.location'])),
         ]);
     }
 
@@ -170,6 +177,8 @@ class MerchantOfferingGroupController extends Controller
             'checkout_rules' => ['nullable', 'array'],
             'availability_rules' => ['nullable', 'array'],
             'metadata' => ['nullable', 'array'],
+            'availability_location_ids' => ['nullable', 'array'],
+            'availability_location_ids.*' => ['integer', 'exists:merchant_locations,id'],
             'publish_targets' => ['nullable', 'array'],
             'publish_targets.takeer' => ['nullable', 'boolean'],
             'publish_targets.instagram' => ['nullable', 'boolean'],
@@ -235,6 +244,38 @@ class MerchantOfferingGroupController extends Controller
 
         return ! array_key_exists('takeer', $targets)
             || filter_var($targets['takeer'], FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function syncLocationAvailability(OfferingGroup $group, Merchant $merchant, array $locationIds): void
+    {
+        $requestedLocationIds = collect($locationIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        $validLocationIds = $merchant->locations()
+            ->whereIn('id', $requestedLocationIds->all())
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        abort_if($requestedLocationIds->count() !== $validLocationIds->count(), 422, 'Offering group inaweza kuhusishwa na maeneo yako pekee.');
+
+        $group->locationAvailabilities()
+            ->where('availability_type', 'serves')
+            ->whereNotIn('merchant_location_id', $validLocationIds->all())
+            ->delete();
+
+        foreach ($validLocationIds as $locationId) {
+            MerchantLocationable::updateOrCreate(
+                [
+                    'merchant_location_id' => $locationId,
+                    'locationable_type' => OfferingGroup::class,
+                    'locationable_id' => $group->id,
+                    'availability_type' => 'serves',
+                ],
+                [
+                    'merchant_id' => $merchant->id,
+                    'is_enabled' => true,
+                ]
+            );
+        }
     }
 
     private function syncFeedPostForGroup(OfferingGroup $group, bool $publishToTakeer): void
@@ -399,6 +440,27 @@ class MerchantOfferingGroupController extends Controller
             'checkout_rules' => $group->checkout_rules,
             'availability_rules' => $group->availability_rules,
             'metadata' => $group->metadata,
+            'availability_location_ids' => $group->relationLoaded('locationAvailabilities')
+                ? $group->locationAvailabilities
+                    ->where('availability_type', 'serves')
+                    ->where('is_enabled', true)
+                    ->pluck('merchant_location_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->values()
+                    ->all()
+                : [],
+            'location_availabilities' => $group->relationLoaded('locationAvailabilities')
+                ? $group->locationAvailabilities
+                    ->where('availability_type', 'serves')
+                    ->where('is_enabled', true)
+                    ->map(fn ($row) => [
+                        'merchant_location_id' => (int) $row->merchant_location_id,
+                        'location_name' => $row->location?->name,
+                        'availability_type' => $row->availability_type,
+                    ])
+                    ->values()
+                    ->all()
+                : [],
             'publish_targets' => is_array($group->metadata ?? null) ? ($group->metadata['publish_targets'] ?? null) : null,
             'items_count' => $group->items_count ?? $group->items->count(),
             'items' => $group->relationLoaded('items')

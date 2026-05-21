@@ -5,6 +5,7 @@ import { Input } from '@/Components/ui/Input';
 import { Loader2, ShieldCheck, Zap, Store, Briefcase, ChevronRight, MapPin, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePage } from '@inertiajs/react';
+import { GoogleMap, Marker, Circle, useJsApiLoader } from '@react-google-maps/api';
 
 import AddressPickerModal from './AddressPickerModal';
 import ShopLocationsModal from './ShopLocationsModal';
@@ -17,6 +18,138 @@ const DEFAULT_CENTER = {
     lat: -6.7924, // Dar es Salaam
     lng: 39.2083,
 };
+
+const COVERAGE_MAP_STYLE = {
+    width: '100%',
+    height: '220px',
+    borderRadius: '16px',
+};
+
+const MAP_LIBRARIES = ['places'];
+
+const formatKmRadius = (value) => {
+    const radius = Number(value);
+    if (!Number.isFinite(radius) || radius <= 0) return null;
+    return radius % 1 === 0 ? radius.toLocaleString() : radius.toFixed(1);
+};
+
+const googleMapsUrl = (lat, lng) => {
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+};
+
+const extendBoundsByRadius = (bounds, lat, lng, radiusKm) => {
+    const latDelta = radiusKm / 111;
+    const lngDelta = radiusKm / (111 * Math.max(Math.cos(lat * Math.PI / 180), 0.2));
+
+    bounds.extend({ lat: lat + latDelta, lng });
+    bounds.extend({ lat: lat - latDelta, lng });
+    bounds.extend({ lat, lng: lng + lngDelta });
+    bounds.extend({ lat, lng: lng - lngDelta });
+};
+
+function DeliveryCoverageMap({ anchors, customerLat, customerLng, height = 220 }) {
+    const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    const mapRef = useRef(null);
+    const validAnchors = useMemo(() => (
+        anchors
+            .map((anchor) => ({
+                ...anchor,
+                lat: Number(anchor.lat),
+                lng: Number(anchor.lng),
+                radius: Number(anchor.radius),
+            }))
+            .filter((anchor) => (
+                Number.isFinite(anchor.lat)
+                && Number.isFinite(anchor.lng)
+                && Number.isFinite(anchor.radius)
+                && anchor.radius > 0
+            ))
+    ), [anchors]);
+    const customerPosition = useMemo(() => {
+        const lat = Number(customerLat);
+        const lng = Number(customerLng);
+        return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+    }, [customerLat, customerLng]);
+    const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey,
+        libraries: MAP_LIBRARIES,
+    });
+    const center = validAnchors[0]
+        ? { lat: validAnchors[0].lat, lng: validAnchors[0].lng }
+        : (customerPosition || DEFAULT_CENTER);
+
+    useEffect(() => {
+        if (!isLoaded || !mapRef.current || !window.google) return;
+
+        const bounds = new window.google.maps.LatLngBounds();
+        validAnchors.forEach((anchor) => {
+            bounds.extend({ lat: anchor.lat, lng: anchor.lng });
+            extendBoundsByRadius(bounds, anchor.lat, anchor.lng, anchor.radius);
+        });
+        if (customerPosition) bounds.extend(customerPosition);
+
+        if (!bounds.isEmpty()) {
+            mapRef.current.fitBounds(bounds, 24);
+        }
+    }, [isLoaded, validAnchors, customerPosition]);
+
+    if (!googleMapsApiKey || !isLoaded || validAnchors.length === 0) return null;
+
+    return (
+        <div className="mt-3 overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm">
+            <GoogleMap
+                mapContainerStyle={{ ...COVERAGE_MAP_STYLE, height: `${height}px` }}
+                center={center}
+                zoom={12}
+                onLoad={(map) => { mapRef.current = map; }}
+                options={{
+                    streetViewControl: false,
+                    mapTypeControl: false,
+                    fullscreenControl: false,
+                    clickableIcons: false,
+                }}
+            >
+                {validAnchors.map((anchor) => (
+                    <React.Fragment key={`${anchor.label}-${anchor.lat}-${anchor.lng}-${anchor.radius}`}>
+                        <Marker
+                            position={{ lat: anchor.lat, lng: anchor.lng }}
+                            title={anchor.label}
+                        />
+                        <Circle
+                            center={{ lat: anchor.lat, lng: anchor.lng }}
+                            radius={anchor.radius * 1000}
+                            options={{
+                                fillColor: '#0284c7',
+                                fillOpacity: 0.12,
+                                strokeColor: '#0284c7',
+                                strokeOpacity: 0.8,
+                                strokeWeight: 2,
+                            }}
+                        />
+                    </React.Fragment>
+                ))}
+                {customerPosition && (
+                    <Marker
+                        position={customerPosition}
+                        title="Anwani yako"
+                        icon={{
+                            path: window.google.maps.SymbolPath.CIRCLE,
+                            scale: 8,
+                            fillColor: '#dc2626',
+                            fillOpacity: 1,
+                            strokeColor: '#ffffff',
+                            strokeWeight: 3,
+                        }}
+                    />
+                )}
+            </GoogleMap>
+        </div>
+    );
+}
 
 
 export default function CheckoutModal({ product, isOpen, onOpenChange }) {
@@ -51,6 +184,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [customerRegion, setCustomerRegion] = useState('');
     const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
     const [isShopLocationsOpen, setIsShopLocationsOpen] = useState(false);
+    const [isCoverageMapOpen, setIsCoverageMapOpen] = useState(false);
 
     const [step, setStep] = useState(1); // 1: Details/Shipping, 2: Payment
     const [paymentMethod, setPaymentMethod] = useState('mobile'); // 'mobile', 'card'
@@ -130,25 +264,44 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         if (!shippingZones.length) return;
 
         setSelectedHotspot(null);
+        const eligibleLocationIds = Array.isArray(activeProduct?.availability_location_ids)
+            ? activeProduct.availability_location_ids.map((id) => String(id)).filter(Boolean)
+            : [];
+        const eligibleLocalZone = (zone) => (
+            eligibleLocationIds.length === 0
+            || !zone.merchant_location_id
+            || eligibleLocationIds.includes(String(zone.merchant_location_id))
+        );
 
         // 1. Try Local based on distance
-        const localZones = shippingZones.filter(z => z.delivery_type === 'local_boda' && z.location);
+        const localZones = shippingZones.filter(z => z.delivery_type === 'local_boda' && z.location && eligibleLocalZone(z));
 
-        let bestLocalZone = null;
-        let minActualDist = Infinity;
+        let bestLocalMatch = null;
 
         localZones.forEach(zone => {
             const dist = calculateHaversine(lat, lng, Number(zone.location.latitude), Number(zone.location.longitude));
-            if (dist <= Number(zone.max_distance_km)) {
-                if (dist < minActualDist) {
-                    minActualDist = dist;
-                    bestLocalZone = zone;
+            const radius = Number(zone.max_distance_km);
+            if (dist <= radius) {
+                const match = {
+                    zone,
+                    distance: dist,
+                    radius,
+                    fee: Number(zone.flat_rate_fee || 0),
+                };
+
+                if (
+                    !bestLocalMatch
+                    || match.radius < bestLocalMatch.radius
+                    || (match.radius === bestLocalMatch.radius && match.fee < bestLocalMatch.fee)
+                    || (match.radius === bestLocalMatch.radius && match.fee === bestLocalMatch.fee && match.distance < bestLocalMatch.distance)
+                ) {
+                    bestLocalMatch = match;
                 }
             }
         });
 
-        if (bestLocalZone) {
-            setSelectedShippingZoneId(String(bestLocalZone.id));
+        if (bestLocalMatch) {
+            setSelectedShippingZoneId(String(bestLocalMatch.zone.id));
             toast.info('Tumekupatia gharama ya usafiri ya local ya karibu!');
             return;
         }
@@ -221,7 +374,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
     useEffect(() => {
         const fetchProductData = async () => {
-            if (product?.checkoutType === 'bundle' || product?.purchasable_type === 'bundle') return;
+            if (['bundle', 'offering_group'].includes(product?.checkoutType) || ['bundle', 'offering_group'].includes(product?.purchasable_type)) return;
             const hasMerchantLocations = product?.merchant?.locations && product.merchant.locations.length > 0;
             // Only fetch if variants are missing AND product has variants OR if merchant locations are missing
             if (!product?.has_variants && hasMerchantLocations) return;
@@ -461,13 +614,14 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             serviceMode === 'request_quote'
             || activeProduct?.service_pricing_model === 'contract_quote'
             || servicePriceDisplay === 'quote_only'
+            || ['request', 'manual_confirm'].includes(activeProduct?.service_booking_type || '')
         );
     const fulfillmentMode = activeProduct?.fulfillment_mode || 'own_stock';
     const fulfillmentLeadTimeLabel = fulfillmentMode === 'supplier_sourced' && activeProduct?.availability_lead_time_hours
         ? `Estimated confirmation: ${activeProduct.availability_lead_time_hours} hour${Number(activeProduct.availability_lead_time_hours) === 1 ? '' : 's'}`
         : activeProduct?.availability_lead_time_days
             ? `Estimated preparation: ${activeProduct.availability_lead_time_days} day${Number(activeProduct.availability_lead_time_days) === 1 ? '' : 's'}`
-        : null;
+            : null;
     const checkoutFulfillmentGuidance = isPhysicalProduct && itemType === 'product' ? ({
         supplier_sourced: {
             title: 'Availability confirmation',
@@ -494,20 +648,76 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const isPickup = isSelfPickupChoice || activeShippingZone?.delivery_type === 'self_pickup';
     const shippingFee = (activeShippingZone && isPhysicalProduct && !isSelfPickupChoice) ? parseFloat(activeShippingZone.flat_rate_fee || 0) : 0;
     const price = basePrice + shippingFee;
-    const availableFulfillmentAreas = useMemo(() => (
+    const deliveryCoverageAnchors = useMemo(() => {
+        const anchors = new Map();
+
         shippingZones
-            .filter((zone) => zone?.is_active !== false && zone?.delivery_type !== 'self_pickup')
-            .map((zone) => zone.zone_name || zone.reference_name || zone.destination_region || zone.destination_city)
-            .filter(Boolean)
-            .slice(0, 5)
-    ), [shippingZones]);
+            .filter((zone) => (
+                zone?.is_active !== false
+                && zone?.delivery_type === 'local_boda'
+                && Number(zone?.max_distance_km) > 0
+            ))
+            .forEach((zone) => {
+                const location = zone.location || {};
+                const lat = location.latitude ?? zone.reference_lat;
+                const lng = location.longitude ?? zone.reference_lng;
+                const key = location.id
+                    ? `location-${location.id}`
+                    : `${lat || 'unknown'}-${lng || 'unknown'}-${location.address || zone.reference_name || zone.zone_name || 'business'}`;
+                const current = anchors.get(key);
+                const radius = Number(zone.max_distance_km);
+
+                if (current && current.radius >= radius) return;
+
+                anchors.set(key, {
+                    radius,
+                    radiusLabel: formatKmRadius(radius),
+                    lat: Number(lat),
+                    lng: Number(lng),
+                    label: location.address || location.name || zone.reference_name || zone.zone_name || 'eneo la biashara',
+                    mapUrl: googleMapsUrl(lat, lng),
+                });
+            });
+
+        return Array.from(anchors.values()).filter((anchor) => anchor.radiusLabel);
+    }, [shippingZones]);
     const hasCustomerDeliveryLocation = Boolean(customerLat && customerLng);
     const blocksOutsideAreas = (shippingProfile?.outside_area_policy || 'inquiry') === 'block';
     const isOutsideFulfillmentArea = isPhysicalProduct && !isPickup && hasCustomerDeliveryLocation && !activeShippingZone;
     const isOutsideAreaBlocked = isOutsideFulfillmentArea && blocksOutsideAreas;
-    const outsideAreaMessage = availableFulfillmentAreas.length
-        ? `Delivery is only available in: ${availableFulfillmentAreas.join(', ')}. Choose another address, pickup, or another seller.`
-        : 'Delivery is not available for the selected location. Choose another address, pickup, or another seller.';
+    const isCheckoutDisabledByDeliveryArea = isOutsideAreaBlocked;
+    const radiusCoverageMessage = deliveryCoverageAnchors.length
+        ? `Tunasafirisha ndani ya ${deliveryCoverageAnchors.map((anchor) => `kilomita ${anchor.radiusLabel} kutoka ${anchor.label}`).join(', ')}.`
+        : 'Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.';
+    const outsideAreaMessage = `${radiusCoverageMessage} Chagua anwani iliyo karibu au pickup (Kuchukua mwenyewe)`;
+    const radiusCoverageNode = deliveryCoverageAnchors.length ? (
+        <span>
+            Tunasafirisha ndani ya{' '}
+            {deliveryCoverageAnchors.map((anchor, index) => (
+                <React.Fragment key={`${anchor.label}-${anchor.radiusLabel}`}>
+                    {index > 0 ? ', ' : ''}
+                    kilomita {anchor.radiusLabel} kutoka{' '}
+                    {anchor.mapUrl ? (
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setIsCoverageMapOpen(true);
+                            }}
+                            className="underline decoration-amber-700/40 underline-offset-2 hover:text-amber-700"
+                        >
+                            {anchor.label}
+                        </button>
+                    ) : (
+                        anchor.label
+                    )}
+                </React.Fragment>
+            ))}
+            .
+        </span>
+    ) : (
+        <span>Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.</span>
+    );
     const matchedShippingFeeLabel = Number(activeShippingZone?.flat_rate_fee || 0) > 0
         ? `Fee TZS ${Number(activeShippingZone.flat_rate_fee || 0).toLocaleString()}`
         : 'Free shipping';
@@ -864,477 +1074,512 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     );
 
     return (
-        <Drawer open={isOpen} onOpenChange={onOpenChange}>
-            <DrawerContent className="w-full sm:max-w-xl sm:mx-auto p-0 border border-brand-100/70 dark:border-brand-900/60 bg-background dark:bg-slate-950 shadow-2xl shadow-brand-900/10 dark:shadow-black/50 rounded-t-[2.5rem] overflow-hidden">
-                {/* Visual Header */}
-                <div className="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-4 sm:px-6 pt-5 pb-4 sm:py-6 text-white relative overflow-hidden">
-                    <div className="absolute -top-20 -right-16 h-56 w-56 rounded-full bg-white/10 blur-3xl pointer-events-none" />
-                    <div className="absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-sky-300/20 blur-3xl pointer-events-none" />
-                    <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(255,255,255,0.09)_35%,transparent_70%)] pointer-events-none" />
+        <>
+            <Drawer open={isOpen} onOpenChange={onOpenChange}>
+                <DrawerContent className="w-full sm:max-w-xl sm:mx-auto p-0 border border-brand-100/70 dark:border-brand-900/60 bg-background dark:bg-slate-950 shadow-2xl shadow-brand-900/10 dark:shadow-black/50 rounded-t-[2.5rem] overflow-hidden">
+                    {/* Visual Header */}
+                    <div className="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-4 sm:px-6 pt-5 pb-4 sm:py-6 text-white relative overflow-hidden">
+                        <div className="absolute -top-20 -right-16 h-56 w-56 rounded-full bg-white/10 blur-3xl pointer-events-none" />
+                        <div className="absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-sky-300/20 blur-3xl pointer-events-none" />
+                        <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(255,255,255,0.09)_35%,transparent_70%)] pointer-events-none" />
 
-                    <DrawerHeader className="relative z-10 text-left p-0">
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="bg-white/15 p-2 rounded-xl backdrop-blur-md inline-flex border border-white/25 shadow-sm">
-                                <Zap className="h-5 w-5 fill-white" />
+                        <DrawerHeader className="relative z-10 text-left p-0">
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="bg-white/15 p-2 rounded-xl backdrop-blur-md inline-flex border border-white/25 shadow-sm">
+                                    <Zap className="h-5 w-5 fill-white" />
+                                </div>
+                                <span className="font-black text-xs uppercase tracking-[0.2em] text-white/90">Malipo ya Haraka</span>
                             </div>
-                            <span className="font-black text-xs uppercase tracking-[0.2em] text-white/90">Malipo ya Haraka</span>
-                        </div>
-                        <DrawerTitle className="text-[28px] sm:text-3xl font-[900] leading-tight mb-1">
-                            {itemTitle}
-                        </DrawerTitle>
-                        <DrawerDescription className="text-white/80 text-sm flex items-center gap-1.5 font-bold">
-                            <Store className="h-3.5 w-3.5" />
-                            {activeProduct?.merchant?.display_name || activeProduct?.merchant?.name || 'Takeer Store'}
-                        </DrawerDescription>
-                    </DrawerHeader>
-                </div>
+                            <DrawerTitle className="text-[28px] sm:text-3xl font-[900] leading-tight mb-1">
+                                {itemTitle}
+                            </DrawerTitle>
+                            <DrawerDescription className="text-white/80 text-sm flex items-center gap-1.5 font-bold">
+                                <Store className="h-3.5 w-3.5" />
+                                {activeProduct?.merchant?.display_name || activeProduct?.merchant?.name || 'Takeer Store'}
+                            </DrawerDescription>
+                        </DrawerHeader>
+                    </div>
 
-                <div className="flex flex-col max-h-[85vh]">
-                    <div className="overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 scrollbar-hide">
-                        {/* Variant Selection (Common for both if applicable) */}
-                        {activeProduct?.has_variants && (
-                            <div className="rounded-2xl border border-brand-100 dark:border-slate-700 bg-brand-50/40 dark:bg-slate-900/70 p-3 sm:p-4 space-y-3">
-                                <p className="text-xs font-black uppercase tracking-wider text-brand-700/80 dark:text-brand-300/80">Chagua Sifa Za Bidhaa</p>
-
-                                {variantAttributeKeys.map((key) => {
-                                    const options = variantOptionsByKey[key] || [];
-                                    const availableOptions = availableOptionsByKey[key] || [];
-                                    const selectedValue = String(variantFilters[key] || '');
-                                    const hasSwatchOptions = options.some((option) => !!optionSwatchByKey?.[key]?.[option]);
-
-                                    return (
-                                        <div key={key} className="space-y-1.5">
-                                            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{formatAttributeLabel(key)}</label>
-                                            {hasSwatchOptions ? (
-                                                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                                                    {options.map((option) => {
-                                                        const swatch = optionSwatchByKey?.[key]?.[option];
-                                                        const previewVariant = optionPreviewVariantByKey?.[key]?.[option];
-                                                        const isAvailable = availableOptions.includes(option);
-                                                        const isSelected = selectedValue === option;
-                                                        return (
-                                                            <button
-                                                                key={`${key}-${option}`}
-                                                                type="button"
-                                                                disabled={!isAvailable}
-                                                                onClick={() => {
-                                                                    setVariantFilters((prev) => ({ ...prev, [key]: option }));
-                                                                    setSelectedVariantId('');
-                                                                }}
-                                                                className={`shrink-0 w-28 rounded-xl border text-left overflow-hidden transition ${isSelected
-                                                                    ? 'border-brand-600 ring-1 ring-brand-500'
-                                                                    : isAvailable
-                                                                        ? 'border-slate-300 hover:border-brand-400'
-                                                                        : 'border-slate-200 opacity-50 cursor-not-allowed'
-                                                                    }`}
-                                                            >
-                                                                <div className="h-16 bg-slate-100">
-                                                                    {swatch ? (
-                                                                        <img src={swatch} alt={option} className="h-full w-full object-cover" />
-                                                                    ) : (
-                                                                        <div className="h-full w-full flex items-center justify-center text-[10px] font-semibold text-slate-500">
-                                                                            No swatch
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                                <div className={`px-2 py-1.5 ${isSelected ? 'bg-brand-50' : 'bg-white'}`}>
-                                                                    <p className="text-xs font-bold truncate">{option}</p>
-                                                                    {previewVariant?.price !== null && previewVariant?.price !== undefined && (
-                                                                        <p className="text-[11px] text-slate-600">TZS {Number(previewVariant.price || 0).toLocaleString()}</p>
-                                                                    )}
-                                                                </div>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            ) : (
-                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                                    {options.map((option) => {
-                                                        const isAvailable = availableOptions.includes(option);
-                                                        const isSelected = selectedValue === option;
-                                                        return (
-                                                            <button
-                                                                key={`${key}-${option}`}
-                                                                type="button"
-                                                                disabled={!isAvailable}
-                                                                onClick={() => {
-                                                                    setVariantFilters((prev) => ({ ...prev, [key]: option }));
-                                                                    setSelectedVariantId('');
-                                                                }}
-                                                                className={`h-11 rounded-xl border px-3 text-left text-sm font-semibold transition flex items-center gap-2 ${isSelected
-                                                                    ? 'border-brand-600 bg-brand-600 text-white shadow-sm'
-                                                                    : isAvailable
-                                                                        ? 'border-brand-200 bg-white text-brand-900 hover:border-brand-400'
-                                                                        : 'border-slate-200 bg-slate-100/70 text-slate-400 cursor-not-allowed'
-                                                                    }`}
-                                                            >
-                                                                <span className="truncate">{option}</span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        {isPhysicalProduct ? (
-                            <div className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-                                {/* Physical: Shipping Form */}
+                    <div className="flex flex-col max-h-[85vh]">
+                        <div className="overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6 scrollbar-hide">
+                            {/* Variant Selection (Common for both if applicable) */}
+                            {activeProduct?.has_variants && (
                                 <div className="rounded-2xl border border-brand-100 dark:border-slate-700 bg-brand-50/40 dark:bg-slate-900/70 p-3 sm:p-4 space-y-3">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <p className="text-xs font-black uppercase tracking-wider text-brand-700/80 dark:text-brand-300/80">Usafirishaji</p>
-                                    </div>
+                                    <p className="text-xs font-black uppercase tracking-wider text-brand-700/80 dark:text-brand-300/80">Chagua Sifa Za Bidhaa</p>
 
-                                    {activeProduct?.merchant?.can_self_pickup && (
-                                        <div className="grid grid-cols-2 gap-2 bg-white dark:bg-slate-900 p-1 rounded-2xl border border-brand-100 dark:border-slate-800 shadow-sm">
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsSelfPickupChoice(false)}
-                                                className={`h-11 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${!isSelfPickupChoice ? 'bg-brand-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-                                            >
-                                                Kuletewa
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsSelfPickupChoice(true)}
-                                                className={`h-11 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${isSelfPickupChoice ? 'bg-brand-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-                                            >
-                                                Kuchukua (Pickup)
-                                            </button>
+                                    {variantAttributeKeys.map((key) => {
+                                        const options = variantOptionsByKey[key] || [];
+                                        const availableOptions = availableOptionsByKey[key] || [];
+                                        const selectedValue = String(variantFilters[key] || '');
+                                        const hasSwatchOptions = options.some((option) => !!optionSwatchByKey?.[key]?.[option]);
+
+                                        return (
+                                            <div key={key} className="space-y-1.5">
+                                                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{formatAttributeLabel(key)}</label>
+                                                {hasSwatchOptions ? (
+                                                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                                                        {options.map((option) => {
+                                                            const swatch = optionSwatchByKey?.[key]?.[option];
+                                                            const previewVariant = optionPreviewVariantByKey?.[key]?.[option];
+                                                            const isAvailable = availableOptions.includes(option);
+                                                            const isSelected = selectedValue === option;
+                                                            return (
+                                                                <button
+                                                                    key={`${key}-${option}`}
+                                                                    type="button"
+                                                                    disabled={!isAvailable}
+                                                                    onClick={() => {
+                                                                        setVariantFilters((prev) => ({ ...prev, [key]: option }));
+                                                                        setSelectedVariantId('');
+                                                                    }}
+                                                                    className={`shrink-0 w-28 rounded-xl border text-left overflow-hidden transition ${isSelected
+                                                                        ? 'border-brand-600 ring-1 ring-brand-500'
+                                                                        : isAvailable
+                                                                            ? 'border-slate-300 hover:border-brand-400'
+                                                                            : 'border-slate-200 opacity-50 cursor-not-allowed'
+                                                                        }`}
+                                                                >
+                                                                    <div className="h-16 bg-slate-100">
+                                                                        {swatch ? (
+                                                                            <img src={swatch} alt={option} className="h-full w-full object-cover" />
+                                                                        ) : (
+                                                                            <div className="h-full w-full flex items-center justify-center text-[10px] font-semibold text-slate-500">
+                                                                                No swatch
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className={`px-2 py-1.5 ${isSelected ? 'bg-brand-50' : 'bg-white'}`}>
+                                                                        <p className="text-xs font-bold truncate">{option}</p>
+                                                                        {previewVariant?.price !== null && previewVariant?.price !== undefined && (
+                                                                            <p className="text-[11px] text-slate-600">TZS {Number(previewVariant.price || 0).toLocaleString()}</p>
+                                                                        )}
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                        {options.map((option) => {
+                                                            const isAvailable = availableOptions.includes(option);
+                                                            const isSelected = selectedValue === option;
+                                                            return (
+                                                                <button
+                                                                    key={`${key}-${option}`}
+                                                                    type="button"
+                                                                    disabled={!isAvailable}
+                                                                    onClick={() => {
+                                                                        setVariantFilters((prev) => ({ ...prev, [key]: option }));
+                                                                        setSelectedVariantId('');
+                                                                    }}
+                                                                    className={`h-11 rounded-xl border px-3 text-left text-sm font-semibold transition flex items-center gap-2 ${isSelected
+                                                                        ? 'border-brand-600 bg-brand-600 text-white shadow-sm'
+                                                                        : isAvailable
+                                                                            ? 'border-brand-200 bg-white text-brand-900 hover:border-brand-400'
+                                                                            : 'border-slate-200 bg-slate-100/70 text-slate-400 cursor-not-allowed'
+                                                                        }`}
+                                                                >
+                                                                    <span className="truncate">{option}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {isPhysicalProduct ? (
+                                <div className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                                    {/* Physical: Shipping Form */}
+                                    <div className="rounded-2xl border border-brand-100 dark:border-slate-700 bg-brand-50/40 dark:bg-slate-900/70 p-3 sm:p-4 space-y-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="text-xs font-black uppercase tracking-wider text-brand-700/80 dark:text-brand-300/80">Usafirishaji</p>
                                         </div>
-                                    )}
 
-                                    {!isSelfPickupChoice ? (
-                                        <div className="space-y-3 pt-1 animate-in fade-in slide-in-from-top-1">
-                                            <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground ml-1">Sehemu ya Kufikishiwa</label>
-                                            <UserAddressManager
-                                                mode="select"
-                                                isGuest={isGuest}
-                                                selectedId={selectedAddressId}
-                                                onSelect={applyAddress}
-                                            />
-                                            {hasCustomerDeliveryLocation && (
-                                                <div className={`rounded-2xl border px-3 py-3 text-xs font-bold ${
-                                                    activeShippingZone
+                                        {activeProduct?.merchant?.can_self_pickup && (
+                                            <div className="grid grid-cols-2 gap-2 bg-white dark:bg-slate-900 p-1 rounded-2xl border border-brand-100 dark:border-slate-800 shadow-sm">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsSelfPickupChoice(false)}
+                                                    className={`h-11 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${!isSelfPickupChoice ? 'bg-brand-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                                                >
+                                                    Kuletewa
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsSelfPickupChoice(true)}
+                                                    className={`h-11 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${isSelfPickupChoice ? 'bg-brand-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                                                >
+                                                    Kuchukua (Pickup)
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {!isSelfPickupChoice ? (
+                                            <div className="space-y-3 pt-1 animate-in fade-in slide-in-from-top-1">
+                                                <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground ml-1">Sehemu ya Kufikishiwa</label>
+                                                <UserAddressManager
+                                                    mode="select"
+                                                    isGuest={isGuest}
+                                                    selectedId={selectedAddressId}
+                                                    onSelect={applyAddress}
+                                                />
+                                                {hasCustomerDeliveryLocation && (
+                                                    <div className={`rounded-2xl border px-3 py-3 text-xs font-bold ${activeShippingZone
                                                         ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                                                         : isOutsideAreaBlocked
                                                             ? 'border-red-200 bg-red-50 text-red-900'
                                                             : 'border-amber-200 bg-amber-50 text-amber-900'
-                                                }`}>
-                                                    {activeShippingZone ? (
-                                                        <span>
-                                                            Delivery area matched: {activeShippingZone.zone_name}. {matchedShippingFeeLabel}.
-                                                        </span>
-                                                    ) : isOutsideAreaBlocked ? (
-                                                        <span>{outsideAreaMessage}</span>
-                                                    ) : (
-                                                        <span>
-                                                            This address is outside saved delivery areas. The merchant can still review it and confirm delivery in chat.
-                                                            {availableFulfillmentAreas.length > 0 ? ` Available areas: ${availableFulfillmentAreas.join(', ')}.` : ''}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="p-4 rounded-2xl bg-brand-100/40 border border-brand-100 shadow-sm mt-2">
-                                            <p className="text-xs font-bold text-brand-800">
-                                                Unaweza kufuata bidhaa mwenyewe ilipo. Tutakutumia anwani na neno la siri na kuchati na muuzaji kwa makubaliano zaidi mara baada ya kuanzisha oda.
-                                            </p>
+                                                    }`}>
+                                                        {activeShippingZone ? (
+                                                            deliveryCoverageAnchors.length ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setIsCoverageMapOpen(true)}
+                                                                    className="text-left underline decoration-emerald-700/30 underline-offset-2 hover:text-emerald-700"
+                                                                >
+                                                                    Delivery area matched: {activeShippingZone.zone_name}. {matchedShippingFeeLabel}.
+                                                                </button>
+                                                            ) : (
+                                                                <span>
+                                                                    Delivery area matched: {activeShippingZone.zone_name}. {matchedShippingFeeLabel}.
+                                                                </span>
+                                                            )
+                                                        ) : isOutsideAreaBlocked ? (
+                                                            <>
+                                                                <span>{radiusCoverageNode} Chagua anwani iliyo karibu, pickup, au muuzaji mwingine.</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span>
+                                                                    Anwani hii iko nje ya eneo la kawaida la kufikisha. Muuzaji bado anaweza kuikagua oda na kuthibitisha kwenye chat. {radiusCoverageNode}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="p-4 rounded-2xl bg-brand-100/40 border border-brand-100 shadow-sm mt-2">
+                                                <p className="text-xs font-bold text-brand-800">
+                                                    Unaweza kufuata bidhaa mwenyewe ilipo. Tutakutumia anwani na neno la siri na kuchati na muuzaji kwa makubaliano zaidi mara baada ya kuanzisha oda.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {isGuest && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <Input
+                                                value={name}
+                                                onChange={(e) => setName(e.target.value)}
+                                                placeholder="Andika jina lako..."
+                                                className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
+                                            />
+                                            <Input
+                                                value={accountPhone}
+                                                onChange={(e) => setAccountPhone(e.target.value)}
+                                                placeholder="Namba ya simu"
+                                                type="tel"
+                                                inputMode="numeric"
+                                                className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
+                                            />
                                         </div>
                                     )}
                                 </div>
-
-                                {isGuest && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            ) : (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    {isGuest && (
                                         <Input
                                             value={name}
                                             onChange={(e) => setName(e.target.value)}
                                             placeholder="Andika jina lako..."
                                             className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
                                         />
-                                        <Input
-                                            value={accountPhone}
-                                            onChange={(e) => setAccountPhone(e.target.value)}
-                                            placeholder="Namba ya simu"
-                                            type="tel"
-                                            inputMode="numeric"
-                                            className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                                {isGuest && (
-                                    <Input
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        placeholder="Andika jina lako..."
-                                        className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-bold text-brand-900 shadow-sm"
-                                    />
-                                )}
+                                    )}
 
-                                {/* Digital: Payment Selection Tabs */}
-                                <div className="space-y-4">
-                                    <div className="flex p-1 bg-brand-50/50 dark:bg-slate-800 rounded-2xl border border-brand-100 dark:border-slate-700">
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentMethod('mobile')}
-                                            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'mobile' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-md ring-1 ring-brand-100' : 'text-slate-400 hover:text-slate-600'}`}
-                                        >
-                                            <Zap className={`h-3.5 w-3.5 ${paymentMethod === 'mobile' ? 'fill-current' : ''}`} />
-                                            Lipa kwa Simu
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentMethod('card')}
-                                            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'card' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-md ring-1 ring-brand-100' : 'text-slate-400 hover:text-slate-600'}`}
-                                        >
-                                            <Briefcase className="h-3.5 w-3.5" />
-                                            Lipa kwa Kadi
-                                        </button>
-                                    </div>
+                                    {/* Digital: Payment Selection Tabs */}
+                                    <div className="space-y-4">
+                                        <div className="flex p-1 bg-brand-50/50 dark:bg-slate-800 rounded-2xl border border-brand-100 dark:border-slate-700">
+                                            <button
+                                                type="button"
+                                                onClick={() => setPaymentMethod('mobile')}
+                                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'mobile' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-md ring-1 ring-brand-100' : 'text-slate-400 hover:text-slate-600'}`}
+                                            >
+                                                <Zap className={`h-3.5 w-3.5 ${paymentMethod === 'mobile' ? 'fill-current' : ''}`} />
+                                                Lipa kwa Simu
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPaymentMethod('card')}
+                                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'card' ? 'bg-white dark:bg-slate-900 text-brand-600 shadow-md ring-1 ring-brand-100' : 'text-slate-400 hover:text-slate-600'}`}
+                                            >
+                                                <Briefcase className="h-3.5 w-3.5" />
+                                                Lipa kwa Kadi
+                                            </button>
+                                        </div>
 
-                                    {paymentMethod === 'mobile' && (
-                                        <div className="p-4 rounded-3xl bg-brand-50/30 border border-brand-100 space-y-3 animate-in fade-in slide-in-from-top-2">
-                                            <div className="space-y-2">
-                                                <div className="flex items-center justify-between px-1">
-                                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">Namba ya Kulipia</label>
-                                                    <span className="text-[9px] font-bold text-brand-400 uppercase">USSD Push</span>
+                                        {paymentMethod === 'mobile' && (
+                                            <div className="p-4 rounded-3xl bg-brand-50/30 border border-brand-100 space-y-3 animate-in fade-in slide-in-from-top-2">
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">Namba ya Kulipia</label>
+                                                        <span className="text-[9px] font-bold text-brand-400 uppercase">USSD Push</span>
+                                                    </div>
+                                                    <Input
+                                                        value={paymentPhone}
+                                                        onChange={(e) => {
+                                                            setPaymentPhone(e.target.value);
+                                                            if (isGuest) setAccountPhone(e.target.value);
+                                                        }}
+                                                        placeholder="07XX XXX XXX"
+                                                        type="tel"
+                                                        inputMode="numeric"
+                                                        className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-black text-brand-900 text-lg shadow-sm"
+                                                    />
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {paymentMethod === 'card' && (
+                                            <div className="p-10 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 text-center animate-in fade-in zoom-in-95">
+                                                <Briefcase className="h-8 w-8 text-slate-300 mx-auto mb-4" />
+                                                <p className="font-black text-slate-600 uppercase tracking-widest text-[10px]">Inakuja Hivi Karibuni</p>
+                                                <p className="text-[11px] text-slate-400 mt-1">Kwa sasa tunapokea malipo ya simu pekee kwa usalama zaidi.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeProduct?.type === 'service' && !startsAsServiceInquiry && activePricingUnits.length > 0 && (
+                                <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-3 sm:p-4 space-y-3">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-wider text-brand-700/80">Booking details</p>
+                                        <p className="text-[11px] text-brand-700/70 mt-0.5">Used to calculate service charges before payment.</p>
+                                        {selectedServiceOption && (
+                                            <p className="text-xs font-black text-brand-900 mt-2">
+                                                {selectedServiceOption.name}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {needsPeopleInput && (
+                                            <label className="space-y-1.5">
+                                                <span className="text-xs font-bold text-brand-700/80">People / guests</span>
                                                 <Input
-                                                    value={paymentPhone}
-                                                    onChange={(e) => {
-                                                        setPaymentPhone(e.target.value);
-                                                        if (isGuest) setAccountPhone(e.target.value);
-                                                    }}
-                                                    placeholder="07XX XXX XXX"
-                                                    type="tel"
-                                                    inputMode="numeric"
-                                                    className="h-14 bg-white border-brand-100 focus:border-brand-400 rounded-2xl px-5 font-black text-brand-900 text-lg shadow-sm"
+                                                    type="number"
+                                                    min="1"
+                                                    value={servicePricingInputs.people}
+                                                    onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, people: e.target.value }))}
+                                                    placeholder="Mf. 2"
+                                                    className="h-12 bg-white rounded-xl font-bold"
                                                 />
+                                            </label>
+                                        )}
+                                        {needsHoursInput && (
+                                            <label className="space-y-1.5">
+                                                <span className="text-xs font-bold text-brand-700/80">Hours</span>
+                                                <Input
+                                                    type="number"
+                                                    min="0.25"
+                                                    step="0.25"
+                                                    value={servicePricingInputs.hours}
+                                                    onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, hours: e.target.value }))}
+                                                    placeholder="Mf. 3"
+                                                    className="h-12 bg-white rounded-xl font-bold"
+                                                />
+                                            </label>
+                                        )}
+                                        {needsQuantityInput && (
+                                            <label className="space-y-1.5">
+                                                <span className="text-xs font-bold text-brand-700/80">Quantity</span>
+                                                <Input
+                                                    type="number"
+                                                    min="1"
+                                                    value={servicePricingInputs.quantity}
+                                                    onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, quantity: e.target.value }))}
+                                                    placeholder="Mf. 1"
+                                                    className="h-12 bg-white rounded-xl font-bold"
+                                                />
+                                            </label>
+                                        )}
+                                        {needsDateRangeInput && (
+                                            <>
+                                                <label className="space-y-1.5">
+                                                    <span className="text-xs font-bold text-brand-700/80">Start / check-in</span>
+                                                    <Input
+                                                        type="date"
+                                                        value={servicePricingInputs.start_date}
+                                                        onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, start_date: e.target.value }))}
+                                                        className="h-12 bg-white rounded-xl font-bold"
+                                                    />
+                                                </label>
+                                                <label className="space-y-1.5">
+                                                    <span className="text-xs font-bold text-brand-700/80">End / check-out</span>
+                                                    <Input
+                                                        type="date"
+                                                        value={servicePricingInputs.end_date}
+                                                        onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, end_date: e.target.value }))}
+                                                        className="h-12 bg-white rounded-xl font-bold"
+                                                    />
+                                                </label>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Fixed Footer */}
+                        <div className="px-4 sm:px-6 pb-6 pt-4 bg-white border-t border-brand-50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
+                            <form onSubmit={handleCheckout} className="space-y-4">
+                                <div className="flex items-center justify-between mb-4 px-1">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">{itemLabel}</span>
+                                        <span className="text-sm font-black text-brand-900 truncate max-w-[150px] sm:max-w-[250px]">{itemTitle}</span>
+                                        {isPhysicalProduct && itemType === 'product' && unitType && (
+                                            <span className="text-[11px] font-bold text-slate-500">
+                                                {checkoutQuantitySummary}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla</span>
+                                        <p className="text-xl font-[900] text-brand-900">TZS {price.toLocaleString()}</p>
+                                        {checkoutIncludedChargesTotal > 0 && activeProduct?.type === 'service' && (
+                                            <p className="text-[10px] font-bold text-emerald-700">
+                                                Includes TZS {checkoutIncludedChargesTotal.toLocaleString()} extras
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {!isPhysicalProduct && (
+                                    <div className="rounded-2xl border border-brand-100 bg-brand-50/40">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCouponExpanded((expanded) => !expanded)}
+                                            aria-expanded={isCouponExpanded}
+                                            className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                                        >
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">
+                                                {couponCode ? 'Punguzo limeongezwa' : 'Una kodi ya punguzo?'}
+                                            </span>
+                                            <ChevronRight className={`h-4 w-4 text-brand-500 transition-transform ${isCouponExpanded ? 'rotate-90' : ''}`} />
+                                        </button>
+
+                                        {isCouponExpanded && (
+                                            <div className="px-3 pb-3 animate-in fade-in slide-in-from-top-1">
+                                                <Input
+                                                    value={couponCode}
+                                                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                                                    placeholder="LAUNCH25"
+                                                    className="h-11 rounded-xl bg-white font-black tracking-wide"
+                                                />
+                                                <p className="mt-1 text-[10px] font-semibold text-brand-700/70">
+                                                    Punguzo litahakikiwa unapoanza malipo.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {checkoutFulfillmentGuidance && (
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3">
+                                        <div className="flex items-start gap-2">
+                                            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                                            <div>
+                                                <p className="text-xs font-black text-blue-900">
+                                                    {checkoutFulfillmentGuidance.title}
+                                                </p>
+                                                <p className="mt-1 text-[11px] font-semibold leading-5 text-blue-800/80">
+                                                    {checkoutFulfillmentGuidance.body}
+                                                </p>
                                             </div>
                                         </div>
-                                    )}
-
-                                    {paymentMethod === 'card' && (
-                                        <div className="p-10 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 text-center animate-in fade-in zoom-in-95">
-                                            <Briefcase className="h-8 w-8 text-slate-300 mx-auto mb-4" />
-                                            <p className="font-black text-slate-600 uppercase tracking-widest text-[10px]">Inakuja Hivi Karibuni</p>
-                                            <p className="text-[11px] text-slate-400 mt-1">Kwa sasa tunapokea malipo ya simu pekee kwa usalama zaidi.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeProduct?.type === 'service' && !startsAsServiceInquiry && activePricingUnits.length > 0 && (
-                            <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-3 sm:p-4 space-y-3">
-                                <div>
-                                    <p className="text-xs font-black uppercase tracking-wider text-brand-700/80">Booking details</p>
-                                    <p className="text-[11px] text-brand-700/70 mt-0.5">Used to calculate service charges before payment.</p>
-                                    {selectedServiceOption && (
-                                        <p className="text-xs font-black text-brand-900 mt-2">
-                                            {selectedServiceOption.name}
+                                        {(fulfillmentLeadTimeLabel || activeProduct?.available_from) && (
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {fulfillmentLeadTimeLabel && (
+                                                    <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800">
+                                                        {fulfillmentLeadTimeLabel}
+                                                    </span>
+                                                )}
+                                                {activeProduct?.available_from && (
+                                                    <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800">
+                                                        Expected availability: {activeProduct.available_from}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                        <p className="mt-2 text-[10px] font-bold text-blue-700/80">
+                                            Takeer protects payment until fulfillment or receipt confirmation.
                                         </p>
-                                    )}
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {needsPeopleInput && (
-                                        <label className="space-y-1.5">
-                                            <span className="text-xs font-bold text-brand-700/80">People / guests</span>
-                                            <Input
-                                                type="number"
-                                                min="1"
-                                                value={servicePricingInputs.people}
-                                                onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, people: e.target.value }))}
-                                                placeholder="Mf. 2"
-                                                className="h-12 bg-white rounded-xl font-bold"
-                                            />
-                                        </label>
-                                    )}
-                                    {needsHoursInput && (
-                                        <label className="space-y-1.5">
-                                            <span className="text-xs font-bold text-brand-700/80">Hours</span>
-                                            <Input
-                                                type="number"
-                                                min="0.25"
-                                                step="0.25"
-                                                value={servicePricingInputs.hours}
-                                                onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, hours: e.target.value }))}
-                                                placeholder="Mf. 3"
-                                                className="h-12 bg-white rounded-xl font-bold"
-                                            />
-                                        </label>
-                                    )}
-                                    {needsQuantityInput && (
-                                        <label className="space-y-1.5">
-                                            <span className="text-xs font-bold text-brand-700/80">Quantity</span>
-                                            <Input
-                                                type="number"
-                                                min="1"
-                                                value={servicePricingInputs.quantity}
-                                                onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, quantity: e.target.value }))}
-                                                placeholder="Mf. 1"
-                                                className="h-12 bg-white rounded-xl font-bold"
-                                            />
-                                        </label>
-                                    )}
-                                    {needsDateRangeInput && (
+                                    </div>
+                                )}
+
+                                <Button
+                                    type="submit"
+                                    disabled={loading || (paymentMethod === 'card' && !isPhysicalProduct) || isCheckoutDisabledByDeliveryArea}
+                                    className={`h-14 sm:h-16 w-full rounded-2xl sm:rounded-3xl text-white font-black text-base sm:text-lg uppercase tracking-widest shadow-xl transition-all active:scale-[0.98] group ${isCheckoutDisabledByDeliveryArea
+                                        ? 'bg-slate-300 cursor-not-allowed shadow-none'
+                                        : 'bg-brand-600 hover:bg-brand-700 shadow-brand-600/20'
+                                        }`}
+                                >
+                                    {loading ? (
+                                        <Loader2 className="h-6 w-6 animate-spin" />
+                                    ) : (
                                         <>
-                                            <label className="space-y-1.5">
-                                                <span className="text-xs font-bold text-brand-700/80">Start / check-in</span>
-                                                <Input
-                                                    type="date"
-                                                    value={servicePricingInputs.start_date}
-                                                    onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, start_date: e.target.value }))}
-                                                    className="h-12 bg-white rounded-xl font-bold"
-                                                />
-                                            </label>
-                                            <label className="space-y-1.5">
-                                                <span className="text-xs font-bold text-brand-700/80">End / check-out</span>
-                                                <Input
-                                                    type="date"
-                                                    value={servicePricingInputs.end_date}
-                                                    onChange={(e) => setServicePricingInputs((prev) => ({ ...prev, end_date: e.target.value }))}
-                                                    className="h-12 bg-white rounded-xl font-bold"
-                                                />
-                                            </label>
+                                            {isPhysicalProduct ? 'Anzisha Oda' : 'Kamilisha Malipo'}
+                                            <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                                         </>
                                     )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                                </Button>
 
-                    {/* Fixed Footer */}
-                    <div className="px-4 sm:px-6 pb-6 pt-4 bg-white border-t border-brand-50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
-                        <form onSubmit={handleCheckout} className="space-y-4">
-                            <div className="flex items-center justify-between mb-4 px-1">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">{itemLabel}</span>
-                                    <span className="text-sm font-black text-brand-900 truncate max-w-[150px] sm:max-w-[250px]">{itemTitle}</span>
-                                    {isPhysicalProduct && itemType === 'product' && unitType && (
-                                        <span className="text-[11px] font-bold text-slate-500">
-                                            {checkoutQuantitySummary}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla</span>
-                                    <p className="text-xl font-[900] text-brand-900">TZS {price.toLocaleString()}</p>
-                                    {checkoutIncludedChargesTotal > 0 && activeProduct?.type === 'service' && (
-                                        <p className="text-[10px] font-bold text-emerald-700">
-                                            Includes TZS {checkoutIncludedChargesTotal.toLocaleString()} extras
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {!isPhysicalProduct && (
-                                <div className="rounded-2xl border border-brand-100 bg-brand-50/40">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsCouponExpanded((expanded) => !expanded)}
-                                        aria-expanded={isCouponExpanded}
-                                        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
-                                    >
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">
-                                            {couponCode ? 'Punguzo limeongezwa' : 'Una kodi ya punguzo?'}
-                                        </span>
-                                        <ChevronRight className={`h-4 w-4 text-brand-500 transition-transform ${isCouponExpanded ? 'rotate-90' : ''}`} />
-                                    </button>
-
-                                    {isCouponExpanded && (
-                                        <div className="px-3 pb-3 animate-in fade-in slide-in-from-top-1">
-                                            <Input
-                                                value={couponCode}
-                                                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                                                placeholder="LAUNCH25"
-                                                className="h-11 rounded-xl bg-white font-black tracking-wide"
-                                            />
-                                            <p className="mt-1 text-[10px] font-semibold text-brand-700/70">
-                                                Punguzo litahakikiwa unapoanza malipo.
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {checkoutFulfillmentGuidance && (
-                                <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3">
-                                    <div className="flex items-start gap-2">
-                                        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-                                        <div>
-                                            <p className="text-xs font-black text-blue-900">
-                                                {checkoutFulfillmentGuidance.title}
-                                            </p>
-                                            <p className="mt-1 text-[11px] font-semibold leading-5 text-blue-800/80">
-                                                {checkoutFulfillmentGuidance.body}
-                                            </p>
-                                        </div>
+                                {!isPhysicalProduct && (
+                                    <div className="flex items-center gap-2 justify-center py-1">
+                                        <ShieldCheck className="h-3.5 w-3.5 text-green-600" />
+                                        <p className="text-[10px] font-bold text-slate-500">Malipo Yako Ni Salama</p>
                                     </div>
-                                    {(fulfillmentLeadTimeLabel || activeProduct?.available_from) && (
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            {fulfillmentLeadTimeLabel && (
-                                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800">
-                                                    {fulfillmentLeadTimeLabel}
-                                                </span>
-                                            )}
-                                            {activeProduct?.available_from && (
-                                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800">
-                                                    Expected availability: {activeProduct.available_from}
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
-                                    <p className="mt-2 text-[10px] font-bold text-blue-700/80">
-                                        Takeer protects payment until fulfillment or receipt confirmation.
-                                    </p>
-                                </div>
-                            )}
-
-                            <Button
-                                type="submit"
-                                disabled={loading || (paymentMethod === 'card' && !isPhysicalProduct)}
-                                className="h-14 sm:h-16 w-full rounded-2xl sm:rounded-3xl bg-brand-600 hover:bg-brand-700 text-white font-black text-base sm:text-lg uppercase tracking-widest shadow-xl shadow-brand-600/20 transition-all active:scale-[0.98] group"
-                            >
-                                {loading ? (
-                                    <Loader2 className="h-6 w-6 animate-spin" />
-                                ) : (
-                                    <>
-                                        {isPhysicalProduct ? 'Anzisha Oda' : 'Kamilisha Malipo'}
-                                        <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                                    </>
                                 )}
-                            </Button>
-
-                            {!isPhysicalProduct && (
-                                <div className="flex items-center gap-2 justify-center py-1">
-                                    <ShieldCheck className="h-3.5 w-3.5 text-green-600" />
-                                    <p className="text-[10px] font-bold text-slate-500">Malipo Yako Ni Salama</p>
-                                </div>
-                            )}
-                        </form>
+                            </form>
+                        </div>
                     </div>
-                </div>
 
-                <ShopLocationsModal
-                    isOpen={isShopLocationsOpen}
-                    onOpenChange={setIsShopLocationsOpen}
-                    locations={activeProduct?.merchant?.locations || []}
-                    inventories={
-                        activeProduct?.has_variants
-                            ? (activeProduct.variants.find(v => v.id === selectedVariantId)?.location_inventories || [])
-                            : (activeProduct?.location_inventories || [])
-                    }
-                    productName={activeProduct?.title || 'Bidhaa'}
-                />
-            </DrawerContent>
-        </Drawer>
+                    <ShopLocationsModal
+                        isOpen={isShopLocationsOpen}
+                        onOpenChange={setIsShopLocationsOpen}
+                        locations={activeProduct?.merchant?.locations || []}
+                        inventories={
+                            activeProduct?.has_variants
+                                ? (activeProduct.variants.find(v => v.id === selectedVariantId)?.location_inventories || [])
+                                : (activeProduct?.location_inventories || [])
+                        }
+                        productName={activeProduct?.title || 'Bidhaa'}
+                    />
+                </DrawerContent>
+            </Drawer>
+            <Drawer open={isCoverageMapOpen} onOpenChange={setIsCoverageMapOpen} shouldScaleBackground={false}>
+                <DrawerContent className="w-full sm:max-w-2xl sm:mx-auto border border-brand-100 bg-white p-0 rounded-t-[2rem] overflow-hidden">
+                    <DrawerHeader className="text-left px-5 py-4 border-b border-slate-100">
+                        <DrawerTitle className="text-lg font-black text-slate-950">Eneo la kufikisha</DrawerTitle>
+                        <DrawerDescription className="text-xs font-bold text-slate-500">
+                            Usafirishaji unapatikana kwa maeneo yaliyo ndani ya duara. Alama nyekundu ni biashara ilipo.
+                        </DrawerDescription>
+                    </DrawerHeader>
+                    <div className="px-5 pb-5">
+                        <DeliveryCoverageMap
+                            anchors={deliveryCoverageAnchors}
+                            customerLat={customerLat}
+                            customerLng={customerLng}
+                            height={420}
+                        />
+                    </div>
+                </DrawerContent>
+            </Drawer>
+        </>
     );
 }

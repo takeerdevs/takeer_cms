@@ -47,6 +47,8 @@ class CheckoutRequest extends FormRequest
             'selected_offering_group_items.*.quantity' => 'nullable|numeric|min:0.001|max:100000',
             'selected_offering_group_items.*.add_ons' => 'nullable|array',
             'selected_offering_group_items.*.add_ons.*.name' => 'required_with:selected_offering_group_items.*.add_ons|string|max:120',
+            'selected_offering_group_items.*.children.*.add_ons' => 'nullable|array',
+            'selected_offering_group_items.*.children.*.add_ons.*.name' => 'required_with:selected_offering_group_items.*.children.*.add_ons|string|max:120',
             'selected_offering_group_items.*.children' => 'nullable|array',
             'selected_bundle_items' => 'nullable|array',
             'selected_bundle_items.*.item_type' => ['required_with:selected_bundle_items', 'string', Rule::in(['product', 'content_item'])],
@@ -58,7 +60,6 @@ class CheckoutRequest extends FormRequest
             'account_phone' => [Rule::requiredIf(!$this->user()), 'nullable', 'string', 'max:24'],
             'payment_number' => 'required|string|max:24',
             'delivery_zone_id' => [
-                Rule::requiredIf($requiresShipping),
                 'nullable',
                 'exists:shipping_zones,id'
             ],

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class OfferingGroup extends Model
@@ -61,5 +62,10 @@ class OfferingGroup extends Model
     public function items(): HasMany
     {
         return $this->hasMany(OfferingGroupItem::class)->orderBy('section')->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function locationAvailabilities(): MorphMany
+    {
+        return $this->morphMany(MerchantLocationable::class, 'locationable');
     }
 }

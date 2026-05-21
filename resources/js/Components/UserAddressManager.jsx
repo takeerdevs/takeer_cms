@@ -181,19 +181,19 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
     return (
         <div className="space-y-4">
             {/* Address List */}
-            <div className="grid gap-3">
+            <div className={`grid gap-3 ${mode === 'select' ? 'max-h-72 overflow-y-auto overscroll-contain pr-1' : ''}`}>
                 {addresses.map((addr) => (
                     <div 
                         key={addr.id}
                         onClick={() => mode === 'select' && onSelect?.(addr)}
-                        className={`group relative p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                        className={`group relative rounded-2xl border-2 transition-all cursor-pointer ${mode === 'select' ? 'p-3' : 'p-4'} ${
                             selectedId === addr.id 
-                            ? 'border-brand-500 bg-brand-50/50' 
-                            : 'border-border hover:border-brand-200 bg-card'
+                                ? 'border-brand-500 bg-brand-50/50' 
+                                : 'border-border hover:border-brand-200 bg-card'
                         }`}
                     >
                         <div className="flex items-start gap-3">
-                            <div className={`p-2 rounded-xl shrink-0 ${
+                            <div className={`rounded-xl shrink-0 ${mode === 'select' ? 'p-2' : 'p-2'} ${
                                 addr.type === 'forwarder' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'
                             }`}>
                                 {addr.type === 'forwarder' ? <Ship className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}

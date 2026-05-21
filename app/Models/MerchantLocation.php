@@ -51,6 +51,11 @@ class MerchantLocation extends Model
         return $this->hasMany(ProductLocationInventory::class, 'merchant_location_id');
     }
 
+    public function locationables(): HasMany
+    {
+        return $this->hasMany(MerchantLocationable::class, 'merchant_location_id');
+    }
+
     public function staff(): HasMany
     {
         return $this->hasMany(MerchantStaff::class, 'assigned_location_id');

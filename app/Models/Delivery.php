@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Delivery extends Model
 {
@@ -15,6 +16,7 @@ class Delivery extends Model
         'latitude',
         'longitude',
         'boda_phone',
+        'delivery_person_name',
         'bus_company',
         'waybill_tracking_number',
         'waybill_photo_url',
@@ -24,7 +26,18 @@ class Delivery extends Model
         'pickup_pin',
         'whatsapp_pin_url',
         'buyer_unboxing_video_url',
+        'rider_access_token_hash',
+        'rider_access_expires_at',
+        'rider_access_revoked_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'rider_access_expires_at' => 'datetime',
+            'rider_access_revoked_at' => 'datetime',
+        ];
+    }
 
     protected static function booted(): void
     {
@@ -46,5 +59,10 @@ class Delivery extends Model
     public function hotspot(): BelongsTo
     {
         return $this->belongsTo(ShippingHotspot::class, 'shipping_hotspot_id');
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(DeliveryEvent::class)->latest();
     }
 }

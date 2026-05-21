@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
 use App\Http\Controllers\Api\MerchantMarketingController;
 use App\Http\Controllers\Api\MerchantAnalyticsExportController;
 use App\Http\Controllers\Api\MerchantStaffController;
+use App\Http\Controllers\Api\RiderDeliveryController;
 use App\Http\Controllers\Api\ServiceRequestController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\AdminController;
@@ -56,6 +57,7 @@ use Illuminate\Support\Str;
 // ─── PUBLIC PAYMENT PAGES (Commerce Pro) ───────────────────────────────────
 Route::get('/pay/retail-credit/{publicId}', [\App\Http\Controllers\Api\RetailCreditPaymentController::class, 'show'])->name('retail-credit-payment.show');
 Route::get('/pay/{slug}', [\App\Http\Controllers\Api\PublicPaymentPageController::class, 'show'])->name('payment-page.show');
+Route::get('/rider/delivery/{token}', [RiderDeliveryController::class, 'show'])->name('rider.delivery.show');
 Route::match(['get', 'post'], '/bookkeeping-share/{token}', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'publicShare'])->name('bookkeeping.share');
 Route::get('/bookkeeping-share/{token}/download', [\App\Http\Controllers\Api\RetailBookkeepingController::class, 'publicShareDownload'])->name('bookkeeping.share.download');
 
@@ -247,6 +249,13 @@ Route::get('/service-requests/{publicId}/pay/{token}', function (string $publicI
         'public_id' => $serviceRequest->public_id,
         'token' => $serviceRequest->payment_token,
         'quoted_amount' => (float) $serviceRequest->quoted_amount,
+        'total_amount' => isset($serviceRequest->metadata['service_total_amount'])
+            ? (float) $serviceRequest->metadata['service_total_amount']
+            : (float) $serviceRequest->quoted_amount,
+        'advance_amount' => $serviceRequest->deposit_amount !== null ? (float) $serviceRequest->deposit_amount : null,
+        'remaining_amount' => isset($serviceRequest->metadata['service_total_amount'])
+            ? max(0, (float) $serviceRequest->metadata['service_total_amount'] - (float) $serviceRequest->quoted_amount)
+            : 0,
         'status' => $serviceRequest->status,
         'payment_status' => $serviceRequest->payment_status,
         'delivery_status' => $serviceRequest->delivery_status,
@@ -1003,24 +1012,45 @@ Route::middleware('auth')->group(function () {
 
         $commerceHubSummary = [
             'physical' => 0,
+            'menu' => 0,
             'digital' => 0,
             'services' => 0,
-                'posts' => 0,
-                'bundles' => 0,
-                'offerings' => 0,
-                'subscriptions' => 0,
-            ];
+            'rooms' => 0,
+            'tour_departures' => 0,
+            'custom_orders' => 0,
+            'appointments' => 0,
+            'reservations' => 0,
+            'rentals' => 0,
+            'workshops' => 0,
+            'posts' => 0,
+            'bundles' => 0,
+            'offerings' => 0,
+            'subscriptions' => 0,
+        ];
 
         if ($activeMerchant) {
             $productTypeCounts = $activeMerchant->products()
                 ->selectRaw('type, COUNT(*) as total')
                 ->groupBy('type')
                 ->pluck('total', 'type');
+            $productModuleCounts = $activeMerchant->products()
+                ->whereNotNull('module_key')
+                ->selectRaw('module_key, COUNT(*) as total')
+                ->groupBy('module_key')
+                ->pluck('total', 'module_key');
 
             $commerceHubSummary = [
                 'physical' => (int) ($productTypeCounts['physical'] ?? 0),
+                'menu' => (int) ($productModuleCounts['menu'] ?? 0),
                 'digital' => (int) ($productTypeCounts['digital'] ?? 0),
                 'services' => (int) ($productTypeCounts['service'] ?? 0),
+                'rooms' => (int) ($productModuleCounts['rooms'] ?? 0),
+                'tour_departures' => (int) ($productModuleCounts['tour_departures'] ?? 0),
+                'custom_orders' => (int) ($productModuleCounts['custom_orders'] ?? 0),
+                'appointments' => (int) ($productModuleCounts['appointments'] ?? 0),
+                'reservations' => (int) ($productModuleCounts['reservations'] ?? 0),
+                'rentals' => (int) ($productModuleCounts['rentals'] ?? 0),
+                'workshops' => (int) ($productModuleCounts['workshops'] ?? 0),
                 'posts' => (int) $activeMerchant->posts()->count(),
                 'bundles' => (int) $activeMerchant->bundles()->count(),
                 'offerings' => (int) $activeMerchant->offeringGroups()->count(),
@@ -1292,7 +1322,7 @@ Route::middleware('auth')->group(function () {
     })->name('merchant.create');
 
     Route::get('/chat/{order}', function (Request $request, $order) {
-        $orderModel = \App\Models\Order::with(['product.images', 'delivery', 'merchant.locations', 'messages' => fn($q) => $q->orderBy('created_at')])->where('public_id', $order)->firstOrFail();
+        $orderModel = \App\Models\Order::with(['product.images', 'delivery.events', 'merchant.locations', 'messages' => fn($q) => $q->orderBy('created_at')])->where('public_id', $order)->firstOrFail();
         $user = $request->user();
 
         $merchantIds = $user->merchantProfiles()->pluck('id');
@@ -1823,6 +1853,8 @@ Route::middleware('auth')->group(function () {
         Route::put('/service-sessions/api', [ServiceRequestController::class, 'updateSessions'])->middleware('merchant_permission:services.schedule');
         Route::get('/orders/{order}/api', [MerchantOrderController::class, 'show'])->middleware('merchant_permission:orders.view');
         Route::post('/orders/{order}/custom-delivery', [MerchantOrderController::class, 'uploadCustomDelivery'])->middleware('merchant_permission:orders.dispatch');
+        Route::post('/orders/{order}/rider-access', [MerchantOrderController::class, 'generateRiderAccess'])->middleware('merchant_permission:orders.dispatch,orders.update');
+        Route::post('/orders/{order}/delivery-status', [MerchantOrderController::class, 'updateDeliveryStatus'])->middleware('merchant_permission:orders.dispatch,orders.update');
         Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity'])->middleware('merchant_permission:orders.dispatch');
         Route::post('/dispatch/{order}/local', [DispatchController::class, 'local'])->middleware('merchant_permission:orders.dispatch');
         Route::get('/orders/{order}', function (Merchant $merchant, \App\Models\Order $order) {

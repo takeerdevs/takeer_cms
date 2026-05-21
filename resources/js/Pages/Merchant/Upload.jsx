@@ -247,6 +247,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [serviceHourlyRate, setServiceHourlyRate] = useState('');
     const [serviceMinHours, setServiceMinHours] = useState('1');
     const [serviceDepositAmount, setServiceDepositAmount] = useState('');
+    const [showServiceDepositInfo, setShowServiceDepositInfo] = useState(false);
     const [serviceIsShowcase, setServiceIsShowcase] = useState(false);
     const [serviceMode, setServiceMode] = useState('pay_now');
     const [serviceSchedulingType, setServiceSchedulingType] = useState('none');
@@ -267,6 +268,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [serviceClientRequirements, setServiceClientRequirements] = useState('');
     const [serviceIntakeForm, setServiceIntakeForm] = useState([]);
     const [serviceRelatedProductIds, setServiceRelatedProductIds] = useState([]);
+    const [serviceProductSearch, setServiceProductSearch] = useState('');
     const [serviceBookingProvider, setServiceBookingProvider] = useState('manual');
     const [serviceCategoryOptionsFromApi, setServiceCategoryOptionsFromApi] = useState([]);
 
@@ -296,6 +298,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [minOrderQuantity, setMinOrderQuantity] = useState('');
     const [orderIncrement, setOrderIncrement] = useState('');
     const [locationInventories, setLocationInventories] = useState({}); // { location_id: quantity }
+    const [availabilityLocationIds, setAvailabilityLocationIds] = useState([]);
     const [fulfillmentMode, setFulfillmentMode] = useState('own_stock');
     const [sourceDetails, setSourceDetails] = useState({
         supplier_name: '',
@@ -566,6 +569,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 setServiceCategory(moduleConfig.category || '');
                 setServiceSubcategory(moduleConfig.subcategory || '');
                 setServiceTemplateKey(moduleConfig.serviceTemplateKey || '');
+                if (moduleConfig.serviceSubtypeKey) {
+                    setServiceDetails((prev) => ({
+                        ...(prev || {}),
+                        service_subtype: moduleConfig.serviceSubtypeKey,
+                        ...(moduleConfig.serviceTemplateKey === 'rental' ? { rental_type: moduleConfig.serviceSubtypeKey } : {}),
+                    }));
+                }
                 if (defaults.servicePriceDisplay) setServicePriceDisplay(defaults.servicePriceDisplay);
                 if (defaults.serviceMode) {
                     setServiceMode(defaults.serviceMode);
@@ -628,7 +638,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 max_first_quote_amount: category.max_first_quote_amount ?? null,
                 service_template: category.service_template || null,
                 service_template_key: category.service_template_key || category.service_template?.key || null,
+                default_template_key: category.default_template_key || category.service_template_key || category.service_template?.key || null,
+                allowed_template_keys: category.allowed_template_keys || [],
+                allowed_templates: category.allowed_templates || (category.service_template ? [category.service_template] : []),
                 template_config: category.template_config || null,
+                template_rules: category.template_rules || null,
                 subcategories: (category.children || []).map((child) => child.name),
                 subcategoryConfigs: (category.children || []).map((child) => ({
                     id: child.id,
@@ -636,7 +650,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     option_template: child.option_template || null,
                     service_template: child.service_template || null,
                     service_template_key: child.service_template_key || child.service_template?.key || null,
+                    default_template_key: child.default_template_key || child.service_template_key || child.service_template?.key || null,
+                    allowed_template_keys: child.allowed_template_keys || [],
+                    allowed_templates: child.allowed_templates || (child.service_template ? [child.service_template] : []),
                     template_config: child.template_config || null,
+                    template_rules: child.template_rules || null,
                     risk_level: child.risk_level || category.risk_level || 'standard',
                     required_documents: child.required_documents || category.required_documents || ['identity'],
                     requires_manual_review: Boolean(child.requires_manual_review ?? category.requires_manual_review),
@@ -931,6 +949,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     return acc;
                 }, {}));
             }
+            setAvailabilityLocationIds(Array.isArray(p.availability_location_ids) ? p.availability_location_ids.map(String) : []);
 
             const schemaCategoryId = p.attributes?.sub_category_id || p.attributes?.category_id;
             if (schemaCategoryId) {
@@ -1223,6 +1242,67 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         </div>
     );
     const physicalLocations = currentMerchant?.locations || [];
+    const servingLocations = physicalLocations.filter((loc) => String(loc.type || 'SHOP').toUpperCase() === 'SHOP' || !loc.type);
+    const toggleAvailabilityLocation = (locationId) => {
+        const id = String(locationId);
+        setAvailabilityLocationIds((current) => (
+            current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+        ));
+    };
+    const renderServingLocationSelector = () => {
+        if (servingLocations.length === 0) {
+            return (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-800">
+                    Add a shop location in Settings when this service is tied to a specific branch. For now it remains available without a branch restriction.
+                </div>
+            );
+        }
+
+        const mode = availabilityLocationIds.length === 0 ? 'all' : 'selected';
+
+        return (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                <div>
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-700">Inapatikana kwenye shop gani?</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Leave as all shops, or restrict this service to specific branches.</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                        type="button"
+                        className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${mode === 'all' ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
+                        onClick={() => setAvailabilityLocationIds([])}
+                    >
+                        All active shop locations
+                    </button>
+                    <button
+                        type="button"
+                        className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${mode === 'selected' ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
+                        onClick={() => setAvailabilityLocationIds([String(servingLocations[0].id)])}
+                    >
+                        Selected locations only
+                    </button>
+                </div>
+                {mode === 'selected' && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {servingLocations.map((loc) => (
+                            <label key={loc.id} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1"
+                                    checked={availabilityLocationIds.includes(String(loc.id))}
+                                    onChange={() => toggleAvailabilityLocation(loc.id)}
+                                />
+                                <span>
+                                    <span className="block">{loc.name}</span>
+                                    <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">{loc.address}</span>
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
     const selectedFulfillmentMode = PHYSICAL_FULFILLMENT_MODES.find((mode) => mode.key === fulfillmentMode) || PHYSICAL_FULFILLMENT_MODES[0];
     const availabilityDateCopy = {
         farm_harvest: {
@@ -1294,22 +1374,50 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         && !['hidden', 'quote_only'].includes(servicePriceDisplay)
     );
     const serviceAreaList = serviceAreas.map((item) => String(item).trim()).filter(Boolean);
+    const serviceAreasGateBuyerRequests = ['customer_location', 'hybrid'].includes(serviceLocationType);
+    const serviceAreasHelperText = serviceAreasGateBuyerRequests
+        ? 'These areas gate buyer requests for client-location services and help show where you can travel.'
+        : serviceLocationType === 'remote'
+            ? 'For remote services, areas are discovery hints only. Buyer requests are not blocked by location.'
+            : 'For provider-location services, areas are discovery hints. Customers can still request or book if they can come to your venue.';
     const selectedServiceCategory = serviceCategoryOptions.find((option) => option.label === serviceCategory);
     const selectedServiceSubcategoryConfig = selectedServiceCategory?.subcategoryConfigs?.find((option) => option.label === serviceSubcategory);
-    const selectedServiceTrustPolicy = selectedServiceSubcategoryConfig || selectedServiceCategory || null;
-    const selectedServiceTemplate = selectedServiceSubcategoryConfig?.service_template
+    const selectedServiceTemplateOptions = selectedServiceSubcategoryConfig?.allowed_templates?.length
+        ? selectedServiceSubcategoryConfig.allowed_templates
+        : (selectedServiceCategory?.allowed_templates || []);
+    const selectedServiceTemplate = selectedServiceTemplateOptions.find((template) => template.key === serviceTemplateKey)
+        || selectedServiceSubcategoryConfig?.service_template
         || selectedServiceCategory?.service_template
         || (serviceTemplateKey ? { key: serviceTemplateKey, label: serviceTemplateKey.replace(/_/g, ' ') } : null);
     const selectedServiceTemplateKey = selectedServiceTemplate?.key || selectedServiceSubcategoryConfig?.service_template_key || selectedServiceCategory?.service_template_key || serviceTemplateKey || '';
+    const selectedServiceSubtypeOptions = selectedServiceTemplate?.subtypes || [];
+    const selectedServiceSubtypeKey = serviceDetails.service_subtype
+        || (selectedServiceTemplateKey === 'rental' ? serviceDetails.rental_type : '')
+        || selectedServiceSubtypeOptions[0]?.key
+        || '';
+    const baseServiceTrustPolicy = selectedServiceSubcategoryConfig || selectedServiceCategory || null;
+    const templateTrustRule = selectedServiceTemplateKey
+        ? (selectedServiceSubcategoryConfig?.template_rules?.[selectedServiceTemplateKey] || selectedServiceCategory?.template_rules?.[selectedServiceTemplateKey] || null)
+        : null;
+    const subtypeTrustRule = selectedServiceSubtypeKey
+        ? (templateTrustRule?.subtypes?.[selectedServiceSubtypeKey] || templateTrustRule?.rental_types?.[selectedServiceSubtypeKey] || null)
+        : null;
+    const selectedServiceTrustPolicy = baseServiceTrustPolicy
+        ? { ...baseServiceTrustPolicy, ...(templateTrustRule || {}), ...(subtypeTrustRule || {}) }
+        : null;
     const selectedServiceTemplateDefaults = selectedServiceTemplate?.recommended_defaults || {};
     const selectedServiceTemplateSections = selectedServiceTemplate?.merchant_fields?.detail_sections || [];
-    const selectedServiceTemplateSpecialized = selectedServiceTemplate?.merchant_fields?.specialized || [];
+    const hasConcreteServiceSubtype = Boolean(selectedServiceSubtypeKey && selectedServiceSubtypeKey !== 'none');
     const serviceTrustDocumentLabels = {
         identity: 'KYC',
         tin: 'TIN',
         business_license: 'Leseni ya biashara',
         registration: 'Usajili wa biashara',
         professional_license: 'Leseni/cheti cha taaluma',
+        ownership_proof: 'Uthibitisho wa umiliki',
+        vehicle_registration: 'Kadi/registration ya chombo',
+        insurance: 'Bima',
+        operating_permit: 'Kibali cha uendeshaji',
     };
     const selectedServiceRequiredDocuments = (selectedServiceTrustPolicy?.required_documents || [])
         .map((document) => serviceTrustDocumentLabels[document] || document)
@@ -1322,6 +1430,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const serviceOptionFieldConfig = serviceOptionTemplate?.fields || {};
     const serviceOptionFieldEnabled = (key) => Boolean(serviceOptionTemplate) && serviceOptionFieldConfig[key] !== false;
     const serviceOptionDefaultCapacityType = serviceOptionFieldEnabled('capacity_type') ? 'limited' : 'unlimited';
+    const defaultTemplateForConfig = (config) => config?.default_template_key || config?.service_template?.key || config?.service_template_key || '';
+    const updateServiceSubtype = (subtypeKey) => {
+        setServiceDetails((prev) => ({
+            ...(prev || {}),
+            service_subtype: subtypeKey,
+            ...(selectedServiceTemplateKey === 'rental' ? { rental_type: subtypeKey === 'none' ? '' : subtypeKey } : {}),
+        }));
+    };
     const updateServiceDetail = (key, value) => {
         setServiceDetails((prev) => ({ ...(prev || {}), [key]: value }));
     };
@@ -1330,6 +1446,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
         const defaults = template.recommended_defaults || {};
         setServiceTemplateKey(template.key || '');
+        setServiceDetails((prev) => {
+            const subtypes = template.subtypes || [];
+            const currentSubtype = prev?.service_subtype || (template.key === 'rental' ? prev?.rental_type : '');
+            const nextSubtype = subtypes.some((subtype) => subtype.key === currentSubtype)
+                ? currentSubtype
+                : (subtypes[0]?.key || '');
+
+            return {
+                ...(prev || {}),
+                ...(nextSubtype ? { service_subtype: nextSubtype } : {}),
+                ...(template.key === 'rental' && nextSubtype && nextSubtype !== 'none' ? { rental_type: nextSubtype } : {}),
+            };
+        });
         if (defaults.service_mode) {
             setServiceMode(defaults.service_mode);
             setServiceIsShowcase(defaults.service_mode === 'showcase_only');
@@ -1435,7 +1564,23 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const removeServiceOption = (index) => {
         setServiceOptions((prev) => prev.filter((_, optionIndex) => optionIndex !== index));
     };
-    const physicalMerchantProducts = merchantProducts.filter((item) => item.type === 'physical' && String(item.id) !== String(productId || ''));
+    const physicalMerchantProducts = merchantProducts.filter((item) => (
+        item.type === 'physical'
+        && item.status === 'published'
+        && String(item.id) !== String(productId || '')
+    ));
+    const serviceProductSearchTerm = serviceProductSearch.trim().toLowerCase();
+    const filteredPhysicalMerchantProducts = physicalMerchantProducts.filter((item) => {
+        if (!serviceProductSearchTerm) return true;
+
+        return [
+            item.title,
+            item.description,
+            item.slug,
+            item.sku,
+        ].some((value) => String(value || '').toLowerCase().includes(serviceProductSearchTerm));
+    });
+    const visiblePhysicalMerchantProducts = filteredPhysicalMerchantProducts.slice(0, 10);
     const updateMenuDetail = (key, value) => {
         setMenuDetails((prev) => ({ ...prev, [key]: value }));
     };
@@ -1972,6 +2117,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const activeUploadModule = getUploadModuleConfig(uploadModule);
     const isMenuUpload = activeUploadModule?.key === 'menu' && step === 'physical';
     const isModuleServiceUpload = step === 'service' && activeUploadModule?.type === 'service';
+    const useFocusedModuleServiceForm = isModuleServiceUpload && uploadModule !== 'rooms';
+    const showRoomDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'rooms' || selectedServiceTemplateKey === 'stay') && hasConcreteServiceSubtype;
+    const showReservationDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'reservations' || selectedServiceTemplateKey === 'space_booking') && hasConcreteServiceSubtype;
+    const showRentalDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'rentals' || selectedServiceTemplateKey === 'rental') && hasConcreteServiceSubtype;
+    const showWorkshopDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'workshops' || selectedServiceTemplateKey === 'learning') && hasConcreteServiceSubtype;
+    const showingSpecializedServiceForm = useFocusedModuleServiceForm
+        || showRoomDetailsForm
+        || showReservationDetailsForm
+        || showRentalDetailsForm
+        || showWorkshopDetailsForm;
     const isFocusedPhysicalModule = step === 'physical' && Boolean(activeUploadModule?.focusedPhysical);
     const showGenericPhysicalCatalog = step === 'physical' && !isFocusedPhysicalModule;
     const showGenericPhysicalFulfillment = step === 'physical' && !isFocusedPhysicalModule;
@@ -2757,13 +2912,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 service_area: step === 'service' ? serviceAreaList : [],
                 service_client_requirements: step === 'service' ? serviceClientRequirements : null,
                 service_intake_form: step === 'service' ? serviceIntakeFormForPayload : [],
-                service_related_product_ids: step === 'service' ? serviceRelatedProductIds : [],
+                service_related_product_ids: step === 'service'
+                    ? serviceRelatedProductIds.filter((id) => physicalMerchantProducts.some((item) => Number(item.id) === Number(id)))
+                    : [],
                 service_booking_provider: step === 'service'
                     ? (serviceSchedulingType === 'external' ? 'external' : serviceBookingProvider)
                     : 'manual',
                 service_booking_mode: step === 'service' ? serviceBookingMode : 'takeer',
                 service_contact_channel: step === 'service' ? serviceContactType : null,
                 service_contact_value: step === 'service' ? serviceContactValue : null,
+                availability_location_ids: step === 'service' ? availabilityLocationIds.map((id) => Number(id)).filter(Boolean) : [],
                 publish_targets: autoPostTargets,
                 fulfillment_mode: step === 'physical' ? fulfillmentMode : 'own_stock',
                 source_details: step === 'physical' ? sourceDetails : null,
@@ -2967,6 +3125,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             x: false,
         });
         setQuantity('');
+        setLocationInventories({});
+        setAvailabilityLocationIds([]);
         setFulfillmentMode('own_stock');
         setSourceDetails({ supplier_name: '', supplier_phone: '', supplier_location: '', confirmation_hours: '', source_note: '' });
         setAvailabilityLeadTimeDays('');
@@ -3317,19 +3477,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         />
                                     </div>
                                     {showGenericPhysicalCatalog && (
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Kategoria</label>
-                                        <select
-                                            className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
-                                            value={selectedCategoryId}
-                                            onChange={async (e) => onSelectRootCategory(e.target.value)}
-                                        >
-                                            <option value="">Chagua kategoria</option>
-                                            {(catalogCategories || []).map((category) => (
-                                                <option key={category.id} value={category.id}>{categoryDisplayName(category)}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Kategoria</label>
+                                            <select
+                                                className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
+                                                value={selectedCategoryId}
+                                                onChange={async (e) => onSelectRootCategory(e.target.value)}
+                                            >
+                                                <option value="">Chagua kategoria</option>
+                                                {(catalogCategories || []).map((category) => (
+                                                    <option key={category.id} value={category.id}>{categoryDisplayName(category)}</option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     )}
                                     {showGenericPhysicalCatalog && selectedSubCategories.length > 0 && (
                                         <div className="space-y-1.5">
@@ -3408,52 +3568,52 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     </div>
                                     <CardContent className="p-5 space-y-4">
                                         {showGenericPhysicalCatalog && (
-                                        <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4 space-y-3">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <p className="text-xs font-black uppercase tracking-wider text-brand-900">Product setup</p>
-                                                    <p className="text-xs text-brand-700">Badilisha jina, category, au subcategory bila kurudi mwanzo.</p>
+                                            <div className="rounded-2xl border border-brand-100 bg-brand-50/40 p-4 space-y-3">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-brand-900">Product setup</p>
+                                                        <p className="text-xs text-brand-700">Badilisha jina, category, au subcategory bila kurudi mwanzo.</p>
+                                                    </div>
+                                                </div>
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <div className="space-y-1.5 sm:col-span-2">
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jina la Bidhaa</label>
+                                                        <Input
+                                                            placeholder="Mf. Sukari kilo 50"
+                                                            value={manualTitle}
+                                                            onChange={e => setManualTitle(e.target.value)}
+                                                            className="h-12"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Kategoria</label>
+                                                        <select
+                                                            className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
+                                                            value={selectedCategoryId}
+                                                            onChange={async (e) => onSelectRootCategory(e.target.value, { stayOnDetails: true })}
+                                                        >
+                                                            <option value="">Chagua kategoria</option>
+                                                            {(catalogCategories || []).map((category) => (
+                                                                <option key={category.id} value={category.id}>{categoryDisplayName(category)}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subcategory</label>
+                                                        <select
+                                                            className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
+                                                            value={selectedSubCategoryId}
+                                                            onChange={async (e) => onSelectSubCategory(e.target.value, { stayOnDetails: true })}
+                                                            disabled={selectedSubCategories.length === 0}
+                                                        >
+                                                            <option value="">Hakuna subcategory maalum</option>
+                                                            {selectedSubCategories.map((child) => (
+                                                                <option key={child.id} value={child.id}>{categoryDisplayName(child)}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="grid gap-3 sm:grid-cols-2">
-                                                <div className="space-y-1.5 sm:col-span-2">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jina la Bidhaa</label>
-                                                    <Input
-                                                        placeholder="Mf. Sukari kilo 50"
-                                                        value={manualTitle}
-                                                        onChange={e => setManualTitle(e.target.value)}
-                                                        className="h-12"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Kategoria</label>
-                                                    <select
-                                                        className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
-                                                        value={selectedCategoryId}
-                                                        onChange={async (e) => onSelectRootCategory(e.target.value, { stayOnDetails: true })}
-                                                    >
-                                                        <option value="">Chagua kategoria</option>
-                                                        {(catalogCategories || []).map((category) => (
-                                                            <option key={category.id} value={category.id}>{categoryDisplayName(category)}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subcategory</label>
-                                                    <select
-                                                        className="w-full h-12 rounded-xl border border-input bg-background px-3 text-sm"
-                                                        value={selectedSubCategoryId}
-                                                        onChange={async (e) => onSelectSubCategory(e.target.value, { stayOnDetails: true })}
-                                                        disabled={selectedSubCategories.length === 0}
-                                                    >
-                                                        <option value="">Hakuna subcategory maalum</option>
-                                                        {selectedSubCategories.map((child) => (
-                                                            <option key={child.id} value={child.id}>{categoryDisplayName(child)}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </div>
                                         )}
 
                                         {showGenericPhysicalCatalog && variantAxisAttributes.length > 0 && (
@@ -4721,356 +4881,6 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 />
                             </div>
 
-                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'rooms' && (
-                                <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-4 space-y-4">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-wider text-sky-900">Room / stay details</p>
-                                        <p className="text-xs text-sky-800 mt-1">These fields shape how this room appears for hotels, motels, lodges, guest houses, and apartments.</p>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Room type</span>
-                                            <select
-                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
-                                                value={roomDetails.room_type}
-                                                onChange={(e) => updateRoomDetail('room_type', e.target.value)}
-                                            >
-                                                {roomTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Bed type</span>
-                                            <select
-                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
-                                                value={roomDetails.bed_type}
-                                                onChange={(e) => updateRoomDetail('bed_type', e.target.value)}
-                                            >
-                                                {bedTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Booking policy</span>
-                                            <select
-                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
-                                                value={roomDetails.booking_policy}
-                                                onChange={(e) => {
-                                                    updateRoomDetail('booking_policy', e.target.value);
-                                                    setServiceBookingType(e.target.value === 'instant' ? 'instant' : 'manual_confirm');
-                                                    if (e.target.value === 'request_quote') {
-                                                        setServiceMode('request_quote');
-                                                        setServicePriceDisplay('quote_only');
-                                                    }
-                                                }}
-                                            >
-                                                {roomBookingPolicyOptions.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}
-                                            </select>
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Guests</span>
-                                            <Input type="number" min="1" className="h-11 bg-white" value={roomDetails.max_guests} onChange={(e) => updateRoomDetail('max_guests', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Rooms</span>
-                                            <Input type="number" min="1" className="h-11 bg-white" value={roomDetails.room_count} onChange={(e) => updateRoomDetail('room_count', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Bathrooms</span>
-                                            <Input type="number" min="0" step="0.5" className="h-11 bg-white" value={roomDetails.bathrooms} onChange={(e) => updateRoomDetail('bathrooms', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Check-in</span>
-                                            <Input type="time" className="h-11 bg-white" value={roomDetails.checkin_time} onChange={(e) => updateRoomDetail('checkin_time', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Check-out</span>
-                                            <Input type="time" className="h-11 bg-white" value={roomDetails.checkout_time} onChange={(e) => updateRoomDetail('checkout_time', e.target.value)} />
-                                        </label>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <p className="text-[11px] font-semibold text-slate-700">Availability status</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {roomAvailabilityOptions.map(option => (
-                                                <button
-                                                    key={option.key}
-                                                    type="button"
-                                                    onClick={() => updateRoomDetail('availability', [option.key])}
-                                                    className={`rounded-full border px-3 py-1.5 text-xs font-black ${roomDetails.availability.includes(option.key) ? 'border-sky-500 bg-white text-sky-700' : 'border-slate-200 bg-white/70 text-slate-500'}`}
-                                                >
-                                                    {option.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <p className="text-[11px] font-semibold text-slate-700">Amenities</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {roomAmenityOptions.map(option => (
-                                                <button
-                                                    key={option.key}
-                                                    type="button"
-                                                    onClick={() => toggleRoomArrayValue('amenities', option.key)}
-                                                    className={`rounded-full border px-3 py-1.5 text-xs font-black ${roomDetails.amenities.includes(option.key) ? 'border-emerald-500 bg-white text-emerald-700' : 'border-slate-200 bg-white/70 text-slate-500'}`}
-                                                >
-                                                    {option.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'appointments' && (
-                                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-wider text-indigo-900">Appointment details</p>
-                                        <p className="text-xs text-indigo-800 mt-1">These fields shape booking slots for salons, clinics, consultants, trainers, repair visits, and professional services.</p>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Buffer after appointment</span>
-                                            <Input type="number" min="0" className="h-11 bg-white" placeholder="15" value={serviceDetails.buffer_minutes ?? ''} onChange={(e) => updateServiceDetail('buffer_minutes', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Capacity per slot</span>
-                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.capacity ?? ''} onChange={(e) => updateServiceDetail('capacity', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Booking policy</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.booking_policy || 'manual_confirm'} onChange={(e) => {
-                                                updateServiceDetail('booking_policy', e.target.value);
-                                                setServiceBookingType(e.target.value === 'instant' ? 'instant' : e.target.value === 'request_first' ? 'request' : 'manual_confirm');
-                                            }}>
-                                                <option value="manual_confirm">Manual confirm</option>
-                                                <option value="instant">Instant booking</option>
-                                                <option value="request_first">Request first</option>
-                                            </select>
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Appointment location</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.appointment_location_mode || serviceLocationType || 'provider_location'} onChange={(e) => {
-                                                updateServiceDetail('appointment_location_mode', e.target.value);
-                                                setServiceLocationType(e.target.value);
-                                            }}>
-                                                <option value="provider_location">At business location</option>
-                                                <option value="customer_location">At customer location</option>
-                                                <option value="remote">Remote / online</option>
-                                                <option value="hybrid">Hybrid</option>
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Preparation notes</span>
-                                            <Input className="h-11 bg-white" placeholder="Arrive 10 minutes early, bring documents..." value={serviceDetails.preparation_notes || ''} onChange={(e) => updateServiceDetail('preparation_notes', e.target.value)} />
-                                        </label>
-                                    </div>
-                                </div>
-                            )}
-
-                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'reservations' && (
-                                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4 space-y-4">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-wider text-rose-900">Reservation details</p>
-                                        <p className="text-xs text-rose-800 mt-1">Use this for table bookings, venue visits, event spaces, lounges, activity slots, and reservation-first businesses.</p>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Reservation type</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.reservation_type || 'table'} onChange={(e) => updateServiceDetail('reservation_type', e.target.value)}>
-                                                <option value="table">Table</option>
-                                                <option value="venue">Venue</option>
-                                                <option value="visit">Visit</option>
-                                                <option value="event_space">Event space</option>
-                                                <option value="activity">Activity</option>
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Seating / space</span>
-                                            <Input className="h-11 bg-white" placeholder="Indoor, terrace, VIP..." value={serviceDetails.seating_type || ''} onChange={(e) => updateServiceDetail('seating_type', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Party size limit</span>
-                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="8" value={serviceDetails.party_size_limit || ''} onChange={(e) => updateServiceDetail('party_size_limit', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Policy</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.reservation_policy || 'manual_confirm'} onChange={(e) => {
-                                                updateServiceDetail('reservation_policy', e.target.value);
-                                                setServiceBookingType(e.target.value === 'instant' ? 'instant' : e.target.value === 'request_first' ? 'request' : 'manual_confirm');
-                                            }}>
-                                                <option value="manual_confirm">Manual confirm</option>
-                                                <option value="instant">Instant reservation</option>
-                                                <option value="request_first">Request first</option>
-                                            </select>
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Reservation notes: late arrival, hold time, dress code, walk-in policy..." value={serviceDetails.reservation_notes || ''} onChange={(e) => updateServiceDetail('reservation_notes', e.target.value)} />
-                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Deposit or minimum spend note, if any" value={serviceDetails.deposit_note || ''} onChange={(e) => updateServiceDetail('deposit_note', e.target.value)} />
-                                    </div>
-                                </div>
-                            )}
-
-                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'rentals' && (
-                                <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 space-y-4">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-wider text-amber-900">Rental / hire details</p>
-                                        <p className="text-xs text-amber-800 mt-1">Use this for equipment, vehicles, event gear, spaces, costumes, and other rentable items.</p>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Rental type</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_type || 'equipment'} onChange={(e) => updateServiceDetail('rental_type', e.target.value)}>
-                                                <option value="equipment">Equipment</option>
-                                                <option value="vehicle">Vehicle</option>
-                                                <option value="space">Space</option>
-                                                <option value="event_gear">Event gear</option>
-                                                <option value="costume">Costume / props</option>
-                                                <option value="other">Other</option>
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Price unit</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_unit || 'day'} onChange={(e) => {
-                                                updateServiceDetail('rental_unit', e.target.value);
-                                                setServicePriceDisplay(e.target.value === 'hour' ? 'hourly' : e.target.value === 'week' ? 'weekly' : e.target.value === 'month' ? 'monthly' : 'daily');
-                                            }}>
-                                                <option value="hour">Per hour</option>
-                                                <option value="day">Per day</option>
-                                                <option value="night">Per night</option>
-                                                <option value="week">Per week</option>
-                                                <option value="month">Per month</option>
-                                                <option value="trip">Per trip</option>
-                                                <option value="event">Per event</option>
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Available units</span>
-                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.available_units ?? ''} onChange={(e) => updateServiceDetail('available_units', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Policy</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_policy || 'manual_confirm'} onChange={(e) => {
-                                                updateServiceDetail('rental_policy', e.target.value);
-                                                setServiceBookingType(e.target.value === 'instant' ? 'instant' : e.target.value === 'request_first' ? 'request' : 'manual_confirm');
-                                            }}>
-                                                <option value="manual_confirm">Manual confirm</option>
-                                                <option value="instant">Instant booking</option>
-                                                <option value="request_first">Request first</option>
-                                            </select>
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Security deposit</span>
-                                            <Input type="number" min="0" className="h-11 bg-white" placeholder="Optional deposit amount" value={serviceDetails.security_deposit ?? ''} onChange={(e) => updateServiceDetail('security_deposit', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Included items</span>
-                                            <Input
-                                                className="h-11 bg-white"
-                                                placeholder="Helmet, charger, stand..."
-                                                value={Array.isArray(serviceDetails.included_items) ? serviceDetails.included_items.join(', ') : ''}
-                                                onChange={(e) => updateServiceDetail('included_items', e.target.value.split(',').map((item) => item.trim()).filter(Boolean))}
-                                            />
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Pickup and return notes: pickup point, return time, inspection, late return..." value={serviceDetails.pickup_return_notes || ''} onChange={(e) => updateServiceDetail('pickup_return_notes', e.target.value)} />
-                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Rental requirements: ID, license, deposit, operator, damage policy..." value={serviceDetails.rental_requirements || ''} onChange={(e) => updateServiceDetail('rental_requirements', e.target.value)} />
-                                    </div>
-                                </div>
-                            )}
-
-                            {!isModuleServiceUpload && step === 'service' && uploadModule === 'workshops' && (
-                                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-wider text-indigo-900">Workshop / session details</p>
-                                        <p className="text-xs text-indigo-800 mt-1">Use this for short courses, bootcamps, webinars, seminars, and live training sessions.</p>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Format</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.workshop_format || 'live_session'} onChange={(e) => updateServiceDetail('workshop_format', e.target.value)}>
-                                                <option value="live_session">Live session</option>
-                                                <option value="bootcamp">Bootcamp</option>
-                                                <option value="seminar">Seminar</option>
-                                                <option value="webinar">Webinar</option>
-                                                <option value="cohort">Cohort</option>
-                                                <option value="private_group">Private group</option>
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Sessions</span>
-                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.session_count ?? ''} onChange={(e) => updateServiceDetail('session_count', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Capacity</span>
-                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="Optional" value={serviceDetails.workshop_capacity ?? ''} onChange={(e) => updateServiceDetail('workshop_capacity', e.target.value)} />
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Level</span>
-                                            <Input className="h-11 bg-white" placeholder="Beginner, advanced..." value={serviceDetails.workshop_level || ''} onChange={(e) => updateServiceDetail('workshop_level', e.target.value)} />
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Enrollment policy</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.enrollment_policy || 'manual_confirm'} onChange={(e) => {
-                                                updateServiceDetail('enrollment_policy', e.target.value);
-                                                setServiceBookingType(e.target.value === 'instant' ? 'instant' : e.target.value === 'request_first' ? 'request' : 'manual_confirm');
-                                            }}>
-                                                <option value="manual_confirm">Manual confirm</option>
-                                                <option value="instant">Instant enrollment</option>
-                                                <option value="request_first">Request first</option>
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Location mode</span>
-                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.workshop_location_mode || serviceLocationType || 'provider_location'} onChange={(e) => {
-                                                updateServiceDetail('workshop_location_mode', e.target.value);
-                                                setServiceLocationType(e.target.value);
-                                            }}>
-                                                <option value="provider_location">At business location</option>
-                                                <option value="customer_location">At client location</option>
-                                                <option value="remote">Remote / online</option>
-                                                <option value="hybrid">Hybrid</option>
-                                            </select>
-                                        </label>
-                                        <label className="space-y-1.5">
-                                            <span className="text-[11px] font-semibold text-slate-700">Start note</span>
-                                            <Input className="h-11 bg-white" placeholder="Starts June, every Saturday..." value={serviceDetails.workshop_start_note || ''} onChange={(e) => updateServiceDetail('workshop_start_note', e.target.value)} />
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <RepeatableTextList label="Learning outcomes" value={serviceDetails.learning_outcomes || serviceDetails.outcomes} onChange={(value) => {
-                                            updateServiceDetail('learning_outcomes', value);
-                                            updateServiceDetail('outcomes', value);
-                                        }} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
-                                        <RepeatableTextList label="Requirements" value={serviceDetails.workshop_requirements || serviceDetails.requirements} onChange={(value) => {
-                                            updateServiceDetail('workshop_requirements', value);
-                                            updateServiceDetail('requirements', value);
-                                        }} addLabel="Add requirement" placeholder="Describe one requirement..." />
-                                        <RepeatableTextList label="Materials included" value={serviceDetails.materials_included} onChange={(value) => updateServiceDetail('materials_included', value)} addLabel="Add material" placeholder="Describe one material or resource..." />
-                                    </div>
-                                </div>
-                            )}
 
                             {/* ─── DIGITAL: delivery mode toggle ─── */}
                             {step === 'digital' && (
@@ -5932,7 +5742,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             {/* ─── SERVICE: unified listing mode ─── */}
                             {step === 'service' && (
                                 <div className="space-y-4">
-                                    {isModuleServiceUpload ? (
+                                    {useFocusedModuleServiceForm ? (
                                         <>
                                             <ServiceModuleCreateFields
                                                 moduleKey={uploadModule}
@@ -5950,1085 +5760,1437 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 roomAvailabilityOptions={roomAvailabilityOptions}
                                                 roomBookingPolicyOptions={roomBookingPolicyOptions}
                                             />
+                                            {renderServingLocationSelector()}
                                         </>
                                     ) : (
                                         <>
-                                    <div className="rounded-2xl border bg-white p-3 sm:p-4 space-y-3">
-                                        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-                                            <div>
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service category</label>
-                                                <p className="text-xs text-muted-foreground mt-1">Optional, but helps organize services and improve discovery later.</p>
-                                            </div>
-                                            {(serviceCategory || serviceSubcategory) && (
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-purple-700 bg-purple-100 rounded-full px-3 py-1 w-max">
-                                                    {serviceSubcategory || serviceCategory}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div className="space-y-1.5">
-                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</span>
-                                                <select
-                                                    className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                    value={serviceCategory}
-                                                    onChange={(e) => {
-                                                        const nextCategory = e.target.value;
-                                                        const nextOption = serviceCategoryOptions.find((option) => option.label === nextCategory);
-                                                        setServiceCategory(nextCategory);
-                                                        setServiceTemplateKey(nextOption?.service_template?.key || nextOption?.service_template_key || '');
-                                                        setServiceSubcategory((current) => (
-                                                            nextOption?.subcategories?.includes(current) ? current : ''
-                                                        ));
-                                                        if (!nextOption?.subcategories?.length) {
-                                                            applyServiceTemplateDefaults(nextOption?.service_template);
-                                                        }
-                                                    }}
-                                                >
-                                                    <option value="">No category</option>
-                                                    {serviceCategoryOptions.map((option) => (
-                                                        <option key={option.label} value={option.label}>{option.label}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Subcategory</span>
-                                                <select
-                                                    className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold disabled:opacity-60"
-                                                    value={serviceSubcategory}
-                                                    onChange={(e) => {
-                                                        const nextSubcategory = e.target.value;
-                                                        const nextConfig = selectedServiceCategory?.subcategoryConfigs?.find((option) => option.label === nextSubcategory);
-                                                        setServiceSubcategory(nextSubcategory);
-                                                        applyServiceTemplateDefaults(nextConfig?.service_template || selectedServiceCategory?.service_template);
-                                                    }}
-                                                    disabled={!serviceCategory}
-                                                >
-                                                    <option value="">No subcategory</option>
-                                                    {(selectedServiceCategory?.subcategories || []).map((subcategory) => (
-                                                        <option key={subcategory} value={subcategory}>{subcategory}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                        {selectedServiceTrustPolicy && (
-                                            <div className={`rounded-xl border px-3 py-2 text-xs ${selectedServiceTrustPolicy.risk_level === 'standard'
-                                                ? 'border-blue-100 bg-blue-50 text-blue-800'
-                                                : 'border-amber-200 bg-amber-50 text-amber-900'
-                                                }`}>
-                                                <p className="font-black uppercase tracking-wider">
-                                                    {selectedServiceTrustPolicy.risk_level === 'standard' ? 'Uhakiki wa kawaida' : 'Huduma yenye uhakiki maalum'}
-                                                </p>
-                                                <p className="mt-1 leading-relaxed">
-                                                    {selectedServiceTrustPolicy.risk_level === 'standard'
-                                                        ? 'Huduma zote zinahitaji KYC iliyothibitishwa kabla ya kuchapishwa.'
-                                                        : `Category hii inahitaji ${selectedServiceRequiredDocuments.join(', ') || 'nyaraka za uhakiki'}${selectedServiceTrustPolicy.requires_manual_review ? ' na review ya Takeer' : ''} kabla ya kuchapishwa.`}
-                                                </p>
-                                                {selectedServiceTrustPolicy.payout_hold_days > 3 && (
-                                                    <p className="mt-1 font-semibold">
-                                                        SafePay itashikilia malipo kwa siku {selectedServiceTrustPolicy.payout_hold_days} kabla ya payout.
-                                                    </p>
-                                                )}
-                                                {selectedServiceTrustPolicy.max_first_quote_amount && (
-                                                    <p className="mt-1 font-semibold">
-                                                        Kikomo cha quote ya kwanza: TZS {Number(selectedServiceTrustPolicy.max_first_quote_amount).toLocaleString()}.
-                                                    </p>
-                                                )}
-                                            </div>
-                                        )}
-                                        {selectedServiceTemplate && (
-                                            <div className="rounded-xl border border-purple-100 bg-purple-50/70 p-3">
-                                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                                            <div className="rounded-2xl border bg-white p-3 sm:p-4 space-y-3">
+                                                <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
                                                     <div>
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-700">Operating template</p>
-                                                        <h3 className="text-sm font-black text-purple-950 mt-1">{selectedServiceTemplate.label || selectedServiceTemplate.key}</h3>
-                                                        <p className="text-xs text-purple-800/80 mt-1">
-                                                            Public post layout: <span className="font-bold">{selectedServiceTemplate.post_template?.layout || 'service_card'}</span>
-                                                            {' '}· Admin: <span className="font-bold">{selectedServiceTemplate.admin_module || 'service_requests'}</span>
-                                                        </p>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service category</label>
+                                                        <p className="text-xs text-muted-foreground mt-1">Optional, but helps organize services and improve discovery later.</p>
                                                     </div>
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        className="h-9 rounded-xl bg-white border-purple-200 text-purple-800"
-                                                        onClick={() => applyServiceTemplateDefaults(selectedServiceTemplate)}
-                                                    >
-                                                        Apply defaults
-                                                    </Button>
+                                                    {(serviceCategory || serviceSubcategory) && (
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-purple-700 bg-purple-100 rounded-full px-3 py-1 w-max">
+                                                            {serviceSubcategory || serviceCategory}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                {selectedServiceTemplateSpecialized.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1.5 mt-3">
-                                                        {selectedServiceTemplateSpecialized.map((field) => (
-                                                            <span key={field} className="rounded-full bg-white border border-purple-100 px-2.5 py-1 text-[10px] font-bold text-purple-800">
-                                                                {field.replace(/_/g, ' ')}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="rounded-2xl border bg-slate-50/60 p-3 sm:p-4 space-y-3">
-                                        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-                                            <div>
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Aina ya Huduma</label>
-                                                <p className="text-xs text-muted-foreground mt-1">Chagua namna kuu ya kuuza au kupokea maombi ya service hii.</p>
-                                            </div>
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-purple-700 bg-purple-100 rounded-full px-3 py-1 w-max">
-                                                {serviceModeOptions.find((option) => option.key === serviceMode)?.label || 'Service'}
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {serviceModeOptions.map(({ key, label, hint, icon: Icon }) => (
-                                                <button
-                                                    key={key}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setServiceMode(key);
-                                                        setServiceIsShowcase(key === 'showcase_only');
-                                                        if (key === 'showcase_only') setServicePriceDisplay('hidden');
-                                                        if (key === 'request_quote') setServicePriceDisplay('quote_only');
-                                                    }}
-                                                    className={`min-h-[88px] rounded-xl border px-3 py-3 text-left transition-all ${serviceMode === key
-                                                        ? 'border-purple-600 bg-white text-purple-800 shadow-sm ring-1 ring-purple-200'
-                                                        : 'border-border bg-white text-muted-foreground hover:border-purple-300'
-                                                        }`}
-                                                >
-                                                    <div className="flex items-start gap-2">
-                                                        <Icon className="h-5 w-5 shrink-0" />
-                                                        <div className="min-w-0">
-                                                            <span className="block text-sm font-black leading-tight">{label}</span>
-                                                            <span className="block text-[11px] leading-snug mt-1">{hint}</span>
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                        <div>
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Scheduling style</label>
-                                            <p className="text-xs text-muted-foreground mt-1">Choose how this specific service accepts dates and bookings.</p>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {[
-                                                { key: 'none', label: 'No scheduling', hint: 'Use requests, quote, or manual follow-up.' },
-                                                { key: 'recurring', label: 'Recurring appointments', hint: 'Weekly availability, slots, buffer, and capacity.' },
-                                                { key: 'fixed_sessions', label: 'Fixed sessions/events', hint: 'Training, workshop, webinar, cohort, or event dates.' },
-                                                { key: 'external', label: 'External booking', hint: 'Use Calendly, Google Form, or another booking page.' },
-                                            ].map((option) => (
-                                                <button
-                                                    key={option.key}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setServiceSchedulingType(option.key);
-                                                        if (['recurring', 'fixed_sessions'].includes(option.key)) {
-                                                            setServiceBookingMode('takeer');
-                                                            if (serviceBookingProvider === 'external') setServiceBookingProvider('manual');
-                                                        }
-                                                        if (option.key === 'external') {
-                                                            setServiceBookingMode('external');
-                                                            setServiceBookingProvider('external');
-                                                        }
-                                                        if (option.key === 'none' && serviceBookingMode === 'external') {
-                                                            setServiceBookingMode('takeer');
-                                                            setServiceBookingProvider('manual');
-                                                        }
-                                                    }}
-                                                    className={`min-h-[76px] rounded-xl border px-3 py-3 text-left transition-all ${serviceSchedulingType === option.key
-                                                        ? 'border-purple-600 bg-purple-50 text-purple-800 shadow-sm ring-1 ring-purple-200'
-                                                        : 'border-border bg-background text-muted-foreground hover:border-purple-300'
-                                                        }`}
-                                                >
-                                                    <span className="block text-sm font-black leading-tight">{option.label}</span>
-                                                    <span className="block text-[11px] leading-snug mt-1">{option.hint}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="grid w-full grid-cols-1 gap-4">
-                                        <div className="col-span-full w-full rounded-2xl border p-3 sm:p-4 space-y-3">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ionekane vipi?</label>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                                {servicePriceOptions.map((option) => (
-                                                    <button
-                                                        key={option.key}
-                                                        type="button"
-                                                        onClick={() => setServicePriceDisplay(option.key)}
-                                                        className={`min-h-11 px-3 rounded-xl text-xs font-bold border transition-all ${servicePriceDisplay === option.key
-                                                            ? 'bg-purple-600 text-white border-purple-600'
-                                                            : 'bg-background text-muted-foreground border-border hover:border-purple-300'
-                                                            }`}
-                                                    >
-                                                        {option.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {servicePriceDisplay === 'hourly' && (
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                     <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Rate / Saa (TZS)</label>
-                                                        <Input
-                                                            type="number"
-                                                            placeholder="Mf. 50000"
-                                                            value={serviceHourlyRate}
-                                                            onChange={(e) => setServiceHourlyRate(e.target.value)}
-                                                            className="h-11 font-bold"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Minimum Saa</label>
-                                                        <Input
-                                                            type="number"
-                                                            min="1"
-                                                            placeholder="1"
-                                                            value={serviceMinHours}
-                                                            onChange={(e) => setServiceMinHours(e.target.value)}
-                                                            className="h-11 font-bold"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-                                            <div className="rounded-xl border bg-slate-50/60 p-3 space-y-3">
-                                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                                    <div>
-                                                        <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">Additional charges</p>
-                                                        <p className="text-[11px] text-muted-foreground mt-0.5">Optional fees like cleaning, security, lab, extra guest, or refundable deposit.</p>
-                                                    </div>
-                                                    <Button type="button" variant="outline" className="h-10 rounded-xl sm:w-32" onClick={addServiceCharge}>
-                                                        <Plus className="h-4 w-4 mr-1" /> Add
-                                                    </Button>
-                                                </div>
-                                                {serviceCharges.length > 0 && (
-                                                    <div className="space-y-2">
-                                                        {serviceCharges.map((charge, index) => (
-                                                            <div key={charge.id || index} className="rounded-xl border bg-white p-3 sm:p-4 space-y-3">
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                    <div>
-                                                                        <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Charge {index + 1}</p>
-                                                                        <p className="text-[11px] text-muted-foreground">Fee, deposit, tax, or required add-on.</p>
-                                                                    </div>
-                                                                    <Button type="button" variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0 shrink-0" onClick={() => removeServiceCharge(index)}>
-                                                                        <Trash2 className="h-4 w-4" />
-                                                                    </Button>
-                                                                </div>
-                                                                <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
-                                                                    <label className="space-y-1 lg:col-span-5">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Name</span>
-                                                                        <Input
-                                                                            placeholder="Cleaning fee"
-                                                                            value={charge.name || ''}
-                                                                            onChange={(e) => updateServiceCharge(index, { name: e.target.value })}
-                                                                            className="h-11"
-                                                                        />
-                                                                    </label>
-                                                                    <label className="space-y-1 lg:col-span-2">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Amount</span>
-                                                                        <Input
-                                                                            type="number"
-                                                                            min="0"
-                                                                            placeholder="0"
-                                                                            value={charge.amount ?? ''}
-                                                                            onChange={(e) => updateServiceCharge(index, { amount: e.target.value })}
-                                                                            className="h-11"
-                                                                        />
-                                                                    </label>
-                                                                    <label className="space-y-1 lg:col-span-3">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">How it applies</span>
-                                                                        <select
-                                                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                                            value={charge.unit || 'fixed'}
-                                                                            onChange={(e) => updateServiceCharge(index, { unit: e.target.value })}
-                                                                        >
-                                                                            {serviceChargeUnitOptions.map((option) => (
-                                                                                <option key={option.key} value={option.key}>{option.label}</option>
-                                                                            ))}
-                                                                        </select>
-                                                                    </label>
-                                                                    <div className="flex flex-row gap-2">
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => updateServiceCharge(index, { required: !Boolean(charge.required) })}
-                                                                            className={`h-11 rounded-xl border px-3 text-xs font-black flex items-center justify-center gap-2 transition-colors ${charge.required
-                                                                                ? 'border-purple-200 bg-purple-50 text-purple-700'
-                                                                                : 'border-input bg-background text-muted-foreground'
-                                                                                }`}
-                                                                        >
-                                                                            <CheckCircle2 className={`h-4 w-4 ${charge.required ? 'fill-purple-600 text-white' : ''}`} />
-                                                                            Required
-                                                                        </button>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => updateServiceCharge(index, { included_in_checkout: !Boolean(charge.included_in_checkout) })}
-                                                                            className={`h-11 rounded-xl border px-3 text-xs font-black flex items-center justify-center gap-2 transition-colors ${charge.included_in_checkout
-                                                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                                                                                : 'border-input bg-background text-muted-foreground'
-                                                                                }`}
-                                                                        >
-                                                                            <CheckCircle2 className={`h-4 w-4 ${charge.included_in_checkout ? 'fill-emerald-600 text-white' : ''}`} />
-                                                                            Checkout
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                                {charge.included_in_checkout && (
-                                                                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs font-semibold text-emerald-800">
-                                                                        Checkout will ask for people, dates, hours, or quantity when this charge needs them.
-                                                                    </div>
-                                                                )}
-                                                                <label className="space-y-1 block">
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Note</span>
-                                                                    <Input
-                                                                        placeholder="Refundable after checkout inspection"
-                                                                        value={charge.description || ''}
-                                                                        onChange={(e) => updateServiceCharge(index, { description: e.target.value })}
-                                                                        className="h-11 text-sm"
-                                                                    />
-                                                                </label>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                                <div>
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service options / units</label>
-                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                        {serviceOptionTemplate?.description || 'Room types, packages, vehicles, halls, classes, consultation types, or equipment units.'}
-                                                    </p>
-                                                </div>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    className="h-10 rounded-xl sm:w-36 disabled:opacity-50"
-                                                    onClick={addServiceOption}
-                                                    disabled={!serviceOptionCategoryReady}
-                                                >
-                                                    <Plus className="h-4 w-4 mr-1" /> Add option
-                                                </Button>
-                                            </div>
-                                            {!serviceOptionCategoryReady ? (
-                                                <div className="rounded-xl border border-dashed bg-amber-50/70 px-4 py-3 text-xs text-amber-800 flex gap-2">
-                                                    <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                                                    <div>
-                                                        <p className="font-bold">Choose a category first.</p>
-                                                        <p className="mt-0.5">
-                                                            Service options use the selected subcategory template
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            ) : serviceOptions.length === 0 ? (
-                                                <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
-                                                    Optional. Use this when one service has multiple bookable choices, e.g. {(serviceOptionTemplate?.examples || ['Standard Room', 'Deluxe Room', 'Private Session', 'Group Class', 'Boat A', 'Hall B']).join(', ')}.
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    {serviceOptions.map((option, index) => (
-                                                        <div key={option.id || index} className="rounded-xl border bg-white p-3 sm:p-4 space-y-4">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Option {index + 1}</p>
-                                                                    <p className="text-[11px] text-muted-foreground">{serviceOptionTemplate?.label || 'Service option'}</p>
-                                                                </div>
-                                                                <Button type="button" variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0 shrink-0" onClick={() => removeServiceOption(index)}>
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </Button>
-                                                            </div>
-                                                            <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
-                                                                <label className="space-y-1 lg:col-span-5">
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{serviceOptionTemplate?.label || 'Option name'}</span>
-                                                                    <Input
-                                                                        placeholder={serviceOptionTemplate?.placeholder || serviceOptionTemplate?.examples?.[0] || 'Standard Package'}
-                                                                        value={option.name || ''}
-                                                                        onChange={(e) => updateServiceOption(index, { name: e.target.value })}
-                                                                        className="h-11"
-                                                                    />
-                                                                </label>
-                                                                <label className="space-y-1 lg:col-span-2">
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Price</span>
-                                                                    <Input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        placeholder="0"
-                                                                        value={option.price ?? ''}
-                                                                        onChange={(e) => updateServiceOption(index, { price: e.target.value })}
-                                                                        className="h-11"
-                                                                    />
-                                                                </label>
-                                                                <label className="space-y-1 lg:col-span-3">
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Price unit</span>
-                                                                    <select
-                                                                        className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                                        value={option.price_display || 'fixed'}
-                                                                        onChange={(e) => updateServiceOption(index, { price_display: e.target.value })}
-                                                                    >
-                                                                        {servicePriceOptions.filter((item) => !['hidden', 'quote_only'].includes(item.key)).map((item) => (
-                                                                            <option key={item.key} value={item.key}>{item.label}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </label>
-                                                                {serviceOptionFieldEnabled('capacity_type') && (
-                                                                    <label className="space-y-1 lg:col-span-2">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Limit</span>
-                                                                        <select
-                                                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                                            value={option.capacity_type || 'limited'}
-                                                                            onChange={(e) => updateServiceOption(index, { capacity_type: e.target.value })}
-                                                                        >
-                                                                            <option value="limited">Limited</option>
-                                                                            <option value="unlimited">Unlimited</option>
-                                                                        </select>
-                                                                    </label>
-                                                                )}
-                                                            </div>
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                                                {serviceOptionFieldEnabled('capacity') && (
-                                                                    <label className="space-y-1">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Units / rooms</span>
-                                                                        <Input
-                                                                            type="number"
-                                                                            min="1"
-                                                                            placeholder="1"
-                                                                            value={option.capacity ?? ''}
-                                                                            disabled={(option.capacity_type || 'limited') === 'unlimited'}
-                                                                            onChange={(e) => updateServiceOption(index, { capacity: e.target.value })}
-                                                                            className="h-11 text-sm"
-                                                                        />
-                                                                    </label>
-                                                                )}
-                                                                {serviceOptionFieldEnabled('max_guests') && (
-                                                                    <label className="space-y-1">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Max guests</span>
-                                                                        <Input
-                                                                            type="number"
-                                                                            min="1"
-                                                                            placeholder="2"
-                                                                            value={option.max_guests ?? ''}
-                                                                            onChange={(e) => updateServiceOption(index, { max_guests: e.target.value })}
-                                                                            className="h-11 text-sm"
-                                                                        />
-                                                                    </label>
-                                                                )}
-                                                                {serviceOptionFieldEnabled('duration_minutes') && (
-                                                                    <label className="space-y-1">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Duration</span>
-                                                                        <Input
-                                                                            type="number"
-                                                                            min="1"
-                                                                            placeholder="Minutes"
-                                                                            value={option.duration_minutes ?? ''}
-                                                                            onChange={(e) => updateServiceOption(index, { duration_minutes: e.target.value })}
-                                                                            className="h-11 text-sm"
-                                                                        />
-                                                                    </label>
-                                                                )}
-                                                                {serviceOptionFieldEnabled('checkin_time') && (
-                                                                    <label className="space-y-1">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Check-in</span>
-                                                                        <Input
-                                                                            type="time"
-                                                                            value={option.checkin_time || ''}
-                                                                            onChange={(e) => updateServiceOption(index, { checkin_time: e.target.value })}
-                                                                            className="h-11 text-sm"
-                                                                        />
-                                                                    </label>
-                                                                )}
-                                                                {serviceOptionFieldEnabled('checkout_time') && (
-                                                                    <label className="space-y-1">
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Checkout</span>
-                                                                        <Input
-                                                                            type="time"
-                                                                            value={option.checkout_time || ''}
-                                                                            onChange={(e) => updateServiceOption(index, { checkout_time: e.target.value })}
-                                                                            className="h-11 text-sm"
-                                                                        />
-                                                                    </label>
-                                                                )}
-                                                            </div>
-                                                            <label className="space-y-1 block">
-                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Description</span>
-                                                                <Input
-                                                                    placeholder={serviceOptionTemplate?.description_placeholder || 'What is included in this option'}
-                                                                    value={option.description || ''}
-                                                                    onChange={(e) => updateServiceOption(index, { description: e.target.value })}
-                                                                    className="h-11 text-sm"
-                                                                />
-                                                            </label>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {selectedServiceTemplateKey && selectedServiceTemplateSections.length > 0 && (
-                                            <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                                <div>
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Template details</label>
-                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                        These fields shape the public post and the merchant management view for {selectedServiceTemplate?.label || 'this service'}.
-                                                    </p>
-                                                </div>
-
-                                                {selectedServiceTemplateKey === 'tour' && (
-                                                    <div className="space-y-3">
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                            <Input placeholder="Destination, e.g. Serengeti + Ngorongoro" value={serviceDetails.destination || ''} onChange={(e) => updateServiceDetail('destination', e.target.value)} className="h-11" />
-                                                            <Input placeholder="Duration, e.g. 3 days / 2 nights" value={serviceDetails.duration_label || ''} onChange={(e) => updateServiceDetail('duration_label', e.target.value)} className="h-11" />
-                                                            <Input placeholder="Pickup point" value={serviceDetails.pickup_point || ''} onChange={(e) => updateServiceDetail('pickup_point', e.target.value)} className="h-11" />
-                                                            <Input placeholder="Drop-off point" value={serviceDetails.dropoff_point || ''} onChange={(e) => updateServiceDetail('dropoff_point', e.target.value)} className="h-11" />
-                                                            <Input type="number" min="1" placeholder="Group size / seats" value={serviceDetails.group_size || ''} onChange={(e) => updateServiceDetail('group_size', e.target.value)} className="h-11" />
-                                                            <select className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={serviceDetails.departure_type || 'scheduled'} onChange={(e) => updateServiceDetail('departure_type', e.target.value)}>
-                                                                <option value="scheduled">Scheduled departures</option>
-                                                                <option value="private">Private trips</option>
-                                                                <option value="custom">Custom dates</option>
-                                                            </select>
-                                                        </div>
-                                                        <div className="rounded-xl border bg-slate-50/60 p-3 space-y-2">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Itinerary</p>
-                                                                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => updateServiceDetail('itinerary', [...(serviceDetails.itinerary || []), { day: (serviceDetails.itinerary || []).length + 1, title: '', description: '' }])}>
-                                                                    <Plus className="h-4 w-4 mr-1" /> Day
-                                                                </Button>
-                                                            </div>
-                                                            {(serviceDetails.itinerary || []).map((day, index) => (
-                                                                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2">
-                                                                    <Input className="md:col-span-2 h-11" type="number" min="1" value={day.day || index + 1} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, day: e.target.value } : item))} />
-                                                                    <Input className="md:col-span-4 h-11" placeholder="Day title" value={day.title || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, title: e.target.value } : item))} />
-                                                                    <Input className="md:col-span-5 h-11" placeholder="Stops, meals, activities..." value={day.description || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, description: e.target.value } : item))} />
-                                                                    <button type="button" className="md:col-span-1 h-11 rounded-xl border bg-white text-muted-foreground hover:text-red-600" onClick={() => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).filter((_, itemIndex) => itemIndex !== index))}>
-                                                                        <Trash2 className="h-4 w-4 mx-auto" />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        <RepeatableTextList label="Included items" value={serviceDetails.included} onChange={(value) => updateServiceDetail('included', value)} addLabel="Add included item" placeholder="Describe one included item..." />
-                                                        <RepeatableTextList label="Excluded items" value={serviceDetails.excluded} onChange={(value) => updateServiceDetail('excluded', value)} addLabel="Add excluded item" placeholder="Describe one excluded item..." />
-                                                        <Textarea placeholder="Traveler requirements, weather notes, documents, fitness level..." value={serviceDetails.requirements || ''} onChange={(e) => updateServiceDetail('requirements', e.target.value)} className="min-h-20" />
-                                                    </div>
-                                                )}
-
-                                                {selectedServiceTemplateKey === 'stay' && (
-                                                    <div className="space-y-3">
-                                                        <RepeatableTextList label="Amenities" value={serviceDetails.amenities} onChange={(value) => updateServiceDetail('amenities', value)} addLabel="Add amenity" placeholder="Describe one amenity..." />
-                                                        <Textarea placeholder="House rules, check-in policy, guest rules..." value={serviceDetails.house_rules || ''} onChange={(e) => updateServiceDetail('house_rules', e.target.value)} className="min-h-24" />
-                                                        <Textarea placeholder="Cancellation policy" value={serviceDetails.cancellation_policy || ''} onChange={(e) => updateServiceDetail('cancellation_policy', e.target.value)} className="min-h-20" />
-                                                    </div>
-                                                )}
-
-                                                {selectedServiceTemplateKey === 'learning' && (
-                                                    <div className="space-y-3">
-                                                        <RepeatableTextList label="Learning outcomes" value={serviceDetails.outcomes} onChange={(value) => updateServiceDetail('outcomes', value)} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
-                                                        <RepeatableTextList label="Student requirements" value={serviceDetails.requirements} onChange={(value) => updateServiceDetail('requirements', value)} addLabel="Add requirement" placeholder="Describe one requirement..." />
-                                                        <Input placeholder="Certificate, e.g. Certificate of completion included" value={serviceDetails.certificate || ''} onChange={(e) => updateServiceDetail('certificate', e.target.value)} className="h-11" />
-                                                    </div>
-                                                )}
-
-                                                {selectedServiceTemplateKey === 'orderable_service' && (
-                                                    <div className="space-y-3">
-                                                        <Textarea placeholder="Customization details customers can choose: size, flavor, message, file upload, color..." value={serviceDetails.customization_notes || ''} onChange={(e) => updateServiceDetail('customization_notes', e.target.value)} className="min-h-24" />
-                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                            <Input className="h-11 md:col-span-1" placeholder="Lead time, e.g. 24 hours notice" value={serviceDetails.lead_time || ''} onChange={(e) => updateServiceDetail('lead_time', e.target.value)} />
-                                                            <Input className="h-11 md:col-span-1" type="number" min="1" placeholder="Minimum order quantity" value={serviceDetails.minimum_order || ''} onChange={(e) => updateServiceDetail('minimum_order', e.target.value)} />
-                                                            <select className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={serviceDetails.quote_policy || 'quote_after_request'} onChange={(e) => updateServiceDetail('quote_policy', e.target.value)}>
-                                                                <option value="quote_after_request">Quote after request</option>
-                                                                <option value="deposit_before_work">Deposit before work</option>
-                                                                <option value="full_payment_after_quote">Full payment after quote</option>
-                                                            </select>
-                                                        </div>
-                                                        <Textarea placeholder="Pickup or delivery notes" value={serviceDetails.pickup_delivery_notes || ''} onChange={(e) => updateServiceDetail('pickup_delivery_notes', e.target.value)} className="min-h-20" />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                            <div>
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Products made or used with this service</label>
-                                                <p className="text-xs text-muted-foreground mt-1">
-                                                    Optional. Attach products you make, bring, install, or commonly sell with this service.
-                                                </p>
-                                            </div>
-                                            {isLoadingProducts ? (
-                                                <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
-                                                    Loading your products...
-                                                </div>
-                                            ) : physicalMerchantProducts.length === 0 ? (
-                                                <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
-                                                    No physical products yet. Create products first, then attach them here.
-                                                </div>
-                                            ) : (
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                    {physicalMerchantProducts.map((item) => {
-                                                        const selected = serviceRelatedProductIds.includes(Number(item.id));
-                                                        return (
-                                                            <button
-                                                                key={item.id}
-                                                                type="button"
-                                                                onClick={() => toggleServiceRelatedProduct(item.id)}
-                                                                className={`rounded-xl border p-2 text-left transition-colors ${selected ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-100' : 'border-slate-200 bg-white hover:border-purple-200'}`}
-                                                            >
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                                                                        {item.image_url ? (
-                                                                            <img src={item.image_url} alt="" className="h-full w-full object-cover" />
-                                                                        ) : (
-                                                                            <ShoppingBag className="mx-auto mt-3 h-5 w-5 text-slate-300" />
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <p className="truncate text-sm font-black text-slate-900">{item.title}</p>
-                                                                        <p className="text-[11px] font-semibold text-muted-foreground">
-                                                                            TZS {Number(item.checkout_price ?? item.discounted_price ?? item.price ?? 0).toLocaleString()}
-                                                                        </p>
-                                                                    </div>
-                                                                    <CheckCircle2 className={`h-5 w-5 shrink-0 ${selected ? 'fill-purple-600 text-white' : 'text-slate-300'}`} />
-                                                                </div>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                            {serviceRelatedProductIds.length > 0 && (
-                                                <p className="text-[11px] font-bold text-purple-700">
-                                                    {serviceRelatedProductIds.length} product{serviceRelatedProductIds.length === 1 ? '' : 's'} attached to this service.
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Booking rules</label>
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                <div className="space-y-2 sm:col-span-3">
-                                                    <div>
-                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Service duration</span>
-                                                        <p className="text-[10px] text-muted-foreground">How long does one booking/session usually take? Used to create booking slots.</p>
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <Input
-                                                            type="number"
-                                                            min="1"
-                                                            placeholder="Mf. 1"
-                                                            value={serviceDurationValue}
-                                                            onChange={(e) => setServiceDurationValue(e.target.value)}
-                                                            className="h-11 font-bold"
-                                                        />
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Category</span>
                                                         <select
-                                                            className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                            value={serviceDurationUnit}
-                                                            onChange={(e) => setServiceDurationUnit(e.target.value)}
+                                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                            value={serviceCategory}
+                                                            onChange={(e) => {
+                                                                const nextCategory = e.target.value;
+                                                                const nextOption = serviceCategoryOptions.find((option) => option.label === nextCategory);
+                                                                const nextTemplateKey = defaultTemplateForConfig(nextOption);
+                                                                const nextTemplate = (nextOption?.allowed_templates || []).find((template) => template.key === nextTemplateKey)
+                                                                    || nextOption?.service_template;
+                                                                setServiceCategory(nextCategory);
+                                                                setServiceTemplateKey(nextTemplateKey);
+                                                                setServiceSubcategory((current) => (
+                                                                    nextOption?.subcategories?.includes(current) ? current : ''
+                                                                ));
+                                                                if (!nextOption?.subcategories?.length) {
+                                                                    applyServiceTemplateDefaults(nextTemplate);
+                                                                }
+                                                            }}
                                                         >
-                                                            <option value="minutes">Minutes</option>
-                                                            <option value="hours">Hours</option>
-                                                            <option value="days">Days</option>
+                                                            <option value="">No category</option>
+                                                            {serviceCategoryOptions.map((option) => (
+                                                                <option key={option.label} value={option.label}>{option.label}</option>
+                                                            ))}
                                                         </select>
                                                     </div>
-                                                    <div className="grid grid-cols-3 gap-1.5">
-                                                        {serviceDurationPresets.map((preset) => {
-                                                            const selected = String(serviceDurationValue) === String(preset.value) && serviceDurationUnit === preset.unit;
-                                                            return (
-                                                                <button
-                                                                    key={`${preset.label}-${preset.value}-${preset.unit}`}
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setServiceDurationValue(String(preset.value));
-                                                                        setServiceDurationUnit(preset.unit);
-                                                                    }}
-                                                                    className={`min-h-9 rounded-lg border px-2 text-[10px] font-black transition-colors ${selected
-                                                                        ? 'border-purple-600 bg-purple-50 text-purple-700'
-                                                                        : 'border-border bg-background text-muted-foreground hover:border-purple-300'
-                                                                        }`}
-                                                                >
-                                                                    {preset.label}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                    {serviceDurationMinutes && (
-                                                        <p className="text-[10px] font-semibold text-purple-700">
-                                                            Saved as {Number(serviceDurationMinutes).toLocaleString()} minutes.
-                                                        </p>
-                                                    )}
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Flow</span>
-                                                    <select
-                                                        className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                        value={serviceBookingType}
-                                                        onChange={(e) => setServiceBookingType(e.target.value)}
-                                                    >
-                                                        <option value="request">Request First</option>
-                                                        <option value="manual_confirm">Manual Confirm</option>
-                                                        <option value="instant">Instant</option>
-                                                    </select>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Deposit</span>
-                                                    <Input
-                                                        type="number"
-                                                        placeholder="Mf. 30000"
-                                                        value={serviceDepositAmount}
-                                                        onChange={(e) => setServiceDepositAmount(e.target.value)}
-                                                        className="h-11 font-bold"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 gap-4">
-                                        <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Huduma inatolewa wapi?</label>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {serviceLocationOptions.map((option) => (
-                                                    <button
-                                                        key={option.key}
-                                                        type="button"
-                                                        onClick={() => setServiceLocationType(option.key)}
-                                                        className={`min-h-11 px-2 rounded-xl text-xs font-bold border transition-all ${serviceLocationType === option.key
-                                                            ? 'bg-purple-600 text-white border-purple-600'
-                                                            : 'bg-background text-muted-foreground border-border hover:border-purple-300'
-                                                            }`}
-                                                    >
-                                                        {option.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {['provider_location', 'customer_location', 'hybrid'].includes(serviceLocationType) && (
-                                                <div className="rounded-xl border bg-muted/20 p-3 space-y-2">
-                                                    <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">
-                                                        {serviceLocationType === 'customer_location' ? 'Service base for Near me' : 'Provider venue'}
-                                                    </p>
-                                                    {serviceProviderLocation?.address ? (
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs text-muted-foreground">{serviceProviderLocation.address}</p>
-                                                            {serviceProviderLocation.extraDetails && (
-                                                                <p className="text-xs text-muted-foreground">{serviceProviderLocation.extraDetails}</p>
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {serviceLocationType === 'customer_location'
-                                                                ? 'Add your service base or main coverage point so nearby customers can discover you.'
-                                                                : 'Add where customers should come for this service.'}
-                                                        </p>
-                                                    )}
-                                                    <Input
-                                                        placeholder={serviceLocationType === 'customer_location' ? 'Base name, e.g. Mikocheni coverage base' : 'Venue name, e.g. Main Clinic, Studio A'}
-                                                        value={serviceProviderLocation?.name || ''}
-                                                        onChange={(e) => setServiceProviderLocation((prev) => ({
-                                                            ...(prev || {}),
-                                                            name: e.target.value,
-                                                        }))}
-                                                        className="h-10 text-sm"
-                                                    />
-                                                    <div className="flex gap-2">
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            className="h-10 rounded-xl flex-1"
-                                                            onClick={() => setServiceProviderLocationPickerOpen(true)}
+                                                    <div className="space-y-1.5">
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Subcategory</span>
+                                                        <select
+                                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold disabled:opacity-60"
+                                                            value={serviceSubcategory}
+                                                            onChange={(e) => {
+                                                                const nextSubcategory = e.target.value;
+                                                                const nextConfig = selectedServiceCategory?.subcategoryConfigs?.find((option) => option.label === nextSubcategory);
+                                                                const nextTemplateKey = defaultTemplateForConfig(nextConfig) || defaultTemplateForConfig(selectedServiceCategory);
+                                                                const nextTemplate = (nextConfig?.allowed_templates || selectedServiceCategory?.allowed_templates || [])
+                                                                    .find((template) => template.key === nextTemplateKey)
+                                                                    || nextConfig?.service_template
+                                                                    || selectedServiceCategory?.service_template;
+                                                                setServiceSubcategory(nextSubcategory);
+                                                                setServiceTemplateKey(nextTemplateKey);
+                                                                applyServiceTemplateDefaults(nextTemplate);
+                                                            }}
+                                                            disabled={!serviceCategory}
                                                         >
-                                                            <MapPin className="h-4 w-4 mr-1" /> {serviceLocationType === 'customer_location' ? 'Pick base' : 'Pick venue'}
-                                                        </Button>
-                                                        {serviceProviderLocation?.address && (
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                className="h-10 rounded-xl"
-                                                                onClick={() => setServiceProviderLocation(null)}
-                                                            >
-                                                                <X className="h-4 w-4" />
-                                                            </Button>
+                                                            <option value="">No subcategory</option>
+                                                            {(selectedServiceCategory?.subcategories || []).map((subcategory) => (
+                                                                <option key={subcategory} value={subcategory}>{subcategory}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                {selectedServiceTemplateOptions.length > 1 && (
+                                                    <div className="space-y-1.5">
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Listing workflow</span>
+                                                        <select
+                                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                            value={selectedServiceTemplateKey}
+                                                            onChange={(e) => {
+                                                                const nextTemplate = selectedServiceTemplateOptions.find((template) => template.key === e.target.value);
+                                                                setServiceTemplateKey(e.target.value);
+                                                                applyServiceTemplateDefaults(nextTemplate);
+                                                            }}
+                                                        >
+                                                            {selectedServiceTemplateOptions.map((template) => (
+                                                                <option key={template.key} value={template.key}>
+                                                                    {template.label || template.key.replace(/_/g, ' ')}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Category controls discovery. Workflow controls the form, booking rules, availability, and verification.
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {selectedServiceSubtypeOptions.length > 0 && (
+                                                    <div className="space-y-1.5">
+                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Workflow subtype</span>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                            {selectedServiceSubtypeOptions.map((subtype) => {
+                                                                const selected = selectedServiceSubtypeKey === subtype.key;
+
+                                                                return (
+                                                                    <button
+                                                                        key={subtype.key}
+                                                                        type="button"
+                                                                        onClick={() => updateServiceSubtype(subtype.key)}
+                                                                        className={`rounded-xl border px-3 py-2 text-left transition-all ${selected
+                                                                            ? 'border-brand-500 bg-brand-50 text-brand-900'
+                                                                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                                                            }`}
+                                                                    >
+                                                                        <span className="block text-xs font-black">{subtype.label || subtype.key.replace(/_/g, ' ')}</span>
+                                                                        {subtype.description && (
+                                                                            <span className="mt-1 block text-[11px] font-semibold opacity-80">{subtype.description}</span>
+                                                                        )}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {selectedServiceTrustPolicy && (
+                                                    <div className={`rounded-xl border px-3 py-2 text-xs ${selectedServiceTrustPolicy.risk_level === 'standard'
+                                                        ? 'border-blue-100 bg-blue-50 text-blue-800'
+                                                        : 'border-amber-200 bg-amber-50 text-amber-900'
+                                                        }`}>
+                                                        <p className="font-black uppercase tracking-wider">
+                                                            {selectedServiceTrustPolicy.risk_level === 'standard' ? 'Uhakiki wa kawaida' : 'Huduma yenye uhakiki maalum'}
+                                                        </p>
+                                                        <p className="mt-1 leading-relaxed">
+                                                            {selectedServiceTrustPolicy.risk_level === 'standard'
+                                                                ? 'Huduma zote zinahitaji KYC iliyothibitishwa kabla ya kuchapishwa.'
+                                                                : `Category hii inahitaji ${selectedServiceRequiredDocuments.join(', ') || 'nyaraka za uhakiki'}${selectedServiceTrustPolicy.requires_manual_review ? ' na review ya Takeer' : ''} kabla ya kuchapishwa.`}
+                                                        </p>
+                                                        {selectedServiceTrustPolicy.payout_hold_days > 3 && (
+                                                            <p className="mt-1 font-semibold">
+                                                                SafePay itashikilia malipo kwa siku {selectedServiceTrustPolicy.payout_hold_days} kabla ya payout.
+                                                            </p>
+                                                        )}
+                                                        {selectedServiceTrustPolicy.max_first_quote_amount && (
+                                                            <p className="mt-1 font-semibold">
+                                                                Kikomo cha quote ya kwanza: TZS {Number(selectedServiceTrustPolicy.max_first_quote_amount).toLocaleString()}.
+                                                            </p>
                                                         )}
                                                     </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="col-span-full w-full rounded-2xl border p-3 sm:p-4 space-y-3">
-                                            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-                                                <div>
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service areas</label>
-                                                    <p className="text-xs text-muted-foreground mt-1">These areas gate buyer requests and help show where the service is available.</p>
-                                                </div>
-                                                {serviceAreaList.length > 0 && (
-                                                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 rounded-full px-3 py-1 w-max">
-                                                        {serviceAreaList.length} area{serviceAreaList.length > 1 ? 's' : ''}
-                                                    </span>
                                                 )}
                                             </div>
-                                            <div className="flex flex-col sm:flex-row gap-2">
-                                                <Input
-                                                    placeholder="Dar es Salaam, Mwanza, Online..."
-                                                    value={serviceAreaDraft}
-                                                    onChange={(e) => setServiceAreaDraft(e.target.value)}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            addServiceArea();
-                                                        }
-                                                    }}
-                                                    className="h-11 text-sm"
-                                                />
-                                                <Button type="button" variant="outline" className="h-11 rounded-xl sm:w-32" onClick={addServiceArea}>
-                                                    <Plus className="h-4 w-4 mr-1" /> Add
-                                                </Button>
-                                            </div>
-                                            {serviceAreaList.length > 0 && (
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {serviceAreaList.map((area) => (
-                                                        <span key={area} className="inline-flex items-center gap-1 rounded-full bg-purple-50 text-purple-700 border border-purple-100 px-2.5 py-1 text-[11px] font-bold">
-                                                            {area}
-                                                            <button type="button" onClick={() => removeServiceArea(area)} className="rounded-full hover:bg-purple-100">
-                                                                <X className="h-3 w-3" />
-                                                            </button>
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+                                            {showRoomDetailsForm && (
+                                                <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-4 space-y-4">
+                                                    <div>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-sky-900">Room / stay details</p>
+                                                        <p className="text-xs text-sky-800 mt-1">These fields shape how this room appears for hotels, motels, lodges, guest houses, and apartments.</p>
+                                                    </div>
 
-                                    <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                                            <div>
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Taarifa unazohitaji kutoka kwa mteja</label>
-                                                <p className="text-xs text-muted-foreground mt-1">Build a simple form that customers fill before sending a request.</p>
-                                            </div>
-                                            <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={addServiceIntakeField}>
-                                                <Plus className="h-4 w-4 mr-1" /> Add field
-                                            </Button>
-                                        </div>
-                                        <Textarea
-                                            placeholder="Fallback instructions, e.g. picha za tatizo, address, preferred date..."
-                                            value={serviceClientRequirements}
-                                            onChange={(e) => setServiceClientRequirements(e.target.value)}
-                                            className="min-h-[86px] text-sm"
-                                        />
-                                        {automaticCustomerLocationField && (
-                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3">
-                                                <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
-                                                    <div className="md:col-span-3 h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-900 flex items-center justify-between">
-                                                        <span>Map location</span>
-                                                        <MapPin className="h-4 w-4 text-emerald-700" />
-                                                    </div>
-                                                    <Input
-                                                        className="md:col-span-5 h-11 border-emerald-200 bg-white font-semibold text-emerald-900"
-                                                        value={automaticCustomerLocationField.label}
-                                                        disabled
-                                                        readOnly
-                                                    />
-                                                    <Input
-                                                        className="md:col-span-3 h-11 border-emerald-200 bg-white text-emerald-900"
-                                                        value={automaticCustomerLocationField.placeholder}
-                                                        disabled
-                                                        readOnly
-                                                    />
-                                                    <div className="md:col-span-1 h-11 rounded-xl border border-emerald-200 bg-white text-emerald-700 flex items-center justify-center">
-                                                        <ShieldCheck className="h-4 w-4" />
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-emerald-800">
-                                                    <label className="flex items-center gap-2">
-                                                        <input type="checkbox" checked={Boolean(automaticCustomerLocationField.required)} readOnly disabled />
-                                                        Required
-                                                    </label>
-                                                    <span className="rounded-full bg-white/80 border border-emerald-200 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
-                                                        Locked system field
-                                                    </span>
-                                                    <span className="text-emerald-700">
-                                                        Added from service location type
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {serviceIntakeForm.length > 0 && (
-                                            <div className="space-y-2">
-                                                {serviceIntakeForm.map((field, index) => (
-                                                    <div key={field.id || index} className="rounded-xl border bg-muted/20 p-3 space-y-3">
-                                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Room type</span>
                                                             <select
-                                                                className="md:col-span-3 h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                                value={field.type}
-                                                                onChange={(e) => updateServiceIntakeField(index, { type: e.target.value })}
+                                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
+                                                                value={roomDetails.room_type}
+                                                                onChange={(e) => updateRoomDetail('room_type', e.target.value)}
                                                             >
-                                                                {intakeFieldTypes.map((type) => (
-                                                                    <option key={type.key} value={type.key}>{type.label}</option>
-                                                                ))}
+                                                                {roomTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
                                                             </select>
-                                                            <Input
-                                                                className="md:col-span-5 h-11"
-                                                                placeholder="Question label"
-                                                                value={field.label || ''}
-                                                                onChange={(e) => updateServiceIntakeField(index, {
-                                                                    label: e.target.value,
-                                                                    id: field.id?.startsWith('field_')
-                                                                        ? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 60) || field.id
-                                                                        : field.id,
-                                                                })}
-                                                            />
-                                                            <Input
-                                                                className="md:col-span-3 h-11"
-                                                                placeholder="Placeholder"
-                                                                value={field.placeholder || ''}
-                                                                onChange={(e) => updateServiceIntakeField(index, { placeholder: e.target.value })}
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => removeServiceIntakeField(index)}
-                                                                className="md:col-span-1 h-11 rounded-xl border bg-background text-muted-foreground hover:text-red-600"
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Bed type</span>
+                                                            <select
+                                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold"
+                                                                value={roomDetails.bed_type}
+                                                                onChange={(e) => updateRoomDetail('bed_type', e.target.value)}
                                                             >
-                                                                <Trash2 className="h-4 w-4 mx-auto" />
-                                                            </button>
-                                                        </div>
-                                                        {field.type === 'select' && (
-                                                            <RepeatableTextList
-                                                                label="Options"
-                                                                value={field.options}
-                                                                onChange={(value) => updateServiceIntakeField(index, { options: value })}
-                                                                addLabel="Add option"
-                                                                placeholder="Write one selectable option..."
-                                                            />
-                                                        )}
-                                                        <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={Boolean(field.required)}
-                                                                onChange={(e) => updateServiceIntakeField(index, { required: e.target.checked })}
-                                                            />
-                                                            Required
+                                                                {bedTypeOptions.map(type => <option key={type} value={type}>{type}</option>)}
+                                                            </select>
                                                         </label>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
 
-                                    <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                        <div>
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Namna ya kushughulika na wateja</label>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                Chagua sehemu ambayo booking/request zitasimamiwa baada ya mteja kuonyesha interest.
-                                            </p>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setServiceBookingMode('takeer');
-                                                    setServiceBookingProvider('manual');
-                                                }}
-                                                className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'takeer'
-                                                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                                                    : 'border-border text-muted-foreground hover:border-purple-200'
-                                                    }`}
-                                            >
-                                                <Calendar className="h-5 w-5 shrink-0" />
-                                                <span>
-                                                    <span className="block text-sm font-black">Takeer Booking</span>
-                                                    <span className="block text-[11px]">Slots, requests, calendar, na customers ndani ya Takeer</span>
-                                                </span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setServiceBookingMode('internal');
-                                                    setServiceBookingProvider('manual');
-                                                }}
-                                                className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'internal'
-                                                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                                                    : 'border-border text-muted-foreground hover:border-purple-200'
-                                                    }`}
-                                            >
-                                                <Phone className="h-5 w-5 shrink-0" />
-                                                <span>
-                                                    <span className="block text-sm font-black">Simu/WhatsApp</span>
-                                                    <span className="block text-[11px]">Mteja awasiliane au apange nawe moja kwa moja</span>
-                                                </span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setServiceBookingMode('external');
-                                                    setServiceBookingProvider('external');
-                                                }}
-                                                className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'external'
-                                                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                                                    : 'border-border text-muted-foreground hover:border-purple-200'
-                                                    }`}
-                                            >
-                                                <ExternalLink className="h-5 w-5 shrink-0" />
-                                                <span>
-                                                    <span className="block text-sm font-black">Link ya Booking</span>
-                                                    <span className="block text-[11px]">Calendly, Google Forms, WhatsApp link, website</span>
-                                                </span>
-                                            </button>
-                                        </div>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Guests</span>
+                                                            <Input type="number" min="1" className="h-11 bg-white" value={roomDetails.max_guests} onChange={(e) => updateRoomDetail('max_guests', e.target.value)} />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Rooms</span>
+                                                            <Input type="number" min="1" className="h-11 bg-white" value={roomDetails.room_count} onChange={(e) => updateRoomDetail('room_count', e.target.value)} />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Bathrooms</span>
+                                                            <Input type="number" min="0" step="0.5" className="h-11 bg-white" value={roomDetails.bathrooms} onChange={(e) => updateRoomDetail('bathrooms', e.target.value)} />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Check-in</span>
+                                                            <Input type="time" className="h-11 bg-white" value={roomDetails.checkin_time} onChange={(e) => updateRoomDetail('checkin_time', e.target.value)} />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Check-out</span>
+                                                            <Input type="time" className="h-11 bg-white" value={roomDetails.checkout_time} onChange={(e) => updateRoomDetail('checkout_time', e.target.value)} />
+                                                        </label>
+                                                    </div>
 
-                                        {serviceBookingMode === 'takeer' && (
-                                            <div className="animate-in fade-in rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900">
-                                                <p className="font-black">Takeer itasimamia booking/request dashboard.</p>
-                                                <p className="text-xs mt-1 text-emerald-800">
-                                                    Wateja watajaza form, kuchagua slot inapowezekana, na request itaonekana kwenye merchant calendar. Google Calendar itaweza kusync baadaye ukishaunganisha.
-                                                </p>
-                                            </div>
-                                        )}
+                                                    <div className="space-y-2">
+                                                        <p className="text-[11px] font-semibold text-slate-700">Availability status</p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {roomAvailabilityOptions.map(option => (
+                                                                <button
+                                                                    key={option.key}
+                                                                    type="button"
+                                                                    onClick={() => updateRoomDetail('availability', [option.key])}
+                                                                    className={`rounded-full border px-3 py-1.5 text-xs font-black ${roomDetails.availability.includes(option.key) ? 'border-sky-500 bg-white text-sky-700' : 'border-slate-200 bg-white/70 text-slate-500'}`}
+                                                                >
+                                                                    {option.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
 
-                                        {serviceBookingMode === 'internal' && (
-                                            <div className="animate-in fade-in space-y-3">
-                                                <div className="flex gap-2">
-                                                    {[
-                                                        { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
-                                                        { key: 'phone', label: 'Simu', icon: Phone },
-                                                    ].map(({ key, label, icon: Icon }) => (
+                                                    <div className="space-y-2">
+                                                        <p className="text-[11px] font-semibold text-slate-700">Amenities</p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {roomAmenityOptions.map(option => (
+                                                                <button
+                                                                    key={option.key}
+                                                                    type="button"
+                                                                    onClick={() => toggleRoomArrayValue('amenities', option.key)}
+                                                                    className={`rounded-full border px-3 py-1.5 text-xs font-black ${roomDetails.amenities.includes(option.key) ? 'border-emerald-500 bg-white text-emerald-700' : 'border-slate-200 bg-white/70 text-slate-500'}`}
+                                                                >
+                                                                    {option.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {showReservationDetailsForm && (
+                                                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4 space-y-4">
+                                                    <div>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-rose-900">Reservation details</p>
+                                                        <p className="text-xs text-rose-800 mt-1">Use this for table bookings, venue visits, event spaces, lounges, activity slots, and reservation-first businesses.</p>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Reservation type</span>
+                                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.reservation_type || 'table'} onChange={(e) => updateServiceDetail('reservation_type', e.target.value)}>
+                                                                <option value="table">Table</option>
+                                                                <option value="venue">Venue</option>
+                                                                <option value="visit">Visit</option>
+                                                                <option value="event_space">Event space</option>
+                                                                <option value="activity">Activity</option>
+                                                            </select>
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Seating / space</span>
+                                                            <Input className="h-11 bg-white" placeholder="Indoor, terrace, VIP..." value={serviceDetails.seating_type || ''} onChange={(e) => updateServiceDetail('seating_type', e.target.value)} />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Party size limit</span>
+                                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="8" value={serviceDetails.party_size_limit || ''} onChange={(e) => updateServiceDetail('party_size_limit', e.target.value)} />
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Reservation notes: late arrival, hold time, dress code, walk-in policy..." value={serviceDetails.reservation_notes || ''} onChange={(e) => updateServiceDetail('reservation_notes', e.target.value)} />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {showRentalDetailsForm && (
+                                                <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 space-y-4">
+                                                    <div>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-amber-900">Rental / hire details</p>
+                                                        <p className="text-xs text-amber-800 mt-1">Use this for equipment, vehicles, event gear, spaces, costumes, and other rentable items.</p>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Rental type</span>
+                                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_type || serviceDetails.service_subtype || 'tools_equipment'} onChange={(e) => {
+                                                                updateServiceDetail('rental_type', e.target.value);
+                                                                updateServiceDetail('service_subtype', e.target.value);
+                                                            }}>
+                                                                <option value="tools_equipment">Tools / equipment</option>
+                                                                <option value="equipment">Equipment</option>
+                                                                <option value="vehicle">Vehicle</option>
+                                                                <option value="space">Space</option>
+                                                                <option value="event_equipment">Event equipment</option>
+                                                                <option value="event_gear">Event gear</option>
+                                                                <option value="costume">Costume / props</option>
+                                                                <option value="other">Other</option>
+                                                            </select>
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Price unit</span>
+                                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.rental_unit || 'day'} onChange={(e) => {
+                                                                updateServiceDetail('rental_unit', e.target.value);
+                                                                setServicePriceDisplay(e.target.value === 'hour' ? 'hourly' : e.target.value === 'week' ? 'weekly' : e.target.value === 'month' ? 'monthly' : 'daily');
+                                                            }}>
+                                                                <option value="hour">Per hour</option>
+                                                                <option value="day">Per day</option>
+                                                                <option value="night">Per night</option>
+                                                                <option value="week">Per week</option>
+                                                                <option value="month">Per month</option>
+                                                                <option value="trip">Per trip</option>
+                                                                <option value="event">Per event</option>
+                                                            </select>
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Available units</span>
+                                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.available_units ?? ''} onChange={(e) => updateServiceDetail('available_units', e.target.value)} />
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Refundable security deposit</span>
+                                                            <Input type="number" min="0" className="h-11 bg-white" placeholder="Optional refundable amount" value={serviceDetails.security_deposit ?? ''} onChange={(e) => updateServiceDetail('security_deposit', e.target.value)} />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Included items</span>
+                                                            <Input
+                                                                className="h-11 bg-white"
+                                                                placeholder="Helmet, charger, stand..."
+                                                                value={Array.isArray(serviceDetails.included_items) ? serviceDetails.included_items.join(', ') : ''}
+                                                                onChange={(e) => updateServiceDetail('included_items', e.target.value.split(',').map((item) => item.trim()).filter(Boolean))}
+                                                            />
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Pickup and return notes: pickup point, return time, inspection, late return..." value={serviceDetails.pickup_return_notes || ''} onChange={(e) => updateServiceDetail('pickup_return_notes', e.target.value)} />
+                                                        <Textarea className="min-h-20 rounded-xl bg-white" placeholder="Rental requirements: ID, license, deposit, operator, damage policy..." value={serviceDetails.rental_requirements || ''} onChange={(e) => updateServiceDetail('rental_requirements', e.target.value)} />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {showWorkshopDetailsForm && (
+                                                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
+                                                    <div>
+                                                        <p className="text-xs font-black uppercase tracking-wider text-indigo-900">Workshop / session details</p>
+                                                        <p className="text-xs text-indigo-800 mt-1">Use this for short courses, bootcamps, webinars, seminars, and live training sessions.</p>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Format</span>
+                                                            <select className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold" value={serviceDetails.workshop_format || 'live_session'} onChange={(e) => updateServiceDetail('workshop_format', e.target.value)}>
+                                                                <option value="live_session">Live session</option>
+                                                                <option value="bootcamp">Bootcamp</option>
+                                                                <option value="seminar">Seminar</option>
+                                                                <option value="webinar">Webinar</option>
+                                                                <option value="cohort">Cohort</option>
+                                                                <option value="private_group">Private group</option>
+                                                            </select>
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Sessions</span>
+                                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="1" value={serviceDetails.session_count ?? ''} onChange={(e) => updateServiceDetail('session_count', e.target.value)} />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Capacity</span>
+                                                            <Input type="number" min="1" className="h-11 bg-white" placeholder="Optional" value={serviceDetails.workshop_capacity ?? ''} onChange={(e) => updateServiceDetail('workshop_capacity', e.target.value)} />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Level</span>
+                                                            <Input className="h-11 bg-white" placeholder="Beginner, advanced..." value={serviceDetails.workshop_level || ''} onChange={(e) => updateServiceDetail('workshop_level', e.target.value)} />
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[11px] font-semibold text-slate-700">Start note</span>
+                                                            <Input className="h-11 bg-white" placeholder="Starts June, every Saturday..." value={serviceDetails.workshop_start_note || ''} onChange={(e) => updateServiceDetail('workshop_start_note', e.target.value)} />
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                        <RepeatableTextList label="Learning outcomes" value={serviceDetails.learning_outcomes || serviceDetails.outcomes} onChange={(value) => {
+                                                            updateServiceDetail('learning_outcomes', value);
+                                                            updateServiceDetail('outcomes', value);
+                                                        }} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
+                                                        <RepeatableTextList label="Requirements" value={serviceDetails.workshop_requirements || serviceDetails.requirements} onChange={(value) => {
+                                                            updateServiceDetail('workshop_requirements', value);
+                                                            updateServiceDetail('requirements', value);
+                                                        }} addLabel="Add requirement" placeholder="Describe one requirement..." />
+                                                        <RepeatableTextList label="Materials included" value={serviceDetails.materials_included} onChange={(value) => updateServiceDetail('materials_included', value)} addLabel="Add material" placeholder="Describe one material or resource..." />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {renderServingLocationSelector()}
+
+                                            <div className="rounded-2xl border bg-slate-50/60 p-3 sm:p-4 space-y-3">
+                                                <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+                                                    <div>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Aina ya Huduma</label>
+                                                        <p className="text-xs text-muted-foreground mt-1">Chagua namna kuu ya kuuza au kupokea maombi ya service hii.</p>
+                                                    </div>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-purple-700 bg-purple-100 rounded-full px-3 py-1 w-max">
+                                                        {serviceModeOptions.find((option) => option.key === serviceMode)?.label || 'Service'}
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                    {serviceModeOptions.map(({ key, label, hint, icon: Icon }) => (
                                                         <button
                                                             key={key}
-                                                            onClick={() => setServiceContactType(key)}
-                                                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border transition-all ${serviceContactType === key
-                                                                ? 'bg-purple-600 text-white border-purple-600'
-                                                                : 'bg-background text-muted-foreground border-border hover:border-purple-300'
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setServiceMode(key);
+                                                                setServiceIsShowcase(key === 'showcase_only');
+                                                                if (key === 'showcase_only') setServicePriceDisplay('hidden');
+                                                                if (key === 'request_quote') setServicePriceDisplay('quote_only');
+                                                            }}
+                                                            className={`min-h-[88px] rounded-xl border px-3 py-3 text-left transition-all ${serviceMode === key
+                                                                ? 'border-purple-600 bg-white text-purple-800 shadow-sm ring-1 ring-purple-200'
+                                                                : 'border-border bg-white text-muted-foreground hover:border-purple-300'
                                                                 }`}
                                                         >
-                                                            <Icon className="h-4 w-4" />{label}
+                                                            <div className="flex items-start gap-2">
+                                                                <Icon className="h-5 w-5 shrink-0" />
+                                                                <div className="min-w-0">
+                                                                    <span className="block text-sm font-black leading-tight">{label}</span>
+                                                                    <span className="block text-[11px] leading-snug mt-1">{hint}</span>
+                                                                </div>
+                                                            </div>
                                                         </button>
                                                     ))}
                                                 </div>
-                                                <Input
-                                                    type="tel"
-                                                    placeholder="+255 7XX XXX XXX"
-                                                    value={serviceContactValue}
-                                                    onChange={e => setServiceContactValue(e.target.value)}
-                                                    className="h-12 text-lg font-mono"
-                                                />
-                                                <p className="text-[10px] text-muted-foreground">
-                                                    Takeer itatumia hii kama njia kuu ya mteja kuanza mazungumzo au kupanga miadi.
-                                                </p>
                                             </div>
-                                        )}
 
-                                        {serviceBookingMode === 'external' && (
-                                            <div className="animate-in fade-in space-y-1.5">
-                                                <Input
-                                                    placeholder="https://calendly.com/jina-lako"
-                                                    value={url}
-                                                    onChange={e => setUrl(e.target.value)}
-                                                    className="h-12 font-mono text-sm"
-                                                />
-                                                <p className="text-[10px] text-muted-foreground">
-                                                    Inaweza kuwa Calendly, Google Forms, WhatsApp link, website yako, au booking system nyingine.
-                                                </p>
+                                            <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                <div>
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Scheduling style</label>
+                                                    <p className="text-xs text-muted-foreground mt-1">Choose how this specific service accepts dates and bookings.</p>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                    {[
+                                                        { key: 'none', label: 'No scheduling', hint: 'Use requests, quote, or manual follow-up.' },
+                                                        { key: 'recurring', label: 'Recurring appointments', hint: 'Weekly availability, slots, buffer, and capacity.' },
+                                                        { key: 'fixed_sessions', label: 'Fixed sessions/events', hint: 'Training, workshop, webinar, cohort, or event dates.' },
+                                                        { key: 'external', label: 'External booking', hint: 'Use Calendly, Google Form, or another booking page.' },
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.key}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setServiceSchedulingType(option.key);
+                                                                if (['recurring', 'fixed_sessions'].includes(option.key)) {
+                                                                    setServiceBookingMode('takeer');
+                                                                    if (serviceBookingProvider === 'external') setServiceBookingProvider('manual');
+                                                                }
+                                                                if (option.key === 'external') {
+                                                                    setServiceBookingMode('external');
+                                                                    setServiceBookingProvider('external');
+                                                                }
+                                                                if (option.key === 'none' && serviceBookingMode === 'external') {
+                                                                    setServiceBookingMode('takeer');
+                                                                    setServiceBookingProvider('manual');
+                                                                }
+                                                            }}
+                                                            className={`min-h-[76px] rounded-xl border px-3 py-3 text-left transition-all ${serviceSchedulingType === option.key
+                                                                ? 'border-purple-600 bg-purple-50 text-purple-800 shadow-sm ring-1 ring-purple-200'
+                                                                : 'border-border bg-background text-muted-foreground hover:border-purple-300'
+                                                                }`}
+                                                        >
+                                                            <span className="block text-sm font-black leading-tight">{option.label}</span>
+                                                            <span className="block text-[11px] leading-snug mt-1">{option.hint}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        )}
 
-                                        {serviceBookingProvider === 'google_calendar' && (
-                                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
-                                                Google Calendar integration iko kwenye foundation, lakini OAuth bado haijaunganishwa. Kwa sasa tumia Manual au External link.
+                                            <div className="grid w-full grid-cols-1 gap-4">
+                                                <div className="col-span-full w-full rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ionekane vipi?</label>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                        {servicePriceOptions.map((option) => (
+                                                            <button
+                                                                key={option.key}
+                                                                type="button"
+                                                                onClick={() => setServicePriceDisplay(option.key)}
+                                                                className={`min-h-11 px-3 rounded-xl text-xs font-bold border transition-all ${servicePriceDisplay === option.key
+                                                                    ? 'bg-purple-600 text-white border-purple-600'
+                                                                    : 'bg-background text-muted-foreground border-border hover:border-purple-300'
+                                                                    }`}
+                                                            >
+                                                                {option.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {servicePriceDisplay === 'hourly' && (
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Rate / Saa (TZS)</label>
+                                                                <Input
+                                                                    type="number"
+                                                                    placeholder="Mf. 50000"
+                                                                    value={serviceHourlyRate}
+                                                                    onChange={(e) => setServiceHourlyRate(e.target.value)}
+                                                                    className="h-11 font-bold"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Minimum Saa</label>
+                                                                <Input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    placeholder="1"
+                                                                    value={serviceMinHours}
+                                                                    onChange={(e) => setServiceMinHours(e.target.value)}
+                                                                    className="h-11 font-bold"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div className="rounded-xl border bg-slate-50/60 p-3 space-y-3">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                            <div>
+                                                                <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">Additional charges</p>
+                                                                <p className="text-[11px] text-muted-foreground mt-0.5">Optional fees like cleaning, security, lab, extra guest, or refundable deposit.</p>
+                                                            </div>
+                                                            <Button type="button" variant="outline" className="h-10 rounded-xl sm:w-32" onClick={addServiceCharge}>
+                                                                <Plus className="h-4 w-4 mr-1" /> Add
+                                                            </Button>
+                                                        </div>
+                                                        {serviceCharges.length > 0 && (
+                                                            <div className="space-y-2">
+                                                                {serviceCharges.map((charge, index) => (
+                                                                    <div key={charge.id || index} className="rounded-xl border bg-white p-3 sm:p-4 space-y-3">
+                                                                        <div className="flex items-start justify-between gap-3">
+                                                                            <div>
+                                                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Charge {index + 1}</p>
+                                                                                <p className="text-[11px] text-muted-foreground">Fee, deposit, tax, or required add-on.</p>
+                                                                            </div>
+                                                                            <Button type="button" variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0 shrink-0" onClick={() => removeServiceCharge(index)}>
+                                                                                <Trash2 className="h-4 w-4" />
+                                                                            </Button>
+                                                                        </div>
+                                                                        <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+                                                                            <label className="space-y-1 lg:col-span-5">
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Name</span>
+                                                                                <Input
+                                                                                    placeholder="Cleaning fee"
+                                                                                    value={charge.name || ''}
+                                                                                    onChange={(e) => updateServiceCharge(index, { name: e.target.value })}
+                                                                                    className="h-11"
+                                                                                />
+                                                                            </label>
+                                                                            <label className="space-y-1 lg:col-span-2">
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Amount</span>
+                                                                                <Input
+                                                                                    type="number"
+                                                                                    min="0"
+                                                                                    placeholder="0"
+                                                                                    value={charge.amount ?? ''}
+                                                                                    onChange={(e) => updateServiceCharge(index, { amount: e.target.value })}
+                                                                                    className="h-11"
+                                                                                />
+                                                                            </label>
+                                                                            <label className="space-y-1 lg:col-span-3">
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">How it applies</span>
+                                                                                <select
+                                                                                    className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                                    value={charge.unit || 'fixed'}
+                                                                                    onChange={(e) => updateServiceCharge(index, { unit: e.target.value })}
+                                                                                >
+                                                                                    {serviceChargeUnitOptions.map((option) => (
+                                                                                        <option key={option.key} value={option.key}>{option.label}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            </label>
+                                                                            <div className="flex flex-row gap-2">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => updateServiceCharge(index, { required: !Boolean(charge.required) })}
+                                                                                    className={`h-11 rounded-xl border px-3 text-xs font-black flex items-center justify-center gap-2 transition-colors ${charge.required
+                                                                                        ? 'border-purple-200 bg-purple-50 text-purple-700'
+                                                                                        : 'border-input bg-background text-muted-foreground'
+                                                                                        }`}
+                                                                                >
+                                                                                    <CheckCircle2 className={`h-4 w-4 ${charge.required ? 'fill-purple-600 text-white' : ''}`} />
+                                                                                    Required
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => updateServiceCharge(index, { included_in_checkout: !Boolean(charge.included_in_checkout) })}
+                                                                                    className={`h-11 rounded-xl border px-3 text-xs font-black flex items-center justify-center gap-2 transition-colors ${charge.included_in_checkout
+                                                                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                                                        : 'border-input bg-background text-muted-foreground'
+                                                                                        }`}
+                                                                                >
+                                                                                    <CheckCircle2 className={`h-4 w-4 ${charge.included_in_checkout ? 'fill-emerald-600 text-white' : ''}`} />
+                                                                                    Checkout
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                        {charge.included_in_checkout && (
+                                                                            <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs font-semibold text-emerald-800">
+                                                                                Checkout will ask for people, dates, hours, or quantity when this charge needs them.
+                                                                            </div>
+                                                                        )}
+                                                                        <label className="space-y-1 block">
+                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Note</span>
+                                                                            <Input
+                                                                                placeholder="Refundable after checkout inspection"
+                                                                                value={charge.description || ''}
+                                                                                onChange={(e) => updateServiceCharge(index, { description: e.target.value })}
+                                                                                className="h-11 text-sm"
+                                                                            />
+                                                                        </label>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {!showingSpecializedServiceForm && (
+                                                    <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                            <div>
+                                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service options / units</label>
+                                                                <p className="text-xs text-muted-foreground mt-1">
+                                                                    {serviceOptionTemplate?.description || 'Room types, packages, vehicles, halls, classes, consultation types, or equipment units.'}
+                                                                </p>
+                                                            </div>
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                className="h-10 rounded-xl sm:w-36 disabled:opacity-50"
+                                                                onClick={addServiceOption}
+                                                                disabled={!serviceOptionCategoryReady}
+                                                            >
+                                                                <Plus className="h-4 w-4 mr-1" /> Add option
+                                                            </Button>
+                                                        </div>
+                                                        {!serviceOptionCategoryReady ? (
+                                                            <div className="rounded-xl border border-dashed bg-amber-50/70 px-4 py-3 text-xs text-amber-800 flex gap-2">
+                                                                <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                                                                <div>
+                                                                    <p className="font-bold">Choose a category first.</p>
+                                                                    <p className="mt-0.5">
+                                                                        Service options use the selected subcategory template
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        ) : serviceOptions.length === 0 ? (
+                                                            <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
+                                                                Optional. Use this when one service has multiple bookable choices, e.g. {(serviceOptionTemplate?.examples || ['Standard Room', 'Deluxe Room', 'Private Session', 'Group Class', 'Boat A', 'Hall B']).join(', ')}.
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-2">
+                                                                {serviceOptions.map((option, index) => (
+                                                                    <div key={option.id || index} className="rounded-xl border bg-white p-3 sm:p-4 space-y-4">
+                                                                        <div className="flex items-start justify-between gap-3">
+                                                                            <div>
+                                                                                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Option {index + 1}</p>
+                                                                                <p className="text-[11px] text-muted-foreground">{serviceOptionTemplate?.label || 'Service option'}</p>
+                                                                            </div>
+                                                                            <Button type="button" variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0 shrink-0" onClick={() => removeServiceOption(index)}>
+                                                                                <Trash2 className="h-4 w-4" />
+                                                                            </Button>
+                                                                        </div>
+                                                                        <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+                                                                            <label className="space-y-1 lg:col-span-5">
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{serviceOptionTemplate?.label || 'Option name'}</span>
+                                                                                <Input
+                                                                                    placeholder={serviceOptionTemplate?.placeholder || serviceOptionTemplate?.examples?.[0] || 'Standard Package'}
+                                                                                    value={option.name || ''}
+                                                                                    onChange={(e) => updateServiceOption(index, { name: e.target.value })}
+                                                                                    className="h-11"
+                                                                                />
+                                                                            </label>
+                                                                            <label className="space-y-1 lg:col-span-2">
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Price</span>
+                                                                                <Input
+                                                                                    type="number"
+                                                                                    min="0"
+                                                                                    placeholder="0"
+                                                                                    value={option.price ?? ''}
+                                                                                    onChange={(e) => updateServiceOption(index, { price: e.target.value })}
+                                                                                    className="h-11"
+                                                                                />
+                                                                            </label>
+                                                                            <label className="space-y-1 lg:col-span-3">
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Price unit</span>
+                                                                                <select
+                                                                                    className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                                    value={option.price_display || 'fixed'}
+                                                                                    onChange={(e) => updateServiceOption(index, { price_display: e.target.value })}
+                                                                                >
+                                                                                    {servicePriceOptions.filter((item) => !['hidden', 'quote_only'].includes(item.key)).map((item) => (
+                                                                                        <option key={item.key} value={item.key}>{item.label}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            </label>
+                                                                            {serviceOptionFieldEnabled('capacity_type') && (
+                                                                                <label className="space-y-1 lg:col-span-2">
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Limit</span>
+                                                                                    <select
+                                                                                        className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                                        value={option.capacity_type || 'limited'}
+                                                                                        onChange={(e) => updateServiceOption(index, { capacity_type: e.target.value })}
+                                                                                    >
+                                                                                        <option value="limited">Limited</option>
+                                                                                        <option value="unlimited">Unlimited</option>
+                                                                                    </select>
+                                                                                </label>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                                            {serviceOptionFieldEnabled('capacity') && (
+                                                                                <label className="space-y-1">
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Units / rooms</span>
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        min="1"
+                                                                                        placeholder="1"
+                                                                                        value={option.capacity ?? ''}
+                                                                                        disabled={(option.capacity_type || 'limited') === 'unlimited'}
+                                                                                        onChange={(e) => updateServiceOption(index, { capacity: e.target.value })}
+                                                                                        className="h-11 text-sm"
+                                                                                    />
+                                                                                </label>
+                                                                            )}
+                                                                            {serviceOptionFieldEnabled('max_guests') && (
+                                                                                <label className="space-y-1">
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Max guests</span>
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        min="1"
+                                                                                        placeholder="2"
+                                                                                        value={option.max_guests ?? ''}
+                                                                                        onChange={(e) => updateServiceOption(index, { max_guests: e.target.value })}
+                                                                                        className="h-11 text-sm"
+                                                                                    />
+                                                                                </label>
+                                                                            )}
+                                                                            {serviceOptionFieldEnabled('duration_minutes') && (
+                                                                                <label className="space-y-1">
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Duration</span>
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        min="1"
+                                                                                        placeholder="Minutes"
+                                                                                        value={option.duration_minutes ?? ''}
+                                                                                        onChange={(e) => updateServiceOption(index, { duration_minutes: e.target.value })}
+                                                                                        className="h-11 text-sm"
+                                                                                    />
+                                                                                </label>
+                                                                            )}
+                                                                            {serviceOptionFieldEnabled('checkin_time') && (
+                                                                                <label className="space-y-1">
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Check-in</span>
+                                                                                    <Input
+                                                                                        type="time"
+                                                                                        value={option.checkin_time || ''}
+                                                                                        onChange={(e) => updateServiceOption(index, { checkin_time: e.target.value })}
+                                                                                        className="h-11 text-sm"
+                                                                                    />
+                                                                                </label>
+                                                                            )}
+                                                                            {serviceOptionFieldEnabled('checkout_time') && (
+                                                                                <label className="space-y-1">
+                                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Checkout</span>
+                                                                                    <Input
+                                                                                        type="time"
+                                                                                        value={option.checkout_time || ''}
+                                                                                        onChange={(e) => updateServiceOption(index, { checkout_time: e.target.value })}
+                                                                                        className="h-11 text-sm"
+                                                                                    />
+                                                                                </label>
+                                                                            )}
+                                                                        </div>
+                                                                        <label className="space-y-1 block">
+                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Description</span>
+                                                                            <Input
+                                                                                placeholder={serviceOptionTemplate?.description_placeholder || 'What is included in this option'}
+                                                                                value={option.description || ''}
+                                                                                onChange={(e) => updateServiceOption(index, { description: e.target.value })}
+                                                                                className="h-11 text-sm"
+                                                                            />
+                                                                        </label>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {selectedServiceTemplateKey && selectedServiceTemplateSections.length > 0 && !showingSpecializedServiceForm && hasConcreteServiceSubtype && (
+                                                    <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                        <div>
+                                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Template details</label>
+                                                            <p className="text-xs text-muted-foreground mt-1">
+                                                                These fields shape the public post and the merchant management view for {selectedServiceTemplate?.label || 'this service'}.
+                                                            </p>
+                                                        </div>
+
+                                                        {selectedServiceTemplateKey === 'tour' && (
+                                                            <div className="space-y-3">
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                    <Input placeholder="Destination, e.g. Serengeti + Ngorongoro" value={serviceDetails.destination || ''} onChange={(e) => updateServiceDetail('destination', e.target.value)} className="h-11" />
+                                                                    <Input placeholder="Duration, e.g. 3 days / 2 nights" value={serviceDetails.duration_label || ''} onChange={(e) => updateServiceDetail('duration_label', e.target.value)} className="h-11" />
+                                                                    <Input placeholder="Pickup point" value={serviceDetails.pickup_point || ''} onChange={(e) => updateServiceDetail('pickup_point', e.target.value)} className="h-11" />
+                                                                    <Input placeholder="Drop-off point" value={serviceDetails.dropoff_point || ''} onChange={(e) => updateServiceDetail('dropoff_point', e.target.value)} className="h-11" />
+                                                                    <Input type="number" min="1" placeholder="Group size / seats" value={serviceDetails.group_size || ''} onChange={(e) => updateServiceDetail('group_size', e.target.value)} className="h-11" />
+                                                                    <select className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={serviceDetails.departure_type || 'scheduled'} onChange={(e) => updateServiceDetail('departure_type', e.target.value)}>
+                                                                        <option value="scheduled">Scheduled departures</option>
+                                                                        <option value="private">Private trips</option>
+                                                                        <option value="custom">Custom dates</option>
+                                                                    </select>
+                                                                </div>
+                                                                <div className="rounded-xl border bg-slate-50/60 p-3 space-y-2">
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Itinerary</p>
+                                                                        <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => updateServiceDetail('itinerary', [...(serviceDetails.itinerary || []), { day: (serviceDetails.itinerary || []).length + 1, title: '', description: '' }])}>
+                                                                            <Plus className="h-4 w-4 mr-1" /> Day
+                                                                        </Button>
+                                                                    </div>
+                                                                    {(serviceDetails.itinerary || []).map((day, index) => (
+                                                                        <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                                                                            <Input className="md:col-span-2 h-11" type="number" min="1" value={day.day || index + 1} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, day: e.target.value } : item))} />
+                                                                            <Input className="md:col-span-4 h-11" placeholder="Day title" value={day.title || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, title: e.target.value } : item))} />
+                                                                            <Input className="md:col-span-5 h-11" placeholder="Stops, meals, activities..." value={day.description || ''} onChange={(e) => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).map((item, itemIndex) => itemIndex === index ? { ...item, description: e.target.value } : item))} />
+                                                                            <button type="button" className="md:col-span-1 h-11 rounded-xl border bg-white text-muted-foreground hover:text-red-600" onClick={() => updateServiceDetail('itinerary', (serviceDetails.itinerary || []).filter((_, itemIndex) => itemIndex !== index))}>
+                                                                                <Trash2 className="h-4 w-4 mx-auto" />
+                                                                            </button>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                <RepeatableTextList label="Included items" value={serviceDetails.included} onChange={(value) => updateServiceDetail('included', value)} addLabel="Add included item" placeholder="Describe one included item..." />
+                                                                <RepeatableTextList label="Excluded items" value={serviceDetails.excluded} onChange={(value) => updateServiceDetail('excluded', value)} addLabel="Add excluded item" placeholder="Describe one excluded item..." />
+                                                                <Textarea placeholder="Traveler requirements, weather notes, documents, fitness level..." value={serviceDetails.requirements || ''} onChange={(e) => updateServiceDetail('requirements', e.target.value)} className="min-h-20" />
+                                                            </div>
+                                                        )}
+
+                                                        {selectedServiceTemplateKey === 'stay' && (
+                                                            <div className="space-y-3">
+                                                                <RepeatableTextList label="Amenities" value={serviceDetails.amenities} onChange={(value) => updateServiceDetail('amenities', value)} addLabel="Add amenity" placeholder="Describe one amenity..." />
+                                                                <Textarea placeholder="House rules, check-in policy, guest rules..." value={serviceDetails.house_rules || ''} onChange={(e) => updateServiceDetail('house_rules', e.target.value)} className="min-h-24" />
+                                                                <Textarea placeholder="Cancellation policy" value={serviceDetails.cancellation_policy || ''} onChange={(e) => updateServiceDetail('cancellation_policy', e.target.value)} className="min-h-20" />
+                                                            </div>
+                                                        )}
+
+                                                        {selectedServiceTemplateKey === 'learning' && (
+                                                            <div className="space-y-3">
+                                                                <RepeatableTextList label="Learning outcomes" value={serviceDetails.outcomes} onChange={(value) => updateServiceDetail('outcomes', value)} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
+                                                                <RepeatableTextList label="Student requirements" value={serviceDetails.requirements} onChange={(value) => updateServiceDetail('requirements', value)} addLabel="Add requirement" placeholder="Describe one requirement..." />
+                                                                <Input placeholder="Certificate, e.g. Certificate of completion included" value={serviceDetails.certificate || ''} onChange={(e) => updateServiceDetail('certificate', e.target.value)} className="h-11" />
+                                                            </div>
+                                                        )}
+
+                                                        {selectedServiceTemplateKey === 'orderable_service' && (
+                                                            <div className="space-y-3">
+                                                                <Textarea placeholder="Customization details customers can choose: size, flavor, message, file upload, color..." value={serviceDetails.customization_notes || ''} onChange={(e) => updateServiceDetail('customization_notes', e.target.value)} className="min-h-24" />
+                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                                    <Input className="h-11 md:col-span-1" placeholder="Lead time, e.g. 24 hours notice" value={serviceDetails.lead_time || ''} onChange={(e) => updateServiceDetail('lead_time', e.target.value)} />
+                                                                    <Input className="h-11 md:col-span-1" type="number" min="1" placeholder="Minimum order quantity" value={serviceDetails.minimum_order || ''} onChange={(e) => updateServiceDetail('minimum_order', e.target.value)} />
+                                                                    <select className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={serviceDetails.quote_policy || 'quote_after_request'} onChange={(e) => updateServiceDetail('quote_policy', e.target.value)}>
+                                                                        <option value="quote_after_request">Quote after request</option>
+                                                                        <option value="deposit_before_work">Deposit before work</option>
+                                                                        <option value="full_payment_after_quote">Full payment after quote</option>
+                                                                    </select>
+                                                                </div>
+                                                                <Textarea placeholder="Pickup or delivery notes" value={serviceDetails.pickup_delivery_notes || ''} onChange={(e) => updateServiceDetail('pickup_delivery_notes', e.target.value)} className="min-h-20" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                    <div>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Products made or used with this service</label>
+                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                            Optional. Search and attach published products you make, bring, install, or commonly sell with this service.
+                                                        </p>
+                                                    </div>
+                                                    {isLoadingProducts ? (
+                                                        <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
+                                                            Loading your products...
+                                                        </div>
+                                                    ) : physicalMerchantProducts.length === 0 ? (
+                                                        <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
+                                                            No published physical products yet. Publish products first, then attach them here.
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-3">
+                                                            <label className="relative block">
+                                                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                                                <Input
+                                                                    placeholder="Search published products..."
+                                                                    value={serviceProductSearch}
+                                                                    onChange={(e) => setServiceProductSearch(e.target.value)}
+                                                                    className="h-11 pl-9 text-sm"
+                                                                />
+                                                            </label>
+                                                            {visiblePhysicalMerchantProducts.length === 0 ? (
+                                                                <div className="rounded-xl border border-dashed bg-slate-50/60 px-4 py-3 text-xs text-muted-foreground">
+                                                                    No published products match this search.
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-muted-foreground">
+                                                                        <span>Showing {visiblePhysicalMerchantProducts.length} of {filteredPhysicalMerchantProducts.length} published product{filteredPhysicalMerchantProducts.length === 1 ? '' : 's'}</span>
+                                                                        {filteredPhysicalMerchantProducts.length > 10 && (
+                                                                            <span>Refine search to see more</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                        {visiblePhysicalMerchantProducts.map((item) => {
+                                                                            const selected = serviceRelatedProductIds.includes(Number(item.id));
+                                                                            return (
+                                                                                <button
+                                                                                    key={item.id}
+                                                                                    type="button"
+                                                                                    onClick={() => toggleServiceRelatedProduct(item.id)}
+                                                                                    className={`rounded-xl border p-2 text-left transition-colors ${selected ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-100' : 'border-slate-200 bg-white hover:border-purple-200'}`}
+                                                                                >
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                                                                                            {item.image_url ? (
+                                                                                                <img src={item.image_url} alt="" className="h-full w-full object-cover" />
+                                                                                            ) : (
+                                                                                                <ShoppingBag className="mx-auto mt-3 h-5 w-5 text-slate-300" />
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <div className="min-w-0 flex-1">
+                                                                                            <p className="truncate text-sm font-black text-slate-900">{item.title}</p>
+                                                                                            <p className="text-[11px] font-semibold text-muted-foreground">
+                                                                                                TZS {Number(item.checkout_price ?? item.discounted_price ?? item.price ?? 0).toLocaleString()}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                        <CheckCircle2 className={`h-5 w-5 shrink-0 ${selected ? 'fill-purple-600 text-white' : 'text-slate-300'}`} />
+                                                                                    </div>
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {serviceRelatedProductIds.length > 0 && (
+                                                        <p className="text-[11px] font-bold text-purple-700">
+                                                            {serviceRelatedProductIds.length} product{serviceRelatedProductIds.length === 1 ? '' : 's'} attached to this service.
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                    <div>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Booking policy</label>
+                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                            Standard for every service. Choose whether customers request first, wait for your confirmation, or book/pay instantly.
+                                                        </p>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <div className="space-y-2 sm:col-span-2">
+                                                            <div>
+                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Service duration</span>
+                                                                <p className="text-[10px] text-muted-foreground">How long does one booking/session usually take? Used to create booking slots.</p>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <Input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    placeholder="Mf. 1"
+                                                                    value={serviceDurationValue}
+                                                                    onChange={(e) => setServiceDurationValue(e.target.value)}
+                                                                    className="h-11 font-bold"
+                                                                />
+                                                                <select
+                                                                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                    value={serviceDurationUnit}
+                                                                    onChange={(e) => setServiceDurationUnit(e.target.value)}
+                                                                >
+                                                                    <option value="minutes">Minutes</option>
+                                                                    <option value="hours">Hours</option>
+                                                                    <option value="days">Days</option>
+                                                                </select>
+                                                            </div>
+                                                            <div className="grid grid-cols-3 gap-1.5">
+                                                                {serviceDurationPresets.map((preset) => {
+                                                                    const selected = String(serviceDurationValue) === String(preset.value) && serviceDurationUnit === preset.unit;
+                                                                    return (
+                                                                        <button
+                                                                            key={`${preset.label}-${preset.value}-${preset.unit}`}
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setServiceDurationValue(String(preset.value));
+                                                                                setServiceDurationUnit(preset.unit);
+                                                                            }}
+                                                                            className={`min-h-9 rounded-lg border px-2 text-[10px] font-black transition-colors ${selected
+                                                                                ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                                                                : 'border-border bg-background text-muted-foreground hover:border-purple-300'
+                                                                                }`}
+                                                                        >
+                                                                            {preset.label}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            {serviceDurationMinutes && (
+                                                                <p className="text-[10px] font-semibold text-purple-700">
+                                                                    Saved as {Number(serviceDurationMinutes).toLocaleString()} minutes.
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Booking Confirmation flow</span>
+                                                            <select
+                                                                className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                value={serviceBookingType}
+                                                                onChange={(e) => setServiceBookingType(e.target.value)}
+                                                            >
+                                                                <option value="request">Request First</option>
+                                                                <option value="manual_confirm">Manual Confirm</option>
+                                                                <option value="instant">Instant</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Advance / deposit</span>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-purple-200 bg-purple-50 text-purple-700 transition-colors hover:bg-purple-100"
+                                                                    onClick={() => setShowServiceDepositInfo((value) => !value)}
+                                                                    aria-label="Show advance deposit explanation"
+                                                                    aria-expanded={showServiceDepositInfo}
+                                                                >
+                                                                    <Info className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            </div>
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="Mf. 30000"
+                                                                value={serviceDepositAmount}
+                                                                onChange={(e) => setServiceDepositAmount(e.target.value)}
+                                                                className="h-11 font-bold"
+                                                            />
+                                                            {showServiceDepositInfo && (
+                                                                <p className="rounded-xl border border-purple-100 bg-purple-50/70 px-3 py-2 text-[10px] leading-snug text-purple-800">
+                                                                    Optional amount customer pays now to secure the service. It becomes the checkout amount for this listing and should be treated as advance paid toward the service.
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Buffer after booking</span>
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="15"
+                                                                value={serviceDetails.buffer_minutes ?? ''}
+                                                                onChange={(e) => updateServiceDetail('buffer_minutes', e.target.value)}
+                                                                className="h-11 font-bold"
+                                                            />
+                                                        </label>
+                                                        <label className="space-y-1.5">
+                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Capacity per slot</span>
+                                                            <Input
+                                                                type="number"
+                                                                min="1"
+                                                                placeholder="1"
+                                                                value={serviceDetails.capacity ?? ''}
+                                                                onChange={(e) => updateServiceDetail('capacity', e.target.value)}
+                                                                className="h-11 font-bold"
+                                                            />
+                                                        </label>
+                                                        <label className="space-y-1.5 sm:col-span-2">
+                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Preparation notes</span>
+                                                            <Input
+                                                                placeholder="Arrive 10 minutes early, bring documents..."
+                                                                value={serviceDetails.preparation_notes || ''}
+                                                                onChange={(e) => updateServiceDetail('preparation_notes', e.target.value)}
+                                                                className="h-11 font-bold"
+                                                            />
+                                                        </label>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
+
+                                            <div className="grid grid-cols-1 gap-4">
+                                                <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Huduma inatolewa wapi?</label>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {serviceLocationOptions.map((option) => (
+                                                            <button
+                                                                key={option.key}
+                                                                type="button"
+                                                                onClick={() => setServiceLocationType(option.key)}
+                                                                className={`min-h-11 px-2 rounded-xl text-xs font-bold border transition-all ${serviceLocationType === option.key
+                                                                    ? 'bg-purple-600 text-white border-purple-600'
+                                                                    : 'bg-background text-muted-foreground border-border hover:border-purple-300'
+                                                                    }`}
+                                                            >
+                                                                {option.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {['provider_location', 'customer_location', 'hybrid'].includes(serviceLocationType) && (
+                                                        <div className="rounded-xl border bg-muted/20 p-3 space-y-2">
+                                                            <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">
+                                                                {serviceLocationType === 'customer_location' ? 'Service base for Near me' : 'Provider venue'}
+                                                            </p>
+                                                            {serviceProviderLocation?.address ? (
+                                                                <div className="space-y-1">
+                                                                    <p className="text-xs text-muted-foreground">{serviceProviderLocation.address}</p>
+                                                                    {serviceProviderLocation.extraDetails && (
+                                                                        <p className="text-xs text-muted-foreground">{serviceProviderLocation.extraDetails}</p>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    {serviceLocationType === 'customer_location'
+                                                                        ? 'Add your service base or main coverage point so nearby customers can discover you.'
+                                                                        : 'Add where customers should come for this service.'}
+                                                                </p>
+                                                            )}
+                                                            <Input
+                                                                placeholder={serviceLocationType === 'customer_location' ? 'Base name, e.g. Mikocheni coverage base' : 'Venue name, e.g. Main Clinic, Studio A'}
+                                                                value={serviceProviderLocation?.name || ''}
+                                                                onChange={(e) => setServiceProviderLocation((prev) => ({
+                                                                    ...(prev || {}),
+                                                                    name: e.target.value,
+                                                                }))}
+                                                                className="h-10 text-sm"
+                                                            />
+                                                            <div className="flex gap-2">
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    className="h-10 rounded-xl flex-1"
+                                                                    onClick={() => setServiceProviderLocationPickerOpen(true)}
+                                                                >
+                                                                    <MapPin className="h-4 w-4 mr-1" /> {serviceLocationType === 'customer_location' ? 'Pick base' : 'Pick venue'}
+                                                                </Button>
+                                                                {serviceProviderLocation?.address && (
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        className="h-10 rounded-xl"
+                                                                        onClick={() => setServiceProviderLocation(null)}
+                                                                    >
+                                                                        <X className="h-4 w-4" />
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="col-span-full w-full rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+                                                        <div>
+                                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service areas</label>
+                                                            <p className="text-xs text-muted-foreground mt-1">{serviceAreasHelperText}</p>
+                                                        </div>
+                                                        {serviceAreaList.length > 0 && (
+                                                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 rounded-full px-3 py-1 w-max">
+                                                                {serviceAreaList.length} area{serviceAreaList.length > 1 ? 's' : ''}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex flex-col sm:flex-row gap-2">
+                                                        <Input
+                                                            placeholder="Dar es Salaam, Mwanza, Online..."
+                                                            value={serviceAreaDraft}
+                                                            onChange={(e) => setServiceAreaDraft(e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    addServiceArea();
+                                                                }
+                                                            }}
+                                                            className="h-11 text-sm"
+                                                        />
+                                                        <Button type="button" variant="outline" className="h-11 rounded-xl sm:w-32" onClick={addServiceArea}>
+                                                            <Plus className="h-4 w-4 mr-1" /> Add
+                                                        </Button>
+                                                    </div>
+                                                    {serviceAreaList.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {serviceAreaList.map((area) => (
+                                                                <span key={area} className="inline-flex items-center gap-1 rounded-full bg-purple-50 text-purple-700 border border-purple-100 px-2.5 py-1 text-[11px] font-bold">
+                                                                    {area}
+                                                                    <button type="button" onClick={() => removeServiceArea(area)} className="rounded-full hover:bg-purple-100">
+                                                                        <X className="h-3 w-3" />
+                                                                    </button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                                    <div>
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Taarifa unazohitaji kutoka kwa mteja</label>
+                                                        <p className="text-xs text-muted-foreground mt-1">Build a simple form that customers fill before sending a request.</p>
+                                                    </div>
+                                                    <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={addServiceIntakeField}>
+                                                        <Plus className="h-4 w-4 mr-1" /> Add field
+                                                    </Button>
+                                                </div>
+                                                <Textarea
+                                                    placeholder="Fallback instructions, e.g. picha za tatizo, address, preferred date..."
+                                                    value={serviceClientRequirements}
+                                                    onChange={(e) => setServiceClientRequirements(e.target.value)}
+                                                    className="min-h-[86px] text-sm"
+                                                />
+                                                {automaticCustomerLocationField && (
+                                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3">
+                                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                                                            <div className="md:col-span-3 h-11 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-900 flex items-center justify-between">
+                                                                <span>Map location</span>
+                                                                <MapPin className="h-4 w-4 text-emerald-700" />
+                                                            </div>
+                                                            <Input
+                                                                className="md:col-span-5 h-11 border-emerald-200 bg-white font-semibold text-emerald-900"
+                                                                value={automaticCustomerLocationField.label}
+                                                                disabled
+                                                                readOnly
+                                                            />
+                                                            <Input
+                                                                className="md:col-span-3 h-11 border-emerald-200 bg-white text-emerald-900"
+                                                                value={automaticCustomerLocationField.placeholder}
+                                                                disabled
+                                                                readOnly
+                                                            />
+                                                            <div className="md:col-span-1 h-11 rounded-xl border border-emerald-200 bg-white text-emerald-700 flex items-center justify-center">
+                                                                <ShieldCheck className="h-4 w-4" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-emerald-800">
+                                                            <label className="flex items-center gap-2">
+                                                                <input type="checkbox" checked={Boolean(automaticCustomerLocationField.required)} readOnly disabled />
+                                                                Required
+                                                            </label>
+                                                            <span className="rounded-full bg-white/80 border border-emerald-200 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+                                                                Locked system field
+                                                            </span>
+                                                            <span className="text-emerald-700">
+                                                                Added from service location type
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {serviceIntakeForm.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        {serviceIntakeForm.map((field, index) => (
+                                                            <div key={field.id || index} className="rounded-xl border bg-muted/20 p-3 space-y-3">
+                                                                <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                                                                    <select
+                                                                        className="md:col-span-3 h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                                        value={field.type}
+                                                                        onChange={(e) => updateServiceIntakeField(index, { type: e.target.value })}
+                                                                    >
+                                                                        {intakeFieldTypes.map((type) => (
+                                                                            <option key={type.key} value={type.key}>{type.label}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <Input
+                                                                        className="md:col-span-5 h-11"
+                                                                        placeholder="Question label"
+                                                                        value={field.label || ''}
+                                                                        onChange={(e) => updateServiceIntakeField(index, {
+                                                                            label: e.target.value,
+                                                                            id: field.id?.startsWith('field_')
+                                                                                ? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 60) || field.id
+                                                                                : field.id,
+                                                                        })}
+                                                                    />
+                                                                    <Input
+                                                                        className="md:col-span-3 h-11"
+                                                                        placeholder="Placeholder"
+                                                                        value={field.placeholder || ''}
+                                                                        onChange={(e) => updateServiceIntakeField(index, { placeholder: e.target.value })}
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeServiceIntakeField(index)}
+                                                                        className="md:col-span-1 h-11 rounded-xl border bg-background text-muted-foreground hover:text-red-600"
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4 mx-auto" />
+                                                                    </button>
+                                                                </div>
+                                                                {field.type === 'select' && (
+                                                                    <RepeatableTextList
+                                                                        label="Options"
+                                                                        value={field.options}
+                                                                        onChange={(value) => updateServiceIntakeField(index, { options: value })}
+                                                                        addLabel="Add option"
+                                                                        placeholder="Write one selectable option..."
+                                                                    />
+                                                                )}
+                                                                <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={Boolean(field.required)}
+                                                                        onChange={(e) => updateServiceIntakeField(index, { required: e.target.checked })}
+                                                                    />
+                                                                    Required
+                                                                </label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
+                                                <div>
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Namna ya kushughulika na wateja</label>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        Chagua sehemu ambayo booking/request zitasimamiwa baada ya mteja kuonyesha interest.
+                                                    </p>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setServiceBookingMode('takeer');
+                                                            setServiceBookingProvider('manual');
+                                                        }}
+                                                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'takeer'
+                                                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                                            : 'border-border text-muted-foreground hover:border-purple-200'
+                                                            }`}
+                                                    >
+                                                        <Calendar className="h-5 w-5 shrink-0" />
+                                                        <span>
+                                                            <span className="block text-sm font-black">Takeer Booking</span>
+                                                            <span className="block text-[11px]">Slots, requests, calendar, na customers ndani ya Takeer</span>
+                                                        </span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setServiceBookingMode('internal');
+                                                            setServiceBookingProvider('manual');
+                                                        }}
+                                                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'internal'
+                                                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                                            : 'border-border text-muted-foreground hover:border-purple-200'
+                                                            }`}
+                                                    >
+                                                        <Phone className="h-5 w-5 shrink-0" />
+                                                        <span>
+                                                            <span className="block text-sm font-black">Simu/WhatsApp</span>
+                                                            <span className="block text-[11px]">Mteja awasiliane au apange nawe moja kwa moja</span>
+                                                        </span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setServiceBookingMode('external');
+                                                            setServiceBookingProvider('external');
+                                                        }}
+                                                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${serviceBookingMode === 'external'
+                                                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                                            : 'border-border text-muted-foreground hover:border-purple-200'
+                                                            }`}
+                                                    >
+                                                        <ExternalLink className="h-5 w-5 shrink-0" />
+                                                        <span>
+                                                            <span className="block text-sm font-black">Link ya Booking</span>
+                                                            <span className="block text-[11px]">Calendly, Google Forms, WhatsApp link, website</span>
+                                                        </span>
+                                                    </button>
+                                                </div>
+
+                                                {serviceBookingMode === 'takeer' && (
+                                                    <div className="animate-in fade-in rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900">
+                                                        <p className="font-black">Takeer itasimamia booking/request dashboard.</p>
+                                                        <p className="text-xs mt-1 text-emerald-800">
+                                                            Wateja watajaza form, kuchagua slot inapowezekana, na request itaonekana kwenye merchant calendar. Google Calendar itaweza kusync baadaye ukishaunganisha.
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {serviceBookingMode === 'internal' && (
+                                                    <div className="animate-in fade-in space-y-3">
+                                                        <div className="flex gap-2">
+                                                            {[
+                                                                { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+                                                                { key: 'phone', label: 'Simu', icon: Phone },
+                                                            ].map(({ key, label, icon: Icon }) => (
+                                                                <button
+                                                                    key={key}
+                                                                    onClick={() => setServiceContactType(key)}
+                                                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold border transition-all ${serviceContactType === key
+                                                                        ? 'bg-purple-600 text-white border-purple-600'
+                                                                        : 'bg-background text-muted-foreground border-border hover:border-purple-300'
+                                                                        }`}
+                                                                >
+                                                                    <Icon className="h-4 w-4" />{label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                        <Input
+                                                            type="tel"
+                                                            placeholder="+255 7XX XXX XXX"
+                                                            value={serviceContactValue}
+                                                            onChange={e => setServiceContactValue(e.target.value)}
+                                                            className="h-12 text-lg font-mono"
+                                                        />
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            Takeer itatumia hii kama njia kuu ya mteja kuanza mazungumzo au kupanga miadi.
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {serviceBookingMode === 'external' && (
+                                                    <div className="animate-in fade-in space-y-1.5">
+                                                        <Input
+                                                            placeholder="https://calendly.com/jina-lako"
+                                                            value={url}
+                                                            onChange={e => setUrl(e.target.value)}
+                                                            className="h-12 font-mono text-sm"
+                                                        />
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            Inaweza kuwa Calendly, Google Forms, WhatsApp link, website yako, au booking system nyingine.
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {serviceBookingProvider === 'google_calendar' && (
+                                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+                                                        Google Calendar integration iko kwenye foundation, lakini OAuth bado haijaunganishwa. Kwa sasa tumia Manual au External link.
+                                                    </div>
+                                                )}
+                                            </div>
                                         </>
                                     )}
                                 </div>
@@ -7040,7 +7202,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                {step === 'service' ? 'Bei ya mteja atalipa (TZS)' : 'Bei ya sasa (TZS)'}
+                                                {step === 'service' ? 'Bei Kamili Mteja Atalipa (TZS)' : 'Bei ya sasa (TZS)'}
                                             </label>
                                             <Input
                                                 type="number"
@@ -7120,13 +7282,12 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 type="button"
                                                 disabled={!channel.connected}
                                                 onClick={() => toggleAutoPostTarget(channel.key)}
-                                                className={`min-h-[76px] rounded-xl border px-3 py-3 text-left transition ${
-                                                    channel.connected
-                                                        ? checked
-                                                            ? 'border-brand-500 bg-brand-50 text-brand-900'
-                                                            : 'border-slate-200 bg-white text-slate-700 hover:border-brand-200'
-                                                        : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
-                                                }`}
+                                                className={`min-h-[76px] rounded-xl border px-3 py-3 text-left transition ${channel.connected
+                                                    ? checked
+                                                        ? 'border-brand-500 bg-brand-50 text-brand-900'
+                                                        : 'border-slate-200 bg-white text-slate-700 hover:border-brand-200'
+                                                    : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                                                    }`}
                                             >
                                                 <span className="flex items-center justify-between gap-2">
                                                     <span className="text-sm font-black">{channel.label}</span>

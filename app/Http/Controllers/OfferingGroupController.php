@@ -17,7 +17,7 @@ class OfferingGroupController extends Controller
     {
         abort_unless($offeringGroup->status === 'published', 404);
 
-        $offeringGroup->load(['merchant.user', 'merchant.locations', 'items']);
+        $offeringGroup->load(['merchant.user', 'merchant.locations', 'items', 'locationAvailabilities.location']);
 
         $defaultSelection = $offeringGroup->items
             ->filter(fn (OfferingGroupItem $item) => $item->is_required || $item->is_default_selected || in_array($item->role, ['included', 'required_choice'], true))
@@ -46,6 +46,13 @@ class OfferingGroupController extends Controller
                 'checkout_mode' => $offeringGroup->checkout_mode,
                 'checkout_rules' => $offeringGroup->checkout_rules,
                 'availability_mode' => $offeringGroup->availability_mode,
+                'availability_location_ids' => $offeringGroup->locationAvailabilities
+                    ->where('availability_type', 'serves')
+                    ->where('is_enabled', true)
+                    ->pluck('merchant_location_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->values()
+                    ->all(),
                 'checkout_price' => (float) ($resolved['subtotal'] ?? 0),
                 'has_physical_items' => (bool) ($resolved['has_physical_items'] ?? false),
                 'requires_inquiry' => (bool) ($resolved['requires_inquiry'] ?? false),

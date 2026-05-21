@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import axios from 'axios';
-import { ArrowDown, ArrowUp, Box, CalendarDays, ClipboardList, Copy, ExternalLink, Layers, Loader2, Plus, Save, Search, Trash2, Utensils } from 'lucide-react';
+import { ArrowDown, ArrowUp, Box, CalendarDays, ClipboardList, Copy, ExternalLink, Image as ImageIcon, Layers, Loader2, Plus, Save, Search, Trash2, Utensils } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/Components/ui/Button';
 import { Card, CardContent } from '@/Components/ui/Card';
@@ -22,6 +22,11 @@ const labelFromKey = (value) => String(value || '')
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 export default function OfferingGroups({ merchantUsername }) {
+    const { auth } = usePage().props;
+    const currentMerchant = auth?.user?.merchant_profiles?.find(m => m.username === merchantUsername)
+        || auth?.user?.merchant_profiles?.[0] || {};
+    const [merchantLocations, setMerchantLocations] = useState(currentMerchant?.locations || []);
+    const servingLocations = merchantLocations.filter((loc) => String(loc.type || 'SHOP').toUpperCase() === 'SHOP' || !loc.type);
     const [groups, setGroups] = useState([]);
     const [templates, setTemplates] = useState({});
     const [loading, setLoading] = useState(true);
@@ -64,8 +69,18 @@ export default function OfferingGroups({ merchantUsername }) {
         }
     };
 
+    const loadMerchantLocations = async () => {
+        try {
+            const response = await axios.get('/api/merchant/locations');
+            setMerchantLocations(response.data?.data || []);
+        } catch (error) {
+            setMerchantLocations(currentMerchant?.locations || []);
+        }
+    };
+
     useEffect(() => {
         loadGroups();
+        loadMerchantLocations();
     }, []);
 
     const groupedItems = useMemo(() => {
@@ -89,6 +104,23 @@ export default function OfferingGroups({ merchantUsername }) {
     };
 
     const sectionRuleFor = (section) => selectedGroup?.checkout_rules?.section_rules?.[section] || {};
+
+    const availabilityLocationIds = Array.isArray(selectedGroup?.availability_location_ids)
+        ? selectedGroup.availability_location_ids.map(String)
+        : [];
+
+    const setAvailabilityLocationIds = (ids) => {
+        updateSelectedGroup({ availability_location_ids: ids.map(String) });
+    };
+
+    const toggleAvailabilityLocation = (locationId) => {
+        const id = String(locationId);
+        setAvailabilityLocationIds(
+            availabilityLocationIds.includes(id)
+                ? availabilityLocationIds.filter((value) => value !== id)
+                : [...availabilityLocationIds, id]
+        );
+    };
 
     const loadCatalog = async (groupId = selectedGroup?.id, search = catalogSearch) => {
         if (!groupId) return;
@@ -276,6 +308,7 @@ export default function OfferingGroups({ merchantUsername }) {
                 base_price: selectedGroup.base_price ?? null,
                 checkout_mode: selectedGroup.checkout_mode || 'select_items',
                 availability_mode: selectedGroup.availability_mode || 'inherit_children',
+                availability_location_ids: availabilityLocationIds.map((id) => Number(id)).filter(Boolean),
                 checkout_rules: selectedGroup.checkout_rules || null,
                 display_settings: {
                     ...(selectedGroup.display_settings || {}),
@@ -508,6 +541,54 @@ export default function OfferingGroups({ merchantUsername }) {
                                                 </select>
                                             </label>
                                         </div>
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                                            <div>
+                                                <p className="text-xs font-black uppercase tracking-wider text-slate-700">Inapatikana kwenye shop gani?</p>
+                                                <p className="mt-1 text-xs font-semibold text-slate-500">Empty selection means this offering group is available at all active shop locations.</p>
+                                            </div>
+                                            {servingLocations.length === 0 ? (
+                                                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                                                    Add shop locations in Settings when this group should be served by specific branches.
+                                                </p>
+                                            ) : (
+                                                <>
+                                                    <div className="grid gap-2 sm:grid-cols-2">
+                                                        <button
+                                                            type="button"
+                                                            className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${availabilityLocationIds.length === 0 ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
+                                                            onClick={() => setAvailabilityLocationIds([])}
+                                                        >
+                                                            All active shop locations
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${availabilityLocationIds.length > 0 ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
+                                                            onClick={() => setAvailabilityLocationIds([String(servingLocations[0].id)])}
+                                                        >
+                                                            Selected locations only
+                                                        </button>
+                                                    </div>
+                                                    {availabilityLocationIds.length > 0 && (
+                                                        <div className="grid gap-2 sm:grid-cols-2">
+                                                            {servingLocations.map((loc) => (
+                                                                <label key={loc.id} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="mt-1"
+                                                                        checked={availabilityLocationIds.includes(String(loc.id))}
+                                                                        onChange={() => toggleAvailabilityLocation(loc.id)}
+                                                                    />
+                                                                    <span>
+                                                                        <span className="block">{loc.name}</span>
+                                                                        <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">{loc.address}</span>
+                                                                    </span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                         {['fixed', 'fixed_or_sum'].includes(selectedGroup.pricing_mode) && (
                                             <label className="space-y-1.5 block">
                                                 <span className="text-xs font-black uppercase tracking-wider text-slate-500">Base price</span>
@@ -560,10 +641,19 @@ export default function OfferingGroups({ merchantUsername }) {
                                                     return (
                                                         <div key={`${item.item_type}-${item.item_id}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
                                                             <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-sm font-black text-slate-950">{item.title || 'Untitled item'}</p>
-                                                                    <p className="mt-1 text-xs font-semibold text-slate-500">{item.item_type.replace('_', ' ')} · {item.kind || 'item'}</p>
-                                                                </div>
+                                                        <div className="flex min-w-0 items-start gap-3">
+                                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
+                                                                {item.image_url ? (
+                                                                    <img src={item.image_url} alt="" className="h-full w-full object-cover" />
+                                                                ) : (
+                                                                    <ImageIcon className="h-5 w-5" />
+                                                                )}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-sm font-black text-slate-950">{item.title || 'Untitled item'}</p>
+                                                                <p className="mt-1 text-xs font-semibold text-slate-500">{item.item_type.replace('_', ' ')} · {item.kind || 'item'}</p>
+                                                            </div>
+                                                        </div>
                                                                 <div className="flex items-center gap-1">
                                                                     <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30" onClick={() => moveItem(index, -1)} disabled={index === 0}>
                                                                         <ArrowUp className="h-4 w-4" />
@@ -669,12 +759,21 @@ export default function OfferingGroups({ merchantUsername }) {
                                         </div>
                                         <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
                                             {catalog.map((item) => (
-                                                <button key={`${item.item_type}-${item.item_id}`} type="button" onClick={() => addCatalogItem(item)} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-brand-200 hover:bg-brand-50/40">
-                                                    <span>
-                                                        <span className="block text-sm font-black text-slate-950">{item.title}</span>
-                                                        <span className="mt-0.5 block text-xs font-semibold text-slate-500">{item.item_type.replace('_', ' ')} · {item.kind}</span>
+                                                <button key={`${item.item_type}-${item.item_id}`} type="button" onClick={() => addCatalogItem(item)} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-brand-200 hover:bg-brand-50/40">
+                                                    <span className="flex min-w-0 items-center gap-3">
+                                                        <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
+                                                            {item.image_url ? (
+                                                                <img src={item.image_url} alt="" className="h-full w-full object-cover" />
+                                                            ) : (
+                                                                <ImageIcon className="h-5 w-5" />
+                                                            )}
+                                                        </span>
+                                                        <span className="min-w-0">
+                                                            <span className="block truncate text-sm font-black text-slate-950">{item.title}</span>
+                                                            <span className="mt-0.5 block text-xs font-semibold text-slate-500">{item.item_type.replace('_', ' ')} · {item.kind}</span>
+                                                        </span>
                                                     </span>
-                                                    <Plus className="h-4 w-4 text-brand-600" />
+                                                    <Plus className="h-4 w-4 shrink-0 text-brand-600" />
                                                 </button>
                                             ))}
                                         </div>

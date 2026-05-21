@@ -270,7 +270,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                         <div>
                             <p className="text-xs font-black uppercase text-brand-700">Mtiririko wa Bidhaa (Rahisi)</p>
                             <p className="text-[11px] text-brand-700/80">
-                                Chagua stoo inayohudumia kila shop. Hii inafuata uhalisia wa dukani: Shop inauza, Store/Warehouse inasupply.
+                                Chagua stoo inayohudumia kila duka/biashara.
                             </p>
                         </div>
 
@@ -710,6 +710,10 @@ function LocationShippingManager({ location, profiles = [], locations = [], onRe
                         </Button>
                     </form>
                 )}
+            </div>
+
+            <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
+                Templates are shared across all shop locations. The delivery routes inside them are still saved per shop, so use names like “Dar City Center” or “Tabora City Center” when the coverage is city-specific.
             </div>
 
             <div className="bg-white/50 p-4 rounded-2xl border border-brand-100 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200 min-h-[100px]">

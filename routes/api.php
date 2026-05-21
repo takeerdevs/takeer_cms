@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\ProductLicenseKeyController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PostController;
+use App\Http\Controllers\Api\RiderDeliveryController;
 use App\Http\Controllers\Api\SecureAccessController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\ServiceRequestController;
@@ -88,6 +89,12 @@ Route::get('/service-categories', [ServiceCategoryController::class, 'index'])
     ->middleware('throttle:60,1');
 Route::post('/software/licenses/validate', [ProductLicenseKeyController::class, 'validateActivation'])
     ->middleware('throttle:30,1');
+Route::post('/rider-deliveries/{token}/status', [RiderDeliveryController::class, 'update'])
+    ->middleware('throttle:20,1');
+Route::post('/rider-deliveries/{token}/confirm-pin', [RiderDeliveryController::class, 'confirmPin'])
+    ->middleware('throttle:10,1');
+Route::post('/rider-deliveries/{token}/waitlist', [RiderDeliveryController::class, 'joinWaitlist'])
+    ->middleware('throttle:5,10');
 
 // ─── AI SEARCH ──────────────────────────────────────────────────────────────
 Route::post('/search/text', [AiSearchController::class, 'textSearch'])->middleware('throttle:10,1');
@@ -169,6 +176,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{merchant:username}/order-checkup/lookup', [MerchantOrderController::class, 'checkupLookup'])->middleware('merchant_permission:orders.verify_pickup');
         Route::post('/{merchant:username}/orders/{order:id}/verify-pickup', [MerchantOrderController::class, 'verifyPickup'])->middleware('merchant_permission:orders.verify_pickup');
         Route::post('/{merchant:username}/orders/{order:id}/verify-delivery', [MerchantOrderController::class, 'verifyDelivery'])->middleware('merchant_permission:orders.verify_pickup');
+        Route::post('/{merchant:username}/orders/{order:id}/rider-access', [MerchantOrderController::class, 'generateRiderAccess'])->middleware('merchant_permission:orders.dispatch,orders.update');
+        Route::post('/{merchant:username}/orders/{order:id}/delivery-status', [MerchantOrderController::class, 'updateDeliveryStatus'])->middleware('merchant_permission:orders.dispatch,orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/extend-lock', [MerchantOrderController::class, 'extendExpiration'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/release-inventory', [MerchantOrderController::class, 'releaseInventory'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/dispatch/{order:id}/{mode}', [MerchantOrderController::class, 'dispatchOrder'])->middleware('merchant_permission:orders.dispatch');
@@ -222,6 +231,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/v1/checkout/inquire', [CheckoutController::class, 'inquire']);
     Route::post('/v1/checkout/pay-inquiry/{order}', [CheckoutController::class, 'payInquiry']);
     Route::post('/merchant/orders/{order}/quote', [MerchantOrderController::class, 'provideQuote'])->middleware('merchant_permission:orders.update');
+    Route::post('/merchant/orders/{order}/confirm-availability', [MerchantOrderController::class, 'confirmAvailability'])->middleware('merchant_permission:orders.update');
 
     // Logistics
     Route::post('/delivery/confirm-pin', [DeliveryController::class, 'confirmPin']);

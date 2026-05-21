@@ -16,6 +16,7 @@ use App\Models\Product;
 use App\Models\SubscriptionPlan;
 use App\Models\UserSubscription;
 use App\Services\SmsService;
+use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,17 @@ use Illuminate\Support\Str;
 
 class MerchantOrderController extends Controller
 {
+    private const DELIVERY_STATUSES = [
+        'packing',
+        'ready_for_pickup',
+        'dispatched',
+        'with_boda',
+        'in_transit',
+        'arrived',
+        'ready_at_terminal',
+        'issue_reported',
+    ];
+
     public function __construct(private readonly SmsService $smsService)
     {
     }
@@ -97,6 +109,8 @@ class MerchantOrderController extends Controller
                 'is_escrow_order' => $display['is_escrow_order'],
                 'is_inquiry' => (bool) $order->is_inquiry,
                 'inquiry_status' => $order->inquiry_status,
+                'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
+                'is_merchant_confirmed' => $order->merchant_confirmed_at !== null,
                 'shipping_fee' => $order->shipping_fee !== null ? (float) $order->shipping_fee : null,
             ];
         });
@@ -240,7 +254,7 @@ class MerchantOrderController extends Controller
         abort_unless($merchant->user_id === $request->user()->id, 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
 
-        $order->load(['buyer', 'product.unitType', 'variant', 'delivery.shippingZone', 'dispute', 'review']);
+        $order->load(['buyer', 'product.unitType', 'variant', 'delivery.shippingZone', 'delivery.events.actor', 'merchant.locations', 'dispute', 'review']);
         $display = $this->resolveDisplay($order);
 
         return response()->json([
@@ -259,11 +273,27 @@ class MerchantOrderController extends Controller
             'payment_phone' => $order->payment_phone,
             'account_phone' => $order->account_phone,
             'merchant_dispatch_video_url' => $order->merchant_dispatch_video_url,
+            'merchant' => $order->merchant ? [
+                'id' => $order->merchant->id,
+                'name' => $order->merchant->display_name,
+                'username' => $order->merchant->username,
+                'locations' => $order->merchant->locations->map(fn ($location) => [
+                    'id' => $location->id,
+                    'name' => $location->name,
+                    'address' => $location->address,
+                    'city' => $location->city,
+                    'region' => $location->region,
+                    'latitude' => $location->latitude !== null ? (float) $location->latitude : null,
+                    'longitude' => $location->longitude !== null ? (float) $location->longitude : null,
+                    'is_primary' => (bool) $location->is_primary,
+                ])->values(),
+            ] : null,
             'is_inquiry' => (bool) $order->is_inquiry,
             'inquiry_status' => $order->inquiry_status,
             'agreement_snapshot' => $order->agreement_snapshot,
             'agreed_at' => $order->agreed_at?->toISOString(),
             'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
+            'is_merchant_confirmed' => $order->merchant_confirmed_at !== null,
             'paid_out_at' => $order->paid_out_at?->toISOString(),
             'shipping_fee' => $order->shipping_fee !== null ? (float) $order->shipping_fee : null,
             'custom_delivery' => [
@@ -314,6 +344,7 @@ class MerchantOrderController extends Controller
                 'confirmed_at' => $order->delivery->confirmed_at?->toISOString(),
                 'delivered_at' => $order->delivery->delivered_at?->toISOString(),
                 'boda_phone' => $order->delivery->boda_phone,
+                'delivery_person_name' => $order->delivery->delivery_person_name,
                 'bus_company' => $order->delivery->bus_company,
                 'waybill_tracking_number' => $order->delivery->waybill_tracking_number,
                 'waybill_photo_url' => $order->delivery->waybill_photo_url,
@@ -325,6 +356,22 @@ class MerchantOrderController extends Controller
                 'pickup_location' => $order->delivery->pickup_location,
                 'dropoff_location' => $order->delivery->dropoff_location,
                 'buyer_unboxing_video_url' => $order->delivery->buyer_unboxing_video_url,
+                'rider_access_expires_at' => $order->delivery->rider_access_expires_at?->toISOString(),
+                'rider_access_active' => $order->delivery->rider_access_token_hash
+                    && ! $order->delivery->rider_access_revoked_at
+                    && (! $order->delivery->rider_access_expires_at || $order->delivery->rider_access_expires_at->isFuture()),
+                'events' => $order->delivery->events->sortBy('created_at')->map(fn ($event) => [
+                    'id' => $event->id,
+                    'status' => $event->status,
+                    'actor_type' => $event->actor_type,
+                    'actor_name' => $event->actor?->name,
+                    'proof_url' => $event->proof_url,
+                    'proof_mime' => $event->proof_mime,
+                    'proof_type' => $event->proof_type,
+                    'note' => $event->note,
+                    'metadata' => $event->metadata,
+                    'created_at' => $event->created_at?->toISOString(),
+                ])->values(),
             ] : null,
             'review' => $order->review ? [
                 'id' => $order->review->id,
@@ -523,6 +570,7 @@ class MerchantOrderController extends Controller
         
         $validated = $request->validate([
             'boda_phone' => 'nullable|string',
+            'delivery_person_name' => 'nullable|string|max:120',
             'bus_company' => 'nullable|string',
             'waybill_tracking_number' => 'nullable|string',
             'waybill_photo_url' => $mode === 'intercity' ? 'required|string' : 'nullable|string',
@@ -541,15 +589,37 @@ class MerchantOrderController extends Controller
             $deliveryType = $mode === 'intercity' ? 'intercity_bus' : 'local_boda';
         }
 
+        $status = $deliveryType === 'local_boda' ? 'with_boda' : 'in_transit';
+
         $delivery->fill([
-            'delivery_status' => 'in_transit',
+            'delivery_status' => $status,
             'delivery_type' => $deliveryType,
             'boda_phone' => $validated['boda_phone'] ?? $delivery->boda_phone,
+            'delivery_person_name' => $validated['delivery_person_name'] ?? $delivery->delivery_person_name,
             'bus_company' => $validated['bus_company'] ?? $delivery->bus_company,
             'waybill_tracking_number' => $validated['waybill_tracking_number'] ?? $delivery->waybill_tracking_number,
             'waybill_photo_url' => $validated['waybill_photo_url'] ?? $delivery->waybill_photo_url,
             'buyer_release_pin' => $delivery->buyer_release_pin ?: str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
         ])->save();
+
+        $delivery->events()->create([
+            'order_id' => $order->id,
+            'status' => $status,
+            'actor_type' => 'merchant',
+            'actor_user_id' => $request->user()->id,
+            'proof_url' => $validated['merchant_dispatch_video_url'] ?? null,
+            'proof_mime' => null,
+            'proof_type' => null,
+            'note' => $mode === 'intercity' ? 'Intercity dispatch confirmed.' : 'Local delivery dispatched.',
+            'metadata' => array_filter([
+                'mode' => $mode,
+                'boda_phone' => $delivery->boda_phone,
+                'delivery_person_name' => $delivery->delivery_person_name,
+                'bus_company' => $delivery->bus_company,
+                'waybill_tracking_number' => $delivery->waybill_tracking_number,
+                'waybill_photo_url' => $delivery->waybill_photo_url,
+            ]),
+        ]);
 
         $order->loadMissing(['buyer']);
         if ($order->buyer?->phone_number) {
@@ -577,6 +647,174 @@ class MerchantOrderController extends Controller
         return response()->json(['message' => 'Mzigo umesafirishwa kikamilifu.', 'order' => $order->fresh(['delivery', 'product', 'merchant.locations'])]);
     }
 
+    public function generateRiderAccess(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+        abort_unless($order->requiresPhysicalFulfillment(), 422, 'Rider links are available for physical orders only.');
+        abort_unless($order->delivery, 422, 'Delivery details are not available for this order.');
+        abort_if($order->delivery->delivery_type === 'self_pickup', 422, 'Self-pickup orders do not need a rider link.');
+        abort_unless(in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'], true), 422, 'Order must be paid before sharing a rider link.');
+
+        $validated = $request->validate([
+            'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:72'],
+        ]);
+
+        $token = Str::random(48);
+        $expiresAt = now()->addHours((int) ($validated['expires_in_hours'] ?? 24));
+
+        $order->delivery->update([
+            'buyer_release_pin' => $order->delivery->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+            'rider_access_token_hash' => hash('sha256', $token),
+            'rider_access_expires_at' => $expiresAt,
+            'rider_access_revoked_at' => null,
+        ]);
+
+        return response()->json([
+            'message' => 'Rider link imetengenezwa.',
+            'url' => url("/rider/delivery/{$token}"),
+            'expires_at' => $expiresAt->toISOString(),
+        ]);
+    }
+
+    public function updateDeliveryStatus(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+        abort_unless($order->requiresPhysicalFulfillment(), 422, 'Delivery updates are available for physical orders only.');
+        abort_unless(in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'], true), 422, 'Order must be paid before delivery status can be updated.');
+
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'in:' . implode(',', self::DELIVERY_STATUSES)],
+            'note' => ['nullable', 'string', 'max:1000'],
+            'proof' => ['nullable', 'file', 'mimetypes:image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-matroska', 'max:51200'],
+            'boda_phone' => ['nullable', 'string', 'max:80'],
+            'delivery_person_name' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        abort_if(
+            $order->delivery?->delivery_type === 'self_pickup' && ! in_array($validated['status'], ['ready_for_pickup', 'issue_reported'], true),
+            422,
+            'Self-pickup orders can only be marked ready for pickup or issue reported here.'
+        );
+        if (($validated['status'] ?? null) !== 'issue_reported' && $order->delivery?->delivery_type !== 'self_pickup') {
+            $currentIndex = $this->deliveryStepIndex($order->delivery?->delivery_status, $order->delivery?->delivery_type);
+            $nextIndex = $this->deliveryStepIndex($validated['status'], $order->delivery?->delivery_type);
+            abort_if($nextIndex < $currentIndex || $nextIndex > $currentIndex + 1, 422, 'Delivery status must move in sequence.');
+        }
+
+        $proofUrl = null;
+        $proofMime = null;
+        $proofType = null;
+        if ($request->hasFile('proof')) {
+            $file = $request->file('proof');
+            $path = $file->store('delivery-events', 'public');
+            $proofUrl = Storage::disk('public')->url($path);
+            $proofMime = $file->getClientMimeType();
+            $proofType = str_starts_with((string) $proofMime, 'image/') ? 'photo' : 'video';
+        }
+
+        $delivery = DB::transaction(function () use ($order, $request, $validated, $proofUrl, $proofMime, $proofType) {
+            $delivery = $order->delivery()->firstOrNew(['order_id' => $order->id]);
+            $delivery->fill([
+                'delivery_status' => $validated['status'],
+                'delivery_type' => $delivery->delivery_type ?: 'local_boda',
+                'boda_phone' => $validated['boda_phone'] ?? $delivery->boda_phone,
+                'delivery_person_name' => $validated['delivery_person_name'] ?? $delivery->delivery_person_name,
+                'buyer_release_pin' => $delivery->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+            ])->save();
+
+            $delivery->events()->create([
+                'order_id' => $order->id,
+                'status' => $validated['status'],
+                'actor_type' => 'merchant',
+                'actor_user_id' => $request->user()->id,
+                'proof_url' => $proofUrl,
+                'proof_mime' => $proofMime,
+                'proof_type' => $proofType,
+                'note' => $validated['note'] ?? null,
+                'metadata' => array_filter([
+                    'boda_phone' => $validated['boda_phone'] ?? null,
+                    'delivery_person_name' => $validated['delivery_person_name'] ?? null,
+                ]),
+            ]);
+
+            if ($validated['status'] === 'dispatched' && $order->payment_status === 'awaiting_merchant_confirmation') {
+                $order->update([
+                    'payment_status' => 'escrow_locked',
+                    'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
+                ]);
+            }
+
+            return $delivery->fresh(['events.actor']);
+        });
+        $this->appendDeliveryChatUpdate($order->fresh(['merchant.user', 'buyer', 'delivery']), $validated['status'], $validated['note'] ?? null, $proofUrl);
+
+        return response()->json([
+            'message' => 'Delivery status imehifadhiwa.',
+            'delivery' => [
+                'id' => $delivery->id,
+                'delivery_status' => $delivery->delivery_status,
+                'status' => $delivery->delivery_status,
+                'delivery_type' => $delivery->delivery_type,
+                'type' => $delivery->delivery_type,
+                'boda_phone' => $delivery->boda_phone,
+                'delivery_person_name' => $delivery->delivery_person_name,
+                'events' => $delivery->events->sortBy('created_at')->map(fn ($event) => [
+                    'id' => $event->id,
+                    'status' => $event->status,
+                    'actor_type' => $event->actor_type,
+                    'actor_name' => $event->actor?->name,
+                    'proof_url' => $event->proof_url,
+                    'proof_mime' => $event->proof_mime,
+                    'proof_type' => $event->proof_type,
+                    'note' => $event->note,
+                    'metadata' => $event->metadata,
+                    'created_at' => $event->created_at?->toISOString(),
+                ])->values(),
+            ],
+        ]);
+    }
+
+    private function deliveryStepIndex(?string $status, ?string $type): int
+    {
+        $steps = $type === 'intercity_bus'
+            ? ['with_boda', 'in_transit', 'ready_at_terminal', 'delivered']
+            : ['with_boda', 'in_transit', 'arrived', 'delivered'];
+
+        $index = array_search($status, $steps, true);
+
+        return $index === false ? -1 : (int) $index;
+    }
+
+    private function appendDeliveryChatUpdate(Order $order, string $status, ?string $note = null, ?string $proofUrl = null): void
+    {
+        $senderId = $order->merchant?->user_id;
+        if (! $senderId || ! $order->buyer_id) {
+            return;
+        }
+
+        $message = Message::create([
+            'order_id' => $order->id,
+            'sender_id' => $senderId,
+            'receiver_id' => $order->buyer_id,
+            'type' => 'action',
+            'body' => 'Delivery status updated: ' . str_replace('_', ' ', $status),
+            'media_url' => $proofUrl,
+            'payload' => [
+                'action_type' => 'delivery_status_update',
+                'status' => $status,
+                'note' => $note,
+                'proof_url' => $proofUrl,
+                'actor_type' => 'merchant',
+                'boda_phone' => $order->delivery?->boda_phone,
+                'delivery_person_name' => $order->delivery?->delivery_person_name,
+            ],
+        ]);
+        $message->load('sender:id,name,role');
+        broadcast(new MessageSent($message, $order))->toOthers();
+    }
+
     /**
      * Verify pickup using Customer's PIN.
      * On success: escrow released to merchant wallet, order marked complete.
@@ -602,6 +840,13 @@ class MerchantOrderController extends Controller
 
         DB::transaction(function () use ($order, $merchant, $request, &$chatMessage) {
             $order->delivery->update(['delivery_status' => 'delivered']);
+            $order->delivery->events()->create([
+                'order_id' => $order->id,
+                'status' => 'delivered',
+                'actor_type' => 'merchant',
+                'actor_user_id' => $request->user()->id,
+                'note' => 'Pickup PIN verified.',
+            ]);
 
             app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
             app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
@@ -838,8 +1083,15 @@ class MerchantOrderController extends Controller
             return response()->json(['message' => 'PIN sio sahihi. Mteja hajaidhinisha mzigo.'], 400);
         }
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($order, $merchant) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($order, $merchant, $request) {
             $order->delivery->update(['delivery_status' => 'delivered']);
+            $order->delivery->events()->create([
+                'order_id' => $order->id,
+                'status' => 'delivered',
+                'actor_type' => 'merchant',
+                'actor_user_id' => $request->user()->id,
+                'note' => 'Buyer release PIN verified.',
+            ]);
 
             app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
             app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
@@ -856,8 +1108,13 @@ class MerchantOrderController extends Controller
     public function provideQuote(Request $request, Order $order): JsonResponse
     {
         $user = $request->user();
-        if ($order->merchant_id !== ($user->merchant?->id ?? $user->merchantProfiles()->first()?->id)) {
+        $order->loadMissing(['merchant', 'buyer', 'product', 'delivery']);
+        if (!$order->merchant || !MerchantPermissions::can($user, $order->merchant, 'orders.update')) {
             abort(403, 'Unauthorized.');
+        }
+
+        if ($order->payment_status !== 'pending') {
+            return response()->json(['message' => 'Malipo yameshaanza au yamekamilika. Huwezi kubadilisha gharama ya usafiri.'], 422);
         }
 
         $validated = $request->validate([
@@ -866,6 +1123,8 @@ class MerchantOrderController extends Controller
             'message' => 'nullable|string|max:500',
         ]);
 
+        $previousShippingFee = $order->shipping_fee !== null ? (float) $order->shipping_fee : null;
+        $previousTotalPaid = (float) ($order->total_paid ?? 0);
         $isServiceOrder = $order->product?->isService();
         if ($isServiceOrder && !isset($validated['unit_price']) && isset($validated['shipping_fee'])) {
             $validated['unit_price'] = $validated['shipping_fee'];
@@ -887,6 +1146,7 @@ class MerchantOrderController extends Controller
             'total_paid' => $totalPaid,
             'is_inquiry' => true, // Ensure it's treated as inquiry for the quoting flow
             'inquiry_status' => 'quoted',
+            'merchant_confirmed_at' => now(),
             'agreement_snapshot' => [
                 'unit_price' => $unitPrice,
                 'shipping_fee' => $shippingFee,
@@ -903,15 +1163,31 @@ class MerchantOrderController extends Controller
             'agreed_at' => null,
         ]);
 
-        // Inject system message into chat
-        $order->messages()->create([
+        $customMessage = trim((string) ($validated['message'] ?? ''));
+        $shippingChanged = !$isServiceOrder && $previousShippingFee !== null && abs($previousShippingFee - $shippingFee) >= 0.01;
+        $body = $customMessage !== '' ? $customMessage : ($isServiceOrder
+            ? "Nimetuma offer ya huduma: TZS " . number_format($totalPaid) . ". Tafadhali fanya malipo kukamilisha booking."
+            : ($shippingChanged
+                ? "Nimesasisha gharama ya usafiri kutoka TZS " . number_format($previousShippingFee) . " kwenda TZS " . number_format($shippingFee) . ". Jumla mpya ni TZS " . number_format($totalPaid) . "."
+                : "Nimesasisha bei. Bei ya bidhaa: TZS " . number_format($unitPrice) . ", Gharama ya usafiri: TZS " . number_format($shippingFee) . ". Tafadhali fanya malipo kukamilisha agizo."));
+
+        $message = $order->messages()->create([
             'sender_id' => $user->id,
             'receiver_id' => $order->buyer_id,
-            'body' => $validated['message'] ?: ($isServiceOrder
-                ? "Nimetuma offer ya huduma: TZS " . number_format($totalPaid) . ". Tafadhali fanya malipo kukamilisha booking."
-                : "Nimesasisha bei. Bei ya bidhaa: TZS " . number_format($unitPrice) . ", Gharama ya usafiri: TZS " . number_format($shippingFee) . ". Tafadhali fanya malipo kukamilisha agizo."),
-            'is_system' => false, // Send as a real message from merchant
+            'body' => $body,
+            'type' => 'system',
+            'payload' => [
+                'action_type' => $shippingChanged ? 'shipping_fee_updated' : 'shipping_quote_sent',
+                'acting_as' => 'merchant',
+                'previous_shipping_fee' => $previousShippingFee,
+                'shipping_fee' => $shippingFee,
+                'previous_total_paid' => $previousTotalPaid,
+                'total_paid' => $totalPaid,
+            ],
+            'is_system' => true,
         ]);
+        $message->load('sender:id,name,role');
+        broadcast(new MessageSent($message, $order))->toOthers();
 
         if ($order->buyer?->phone_number) {
             $this->smsService->sendPhysicalQuoteReady(
@@ -923,7 +1199,70 @@ class MerchantOrderController extends Controller
         }
 
         return response()->json([
-            'message' => 'Quote sent to the buyer.',
+            'message' => $shippingChanged ? 'Shipping amount updated.' : 'Quote sent to the buyer.',
+            'order' => $order->fresh(['buyer', 'product', 'variant', 'delivery']),
+        ]);
+    }
+
+    public function confirmAvailability(Request $request, Order $order): JsonResponse
+    {
+        $user = $request->user();
+        $order->loadMissing(['merchant', 'buyer', 'product', 'delivery']);
+        if (!$order->merchant || !MerchantPermissions::can($user, $order->merchant, 'orders.update')) {
+            abort(403, 'Unauthorized.');
+        }
+
+        if (!$order->is_inquiry || $order->payment_status !== 'pending') {
+            return response()->json(['message' => 'Order hii haiwezi kuthibitishwa kwa sasa.'], 422);
+        }
+
+        $deliveryType = $order->delivery?->delivery_type;
+        $hasShippingTerms = $order->product?->isService()
+            || $deliveryType === 'self_pickup'
+            || $order->shipping_fee !== null
+            || $order->delivery?->shipping_zone_id;
+
+        if (!$hasShippingTerms) {
+            return response()->json(['message' => 'Weka gharama ya usafiri kwanza kabla ya kuthibitisha order.'], 422);
+        }
+
+        $order->update([
+            'inquiry_status' => 'quoted',
+            'merchant_confirmed_at' => now(),
+            'agreement_snapshot' => array_filter([
+                ...(is_array($order->agreement_snapshot) ? $order->agreement_snapshot : []),
+                'unit_price' => (float) $order->unit_price,
+                'shipping_fee' => $order->shipping_fee !== null ? (float) $order->shipping_fee : null,
+                'total_paid' => (float) $order->total_paid,
+                'delivery_type' => $deliveryType,
+                'physical_address' => $order->delivery?->physical_address,
+                'offered_by' => 'merchant',
+                'offered_at' => now()->toISOString(),
+                'merchant_confirmed_at' => now()->toISOString(),
+            ], fn ($value) => $value !== null),
+            'agreed_at' => null,
+        ]);
+
+        $message = $order->messages()->create([
+            'sender_id' => $user->id,
+            'receiver_id' => $order->buyer_id,
+            'body' => 'Nimethibitisha kuwa order ipo tayari. Unaweza kulipia sasa.',
+            'is_system' => false,
+        ]);
+        $message->load('sender:id,name,role');
+        broadcast(new MessageSent($message, $order))->toOthers();
+
+        if ($order->buyer?->phone_number) {
+            $this->smsService->sendPhysicalQuoteReady(
+                $order->buyer->phone_number,
+                (string) ($order->public_id ?: $order->id),
+                (float) $order->total_paid,
+                $order->buyer_id
+            );
+        }
+
+        return response()->json([
+            'message' => 'Order imethibitishwa. Mteja anaweza kulipia sasa.',
             'order' => $order->fresh(['buyer', 'product', 'variant', 'delivery']),
         ]);
     }

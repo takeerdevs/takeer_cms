@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import ShopLocationsModal from '@/Components/ShopLocationsModal';
 import AddressPickerModal from '@/Components/AddressPickerModal';
+import { DeliveryFlowTimeline, DeliveryDirectionsButton, deliveryCurrentIndex, deliveryStatusText, deliveryStepsFor } from '@/Components/DeliveryFlowTimeline';
 import { orderPackageCount, orderQuantityLabel, orderUnitPriceLabel } from '@/lib/productUnits';
 
 const MediaDisplay = ({ url, className, mode = 'cover' }) => {
@@ -52,6 +53,71 @@ const sanitizeChatBody = (body) => String(body || '')
     .replace(/Pickup PIN ya mteja ni:\s*\d+\.?\s*/gi, '')
     .replace(/Mteja atalipa basi atakapokuja na PIN hii kukuchukulia bidhaa\.?/gi, 'Mteja atalipia mtandaoni; baada ya malipo, ingiza PIN atakayokuonyesha kwenye order chat ili kuthibitisha pickup.')
     .replace(/Mteja akija tumie POS kuingiza pin atakayokutajia na tutaangalia kama inafanana na hii automatic, huhitaji kuikariri\.?/gi, 'Mteja akifika, ingiza PIN atakayokuonyesha kwenye order chat au order details ili kuthibitisha pickup.');
+
+const roleAwareSystemBody = (message, role, order) => {
+    const payloadBody = role === 'buyer' ? message?.payload?.buyer_body : message?.payload?.merchant_body;
+    if (payloadBody) return payloadBody;
+
+    const body = String(message?.body || '');
+    if (role !== 'buyer') return body;
+
+    if (body.includes('mapendekezo ya usafirishaji') || body.includes('thibitisha gharama ya usafiri kwa mteja')) {
+        const title = order?.product?.title || order?.display_title || 'order yako';
+        return `Habari, order yako imeanzishwa kwa ajili ya: ${title}.\nTumeangalia eneo lako na kupata makadirio ya usafiri. Subiri muuzaji ahakiki gharama na kuthibitisha kuwa order ipo kabla ya kulipa.`;
+    }
+
+    if (body.includes('Mteja amechagua KUCHUKUA DUKANI')) {
+        const title = order?.product?.title || order?.display_title || 'order yako';
+        return `Habari, order yako imeanzishwa kwa ajili ya: ${title}.\nUmechagua KUCHUKUA DUKANI. Subiri muuzaji athibitishe kuwa order ipo; baada ya hapo utaweza kulipia.`;
+    }
+
+    return body;
+};
+
+const deliveryEventFromMessage = (message) => {
+    if (message?.type !== 'action' || message?.payload?.action_type !== 'delivery_status_update') {
+        return null;
+    }
+
+    return {
+        id: message.payload?.delivery_event_id || `chat-${message.id}`,
+        status: message.payload?.status,
+        note: message.payload?.note,
+        proof_url: message.payload?.proof_url || message.media_url,
+        proof_type: message.payload?.proof_type,
+        metadata: message.payload?.metadata || {},
+        actor_type: message.payload?.actor_type,
+        created_at: message.created_at,
+    };
+};
+
+const mergeDeliveryMessageIntoOrder = (order, message) => {
+    const event = deliveryEventFromMessage(message);
+    if (!event?.status || !order?.delivery) return order;
+
+    const events = Array.isArray(order.delivery.events) ? order.delivery.events : [];
+    const signature = `${event.status}|${event.created_at || ''}|${event.note || ''}|${event.proof_url || ''}`;
+    const exists = events.some((existing) => {
+        const existingSignature = `${existing.status}|${existing.created_at || ''}|${existing.note || ''}|${existing.proof_url || ''}`;
+        return String(existing.id) === String(event.id) || existingSignature === signature;
+    });
+
+    if (exists) return order;
+
+    const currentIndex = deliveryCurrentIndex(order.delivery);
+    const eventIndex = deliveryStepsFor(order.delivery.delivery_type || order.delivery.type).findIndex((step) => step.value === event.status);
+    const shouldAdvanceStatus = eventIndex >= 0 && eventIndex >= currentIndex;
+
+    return {
+        ...order,
+        delivery: {
+            ...order.delivery,
+            status: shouldAdvanceStatus ? event.status : order.delivery.status,
+            delivery_status: shouldAdvanceStatus ? event.status : order.delivery.delivery_status,
+            events: [...events, event],
+        },
+    };
+};
 
 const ChatRoleAvatar = ({ role, className }) => {
     const isMerchant = role === 'merchant';
@@ -203,6 +269,114 @@ const dealItemQuantityState = (item = {}, order = null) => {
     };
 };
 
+const flattenOfferingGroupLines = (lines = []) => {
+    if (!Array.isArray(lines)) return [];
+
+    return lines.flatMap((line) => [
+        line,
+        ...flattenOfferingGroupLines(line.child_lines || []),
+    ]);
+};
+
+const offeringGroupOrderItems = (order) => {
+    const lines = flattenOfferingGroupLines(order?.offering_group_selection?.lines || []);
+
+    return lines.map((line, index) => {
+        const quantity = Number(line.quantity || 1);
+        const addOns = Array.isArray(line.selected_add_ons) ? line.selected_add_ons : [];
+
+        return {
+            key: `offering-${line.group_item_id || line.item_id || index}`,
+            id: line.item_id,
+            variant_id: line.selected_variant_id,
+            title: line.title || 'Offering item',
+            image: line.image_url,
+            quantity,
+            quantityLabel: `${quantity.toLocaleString()} x ${line.title || 'Offering item'}`,
+            price: Number(line.line_total || 0),
+            unit_price: Number(line.unit_price || 0),
+            section: line.section || 'Main',
+            role: line.role || 'optional',
+            addOns,
+            addOnsTotal: Number(line.add_ons_unit_total || 0) * quantity,
+            type: line.product_type || line.item_type,
+            product_type: line.product_type || line.item_type,
+            isMain: index === 0,
+            isExtra: index > 0,
+            isOfferingLine: true,
+        };
+    });
+};
+
+function OrderSelectionSummaryCard({ items = [], subtotal = 0, shipping = 0, discount = 0, total = 0, title = 'Your selection' }) {
+    return (
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-100 bg-orange-50 text-orange-700">
+                    <ShoppingBag className="h-6 w-6" />
+                </div>
+                <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">{title}</p>
+                    <p className="text-lg font-black leading-tight text-slate-950">
+                        {items.length} item{items.length === 1 ? '' : 's'} selected
+                    </p>
+                </div>
+            </div>
+
+            <div className="mt-5 space-y-2">
+                {items.map((item) => (
+                    <div key={item.key} className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="break-words text-base font-black leading-tight text-slate-700">
+                                    {Number(item.quantity || 1).toLocaleString()} x {item.title || 'Order item'}
+                                </p>
+                                {Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                    <p className="mt-1 text-sm font-bold leading-snug text-slate-500">
+                                        Add-ons: {item.addOns.map((addOn) => addOn.name).join(', ')}
+                                    </p>
+                                )}
+                            </div>
+                            <p className="shrink-0 text-base font-black text-slate-950">
+                                TZS {Number(item.price || 0).toLocaleString()}
+                            </p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-black text-slate-500">Subtotal</span>
+                    <span className="text-base font-black text-slate-950">TZS {Number(subtotal || 0).toLocaleString()}</span>
+                </div>
+                {Number(shipping) > 0 && (
+                    <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-2 text-sm font-black text-slate-500">
+                            <Truck className="h-4 w-4 text-emerald-500" />
+                            Usafirishaji
+                        </span>
+                        <span className="text-base font-black text-emerald-600">+ TZS {Number(shipping).toLocaleString()}</span>
+                    </div>
+                )}
+                {Number(discount) > 0 && (
+                    <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-2 text-sm font-black text-slate-500">
+                            <Tag className="h-4 w-4 text-amber-500" />
+                            Punguzo
+                        </span>
+                        <span className="text-base font-black text-amber-600">- TZS {Number(discount).toLocaleString()}</span>
+                    </div>
+                )}
+                <div className="flex items-end justify-between gap-3 border-t border-slate-100 pt-4">
+                    <span className="text-sm font-black text-slate-500">Total</span>
+                    <span className="text-3xl font-black tracking-tight text-slate-950">TZS {Number(total || 0).toLocaleString()}</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
     const R = 6371; // km
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -265,6 +439,7 @@ const statusCopy = (order) => {
     if (order.payment_status === 'disputed') return { label: 'Mgogoro', tone: 'bg-red-50 text-red-700 border-red-100' };
     if (order.payment_status === 'escrow_locked') return { label: 'Escrow', tone: 'bg-indigo-50 text-indigo-700 border-indigo-100' };
     if (order.payment_status === 'awaiting_merchant_confirmation') return { label: 'Imelipwa', tone: 'bg-sky-50 text-sky-700 border-sky-100' };
+    if (order.is_inquiry && order.inquiry_status === 'quoted' && !(order.is_merchant_confirmed || order.merchant_confirmed_at)) return { label: 'Awaiting Approval', tone: 'bg-amber-50 text-amber-700 border-amber-100' };
     if (order.is_inquiry && order.inquiry_status === 'quoted') return { label: 'Offer Ready', tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
     if (order.is_inquiry) return { label: 'Bargaining', tone: 'bg-amber-50 text-amber-700 border-amber-100' };
     return { label: String(order.payment_status || 'Inaendelea').replaceAll('_', ' '), tone: 'bg-slate-100 text-slate-600 border-slate-200' };
@@ -399,6 +574,9 @@ export default function Chat({
 
         return closest;
     }, [order?.merchant?.locations, order?.delivery?.latitude, order?.delivery?.longitude]);
+    const deliveryRouteUrl = closestLocation && order?.delivery?.latitude && order?.delivery?.longitude
+        ? `https://www.google.com/maps/dir/?api=1&origin=${closestLocation.latitude},${closestLocation.longitude}&destination=${order.delivery.latitude},${order.delivery.longitude}&travelmode=driving`
+        : null;
 
     useEffect(() => {
         if (activeAction === 'order_delivery' && order?.delivery) {
@@ -448,6 +626,7 @@ export default function Chat({
     const [paymentMethod, setPaymentMethod] = useState('mobile'); // 'mobile', 'card'
     const [paymentPhone, setPaymentPhone] = useState(initialOrder?.account_phone || auth.user?.phone_number || '');
     const [isPaying, setIsPaying] = useState(false);
+    const [confirmingAvailability, setConfirmingAvailability] = useState(false);
 
     // Merchant Shipping & Dispatch State
     const [quoteSubmitting, setQuoteSubmitting] = useState(false);
@@ -456,6 +635,7 @@ export default function Chat({
     const [dispatchVideo, setDispatchVideo] = useState(null);
     const [transportReceipt, setTransportReceipt] = useState(null);
     const [bodaPhone, setBodaPhone] = useState('');
+    const [deliveryPersonName, setDeliveryPersonName] = useState('');
     const [busCompany, setBusCompany] = useState('');
     const [waybillTrackingNumber, setWaybillTrackingNumber] = useState('');
     const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
@@ -492,6 +672,7 @@ export default function Chat({
             if (e.message.sender_id !== auth.user.id) {
                 setMessages(prev => [...prev, e.message]);
             }
+            setOrder(prev => mergeDeliveryMessageIntoOrder(prev, e.message));
         });
 
         // Optional typing indicators:
@@ -499,6 +680,10 @@ export default function Chat({
 
         return () => window.Echo.leave(`chat.order.${orderId}`);
     }, [orderId, auth.user.id]);
+
+    useEffect(() => {
+        setOrder(prev => messages.reduce((nextOrder, message) => mergeDeliveryMessageIntoOrder(nextOrder, message), prev));
+    }, [messages]);
 
     useEffect(() => {
         if (order?.delivery?.delivery_type) {
@@ -549,6 +734,42 @@ export default function Chat({
             toast.error(error.message);
         } finally {
             setQuoteSubmitting(false);
+        }
+    };
+
+    const confirmAvailability = async () => {
+        if (confirmingAvailability) return;
+
+        setConfirmingAvailability(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            const res = await fetch(`/api/merchant/orders/${orderId}/confirm-availability`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                }
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kuthibitisha order.');
+
+            toast.success(data.message || 'Order imethibitishwa.');
+            if (data.order) setOrder(data.order);
+            setMessages(prev => [...prev, {
+                id: Date.now(),
+                sender_id: auth.user.id,
+                type: 'text',
+                body: 'Nimethibitisha kuwa order ipo tayari. Unaweza kulipia sasa.',
+                payload: { acting_as: actingAs },
+                sender: { role: auth.user.role, name: auth.user.name },
+                created_at: new Date().toISOString()
+            }]);
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setConfirmingAvailability(false);
         }
     };
 
@@ -616,6 +837,9 @@ export default function Chat({
             } else if (bodaPhone.trim()) {
                 payload.boda_phone = bodaPhone.trim();
             }
+            if (deliveryPersonName.trim()) {
+                payload.delivery_person_name = deliveryPersonName.trim();
+            }
 
             const res = await fetch(`/api/merchant/${merchantUsername}/dispatch/${orderId}/${dispatchMode}`, {
                 method: 'POST',
@@ -633,6 +857,7 @@ export default function Chat({
             toast.success('Dispatch evidence imehifadhiwa.');
             setDispatchVideo(null);
             setTransportReceipt(null);
+            setDeliveryPersonName('');
             if (data.order) setOrder(data.order);
 
             // Send formatted action to chat
@@ -642,6 +867,7 @@ export default function Chat({
                 bus_company: dispatchMode === 'intercity' ? busCompany.trim() : null,
                 waybill_tracking_number: dispatchMode === 'intercity' ? waybillTrackingNumber.trim() : null,
                 boda_phone: dispatchMode === 'local' ? bodaPhone.trim() : null,
+                delivery_person_name: deliveryPersonName.trim() || null,
                 mediaUrl: videoUrl,
                 receiptUrl: receiptUrl
             });
@@ -816,6 +1042,7 @@ export default function Chat({
             toast.success('Asante kwa review yako!');
             setReviewComment('');
             setMessages(prev => [...prev, data.message]);
+            if (data.order) setOrder(data.order);
         } catch (error) {
             toast.error(error.message);
         } finally {
@@ -1056,12 +1283,16 @@ export default function Chat({
     const visibleMessages = [...messages].reverse().reduce((acc, msg) => {
         const isPaymentNotice = msg.type === 'action'
             && msg.payload?.action_type === 'initiate_payment';
+        const isDeliveryTimelineNotice = msg.type === 'action'
+            && msg.payload?.action_type === 'delivery_status_update';
+        const isReviewNotice = msg.type === 'action'
+            && msg.payload?.action_type === 'review';
         const shouldHideCompletedMerchantPaymentNotice = isPaymentNotice
             && actingAs === 'merchant'
             && order?.payment_status === 'resolved_merchant_paid';
         const key = isPaymentNotice ? 'payment-initiation' : null;
 
-        if (shouldHideCompletedMerchantPaymentNotice) {
+        if (shouldHideCompletedMerchantPaymentNotice || isDeliveryTimelineNotice || isReviewNotice) {
             return acc;
         }
 
@@ -1076,6 +1307,21 @@ export default function Chat({
         acc.items.push(msg);
         return acc;
     }, { items: [], seen: new Set() }).items.reverse();
+
+    const reviewMessage = [...messages].reverse().find((msg) => msg.type === 'action' && msg.payload?.action_type === 'review');
+    const completedReview = reviewMessage
+        ? {
+            rating: Number(reviewMessage.payload?.stars || 5),
+            comment: reviewMessage.payload?.comment || '',
+            created_at: reviewMessage.created_at,
+        }
+        : order?.review
+            ? {
+                rating: Number(order.review.rating || 5),
+                comment: order.review.comment || '',
+                created_at: order.review.created_at,
+            }
+            : null;
 
     const groupedMessages = visibleMessages.reduce((acc, msg) => {
         const dateObj = new Date(msg.created_at);
@@ -1098,8 +1344,10 @@ export default function Chat({
 
     const currentStatus = statusCopy(order);
     const isServiceOrder = order?.product?.type === 'service';
+    const merchantConfirmed = Boolean(order?.is_merchant_confirmed || order?.merchant_confirmed_at);
     const canBuyerPay = actingAs === 'buyer'
         && order?.payment_status === 'pending'
+        && (!order?.is_inquiry || merchantConfirmed)
         && (order?.is_inquiry
             ? order?.inquiry_status === 'quoted' && (
                 isServiceOrder
@@ -1118,13 +1366,19 @@ export default function Chat({
         && order?.payment_status === 'pending'
         && order?.inquiry_status === 'pending'
         && order?.delivery?.delivery_type !== 'self_pickup';
+    const canMerchantConfirm = actingAs === 'merchant'
+        && order?.is_inquiry
+        && order?.payment_status === 'pending'
+        && order?.inquiry_status === 'quoted'
+        && !merchantConfirmed;
     const agreedAt = order?.agreed_at || order?.agreement_snapshot?.agreed_at || order?.agreement_snapshot?.offered_at;
     const orderImageUrl = order?.variant?.swatch_image_url
         || order?.variant_snapshot?.swatch_image_url
         || order?.product?.image_url
         || order?.product?.url;
     const expiryLabel = order?.payment_status === 'pending' ? formatTimeLeft(order?.expires_at, nowMs) : '';
-    const orderItems = [
+    const offeringItems = offeringGroupOrderItems(order);
+    const orderItems = offeringItems.length > 0 ? offeringItems : [
         {
             key: `main-${order?.product?.id || order?.product_id || 'item'}`,
             id: order?.product_id,
@@ -1169,6 +1423,18 @@ export default function Chat({
     ].filter(Boolean);
     const hasPhysicalOrderItems = orderItems.some((item) => isPhysicalDealItem(item, order));
     const isSelfPickupOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'self_pickup';
+    const deliveryStatus = order?.delivery?.delivery_status || order?.delivery?.status;
+    const isDeliveryCompleted = order?.payment_status === 'resolved_merchant_paid'
+        || ['delivered', 'customer_confirmed'].includes(deliveryStatus);
+    const deliveryStageStatuses = ['dispatched', 'with_boda', 'in_transit', 'arrived', 'ready_at_terminal', 'delivered'];
+    const isDeliveryStageOrder = Boolean(
+        order?.delivery
+        && !isSelfPickupOrder
+        && (
+            deliveryStageStatuses.includes(order.delivery.delivery_status || order.delivery.status)
+            || ['escrow_locked', 'shipped'].includes(order?.payment_status)
+        )
+    );
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -1186,7 +1452,7 @@ export default function Chat({
         <AppLayout>
             <Head title={`Chat Oda #${publicId?.substring(0, 8)} | Takeer`} />
 
-            <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
+            <div className="relative flex h-[calc(100vh-64px)] min-h-0 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
                 {/* Fixed Order Header */}
                 <div className="sticky top-0 z-30 px-4 py-3 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-brand-100 dark:border-brand-900/50 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500 shrink-0">
                     <div className="max-w-3xl mx-auto flex items-center justify-between">
@@ -1239,7 +1505,7 @@ export default function Chat({
                         >
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Deal</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Oda</p>
                                     <span className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${currentStatus.tone}`}>
                                         {currentStatus.label}
                                     </span>
@@ -1252,8 +1518,8 @@ export default function Chat({
                                 </p>
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
-                                <span className="hidden rounded-xl bg-brand-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-brand-700 sm:inline-flex">
-                                    {isDealExpanded ? 'Hide details' : 'Show details'}
+                                <span className="inline-flex rounded-xl bg-brand-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-brand-700">
+                                    {isDealExpanded ? 'Ficha' : 'Ona Bidhaa'}
                                 </span>
                                 <ChevronDown className={cn("h-5 w-5 text-slate-400 transition-transform duration-300", isDealExpanded && "rotate-180")} />
                             </div>
@@ -1268,117 +1534,23 @@ export default function Chat({
                         >
                             <div className="overflow-hidden">
                                 <div className="p-3">
-                                <div className="grid gap-2">
-                                    {orderItems.map((item) => {
-                                        const meta = orderItemMeta(item, order);
-                                        const Icon = meta.Icon;
-                                        const isPhysicalItem = isPhysicalDealItem(item, order);
-                                        const quantityState = dealItemQuantityState(item, order);
-                                        const canAdjustPhysicalQuantity = isPhysicalItem && actingAs === 'buyer' && canCancelBeforePayment;
-                                        const quantityNumber = item.isMain ? quantityState.quantityValue : Number(item.quantity || 1);
-                                        return (
-                                            <div key={item.key} className="flex min-w-0 items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-2 dark:border-slate-800 dark:bg-slate-950/50">
-                                                <div className="flex shrink-0 flex-col items-center gap-1.5">
-                                                    <div className="h-12 w-12 overflow-hidden rounded-xl bg-white text-brand-700 border border-slate-100 flex items-center justify-center dark:bg-slate-900 dark:border-slate-800">
-                                                        {item.image ? (
-                                                            <img src={item.image} alt={item.title} className="h-full w-full object-cover" />
-                                                        ) : (
-                                                            <Icon className="h-5 w-5" />
-                                                        )}
-                                                    </div>
-                                                    {canAdjustPhysicalQuantity && (
-                                                        <div className="inline-flex h-8 min-w-[5.75rem] items-center justify-center overflow-hidden rounded-full border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if (item.isMain) {
-                                                                        if (quantityState.canDecrease) {
-                                                                            submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: quantityState.decreaseQuantity, product_title: item.title, title: `Punguza ${item.title}` });
-                                                                        }
-                                                                    } else if (Number(item.quantity || 1) > 1) {
-                                                                        submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: Number(item.quantity || 1) - 1, product_title: item.title, title: `Punguza ${item.title}` });
-                                                                    } else {
-                                                                        submitAction('remove_item', { id: item.id, variant_id: item.variant_id, product_title: item.title, title: `Ondoa ${item.title}` });
-                                                                    }
-                                                                }}
-                                                                disabled={item.isMain && !quantityState.canDecrease}
-                                                                className="flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:bg-slate-50 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-30"
-                                                                aria-label="Decrease quantity"
-                                                            >
-                                                                <Minus className="h-3.5 w-3.5" />
-                                                            </button>
-                                                            <span className="min-w-7 text-center text-xs font-black text-brand-900 dark:text-brand-100">
-                                                                {Number(quantityNumber).toLocaleString()}
-                                                            </span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.isMain ? quantityState.increaseQuantity : Number(item.quantity || 1) + 1, product_title: item.title, title: `Ongeza ${item.title}` })}
-                                                                className="flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:bg-slate-50 hover:text-brand-600"
-                                                                aria-label="Increase quantity"
-                                                            >
-                                                                <Plus className="h-3.5 w-3.5" />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="break-words text-sm font-black leading-snug text-slate-900 dark:text-slate-100">
-                                                        {item.title}
-                                                    </p>
-                                                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500">
-                                                        {isPhysicalItem && <span>{item.quantityLabel}</span>}
-                                                        <span>TZS {item.price.toLocaleString()}</span>
-                                                    </div>
-                                                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                        <div className={cn("inline-flex max-w-full items-start gap-1.5 rounded-xl border px-2 py-1 text-[10px] font-bold", meta.tone)}>
-                                                            <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                                            <span><span className="font-black">{meta.label}:</span> {meta.detail}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                    <OrderSelectionSummaryCard
+                                        items={orderItems}
+                                        subtotal={itemsSubtotal}
+                                        shipping={shippingTotal}
+                                        discount={discountTotal}
+                                        total={dealTotal}
+                                    />
 
-                                <div className={cn("mt-3 grid gap-2", discountTotal > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
-                                    <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Bidhaa</p>
-                                        <p className="mt-0.5 truncate text-xs font-black text-slate-800 dark:text-slate-100">
-                                            {itemsSubtotal.toLocaleString()}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Usafiri</p>
-                                        <p className="mt-0.5 truncate text-xs font-black text-slate-800 dark:text-slate-100">
-                                            {order?.shipping_fee === null || order?.shipping_fee === undefined ? 'TBD' : shippingTotal.toLocaleString()}
-                                        </p>
-                                    </div>
-                                    {discountTotal > 0 && (
-                                        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Punguzo</p>
-                                            <p className="mt-0.5 truncate text-xs font-black">
-                                                - {discountTotal.toLocaleString()}
-                                            </p>
-                                        </div>
-                                    )}
-                                    <div className="rounded-xl bg-brand-50 px-3 py-2 text-brand-800 border border-brand-100">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-brand-500">Total</p>
-                                        <p className="mt-0.5 truncate text-xs font-black">
-                                            {dealTotal.toLocaleString()}
-                                        </p>
+                                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500">
+                                        <span>{deliveryCopy(order)}</span>
+                                        {agreedAt && <span>{new Date(agreedAt).toLocaleDateString()}</span>}
                                     </div>
                                 </div>
-
-                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500">
-                                    <span>{deliveryCopy(order)}</span>
-                                    {agreedAt && <span>{new Date(agreedAt).toLocaleDateString()}</span>}
-                                </div>
-                            </div>
                             </div>
                         </div>
 
-                        {(canBuyerPay || canMerchantQuote || canCancelBeforePayment) && (
+                        {(canBuyerPay || canMerchantQuote || canMerchantConfirm || canCancelBeforePayment) && (
                             <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60">
                                 {canBuyerPay && (
                                     <Button
@@ -1399,6 +1571,16 @@ export default function Chat({
                                     >
                                         <Save className="mr-1.5 h-3.5 w-3.5" />
                                         Send Offer
+                                    </Button>
+                                )}
+                                {canMerchantConfirm && (
+                                    <Button
+                                        onClick={confirmAvailability}
+                                        disabled={confirmingAvailability}
+                                        className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                    >
+                                        {confirmingAvailability ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                                        Confirm Available
                                     </Button>
                                 )}
                                 {canCancelBeforePayment && (
@@ -1428,7 +1610,7 @@ export default function Chat({
                 </div>
 
                 {/* Chat History */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-8 scroll-smooth">
+                <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-8 scroll-smooth">
                     {messages.length === 0 && (
                         <div className="h-full flex flex-col items-center justify-center text-center px-6 opacity-60">
                             <ShieldCheck className="h-12 w-12 text-muted-foreground mb-3" />
@@ -1465,7 +1647,7 @@ export default function Chat({
                                         return 'Mteja';
                                     };
                                     const renderedName = getSenderName();
-                                    const displayedBody = sanitizeChatBody(msg.body);
+                                    const displayedBody = sanitizeChatBody(isSystem ? roleAwareSystemBody(msg, actingAs, order) : msg.body);
 
                                     if (isSystem) {
                                         return (
@@ -1870,8 +2052,10 @@ export default function Chat({
                                                                                         </>
                                                                                     ) : (
                                                                                         <div className="col-span-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                                                                                            <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Boda Phone</span>
-                                                                                            <span className="font-bold text-slate-700 dark:text-slate-300">{msg.payload?.boda_phone || 'N/A'}</span>
+                                                                                            <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Delivery Contact</span>
+                                                                                            <span className="font-bold text-slate-700 dark:text-slate-300">
+                                                                                                {[msg.payload?.delivery_person_name, msg.payload?.boda_phone].filter(Boolean).join(' · ') || 'N/A'}
+                                                                                            </span>
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
@@ -1880,7 +2064,7 @@ export default function Chat({
                                                                                     <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
                                                                                         {msg.payload?.mediaUrl || msg.media_url ? (
                                                                                             <div className="space-y-1">
-                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">Packing Video</span>
+                                                                                                <span className="block text-[9px] font-black uppercase text-slate-400 tracking-widest text-center">Packing Proof</span>
                                                                                                 <MediaDisplay url={msg.payload?.mediaUrl || msg.media_url} className="aspect-[4/3] rounded-xl" />
                                                                                             </div>
                                                                                         ) : null}
@@ -1897,6 +2081,47 @@ export default function Chat({
                                                                             <p className="text-[10px] font-bold text-slate-400 px-1 uppercase tracking-tight flex items-center gap-2 italic">
                                                                                 <Info className="h-3 w-3" /> Ushahidi wa upakiaji na waybill umehifadhiwa.
                                                                             </p>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {actionType === 'delivery_status_update' && (
+                                                                        <div className="space-y-3 w-full">
+                                                                            <div className="rounded-3xl border border-sky-100 bg-sky-50 p-4">
+                                                                                <div className="flex items-center gap-3">
+                                                                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-600 text-white">
+                                                                                        <Truck className="h-5 w-5" />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Delivery update</p>
+                                                                                        <h4 className="text-base font-black text-sky-950">{deliveryStatusText(msg.payload?.status)}</h4>
+                                                                                    </div>
+                                                                                </div>
+                                                                                {msg.payload?.note && (
+                                                                                    <p className="mt-3 rounded-2xl bg-white/80 p-3 text-sm font-semibold text-slate-700">{msg.payload.note}</p>
+                                                                                )}
+                                                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                                                    {(msg.payload?.proof_url || msg.media_url) && (
+                                                                                        <a href={msg.payload?.proof_url || msg.media_url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-[10px] font-black uppercase tracking-widest text-sky-700 underline">
+                                                                                            Proof added
+                                                                                        </a>
+                                                                                    )}
+                                                                                    {msg.payload?.route_url && (
+                                                                                        <a href={msg.payload.route_url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-xl bg-sky-700 px-3 text-[10px] font-black uppercase tracking-widest text-white">
+                                                                                            Directions
+                                                                                        </a>
+                                                                                    )}
+                                                                                    {msg.payload?.boda_phone && (
+                                                                                        <a href={`tel:${msg.payload.boda_phone}`} className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-[10px] font-black uppercase tracking-widest text-sky-700">
+                                                                                            Delivery phone
+                                                                                        </a>
+                                                                                    )}
+                                                                                    {msg.payload?.delivery_person_name && (
+                                                                                        <span className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-[10px] font-black uppercase tracking-widest text-sky-700">
+                                                                                            {msg.payload.delivery_person_name}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     )}
 
@@ -1967,255 +2192,357 @@ export default function Chat({
                             </div>
                         ))}
                     </div>
-                    <div ref={bottomRef} className="h-4" />
-                </div>
 
-                {/* Payment Action Button */}
-                {actingAs === 'buyer' && order?.payment_status === 'pending' && !canBuyerPay && (
-                    <div className="px-4 pb-2 animate-in slide-in-from-bottom-4 duration-500">
-                        <div className="p-4 rounded-[2rem] bg-amber-50/50 border border-amber-100 flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
-                                <Clock className="h-5 w-5" />
+                    {/* Payment Action Button */}
+                    {actingAs === 'buyer' && order?.payment_status === 'pending' && !canBuyerPay && (
+                        <div className="px-4 pb-2 animate-in slide-in-from-bottom-4 duration-500">
+                            <div className="p-4 rounded-[2rem] bg-amber-50/50 border border-amber-100 flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                                    <Clock className="h-5 w-5" />
+                                </div>
+                                <p className="text-[10px] font-bold text-amber-900 uppercase leading-relaxed">
+                                    {order?.is_inquiry && order?.inquiry_status === 'quoted' && !merchantConfirmed
+                                        ? 'Subiri muuzaji athibitishe oda kabla ya kulipia.'
+                                        : 'Subiri muuzaji aweke gharama ya usafiri au chagua pickup ili uweze kulipia.'}
+                                </p>
                             </div>
-                            <p className="text-[10px] font-bold text-amber-900 uppercase leading-relaxed">
-                                Subiri muuzaji aweke gharama ya usafiri au chagua pickup ili uweze kulipia.
-                            </p>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* Buyer Action Panels */}
-                {actingAs === 'buyer' && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) && (
-                    <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
-                        {['escrow_locked', 'shipped'].includes(order?.payment_status) && (
-                            <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <ShieldCheck className="h-5 w-5 text-indigo-600" />
-                                    <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Thibitisha Mzigo</h4>
-                                </div>
-                                <p className="text-xs text-indigo-800/80 mb-3 font-medium">Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.</p>
-                                <div className="flex gap-2">
-                                    <Button onClick={confirmReceipt} disabled={isConfirmingReceipt} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
-                                        {isConfirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'NDIO, NIMEPOKEA'}
-                                    </Button>
-                                    <Button variant="outline" onClick={() => setIsDisputeDrawerOpen(true)} className="flex-1 h-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
-                                        SIJAPATA / TATIZO
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-
-                        {order?.payment_status === 'escrow_locked' && order?.delivery?.delivery_type === 'local_boda' && (
-                            <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <ShieldCheck className="h-5 w-5 text-brand-600" />
-                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Delivery PIN yako</h4>
-                                </div>
-                                <p className="text-xs text-brand-800/80 mb-3 font-medium">Mpe dereva PIN hii <strong>baada ya kupokea na kukagua</strong> mzigo wako:</p>
-                                <div className="bg-white rounded-xl h-12 flex items-center justify-center border border-brand-200">
-                                    <span className="font-black text-xl tracking-[0.5em] text-brand-900">{order?.delivery?.buyer_release_pin}</span>
-                                </div>
-                                <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
-                                    RIPOTI TATIZO
-                                </Button>
-                            </div>
-                        )}
-
-                        {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
-                            <div className="mx-auto flex w-full max-w-lg flex-col">
-                                <PickupPinCard
-                                    pickupPin={order?.delivery?.pickup_pin}
-                                    amount={order?.total_paid}
-                                    onShopLocations={() => setIsShopModalOpen(true)}
-                                    className="max-w-none"
+                    {/* Buyer Action Panels */}
+                    {actingAs === 'buyer' && order?.delivery && order?.delivery?.delivery_type !== 'self_pickup' && (
+                        <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                            <div className="mx-auto max-w-3xl">
+                                <DeliveryFlowTimeline
+                                    delivery={order.delivery}
+                                    compact
+                                    className="shadow-sm"
                                 />
-                                <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
-                                    RIPOTI TATIZO
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {!isDeliveryCompleted && <DeliveryDirectionsButton routeUrl={deliveryRouteUrl} />}
+                                    {order.delivery.delivery_person_name && (
+                                        <span className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-slate-600">
+                                            {order.delivery.delivery_person_name}
+                                        </span>
+                                    )}
+                                    {order.delivery.boda_phone && (
+                                        <a href={`tel:${order.delivery.boda_phone}`} className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-sky-700">
+                                            Delivery phone
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                            {['escrow_locked', 'shipped'].includes(order?.payment_status) && (
+                                <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                                        <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Thibitisha Mzigo</h4>
+                                    </div>
+                                    <p className="text-xs text-indigo-800/80 mb-3 font-medium">Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.</p>
+                                    <div className="flex gap-2">
+                                        <Button onClick={confirmReceipt} disabled={isConfirmingReceipt} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
+                                            {isConfirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'NDIO, NIMEPOKEA'}
+                                        </Button>
+                                        <Button variant="outline" onClick={() => setIsDisputeDrawerOpen(true)} className="flex-1 h-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
+                                            SIJAPATA / TATIZO
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) && order?.delivery?.delivery_type !== 'self_pickup' && order?.delivery?.buyer_release_pin && (
+                                <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <ShieldCheck className="h-5 w-5 text-brand-600" />
+                                        <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Delivery PIN yako</h4>
+                                    </div>
+                                    <p className="text-xs text-brand-800/80 mb-3 font-medium">Mpe dereva PIN hii <strong>baada ya kupokea na kukagua</strong> mzigo wako:</p>
+                                    <div className="bg-white rounded-xl h-12 flex items-center justify-center border border-brand-200">
+                                        <span className="font-black text-xl tracking-[0.5em] text-brand-900">{order?.delivery?.buyer_release_pin}</span>
+                                    </div>
+                                    <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
+                                        RIPOTI TATIZO
+                                    </Button>
+                                </div>
+                            )}
+
+                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && order?.delivery?.pickup_pin && (
+                                <div className="mx-auto flex w-full max-w-lg flex-col">
+                                    <PickupPinCard
+                                        pickupPin={order?.delivery?.pickup_pin}
+                                        amount={order?.total_paid}
+                                        onShopLocations={() => setIsShopModalOpen(true)}
+                                        className="max-w-none"
+                                    />
+                                    <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
+                                        RIPOTI TATIZO
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {actingAs === 'merchant' && order?.delivery && order?.delivery?.delivery_type !== 'self_pickup' && (
+                        <div className="px-4 pb-2 animate-in slide-in-from-bottom-4 duration-500">
+                            <div className="mx-auto max-w-3xl">
+                                <DeliveryFlowTimeline delivery={order.delivery} compact className="shadow-sm" />
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {!isDeliveryCompleted && <DeliveryDirectionsButton routeUrl={deliveryRouteUrl} />}
+                                    {order.delivery.delivery_person_name && (
+                                        <span className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-slate-600">
+                                            {order.delivery.delivery_person_name}
+                                        </span>
+                                    )}
+                                    {order.delivery.boda_phone && (
+                                        <a href={`tel:${order.delivery.boda_phone}`} className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-sky-700">
+                                            Delivery phone
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Buyer Review Panel */}
+                    {actingAs === 'buyer' && order?.payment_status === 'resolved_merchant_paid' && !completedReview && (
+                        <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                            <div className="p-4 rounded-[2rem] bg-amber-50/80 border border-amber-200 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Star className="h-5 w-5 text-amber-600 fill-amber-600" />
+                                    <h4 className="font-black text-amber-900 uppercase tracking-tight text-sm">Toa Review Yako</h4>
+                                </div>
+                                <p className="text-xs text-amber-800/80 mb-4 font-medium">Asante kwa kununua! Toa maoni yako kuhusu bidhaa na huduma ya muuzaji.</p>
+
+                                <div className="flex justify-center gap-3 mb-4">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                        <button
+                                            key={star}
+                                            onClick={() => setReviewStars(star)}
+                                            className="transition-transform active:scale-90"
+                                        >
+                                            <Star className={cn("h-8 w-8", star <= reviewStars ? "fill-amber-500 text-amber-500" : "text-amber-200")} />
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <textarea
+                                    value={reviewComment}
+                                    onChange={e => setReviewComment(e.target.value)}
+                                    placeholder="Andika maoni yako hapa..."
+                                    className="w-full rounded-xl border border-amber-200 bg-white p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 mb-3"
+                                    rows={2}
+                                />
+
+                                <Button
+                                    onClick={submitReview}
+                                    disabled={isSubmittingReview || !reviewComment.trim()}
+                                    className="w-full h-12 rounded-xl bg-amber-600 hover:bg-amber-700 font-black text-white uppercase tracking-widest text-[10px]"
+                                >
+                                    {isSubmittingReview ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'TUMA REVIEW'}
                                 </Button>
                             </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Buyer Review Panel */}
-                {actingAs === 'buyer' && order?.payment_status === 'resolved_merchant_paid' && !messages.some(m => m.payload?.action_type === 'review') && (
-                    <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
-                        <div className="p-4 rounded-[2rem] bg-amber-50/80 border border-amber-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Star className="h-5 w-5 text-amber-600 fill-amber-600" />
-                                <h4 className="font-black text-amber-900 uppercase tracking-tight text-sm">Toa Review Yako</h4>
-                            </div>
-                            <p className="text-xs text-amber-800/80 mb-4 font-medium">Asante kwa kununua! Toa maoni yako kuhusu bidhaa na huduma ya muuzaji.</p>
-
-                            <div className="flex justify-center gap-3 mb-4">
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                    <button
-                                        key={star}
-                                        onClick={() => setReviewStars(star)}
-                                        className="transition-transform active:scale-90"
-                                    >
-                                        <Star className={cn("h-8 w-8", star <= reviewStars ? "fill-amber-500 text-amber-500" : "text-amber-200")} />
-                                    </button>
-                                ))}
-                            </div>
-
-                            <textarea
-                                value={reviewComment}
-                                onChange={e => setReviewComment(e.target.value)}
-                                placeholder="Andika maoni yako hapa..."
-                                className="w-full rounded-xl border border-amber-200 bg-white p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 mb-3"
-                                rows={2}
-                            />
-
-                            <Button
-                                onClick={submitReview}
-                                disabled={isSubmittingReview || !reviewComment.trim()}
-                                className="w-full h-12 rounded-xl bg-amber-600 hover:bg-amber-700 font-black text-white uppercase tracking-widest text-[10px]"
-                            >
-                                {isSubmittingReview ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'TUMA REVIEW'}
-                            </Button>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* Merchant Action Panels */}
-                {actingAs === 'merchant' && (
-                    <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
-                        {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.payment_status === 'pending' && order?.delivery?.delivery_type !== 'self_pickup' && (isServiceOrder || order?.shipping_fee === null) && (
-                            <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <Truck className="h-5 w-5 text-brand-600" />
-                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">
-                                        {isServiceOrder ? 'Service Offer Enquiry' : 'Shipping Quote Inquiry'}
-                                    </h4>
+                    {completedReview && (
+                        <div className="px-4 pb-2 animate-in slide-in-from-bottom-4 duration-500">
+                            <div className="mx-auto max-w-3xl rounded-[2rem] border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-900">Review ya mteja</p>
+                                        <div className="mt-2 flex gap-1 text-amber-500">
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                <Star
+                                                    key={star}
+                                                    className={cn("h-5 w-5", star <= Number(completedReview.rating || 0) ? "fill-amber-500" : "text-amber-200")}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-600" />
                                 </div>
-                                {!isServiceOrder && (
-                                    <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">Customer Address:</p>
-                                        <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
+                                {completedReview.comment && (
+                                    <p className="mt-3 text-sm font-bold italic leading-relaxed text-amber-950">
+                                        "{completedReview.comment}"
+                                    </p>
+                                )}
+                                {completedReview.created_at && (
+                                    <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-amber-700/70">
+                                        {new Date(completedReview.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
-                                        {closestLocation && (
-                                            <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center text-brand-600 shadow-sm">
-                                                        <Store className="h-4 w-4" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">Kutoka: {closestLocation.name}</p>
-                                                        <p className="text-[10px] font-black text-brand-900 tracking-tight">Umbali: {closestLocation.distance.toFixed(1)} km</p>
+                    {/* Merchant Action Panels */}
+                    {actingAs === 'merchant' && (
+                        <div className="px-4 pb-2 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                            {canMerchantConfirm && (
+                                <div className="p-4 rounded-[2rem] bg-emerald-50/80 border border-emerald-200 shadow-sm">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                                        <h4 className="font-black text-emerald-900 uppercase tracking-tight text-sm">Confirm Availability</h4>
+                                    </div>
+                                    <p className="text-xs text-emerald-900/80 mb-3 font-medium">
+                                        Mteja hawezi kulipa mpaka uthibitishe kuwa order ipo na unaweza kuitimiza.
+                                    </p>
+                                    <Button
+                                        type="button"
+                                        onClick={confirmAvailability}
+                                        disabled={confirmingAvailability}
+                                        className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold uppercase text-[10px] tracking-widest"
+                                    >
+                                        {confirmingAvailability ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                                        THIBITISHA ORDER IPO
+                                    </Button>
+                                </div>
+                            )}
+                            {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.payment_status === 'pending' && order?.delivery?.delivery_type !== 'self_pickup' && (isServiceOrder || order?.shipping_fee === null) && (
+                                <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Truck className="h-5 w-5 text-brand-600" />
+                                        <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">
+                                            {isServiceOrder ? 'Service Offer Enquiry' : 'Shipping Quote Inquiry'}
+                                        </h4>
+                                    </div>
+                                    {!isServiceOrder && (
+                                        <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">Customer Address:</p>
+                                            <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
+
+                                            {closestLocation && (
+                                                <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center text-brand-600 shadow-sm">
+                                                            <Store className="h-4 w-4" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[9px] font-black uppercase text-brand-700 tracking-tight">Kutoka: {closestLocation.name}</p>
+                                                            <p className="text-[10px] font-black text-brand-900 tracking-tight">Umbali: {closestLocation.distance.toFixed(1)} km</p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
 
-                                        {order?.delivery?.latitude && (
-                                            <a
-                                                href={`https://www.google.com/maps/dir/${closestLocation?.latitude || ''},${closestLocation?.longitude || ''}/${order.delivery.latitude},${order.delivery.longitude}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-brand-600 hover:text-brand-700 underline"
-                                            >
-                                                <MapPin className="h-3 w-3" /> FUNGUA KWENYE RAMANI
-                                            </a>
-                                        )}
-                                    </div>
-                                )}
-                                <form onSubmit={submitQuote} className="flex gap-2">
-                                    <Input type="number" placeholder={isServiceOrder ? 'Weka Offer ya Huduma (TZS)' : 'Weka Gharama (TZS)'} value={shippingFeeInput} onChange={e => setShippingFeeInput(e.target.value)} className="flex-1 font-bold h-12 rounded-xl" required />
-                                    <Button type="submit" disabled={quoteSubmitting || !shippingFeeInput} className="h-12 rounded-xl px-6 bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
-                                        {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} TUMA
-                                    </Button>
-                                </form>
-                            </div>
-                        )}
-
-                        {order?.product?.type === 'physical' && order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type !== 'self_pickup' && (
-                            <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <Truck className="h-5 w-5 text-brand-600" />
-                                    <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Dispatch Evidence</h4>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 mb-3">
-                                    <button type="button" onClick={() => setDispatchMode('intercity')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'intercity' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>Intercity Bus</button>
-                                    <button type="button" onClick={() => setDispatchMode('local')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'local' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>Local</button>
-                                </div>
-                                <form onSubmit={submitDispatch} className="space-y-3">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button type="button" onClick={() => { const el = document.getElementById('dispatch-video-input'); if (el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
-                                            <Camera className={cn("h-5 w-5 mb-1", dispatchVideo ? "text-emerald-500" : "text-brand-500")} />
-                                            <span className="text-[10px] font-black uppercase text-slate-500">Packing Video</span>
-                                            <input id="dispatch-video-input" type="file" accept="video/*" className="hidden" onChange={e => setDispatchVideo(e.target.files?.[0])} />
-                                        </button>
-                                        {dispatchMode === 'intercity' ? (
-                                            <button type="button" onClick={() => { const el = document.getElementById('dispatch-receipt-input'); if (el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
-                                                <ImageIcon className={cn("h-5 w-5 mb-1", transportReceipt ? "text-emerald-500" : "text-brand-500")} />
-                                                <span className="text-[10px] font-black uppercase text-slate-500">Waybill</span>
-                                                <input id="dispatch-receipt-input" type="file" accept="image/*" className="hidden" onChange={e => setTransportReceipt(e.target.files?.[0])} />
-                                            </button>
-                                        ) : (
-                                            <Input type="text" placeholder="Boda Phone..." value={bodaPhone} onChange={e => setBodaPhone(e.target.value)} className="h-20 rounded-xl bg-white border-slate-200 text-center font-bold" />
-                                        )}
-                                    </div>
-                                    {dispatchMode === 'intercity' && (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Input type="text" placeholder="Bus Company..." value={busCompany} onChange={e => setBusCompany(e.target.value)} className="h-10 rounded-xl bg-white" />
-                                            <Input type="text" placeholder="Tracking #..." value={waybillTrackingNumber} onChange={e => setWaybillTrackingNumber(e.target.value)} className="h-10 rounded-xl bg-white" />
+                                            {order?.delivery?.latitude && (
+                                                <a
+                                                    href={`https://www.google.com/maps/dir/${closestLocation?.latitude || ''},${closestLocation?.longitude || ''}/${order.delivery.latitude},${order.delivery.longitude}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-brand-600 hover:text-brand-700 underline"
+                                                >
+                                                    <MapPin className="h-3 w-3" /> FUNGUA KWENYE RAMANI
+                                                </a>
+                                            )}
                                         </div>
                                     )}
-                                    <Button type="submit" disabled={dispatchSubmitting || !dispatchVideo || (dispatchMode === 'intercity' && !transportReceipt)} className="w-full h-12 rounded-xl bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
-                                        {dispatchSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} THIBITISHA DISPATCH
-                                    </Button>
-                                </form>
-                            </div>
-                        )}
-
-                        {order?.payment_status === 'escrow_locked' && order?.delivery?.delivery_type === 'local_boda' && (
-                            <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <ShieldCheck className="h-5 w-5 text-indigo-600" />
-                                    <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Verify Delivery</h4>
+                                    <form onSubmit={submitQuote} className="flex gap-2">
+                                        <Input type="number" placeholder={isServiceOrder ? 'Weka Offer ya Huduma (TZS)' : 'Weka Gharama (TZS)'} value={shippingFeeInput} onChange={e => setShippingFeeInput(e.target.value)} className="flex-1 font-bold h-12 rounded-xl" required />
+                                        <Button type="submit" disabled={quoteSubmitting || !shippingFeeInput} className="h-12 rounded-xl px-6 bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
+                                            {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} TUMA
+                                        </Button>
+                                    </form>
                                 </div>
-                                <p className="text-xs text-indigo-800/80 mb-3 font-medium">Ingiza <strong>Release PIN</strong> kutoka kwa dereva aliyemkabidhi mteja mzigo ili kuidhinisha malipo:</p>
-                                <form onSubmit={verifyDeliveryPin} className="flex gap-2">
-                                    <Input type="text" maxLength={4} placeholder="PIN..." value={releasePinInput} onChange={e => setReleasePinInput(e.target.value)} className="w-24 text-center font-black tracking-widest h-12 rounded-xl border-indigo-200" />
-                                    <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
-                                        {pinVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'ITHIBITISHE'}
-                                    </Button>
-                                </form>
-                            </div>
-                        )}
+                            )}
 
-                        {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
-                            <div className="rounded-[2rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-100/50">
-                                <div className="mb-4 flex items-start gap-3">
-                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
-                                        <Store className="h-5 w-5" />
+                            {order?.product?.type === 'physical' && order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type !== 'self_pickup' && (
+                                <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Truck className="h-5 w-5 text-brand-600" />
+                                        <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Dispatch Evidence</h4>
                                     </div>
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">Pickup Verification</p>
-                                        <h4 className="mt-1 text-lg font-black leading-tight text-slate-950">Confirm & release</h4>
-                                        <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">Ask the customer for the 4-digit PIN shown in their chat, then release the order.</p>
+                                    <div className="grid grid-cols-2 gap-2 mb-3">
+                                        <button type="button" onClick={() => setDispatchMode('intercity')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'intercity' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>Intercity Bus</button>
+                                        <button type="button" onClick={() => setDispatchMode('local')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'local' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>Local</button>
                                     </div>
+                                    <form onSubmit={submitDispatch} className="space-y-3">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button type="button" onClick={() => { const el = document.getElementById('dispatch-video-input'); if (el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
+                                                <Camera className={cn("h-5 w-5 mb-1", dispatchVideo ? "text-emerald-500" : "text-brand-500")} />
+                                                <span className="text-[10px] font-black uppercase text-slate-500">Packing Proof</span>
+                                                <input id="dispatch-video-input" type="file" accept="image/*,video/*" className="hidden" onChange={e => setDispatchVideo(e.target.files?.[0])} />
+                                            </button>
+                                            {dispatchMode === 'intercity' ? (
+                                                <button type="button" onClick={() => { const el = document.getElementById('dispatch-receipt-input'); if (el) el.click(); }} className="flex flex-col items-center justify-center p-3 h-20 rounded-xl bg-white border border-slate-200 hover:border-brand-300">
+                                                    <ImageIcon className={cn("h-5 w-5 mb-1", transportReceipt ? "text-emerald-500" : "text-brand-500")} />
+                                                    <span className="text-[10px] font-black uppercase text-slate-500">Waybill</span>
+                                                    <input id="dispatch-receipt-input" type="file" accept="image/*" className="hidden" onChange={e => setTransportReceipt(e.target.files?.[0])} />
+                                                </button>
+                                            ) : (
+                                                <Input type="text" placeholder="Boda Phone..." value={bodaPhone} onChange={e => setBodaPhone(e.target.value)} className="h-20 rounded-xl bg-white border-slate-200 text-center font-bold" />
+                                            )}
+                                        </div>
+                                        <Input
+                                            type="text"
+                                            placeholder="Delivery person name (optional)"
+                                            value={deliveryPersonName}
+                                            onChange={e => setDeliveryPersonName(e.target.value)}
+                                            className="h-10 rounded-xl bg-white"
+                                        />
+                                        {dispatchMode === 'intercity' && (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <Input type="text" placeholder="Bus Company..." value={busCompany} onChange={e => setBusCompany(e.target.value)} className="h-10 rounded-xl bg-white" />
+                                                <Input type="text" placeholder="Tracking #..." value={waybillTrackingNumber} onChange={e => setWaybillTrackingNumber(e.target.value)} className="h-10 rounded-xl bg-white" />
+                                            </div>
+                                        )}
+                                        <Button type="submit" disabled={dispatchSubmitting || !dispatchVideo || (dispatchMode === 'intercity' && !transportReceipt)} className="w-full h-12 rounded-xl bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
+                                            {dispatchSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} THIBITISHA DISPATCH
+                                        </Button>
+                                    </form>
                                 </div>
-                                <form onSubmit={verifyPickupPin} className="space-y-3">
-                                    <Input
-                                        type="text"
-                                        inputMode="numeric"
-                                        maxLength={4}
-                                        placeholder="0000"
-                                        value={pickupPinInput}
-                                        onChange={e => setPickupPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                                        className="mx-auto h-16 w-full max-w-44 rounded-2xl border-2 border-brand-100 bg-brand-50/40 text-center text-2xl font-black tracking-[0.35em] text-brand-900 shadow-inner focus:border-brand-400"
-                                    />
-                                    <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="h-14 w-full rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
-                                        {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                                        Kabidhi Mzigo
-                                    </Button>
-                                </form>
-                            </div>
-                        )}
-                    </div>
-                )}
+                            )}
+
+                            {order?.payment_status === 'escrow_locked' && order?.delivery?.delivery_type === 'local_boda' && (
+                                <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                                        <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Verify Delivery</h4>
+                                    </div>
+                                    <p className="text-xs text-indigo-800/80 mb-3 font-medium">Ingiza <strong>Release PIN</strong> kutoka kwa dereva aliyemkabidhi mteja mzigo ili kuidhinisha malipo:</p>
+                                    <form onSubmit={verifyDeliveryPin} className="flex gap-2">
+                                        <Input type="text" maxLength={4} placeholder="PIN..." value={releasePinInput} onChange={e => setReleasePinInput(e.target.value)} className="w-24 text-center font-black tracking-widest h-12 rounded-xl border-indigo-200" />
+                                        <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
+                                            {pinVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'ITHIBITISHE'}
+                                        </Button>
+                                    </form>
+                                </div>
+                            )}
+
+                            {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
+                                <div className="rounded-[2rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-100/50">
+                                    <div className="mb-4 flex items-start gap-3">
+                                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
+                                            <Store className="h-5 w-5" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">Pickup Verification</p>
+                                            <h4 className="mt-1 text-lg font-black leading-tight text-slate-950">Confirm & release</h4>
+                                            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">Ask the customer for the 4-digit PIN shown in their chat, then release the order.</p>
+                                        </div>
+                                    </div>
+                                    <form onSubmit={verifyPickupPin} className="space-y-3">
+                                        <Input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={4}
+                                            placeholder="0000"
+                                            value={pickupPinInput}
+                                            onChange={e => setPickupPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                            className="mx-auto h-16 w-full max-w-44 rounded-2xl border-2 border-brand-100 bg-brand-50/40 text-center text-2xl font-black tracking-[0.35em] text-brand-900 shadow-inner focus:border-brand-400"
+                                        />
+                                        <Button type="submit" disabled={pinVerifying || pickupPinInput.length !== 4} className="h-14 w-full rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
+                                            {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                                            Kabidhi Mzigo
+                                        </Button>
+                                    </form>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div ref={bottomRef} className="h-4" />
+                </div>
 
                 {/* Input Area */}
                 <div className="shrink-0 bg-white dark:bg-slate-950 border-t border-brand-100 dark:border-brand-900/40 p-4">
@@ -2251,17 +2578,17 @@ export default function Chat({
                                                 </DrawerHeader>
                                                 <div className="p-4 grid grid-cols-2 gap-3 pb-12 overflow-y-auto">
                                                     {(actingAs === 'merchant' ? [
-                                                        { id: 'shipping_cost', label: 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' },
-                                                        { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda' },
-                                                        { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' },
-                                                        { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' },
-                                                        { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa' },
-                                                        { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari', disabled: order?.delivery?.delivery_type === 'self_pickup' },
+                                                        { id: 'shipping_cost', label: 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PICKUP ONLY' },
+                                                        { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+                                                        { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
+                                                        { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
+                                                        { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+                                                        { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari', disabled: order?.delivery?.delivery_type === 'self_pickup', disabledReason: 'PICKUP ONLY' },
                                                     ] : [
-                                                        { id: 'shop_locations', label: 'Shop Locations', icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ona duka lilipo' },
-                                                        { id: 'order_delivery', label: 'Usafirishaji', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Badili delivery vs pickup' },
-                                                        { id: 'order_items', label: 'Vitu vya Oda', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona na badili vitu' },
-                                                        { id: 'upsell', label: 'Bidhaa Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Vitu vingine vya duka hili' },
+                                                        { id: 'shop_locations', label: 'Shop Locations', icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ona duka lilipo', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+                                                        { id: 'order_delivery', label: 'Usafirishaji', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Badili delivery vs pickup', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+                                                        { id: 'order_items', label: 'Oda', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona na badili vitu', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+                                                        { id: 'upsell', label: 'Bidhaa Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Vitu vingine vya duka hili', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
                                                         { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
                                                         { id: 'unboxing_video', label: 'Unboxing Video', icon: Video, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa kupokea' },
                                                         { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
@@ -2310,7 +2637,7 @@ export default function Chat({
                                                             >
                                                                 {isDisabled && (
                                                                     <div className="absolute inset-0 bg-slate-50/40 flex items-center justify-center backdrop-blur-[1px]">
-                                                                        <span className="bg-slate-900 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase">PICKUP ONLY</span>
+                                                                        <span className="bg-slate-900 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase">{action.disabledReason || 'LOCKED'}</span>
                                                                     </div>
                                                                 )}
                                                                 <div className={cn("p-3 rounded-2xl mb-3 transition-transform group-hover:scale-110", action.color)}><Icon className="h-6 w-6" /></div>
@@ -2665,110 +2992,13 @@ export default function Chat({
 
                                                     {activeAction === 'order_items' && (
                                                         <div className="space-y-8 px-4 pb-12">
-                                                            <div className="flex flex-col gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-                                                                {[
-                                                                    { id: order.product_id, variant_id: order.variant_id, title: order.product?.title, price: order.unit_price, quantity: order.quantity, requested_quantity: order.requested_quantity, unit_snapshot: order.unit_snapshot, image: order.product?.image_url || order.product?.url, type: order.product?.type, product_type: order.product?.type, digital_delivery_type: order.product?.digital_delivery_type, isMain: true, isExtra: false },
-                                                                    ...(order.extra_items || []).map((item) => ({ ...item, isMain: false, isExtra: true }))
-                                                                ].map((item, idx) => {
-                                                                    const isPhysicalItem = isPhysicalDealItem(item, order);
-                                                                    const quantityState = dealItemQuantityState(item, order);
-                                                                    const quantityNumber = item.isMain ? quantityState.quantityValue : Number(item.quantity || 1);
-                                                                    const canAdjustQuantity = canCancelBeforePayment;
-                                                                    const canShowQuantityControls = isPhysicalItem && canAdjustQuantity;
-
-                                                                    return (
-                                                                        <div key={`${item.id}-${item.variant_id || idx}`} className="flex items-center gap-4 p-5 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm group">
-                                                                            <div className="h-16 w-16 rounded-2xl bg-slate-50 flex-shrink-0 overflow-hidden">
-                                                                                <img src={item.image} className="h-full w-full object-cover" alt="" />
-                                                                            </div>
-                                                                            <div className="flex-1 min-w-0">
-                                                                                <h4 className="font-black text-brand-900 text-sm truncate uppercase tracking-tighter">{item.title}</h4>
-                                                                                <div className="flex items-center justify-between mt-2">
-                                                                                    <span className="text-xs font-bold text-brand-600">
-                                                                                        {item.isMain ? orderUnitPriceLabel(order) : `TZS ${Number(item.price).toLocaleString()}`}
-                                                                                    </span>
-                                                                                    {canShowQuantityControls ? (
-                                                                                        <div className="flex items-center gap-3 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-100">
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => {
-                                                                                                    if (item.isMain) {
-                                                                                                        if (quantityState.canDecrease) {
-                                                                                                            submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: quantityState.decreaseQuantity, product_title: item.title, title: `Punguza ${item.title}` });
-                                                                                                        }
-                                                                                                    } else if (item.quantity > 1) {
-                                                                                                        submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.quantity - 1, product_title: item.title, title: `Punguza ${item.title}` });
-                                                                                                    } else {
-                                                                                                        submitAction('remove_item', { id: item.id, variant_id: item.variant_id, product_title: item.title, title: `Ondoa ${item.title}` });
-                                                                                                    }
-                                                                                                }}
-                                                                                                disabled={item.isMain && !quantityState.canDecrease}
-                                                                                                className="text-slate-400 hover:text-brand-600 transition-colors disabled:cursor-not-allowed disabled:opacity-30"
-                                                                                            >
-                                                                                                <Minus className="h-3.5 w-3.5" />
-                                                                                            </button>
-                                                                                            <span className="text-xs font-black text-brand-900">
-                                                                                                {Number(quantityNumber).toLocaleString()}
-                                                                                            </span>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => submitAction('update_item_quantity', { id: item.id, variant_id: item.variant_id, quantity: item.isMain ? quantityState.increaseQuantity : item.quantity + 1, product_title: item.title, title: `Ongeza ${item.title}` })}
-                                                                                                className="text-slate-400 hover:text-brand-600 transition-colors"
-                                                                                            >
-                                                                                                <Plus className="h-3.5 w-3.5" />
-                                                                                            </button>
-                                                                                        </div>
-                                                                                    ) : canAdjustQuantity && !item.isMain ? (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            onClick={() => submitAction('remove_item', { id: item.id, variant_id: item.variant_id, product_title: item.title, title: `Ondoa ${item.title}` })}
-                                                                                            className="flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 text-slate-400 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-500"
-                                                                                            aria-label="Remove item"
-                                                                                        >
-                                                                                            <X className="h-4 w-4" />
-                                                                                        </button>
-                                                                                    ) : (
-                                                                                        isPhysicalItem && <span className="text-xs font-black text-slate-400">
-                                                                                            {item.isMain ? orderQuantityLabel(order) : `Qty: ${item.quantity}`}
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-
-                                                            {/* Summary Section */}
-                                                            <div className="p-6 rounded-[2.5rem] bg-slate-50 border border-slate-200/50 space-y-4 shadow-inner">
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Subtotal</span>
-                                                                    <span className="text-xs font-black text-brand-900">TZS {Number(order.total_paid - (order.shipping_fee || 0) + (Number(order.discount_amount) || 0)).toLocaleString()}</span>
-                                                                </div>
-                                                                {Number(order.shipping_fee) > 0 && (
-                                                                    <div className="flex items-center justify-between">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Truck className="h-3 w-3 text-emerald-500" />
-                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Usafirishaji</span>
-                                                                        </div>
-                                                                        <span className="text-xs font-black text-emerald-600">+ TZS {Number(order.shipping_fee).toLocaleString()}</span>
-                                                                    </div>
-                                                                )}
-                                                                {Number(order.discount_amount) > 0 && (
-                                                                    <div className="flex items-center justify-between">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Tag className="h-3 w-3 text-amber-500" />
-                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Punguzo</span>
-                                                                        </div>
-                                                                        <span className="text-xs font-black text-amber-600">- TZS {Number(order.discount_amount).toLocaleString()}</span>
-                                                                    </div>
-                                                                )}
-                                                                <div className="h-px bg-slate-200" />
-                                                                <div className="flex items-center justify-between pt-2">
-                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla Kamili</span>
-                                                                    <span className="text-2xl font-black text-brand-900">TZS {Number(order.total_paid).toLocaleString()}</span>
-                                                                </div>
-                                                            </div>
+                                                            <OrderSelectionSummaryCard
+                                                                items={orderItems}
+                                                                subtotal={itemsSubtotal}
+                                                                shipping={shippingTotal}
+                                                                discount={discountTotal}
+                                                                total={dealTotal}
+                                                            />
 
                                                             {order.payment_status !== 'paid' && actingAs === 'buyer' && (
                                                                 <div className="text-center">
@@ -2836,10 +3066,10 @@ export default function Chat({
                                                                     className="group flex flex-col items-center justify-center gap-3 h-40 border-2 border-dashed border-brand-200 rounded-3xl bg-brand-50/30 hover:bg-white hover:border-brand-500 transition-all"
                                                                 >
                                                                     <div className="p-3 rounded-2xl bg-brand-50 text-brand-600 group-hover:scale-110 transition-transform"><Video className="h-6 w-6" /></div>
-                                                                    <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Packing Video</span>
+                                                                    <span className="text-[10px] font-black uppercase text-brand-900 tracking-tighter">Packing Proof</span>
                                                                 </button>
                                                             </div>
-                                                            <p className="text-[9px] font-bold text-center text-slate-400 uppercase">Hii video itasaidia kama mteja akifungua mgogoro (Dispute)</p>
+                                                            <p className="text-[9px] font-bold text-center text-slate-400 uppercase">Picha au video hii itasaidia kama mteja akifungua mgogoro (Dispute)</p>
                                                         </div>
                                                     )}
 
@@ -3168,7 +3398,7 @@ export default function Chat({
                                 <span className={cn("text-[10px] font-black uppercase tracking-widest", disputeVideo ? "text-emerald-600" : "text-slate-500")}>
                                     {disputeVideo ? 'Video Imechaguliwa' : 'Weka Unboxing Video (MP4/MOV)'}
                                 </span>
-                                <input id="dispute-video-input" type="file" accept="video/*" className="hidden" onChange={e => setDisputeVideo(e.target.files?.[0])} />
+                                <input id="dispute-video-input" type="file" accept="image/*,video/*" className="hidden" onChange={e => setDisputeVideo(e.target.files?.[0])} />
                             </button>
                             <Button
                                 onClick={submitDispute}

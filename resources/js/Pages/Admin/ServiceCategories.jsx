@@ -13,6 +13,10 @@ const trustDocumentOptions = [
     { key: 'business_license', label: 'Business license' },
     { key: 'registration', label: 'Registration' },
     { key: 'professional_license', label: 'Professional license' },
+    { key: 'ownership_proof', label: 'Ownership proof' },
+    { key: 'vehicle_registration', label: 'Vehicle registration' },
+    { key: 'insurance', label: 'Insurance' },
+    { key: 'operating_permit', label: 'Operating permit' },
 ];
 
 const emptyForm = {
@@ -21,16 +25,30 @@ const emptyForm = {
     sort_order: 0,
     is_active: true,
     option_template: '',
+    service_template_key: '',
+    allowed_template_keys: [],
     risk_level: 'standard',
     required_documents: ['identity'],
     requires_manual_review: false,
     payout_hold_days: 3,
     max_first_quote_amount: '',
+    template_rules: '',
+};
+
+const parseJsonField = (value, label) => {
+    if (!value) return null;
+
+    try {
+        return JSON.parse(value);
+    } catch {
+        throw new Error(`${label} is not valid JSON.`);
+    }
 };
 
 export default function ServiceCategories() {
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [serviceTemplates, setServiceTemplates] = useState({});
     const [form, setForm] = useState(emptyForm);
     const [editing, setEditing] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -49,6 +67,7 @@ export default function ServiceCategories() {
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Failed to load service categories.');
             setCategories(data.data || []);
+            setServiceTemplates(data.service_templates || {});
         } catch (error) {
             toast.error(error.message);
             setCategories([]);
@@ -87,12 +106,15 @@ export default function ServiceCategories() {
                     parent_id: form.parent_id ? Number(form.parent_id) : null,
                     sort_order: Number(form.sort_order || 0),
                     is_active: Boolean(form.is_active),
-                    option_template: form.option_template ? JSON.parse(form.option_template) : null,
+                    option_template: parseJsonField(form.option_template, 'Service option template JSON'),
+                    service_template_key: form.service_template_key || null,
+                    allowed_template_keys: form.allowed_template_keys || [],
                     risk_level: form.risk_level || 'standard',
                     required_documents: form.required_documents || [],
                     requires_manual_review: Boolean(form.requires_manual_review),
                     payout_hold_days: Number(form.payout_hold_days || 3),
                     max_first_quote_amount: form.max_first_quote_amount ? Number(form.max_first_quote_amount) : null,
+                    template_rules: parseJsonField(form.template_rules, 'Template rules JSON'),
                 }),
             });
             const data = await response.json();
@@ -135,11 +157,16 @@ export default function ServiceCategories() {
             sort_order: category.sort_order || 0,
             is_active: Boolean(category.is_active),
             option_template: category.option_template ? JSON.stringify(category.option_template, null, 2) : '',
+            service_template_key: category.default_template_key || category.service_template_key || '',
+            allowed_template_keys: category.allowed_template_keys?.length
+                ? category.allowed_template_keys
+                : (category.default_template_key || category.service_template_key ? [category.default_template_key || category.service_template_key] : []),
             risk_level: category.risk_level || 'standard',
             required_documents: category.required_documents || ['identity'],
             requires_manual_review: Boolean(category.requires_manual_review),
             payout_hold_days: category.payout_hold_days ?? 3,
             max_first_quote_amount: category.max_first_quote_amount ?? '',
+            template_rules: category.template_rules ? JSON.stringify(category.template_rules, null, 2) : '',
         });
     };
 
@@ -158,6 +185,27 @@ export default function ServiceCategories() {
             };
         });
     };
+
+    const toggleAllowedTemplate = (templateKey) => {
+        setForm((prev) => {
+            const current = new Set(prev.allowed_template_keys || []);
+            if (current.has(templateKey)) {
+                current.delete(templateKey);
+            } else {
+                current.add(templateKey);
+            }
+            if (prev.service_template_key) {
+                current.add(prev.service_template_key);
+            }
+
+            return {
+                ...prev,
+                allowed_template_keys: Array.from(current),
+            };
+        });
+    };
+
+    const templateEntries = Object.entries(serviceTemplates || {});
 
     return (
         <AdminLayout title="Service Categories">
@@ -231,6 +279,59 @@ export default function ServiceCategories() {
                                 Optional. Put this on subcategories to tailor service options/units in merchant service creation.
                             </p>
                         </label>
+                        <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-3">
+                            <div className="grid md:grid-cols-3 gap-3">
+                                <label className="space-y-1">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Default workflow</span>
+                                    <select
+                                        className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                                        value={form.service_template_key}
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            setForm((prev) => ({
+                                                ...prev,
+                                                service_template_key: value,
+                                                allowed_template_keys: value
+                                                    ? Array.from(new Set([value, ...(prev.allowed_template_keys || [])]))
+                                                    : (prev.allowed_template_keys || []),
+                                            }));
+                                        }}
+                                    >
+                                        <option value="">Auto-detect / generic service</option>
+                                        {templateEntries.map(([key, template]) => (
+                                            <option key={key} value={key}>{template.label || key}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <div className="md:col-span-2 space-y-1">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Allowed workflows</span>
+                                    <div className="flex flex-wrap gap-2">
+                                        {templateEntries.map(([key, template]) => (
+                                            <label key={key} className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={(form.allowed_template_keys || []).includes(key)}
+                                                    onChange={() => toggleAllowedTemplate(key)}
+                                                />
+                                                {template.label || key}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <label className="block space-y-1">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Template rule overrides JSON</span>
+                                <textarea
+                                    className="min-h-24 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs"
+                                    value={form.template_rules}
+                                    onChange={(event) => setForm((prev) => ({ ...prev, template_rules: event.target.value }))}
+                                    placeholder='{"rental":{"required_documents":["identity","ownership_proof"],"rental_types":{"vehicle":{"required_documents":["identity","business_license","vehicle_registration","insurance"]}}}}'
+                                />
+                                <p className="text-xs text-blue-800">
+                                    Optional. Use this when a workflow under this category needs stricter documents or risk rules than the category default.
+                                </p>
+                            </label>
+                        </div>
                         <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
                             <div className="grid md:grid-cols-4 gap-3">
                                 <label className="space-y-1">
@@ -340,6 +441,9 @@ function CategoryRow({ category, onEdit, onDelete, compact = false }) {
                 </p>
                 <p className="text-[11px] text-slate-500">
                     /{category.slug} · sort {category.sort_order || 0} · {category.is_active ? 'active' : 'inactive'}{category.option_template ? ' · template' : ''}
+                </p>
+                <p className="text-[11px] text-blue-700 font-bold">
+                    workflow {category.default_template_key || category.service_template_key || 'auto'} · allowed {(category.allowed_template_keys || []).join(', ') || 'default only'}
                 </p>
                 <p className="text-[11px] text-amber-700 font-bold">
                     {category.risk_level || 'standard'} · {(category.required_documents || []).join(', ') || 'no docs'} · hold {category.payout_hold_days ?? 3}d
