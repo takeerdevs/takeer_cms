@@ -31,11 +31,9 @@ class MerchantModuleSetupController extends Controller
             'commerce_modes.*' => ['string', Rule::in(CommerceModeRegistry::keys())],
         ]);
 
-        $activeModules = BusinessModuleRegistry::normalize($validated['active_modules'] ?? []);
-        if (in_array('retail_ops', $activeModules, true) && ! $merchant->isRetailEligible()) {
-            return response()->json([
-                'message' => 'Retail ops requires a verified business profile before activation.',
-            ], 422);
+        $activeModules = BusinessModuleRegistry::normalizeConfigurable($validated['active_modules'] ?? []);
+        if ($merchant->hasModule('retail_ops')) {
+            $activeModules[] = 'retail_ops';
         }
 
         $commerceModes = CommerceModeRegistry::normalize($validated['commerce_modes'] ?? []);
@@ -67,8 +65,9 @@ class MerchantModuleSetupController extends Controller
         ];
         $commerceModes = $profile['commerce_modes'] ?? [];
         $modeModules = CommerceModeRegistry::modulesFor($commerceModes);
-        $recommendedModules = BusinessModuleRegistry::normalize($businessContext['recommended_modules'] ?? []);
+        $recommendedModules = BusinessModuleRegistry::normalizeConfigurable($businessContext['recommended_modules'] ?? []);
         $recommendedModes = CommerceModeRegistry::normalize($businessContext['recommended_commerce_modes'] ?? []);
+        $activeModules = BusinessModuleRegistry::normalizeConfigurable($merchant->active_modules ?? []);
 
         return [
             'merchant' => [
@@ -78,13 +77,13 @@ class MerchantModuleSetupController extends Controller
                 'type' => $merchant->type,
                 'business_category_key' => $merchant->business_category_key,
                 'business_subcategory_key' => $merchant->business_subcategory_key,
-                'active_modules' => $merchant->active_modules ?? [],
+                'active_modules' => $activeModules,
                 'commerce_modes' => $commerceModes,
                 'retail_eligible' => $merchant->isRetailEligible(),
             ],
             'business_context' => $businessContext,
             'business_categories' => BusinessCategoryRegistry::all(),
-            'business_modules' => BusinessModuleRegistry::all(),
+            'business_modules' => BusinessModuleRegistry::configurable(),
             'commerce_modes' => CommerceModeRegistry::all(),
             'recommended_modules' => $recommendedModules,
             'recommended_commerce_modes' => $recommendedModes,

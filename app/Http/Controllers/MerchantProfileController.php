@@ -41,7 +41,7 @@ class MerchantProfileController extends Controller
             'retailEligible' => $merchant->isRetailEligible(),
             'businessCategories' => BusinessCategoryRegistry::all(),
             'businessOperations' => BusinessOperationRegistry::all(),
-            'businessModules' => BusinessModuleRegistry::all(),
+            'businessModules' => BusinessModuleRegistry::configurable(),
             'commerceModes' => CommerceModeRegistry::all(),
             'businessContext' => $merchant->businessCategory(),
             'storefrontSettings' => [
@@ -132,8 +132,11 @@ class MerchantProfileController extends Controller
         }
 
         $activeModules = array_key_exists('active_modules', $validated)
-            ? BusinessModuleRegistry::normalize($validated['active_modules'] ?? [])
+            ? BusinessModuleRegistry::normalizeConfigurable($validated['active_modules'] ?? [])
             : ($merchant->active_modules ?? []);
+        if ($merchant->hasModule('retail_ops') && ! in_array('retail_ops', $activeModules, true)) {
+            $activeModules[] = 'retail_ops';
+        }
 
         $merchant->update([
             'display_name' => $validated['display_name'],

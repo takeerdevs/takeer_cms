@@ -55,6 +55,8 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
     const canUpdateSettings = can('settings.update');
     const selectedCountry = countries.find(country => String(country.id) === String(merchant.country_id));
     const selectedCountryTimezones = selectedCountry?.settings?.timezones || (selectedCountry?.timezone ? [selectedCountry.timezone] : []);
+    const configurableModuleKeys = Object.keys(businessModules || {});
+    const initialActiveModules = (merchant.active_modules || []).filter((module) => configurableModuleKeys.includes(module));
 
     const { data, setData, post, processing, errors } = useForm({
         display_name: merchant.display_name || '',
@@ -66,7 +68,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
         business_category_key: merchant.business_category_key || '',
         business_subcategory_key: merchant.business_subcategory_key || '',
         business_profile: merchant.business_profile || {},
-        active_modules: merchant.active_modules || [],
+        active_modules: initialActiveModules,
         allow_post_comments: storefrontSettings.allow_post_comments ?? true,
         allow_post_reactions: storefrontSettings.allow_post_reactions ?? true,
     });
@@ -90,11 +92,13 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
             offer_types: selectedOperationKeys,
         }
         : null;
-    const activeModules = data.active_modules || [];
-    const recommendedModules = selectedBusinessContext?.recommended_modules || [];
+    const activeModules = (data.active_modules || []).filter((module) => configurableModuleKeys.includes(module));
+    const recommendedModules = (selectedBusinessContext?.recommended_modules || []).filter((module) => configurableModuleKeys.includes(module));
     const selectedCommerceModes = data.business_profile?.commerce_modes || [];
     const recommendedCommerceModes = selectedBusinessContext?.recommended_commerce_modes || [];
-    const commerceModeModules = selectedCommerceModes.flatMap((key) => commerceModes?.[key]?.modules || []);
+    const commerceModeModules = selectedCommerceModes
+        .flatMap((key) => commerceModes?.[key]?.modules || [])
+        .filter((module) => configurableModuleKeys.includes(module));
     const groupedBusinessModules = Object.entries(businessModules || {}).reduce((groups, [key, module]) => {
         const group = module.group || 'Other';
         groups[group] = groups[group] || [];
@@ -373,85 +377,9 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                     id="bio"
                                     value={data.bio}
                                     onChange={e => setData('bio', e.target.value)}
-                                    placeholder={`Tueleze kidogo kuhusu ${data.display_name}...`}
+                                    placeholder={`Elezea kuhusu ${data.display_name}, mnafanya nini...`}
                                     className="rounded-xl min-h-[100px] mt-1"
                                 />
-                                <div className="mt-2 rounded-xl border border-border bg-muted/30 p-3 space-y-2">
-                                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                                        Bio Helper ({isPersonal ? 'Personal Profile' : 'Merchant Profile'})
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                        Jaza vipengele vifupi vya kuaminika, kisha tengeneza bio moja ya kitaalamu.
-                                    </p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <Input
-                                            value={bioBuilder.roleOrCategory}
-                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, roleOrCategory: e.target.value }))}
-                                            placeholder={isPersonal ? 'Mf. Certified AI Professional' : 'Mf. hardware tools'}
-                                            className="h-9 rounded-lg text-xs"
-                                        />
-                                        <Input
-                                            value={bioBuilder.yearsExperience}
-                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, yearsExperience: e.target.value }))}
-                                            placeholder={isPersonal ? 'Years of experience (e.g 7)' : 'Years selling (e.g 10)'}
-                                            className="h-9 rounded-lg text-xs"
-                                        />
-                                        <Input
-                                            value={bioBuilder.certifications}
-                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, certifications: e.target.value }))}
-                                            placeholder={isPersonal ? 'Certifications' : 'Professional standards/certifications (optional)'}
-                                            className="h-9 rounded-lg text-xs"
-                                        />
-                                        <Input
-                                            value={bioBuilder.degreeOrTraining}
-                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, degreeOrTraining: e.target.value }))}
-                                            placeholder={isPersonal ? 'Degree / training' : 'Team expertise / training'}
-                                            className="h-9 rounded-lg text-xs"
-                                        />
-                                        <Input
-                                            value={bioBuilder.businessesOrCustomersHelped}
-                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, businessesOrCustomersHelped: e.target.value }))}
-                                            placeholder={isPersonal ? 'Businesses helped (e.g 100+ businesses)' : 'Customers served (e.g 5,000+ customers)'}
-                                            className="h-9 rounded-lg text-xs"
-                                        />
-                                        <Input
-                                            value={bioBuilder.productsOrServices}
-                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, productsOrServices: e.target.value }))}
-                                            placeholder={isPersonal ? 'Main services/products' : 'Main products/services'}
-                                            className="h-9 rounded-lg text-xs"
-                                        />
-                                        <Input
-                                            value={bioBuilder.outcomeOrStrength}
-                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, outcomeOrStrength: e.target.value }))}
-                                            placeholder={isPersonal ? 'Outcome delivered (e.g growth/profit)' : 'Why customers trust you'}
-                                            className="h-9 rounded-lg text-xs"
-                                        />
-                                        <Input
-                                            value={bioBuilder.founderOrProof}
-                                            onChange={(e) => setBioBuilder((prev) => ({ ...prev, founderOrProof: e.target.value }))}
-                                            placeholder={isPersonal ? 'Founder/proof line (e.g Founder of Takeer)' : 'Credibility line (awards, guarantee, etc.)'}
-                                            className="h-9 rounded-lg text-xs"
-                                        />
-                                    </div>
-                                    <div className="flex flex-wrap gap-2 pt-1">
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className="h-8 rounded-lg text-xs font-bold"
-                                            onClick={() => applyGeneratedBio('replace')}
-                                        >
-                                            Generate Bio
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            className="h-8 rounded-lg text-xs font-bold"
-                                            onClick={() => applyGeneratedBio('append')}
-                                        >
-                                            Add to Current Bio
-                                        </Button>
-                                    </div>
-                                </div>
                                 {errors.bio && <p className="text-xs text-red-500 mt-0.5">{errors.bio}</p>}
                             </div>
                         </CardContent>
@@ -666,8 +594,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                                     {modules.map(([key, module]) => {
                                                         const isActive = activeModules.includes(key);
                                                         const isRecommended = recommendedModules.includes(key);
-                                                        const needsSeparateActivation = key === 'retail_ops';
-                                                        const isDisabled = !canUpdateSettings || needsSeparateActivation;
+                                                        const isDisabled = !canUpdateSettings;
 
                                                         return (
                                                             <button
@@ -692,9 +619,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                                                     {isRecommended && (
                                                                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-black text-blue-700">Recommended</span>
-                                                                    )}
-                                                                    {needsSeparateActivation && (
-                                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">Use Business Tools below</span>
                                                                     )}
                                                                 </div>
                                                             </button>

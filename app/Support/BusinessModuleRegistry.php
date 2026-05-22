@@ -4,6 +4,8 @@ namespace App\Support;
 
 class BusinessModuleRegistry
 {
+    private const SYSTEM_MODULES = ['retail_ops'];
+
     public static function all(): array
     {
         return [
@@ -172,6 +174,16 @@ class BusinessModuleRegistry
         return array_keys(self::all());
     }
 
+    public static function configurableKeys(): array
+    {
+        return array_values(array_diff(self::keys(), self::SYSTEM_MODULES));
+    }
+
+    public static function configurable(): array
+    {
+        return self::only(self::configurableKeys());
+    }
+
     public static function only(array $keys): array
     {
         $modules = self::all();
@@ -185,6 +197,17 @@ class BusinessModuleRegistry
     public static function normalize(array $keys): array
     {
         $valid = self::keys();
+
+        return collect($keys)
+            ->filter(fn ($key) => is_string($key) && in_array($key, $valid, true))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    public static function normalizeConfigurable(array $keys): array
+    {
+        $valid = self::configurableKeys();
 
         return collect($keys)
             ->filter(fn ($key) => is_string($key) && in_array($key, $valid, true))

@@ -96,7 +96,11 @@ class MerchantSettingsController extends Controller
             }
         }
         if (array_key_exists('active_modules', $validated)) {
-            $merchant->active_modules = BusinessModuleRegistry::normalize($validated['active_modules'] ?? []);
+            $activeModules = BusinessModuleRegistry::normalizeConfigurable($validated['active_modules'] ?? []);
+            if ($merchant->hasModule('retail_ops')) {
+                $activeModules[] = 'retail_ops';
+            }
+            $merchant->active_modules = $activeModules;
         }
 
         $merchant->save();

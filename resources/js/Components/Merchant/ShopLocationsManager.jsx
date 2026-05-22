@@ -255,7 +255,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         <Card className="glass-card shadow-sm mt-6">
             <CardHeader className="p-5 pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-muted-foreground uppercase tracking-wider">
-                    <MapPin className="h-4 w-4" /> {personalMode ? 'Maeneo ya Stock / Pickup' : 'Maeneo ya Duka (Shop Locations)'}
+                    <MapPin className="h-4 w-4" /> {personalMode ? 'Maeneo ya Stock / Pickup' : 'Maeneo ya Ofisi / Stock / Duka'}
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-5 space-y-4">
@@ -323,7 +323,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                             <p className="text-sm text-brand-600 font-bold bg-brand-50 p-3 rounded-lg border border-brand-100">
                                 {personalMode
                                     ? 'Bado hujaweka eneo la stock/pickup. Hili linahitajika kama unauza bidhaa uliyonayo mkononi.'
-                                    : 'Bado hujaweka eneo lolote la duka. Hili ni hitaji la lazima kwa bidhaa za kushikika.'}
+                                    : 'Bado hujaweka eneo. Hili ni hitaji la lazima kwa bidhaa za kushikika au Ofisi/Stock.'}
                             </p>
                         ) : (
                             locations.map(loc => (

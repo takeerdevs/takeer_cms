@@ -3,7 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
-import { AlertTriangle, Check, ChevronRight, LayoutGrid, Loader2, RefreshCw, Save, Settings2, Sparkles } from 'lucide-react';
+import { Check, ChevronRight, LayoutGrid, Loader2, RefreshCw, Save, Settings2, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -50,14 +50,7 @@ export default function Modules({ merchantUsername }) {
 
     const recommendedModules = payload?.recommended_modules || [];
     const recommendedModes = payload?.recommended_commerce_modes || [];
-    const retailEligible = Boolean(payload?.merchant?.retail_eligible);
-
     const toggleModule = (key) => {
-        if (key === 'retail_ops' && !retailEligible && !activeModules.includes(key)) {
-            toast.error('Retail ops requires a verified business profile first.');
-            return;
-        }
-
         setActiveModules((prev) => prev.includes(key)
             ? prev.filter((module) => module !== key)
             : [...prev, key]);
@@ -183,14 +176,6 @@ export default function Modules({ merchantUsername }) {
                                         <MiniStat label="Commerce modes" value={commerceModes.length} />
                                         <MiniStat label="Active modules" value={activeModules.length} />
                                         <MiniStat label="Recommended modules" value={recommendedModules.length} />
-                                        {!retailEligible && (
-                                            <div className="rounded-lg bg-amber-50 p-3 text-amber-900">
-                                                <div className="flex gap-2">
-                                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                                                    <p className="text-xs font-semibold">Retail ops unlocks after verified business KYC.</p>
-                                                </div>
-                                            </div>
-                                        )}
                                     </CardContent>
                                 </Card>
                             </div>
@@ -208,10 +193,9 @@ export default function Modules({ merchantUsername }) {
                                             const active = activeModules.includes(key);
                                             const recommended = recommendedModules.includes(key);
                                             const modeSuggested = selectedModeModules.includes(key);
-                                            const locked = key === 'retail_ops' && !retailEligible;
 
                                             return (
-                                                <button key={key} type="button" onClick={() => toggleModule(key)} className={`rounded-lg border p-4 text-left transition ${active ? 'border-brand-500 bg-brand-50' : 'border-border hover:bg-muted/50'} ${locked ? 'opacity-70' : ''}`}>
+                                                <button key={key} type="button" onClick={() => toggleModule(key)} className={`rounded-lg border p-4 text-left transition ${active ? 'border-brand-500 bg-brand-50' : 'border-border hover:bg-muted/50'}`}>
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div>
                                                             <p className="font-black">{module.label}</p>
@@ -225,7 +209,6 @@ export default function Modules({ merchantUsername }) {
                                                         {recommended && <Tag>Recommended</Tag>}
                                                         {modeSuggested && <Tag>Mode</Tag>}
                                                         {module.requires_approval && <Tag>Approval</Tag>}
-                                                        {locked && <Tag>Locked</Tag>}
                                                     </div>
                                                 </button>
                                             );
