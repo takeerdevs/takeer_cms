@@ -408,27 +408,31 @@ const findBestShippingZone = (lat, lng, region, zones) => {
 
     if (bestLocalZone) return { zone: bestLocalZone, hotspot: null };
 
-    // 2. Try Intercity Bus based on region
+    // 2. Try inter-city by merchant-priced destination/region.
     if (region) {
-        const busZone = zones.find(z =>
-            z.delivery_type === 'intercity_bus' &&
-            z.destination_region?.toLowerCase().includes(region.toLowerCase())
-        );
+        const normalizedRegion = String(region || '').trim().toLowerCase();
+        const busZone = zones.find(z => {
+            if (z.delivery_type !== 'intercity_bus') return false;
+            const zoneCity = String(z.destination_city || '').trim().toLowerCase();
+            const zoneRegion = String(z.destination_region || '').trim().toLowerCase();
+            return zoneCity === normalizedRegion || zoneRegion === normalizedRegion || zoneRegion.includes(normalizedRegion);
+        });
         if (busZone) {
-            let closestHs = null;
-            if (busZone.hotspots?.length > 0) {
-                let minHsDist = Infinity;
-                busZone.hotspots.forEach(hs => {
-                    const d = calculateHaversine(lat, lng, Number(hs.latitude), Number(hs.longitude));
-                    if (d < minHsDist) {
-                        minHsDist = d;
-                        closestHs = hs;
-                    }
-                });
-            }
-            return { zone: busZone, hotspot: closestHs };
+            return { zone: busZone, hotspot: null };
         }
     }
+
+    const nearestBusZone = zones
+        .filter(z => z.delivery_type === 'intercity_bus' && z.reference_lat && z.reference_lng)
+        .map(z => ({
+            zone: z,
+            hotspot: null,
+            distance: calculateHaversine(lat, lng, Number(z.reference_lat), Number(z.reference_lng)),
+        }))
+        .sort((a, b) => a.distance - b.distance)[0];
+
+    if (nearestBusZone) return nearestBusZone;
+
     return null;
 };
 
@@ -604,7 +608,11 @@ export default function Chat({
         if (result) {
             setSelectedZoneId(String(result.zone.id));
             setSelectedHotspot(result.hotspot);
-            toast.success(`Tumekupatia gharama ya usafiri: TZS ${Number(result.zone.flat_rate_fee).toLocaleString()}`);
+            if (result.zone.delivery_type === 'intercity_bus' && Number(result.zone.flat_rate_fee || 0) <= 0) {
+                toast.success('Destination imepatikana. Gharama ya usafiri itathibitishwa kwenye chat.');
+            } else {
+                toast.success(`Tumekupatia gharama ya usafiri: TZS ${Number(result.zone.flat_rate_fee).toLocaleString()}`);
+            }
         } else {
             setSelectedZoneId('');
             setSelectedHotspot(null);
@@ -2752,7 +2760,14 @@ export default function Chat({
                                                                             <div className="pt-2 flex items-center justify-between border-t border-emerald-100">
                                                                                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Gharama ya Usafiri</span>
                                                                                 <span className="text-sm font-black text-emerald-900">
-                                                                                    TZS {Number(shippingZones.find(z => String(z.id) === String(selectedZoneId))?.flat_rate_fee || 0).toLocaleString()}
+                                                                                    {(() => {
+                                                                                        const selectedZone = shippingZones.find(z => String(z.id) === String(selectedZoneId));
+                                                                                        const selectedFee = Number(selectedZone?.flat_rate_fee || 0);
+                                                                                        if (selectedZone?.delivery_type === 'intercity_bus' && selectedFee <= 0) {
+                                                                                            return 'Itathibitishwa kwenye chat';
+                                                                                        }
+                                                                                        return `TZS ${selectedFee.toLocaleString()}`;
+                                                                                    })()}
                                                                                 </span>
                                                                             </div>
                                                                         )}
@@ -2770,7 +2785,7 @@ export default function Chat({
                                                                         physical_address: physicalAddress || order?.delivery?.physical_address,
                                                                         latitude: customerLat || order?.delivery?.latitude,
                                                                         longitude: customerLng || order?.delivery?.longitude,
-                                                                        shipping_hotspot_id: selectedHotspot?.id,
+                                                                        shipping_hotspot_id: null,
                                                                         title: isSelfPickupChoice ? 'NIMECHAGUA PICKUP' : `NIMECHAGUA DELIVERY: ${physicalAddress || order?.delivery?.physical_address}`
                                                                     });
                                                                 }}

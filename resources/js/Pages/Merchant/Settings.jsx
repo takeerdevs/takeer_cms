@@ -19,7 +19,9 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
 
     const fetchLocations = async () => {
         try {
-            const res = await window.axios.get('/api/merchant/locations');
+            const res = await window.axios.get('/api/merchant/locations', {
+                params: { merchant_id: merchant.id },
+            });
             setLocations(res.data.data || []);
         } catch (err) {
             console.error('Failed to load locations', err);
@@ -30,7 +32,9 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
 
     const fetchProfiles = async () => {
         try {
-            const res = await window.axios.get('/api/merchant/shipping-profiles');
+            const res = await window.axios.get('/api/merchant/shipping-profiles', {
+                params: { merchant_id: merchant.id },
+            });
             setProfiles(res.data.data || []);
         } catch (err) {
             console.error('Failed to load profiles', err);
@@ -55,9 +59,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
     const canUpdateSettings = can('settings.update');
     const selectedCountry = countries.find(country => String(country.id) === String(merchant.country_id));
     const selectedCountryTimezones = selectedCountry?.settings?.timezones || (selectedCountry?.timezone ? [selectedCountry.timezone] : []);
-    const configurableModuleKeys = Object.keys(businessModules || {});
-    const initialActiveModules = (merchant.active_modules || []).filter((module) => configurableModuleKeys.includes(module));
-
     const { data, setData, post, processing, errors } = useForm({
         display_name: merchant.display_name || '',
         bio: merchant.bio || '',
@@ -68,7 +69,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
         business_category_key: merchant.business_category_key || '',
         business_subcategory_key: merchant.business_subcategory_key || '',
         business_profile: merchant.business_profile || {},
-        active_modules: initialActiveModules,
         allow_post_comments: storefrontSettings.allow_post_comments ?? true,
         allow_post_reactions: storefrontSettings.allow_post_reactions ?? true,
     });
@@ -92,19 +92,8 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
             offer_types: selectedOperationKeys,
         }
         : null;
-    const activeModules = (data.active_modules || []).filter((module) => configurableModuleKeys.includes(module));
-    const recommendedModules = (selectedBusinessContext?.recommended_modules || []).filter((module) => configurableModuleKeys.includes(module));
     const selectedCommerceModes = data.business_profile?.commerce_modes || [];
     const recommendedCommerceModes = selectedBusinessContext?.recommended_commerce_modes || [];
-    const commerceModeModules = selectedCommerceModes
-        .flatMap((key) => commerceModes?.[key]?.modules || [])
-        .filter((module) => configurableModuleKeys.includes(module));
-    const groupedBusinessModules = Object.entries(businessModules || {}).reduce((groups, [key, module]) => {
-        const group = module.group || 'Other';
-        groups[group] = groups[group] || [];
-        groups[group].push([key, module]);
-        return groups;
-    }, {});
     const [bioBuilder, setBioBuilder] = useState({
         roleOrCategory: '',
         certifications: '',
@@ -211,27 +200,14 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
             // Reload the page via Inertia so the fresh `merchant.active_modules` prop is returned
             router.reload({ only: ['merchant'] });
         } catch (err) {
-            console.error('Failed to toggle module', err);
+            console.error('Failed to toggle business tool', err);
             const payload = err.response?.data || {};
             if (payload.requires_subscription && payload.redirect_url) {
                 router.visit(payload.redirect_url);
                 return;
             }
-            alert('Failed to toggle module: ' + (payload.message || err.message));
+            alert('Imeshindikana kubadilisha zana: ' + (payload.message || err.message));
         }
-    };
-
-    const toggleModuleInForm = (moduleKey) => {
-        if (!canUpdateSettings) return;
-        setData('active_modules', activeModules.includes(moduleKey)
-            ? activeModules.filter((key) => key !== moduleKey)
-            : [...activeModules, moduleKey]
-        );
-    };
-
-    const applyRecommendedModules = () => {
-        if (!canUpdateSettings) return;
-        setData('active_modules', Array.from(new Set([...activeModules, ...recommendedModules])));
     };
 
     const setPrimaryOperation = (operationKey) => {
@@ -282,11 +258,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
             ...(data.business_profile || {}),
             commerce_modes: Array.from(new Set([...selectedCommerceModes, ...recommendedCommerceModes])),
         });
-    };
-
-    const applyCommerceModeModules = () => {
-        if (!canUpdateSettings) return;
-        setData('active_modules', Array.from(new Set([...activeModules, ...commerceModeModules])));
     };
 
     const handleSubmit = (e) => {
@@ -389,7 +360,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                         <Card className="glass-card shadow-sm border-blue-100">
                             <CardHeader className="p-5 pb-2">
                                 <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-blue-700 uppercase tracking-wider">
-                                    <LayoutDashboard className="h-4 w-4" /> Operations & Modules
+                                    <LayoutDashboard className="h-4 w-4" /> Operations & Selling Modes
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="p-5 space-y-4">
@@ -398,7 +369,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                                             <p className="text-sm font-black text-amber-900">Choose this business setup when you are ready.</p>
                                             <p className="mt-1 text-xs font-semibold text-amber-800">
-                                                New businesses start without default modules. Pick the main operation here, then turn on only the tools this business actually uses.
+                                                Pick the main operation here so reporting, discovery, and setup suggestions understand what this business does.
                                             </p>
                                         </div>
                                     )}
@@ -469,16 +440,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                                 </div>
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Recommended modules</p>
-                                                <div className="flex flex-wrap gap-1.5 mt-2">
-                                                    {recommendedModules.map((module) => (
-                                                        <span key={module} className="rounded-full bg-white border border-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-800">
-                                                            {businessModules?.[module]?.label || module.replace(/_/g, ' ')}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div>
                                                 <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Offerings this business can create</p>
                                                 <div className="flex flex-wrap gap-1.5 mt-2">
                                                     {(selectedBusinessContext.offer_types || []).map((offerType) => (
@@ -490,7 +451,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                             </div>
                                         </div>
                                         <p className="text-xs text-blue-800/80">
-                                            Commerce modes describe what the business sells. Modules are the tools enabled from those modes.
+                                            Aina za mauzo zinaeleza biashara inauza nini. Aina maalum za huduma utazichagua baadaye wakati wa kuweka huduma mpya.
                                         </p>
                                     </div>
                                 )}
@@ -498,9 +459,9 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                                         <div>
-                                            <p className="text-sm font-black text-slate-900">What does this business sell?</p>
+                                            <p className="text-sm font-black text-slate-900">Biashara hii inauza nini?</p>
                                             <p className="text-xs text-slate-500 mt-1">
-                                                Choose all that apply. Physical products keep using the product categories, variants, stock, and delivery flow.
+                                                Chagua zote zinazohusika. Bidhaa za kushikika zitaendelea kutumia categories, variants, stock, na delivery flow.
                                             </p>
                                         </div>
                                         {recommendedCommerceModes.length > 0 && (
@@ -543,90 +504,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                                                 </button>
                                             );
                                         })}
-                                    </div>
-
-                                    {selectedCommerceModes.length > 0 && (
-                                        <div className="rounded-xl border border-brand-100 bg-brand-50 p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                                            <p className="text-xs font-bold text-brand-800">
-                                                Selected modes suggest {Array.from(new Set(commerceModeModules)).length} modules for this business.
-                                            </p>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="rounded-lg bg-white text-xs font-bold"
-                                                onClick={applyCommerceModeModules}
-                                                disabled={!canUpdateSettings}
-                                            >
-                                                Add mode modules
-                                            </Button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                                        <div>
-                                            <p className="text-sm font-black text-slate-900">Business modules</p>
-                                            <p className="text-xs text-slate-500 mt-1">
-                                                Modules decide what this business can manage: menus, rooms, bookings, courses, orders, bookkeeping, and more.
-                                            </p>
-                                        </div>
-                                        {recommendedModules.length > 0 && (
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="rounded-lg text-xs font-bold"
-                                                onClick={applyRecommendedModules}
-                                                disabled={!canUpdateSettings}
-                                            >
-                                                Apply recommended
-                                            </Button>
-                                        )}
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        {Object.entries(groupedBusinessModules).map(([group, modules]) => (
-                                            <div key={group} className="space-y-2">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{group}</p>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                    {modules.map(([key, module]) => {
-                                                        const isActive = activeModules.includes(key);
-                                                        const isRecommended = recommendedModules.includes(key);
-                                                        const isDisabled = !canUpdateSettings;
-
-                                                        return (
-                                                            <button
-                                                                key={key}
-                                                                type="button"
-                                                                onClick={() => !isDisabled && toggleModuleInForm(key)}
-                                                                disabled={isDisabled}
-                                                                className={`rounded-xl border p-3 text-left transition-all ${isActive ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-slate-50 hover:bg-white'} ${isDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                            >
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                    <div>
-                                                                        <p className="text-sm font-black text-slate-900">{module.label}</p>
-                                                                        <p className="text-xs text-slate-500 mt-1 leading-relaxed">{module.description}</p>
-                                                                    </div>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        className="mt-1 h-4 w-4"
-                                                                        checked={isActive}
-                                                                        readOnly
-                                                                    />
-                                                                </div>
-                                                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                                                    {isRecommended && (
-                                                                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-black text-blue-700">Recommended</span>
-                                                                    )}
-                                                                </div>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ))}
                                     </div>
                                 </div>
                             </CardContent>
@@ -797,6 +674,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                             loading={loadingLocations}
                             profiles={profiles}
                             onRefreshZones={fetchProfiles}
+                            merchantId={merchant.id}
                             personalMode={merchant?.type === 'personal'}
                         />
 

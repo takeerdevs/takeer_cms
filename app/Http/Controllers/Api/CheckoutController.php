@@ -225,12 +225,14 @@ class CheckoutController extends Controller
                 // If explicit self-pickup, bypass zone lookup and use 0 fee
                 $zone = null;
             } else {
-                [$zone, $deliveryZoneError] = $this->resolveCheckoutShippingZone(
+                [$zone, $deliveryZoneError, $resolvedHotspotId] = $this->resolveCheckoutShippingZone(
                     zoneId: $zoneId ? (int) $zoneId : null,
                     shippingProfileId: $shippingProfileId ? (int) $shippingProfileId : null,
                     merchantId: (int) $purchasable->merchant_id,
                     buyerLat: isset($validated['buyer_lat']) ? (float) $validated['buyer_lat'] : null,
                     buyerLng: isset($validated['buyer_lng']) ? (float) $validated['buyer_lng'] : null,
+                    buyerCity: $validated['customer_city'] ?? null,
+                    buyerRegion: $validated['customer_region'] ?? null,
                     eligibleLocationIds: $this->eligibleServingLocationIds($product, $selectedVariant, $selectedOfferingGroup, $requestedQuantity),
                 );
 
@@ -497,18 +499,19 @@ class CheckoutController extends Controller
 
                 if (($product?->isPhysical() || ($selectedOfferingGroup['has_physical_items'] ?? false)) && isset($zone)) {
                     $isPickup = $zone->delivery_type === 'self_pickup';
+                    $isIntercity = $zone->delivery_type === 'intercity_bus';
 
                     \App\Models\Delivery::create([
                         'order_id' => $newOrder->id,
                         'shipping_zone_id' => $zone->id,
                         'delivery_type' => $zone->delivery_type, // Explicitly set type
-                        'shipping_hotspot_id' => $validated['shipping_hotspot_id'] ?? null,
+                        'shipping_hotspot_id' => $resolvedHotspotId ?? $validated['shipping_hotspot_id'] ?? null,
                         'physical_address' => $isPickup ? null : ($validated['physical_address'] ?? null),
                         'latitude' => $validated['buyer_lat'] ?? $validated['latitude'] ?? null,
                         'longitude' => $validated['buyer_lng'] ?? $validated['longitude'] ?? null,
-                        'delivery_status' => $isPickup ? 'awaiting_pickup' : 'awaiting_boda',
-                        'buyer_release_pin' => $isPickup ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
-                        'pickup_pin' => $isPickup ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
+                        'delivery_status' => $isPickup ? 'awaiting_pickup' : ($isIntercity ? 'inquiry' : 'awaiting_boda'),
+                        'buyer_release_pin' => ($isPickup || $isIntercity) ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+                        'pickup_pin' => ($isPickup || $isIntercity) ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
                     ]);
                 }
                 $this->initializeOrderChat($newOrder);
@@ -695,13 +698,40 @@ class CheckoutController extends Controller
                 ->implode(', ') . '.'
             : '';
 
-        return "Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.{$coverageText} Chagua anwani iliyo karibu, pickup, au angalia muuzaji mwingine.";
+        $intercityDestinations = ShippingZone::query()
+            ->where('merchant_id', $merchantId)
+            ->where('shipping_profile_id', $profile->id)
+            ->where('is_active', true)
+            ->where('delivery_type', 'intercity_bus')
+            ->get(['zone_name', 'destination_city', 'destination_region'])
+            ->map(fn (ShippingZone $zone) => $zone->destination_city ?: $zone->zone_name ?: $zone->destination_region)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $intercityDestinationText = $intercityDestinations->isNotEmpty()
+            ? ' Inter-city inapatikana kwenda: ' . $intercityDestinations->implode(', ') . '.'
+            : '';
+
+        return "Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.{$coverageText}{$intercityDestinationText} Chagua anwani iliyo karibu, pickup, au angalia muuzaji mwingine.";
     }
 
-    private function resolveCheckoutShippingZone(?int $zoneId, ?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?array $eligibleLocationIds = null): array
+    private function resolveCheckoutShippingZone(?int $zoneId, ?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null, ?array $eligibleLocationIds = null): array
     {
+        $blocksOutsideAreas = $this->shippingProfileBlocksOutsideAreas($shippingProfileId, $merchantId);
+
         if (!$zoneId) {
-            return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId)];
+            $bestLocalZone = $this->bestLocalShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $eligibleLocationIds, $buyerCity);
+            if ($bestLocalZone) {
+                return [$bestLocalZone, null, null];
+            }
+
+            $bestIntercity = $this->bestIntercityShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, allowNearestOutsideArea: !$blocksOutsideAreas);
+            if ($bestIntercity) {
+                return [$bestIntercity['zone'], null, $bestIntercity['hotspot_id']];
+            }
+
+            return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId), null];
         }
 
         $eligibleLocationIds = $this->normalizeEligibleLocationIds($eligibleLocationIds);
@@ -726,16 +756,29 @@ class CheckoutController extends Controller
         $zone = $zoneQuery->first();
 
         if (!$zone) {
-            return [null, 'Chaguo la usafirishaji halipatikani. Tafadhali chagua anwani au pickup tena.'];
+            return [null, 'Chaguo la usafirishaji halipatikani. Tafadhali chagua anwani au pickup tena.', null];
+        }
+
+        if ($zone->delivery_type === 'intercity_bus') {
+            if ($blocksOutsideAreas && !$this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion)) {
+                return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId), null];
+            }
+
+            return [$zone, null, null];
         }
 
         if ($zone->delivery_type !== 'local_boda') {
-            return [$zone, null];
+            return [$zone, null, null];
         }
 
-        $bestLocalZone = $this->bestLocalShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $eligibleLocationIds);
+        $bestLocalZone = $this->bestLocalShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $eligibleLocationIds, $buyerCity);
         if ($bestLocalZone) {
-            return [$bestLocalZone, null];
+            return [$bestLocalZone, null, null];
+        }
+
+        $bestIntercity = $this->bestIntercityShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, allowNearestOutsideArea: !$blocksOutsideAreas);
+        if ($bestIntercity) {
+            return [$bestIntercity['zone'], null, $bestIntercity['hotspot_id']];
         }
 
         $shopLat = $zone->location?->latitude;
@@ -743,7 +786,7 @@ class CheckoutController extends Controller
         $radiusKm = (float) $zone->max_distance_km;
 
         if ($buyerLat === null || $buyerLng === null || $shopLat === null || $shopLng === null || $radiusKm <= 0) {
-            return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId)];
+            return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId), null];
         }
 
         $distanceKm = ShippingZone::calculateDistance(
@@ -754,15 +797,15 @@ class CheckoutController extends Controller
         );
 
         if ($distanceKm <= $radiusKm) {
-            return [$zone, null];
+            return [$zone, null, null];
         }
 
-        return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId)];
+        return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId), null];
     }
 
-    private function bestLocalShippingZone(?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?array $eligibleLocationIds = null): ?ShippingZone
+    private function bestLocalShippingZone(?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?array $eligibleLocationIds = null, ?string $buyerCity = null): ?ShippingZone
     {
-        if ($buyerLat === null || $buyerLng === null) {
+        if (($buyerLat === null || $buyerLng === null) && !$buyerCity) {
             return null;
         }
 
@@ -777,30 +820,35 @@ class CheckoutController extends Controller
             ->when($shippingProfileId, fn ($query) => $query->where('shipping_profile_id', $shippingProfileId))
             ->when($eligibleLocationIds !== null, fn ($query) => $query->whereIn('merchant_location_id', $eligibleLocationIds))
             ->get()
-            ->map(function (ShippingZone $zone) use ($buyerLat, $buyerLng) {
+            ->map(function (ShippingZone $zone) use ($buyerLat, $buyerLng, $buyerCity) {
                 $shopLat = $zone->location?->latitude;
                 $shopLng = $zone->location?->longitude;
                 $radiusKm = (float) $zone->max_distance_km;
+                $sameCity = $buyerCity
+                    && $zone->location?->city
+                    && strcasecmp(trim((string) $buyerCity), trim((string) $zone->location->city)) === 0;
 
-                if ($shopLat === null || $shopLng === null || $radiusKm <= 0) {
+                if (!$sameCity && ($shopLat === null || $shopLng === null || $radiusKm <= 0 || $buyerLat === null || $buyerLng === null)) {
                     return null;
                 }
 
-                $distanceKm = ShippingZone::calculateDistance(
-                    (float) $buyerLat,
-                    (float) $buyerLng,
-                    (float) $shopLat,
-                    (float) $shopLng,
-                );
+                $distanceKm = ($buyerLat !== null && $buyerLng !== null && $shopLat !== null && $shopLng !== null)
+                    ? ShippingZone::calculateDistance(
+                        (float) $buyerLat,
+                        (float) $buyerLng,
+                        (float) $shopLat,
+                        (float) $shopLng,
+                    )
+                    : 0.0;
 
-                if ($distanceKm > $radiusKm) {
+                if (!$sameCity && $distanceKm > $radiusKm) {
                     return null;
                 }
 
                 return [
                     'zone' => $zone,
                     'distance' => $distanceKm,
-                    'radius' => $radiusKm,
+                    'radius' => $sameCity ? 0.0 : $radiusKm,
                     'fee' => (float) $zone->flat_rate_fee,
                 ];
             })
@@ -827,6 +875,112 @@ class CheckoutController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    private function bestIntercityShippingZone(?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null, bool $allowNearestOutsideArea = true): ?array
+    {
+        $zones = ShippingZone::query()
+            ->where('merchant_id', $merchantId)
+            ->where('is_active', true)
+            ->where('delivery_type', 'intercity_bus')
+            ->with(['hotspots', 'location'])
+            ->when($shippingProfileId, fn ($query) => $query->where('shipping_profile_id', $shippingProfileId))
+            ->get();
+
+        if ($zones->isEmpty()) {
+            return null;
+        }
+
+        return $zones
+            ->flatMap(function (ShippingZone $zone) use ($buyerLat, $buyerLng, $buyerCity, $buyerRegion, $allowNearestOutsideArea) {
+                if (!$allowNearestOutsideArea && !$this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion)) {
+                    return collect();
+                }
+
+                if ($this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion)) {
+                    return collect([[
+                        'zone' => $zone,
+                        'hotspot_id' => null,
+                        'distance' => 0.0,
+                        'fee' => (float) $zone->flat_rate_fee,
+                    ]]);
+                }
+
+                $candidates = collect([[
+                    'zone' => $zone,
+                    'hotspot_id' => null,
+                    'lat' => $zone->reference_lat ?? $zone->location?->latitude,
+                    'lng' => $zone->reference_lng ?? $zone->location?->longitude,
+                    'fee' => (float) $zone->flat_rate_fee,
+                ]]);
+
+                return $candidates->map(function (array $candidate) use ($buyerLat, $buyerLng) {
+                    $candidate['distance'] = $this->distanceOrFallback($buyerLat, $buyerLng, $candidate['lat'], $candidate['lng']);
+                    return $candidate;
+                });
+            })
+            ->filter(fn (array $candidate) => $candidate['distance'] !== null)
+            ->sortBy([
+                ['distance', 'asc'],
+                ['fee', 'asc'],
+            ])
+            ->values()
+            ->first();
+    }
+
+    private function distanceOrFallback(?float $fromLat, ?float $fromLng, mixed $toLat, mixed $toLng): ?float
+    {
+        if ($fromLat === null || $fromLng === null || $toLat === null || $toLng === null) {
+            return null;
+        }
+
+        return ShippingZone::calculateDistance(
+            (float) $fromLat,
+            (float) $fromLng,
+            (float) $toLat,
+            (float) $toLng,
+        );
+    }
+
+    private function shippingProfileBlocksOutsideAreas(?int $shippingProfileId, int $merchantId): bool
+    {
+        if (!$shippingProfileId) {
+            return false;
+        }
+
+        return (bool) ShippingProfile::query()
+            ->where('merchant_id', $merchantId)
+            ->find($shippingProfileId)
+            ?->blocksOutsideAreas();
+    }
+
+    private function intercityZoneCoversCustomer(ShippingZone $zone, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null): bool
+    {
+        $customerCity = $this->normalizeAreaName($buyerCity);
+        $customerRegion = $this->normalizeAreaName($buyerRegion);
+        $zoneCity = $this->normalizeAreaName($zone->destination_city);
+        $zoneRegion = $this->normalizeAreaName($zone->destination_region);
+
+        if ($customerCity && $zoneCity && $customerCity === $zoneCity) {
+            return true;
+        }
+
+        if (!$zoneCity && $customerRegion && $zoneRegion && $customerRegion === $zoneRegion) {
+            return true;
+        }
+
+        $nearestDistance = $this->distanceOrFallback($buyerLat, $buyerLng, $zone->reference_lat, $zone->reference_lng);
+
+        return $nearestDistance !== null && $nearestDistance <= 30;
+    }
+
+    private function normalizeAreaName(?string $value): string
+    {
+        return Str::of($value ?: '')
+            ->lower()
+            ->replaceMatches('/\s+/', ' ')
+            ->trim()
+            ->toString();
     }
 
     private function eligibleServingLocationIds(?Product $product, ?ProductVariant $variant, ?array $selectedOfferingGroup, float $quantity = 1.0): ?array
@@ -1522,26 +1676,10 @@ class CheckoutController extends Controller
             return response()->json(['message' => 'Anwani ya uwasilishaji inahitajika.'], 422);
         }
 
-        if (!$isServiceInquiry && !$isSelfPickup && empty($validated['delivery_zone_id'])) {
-            $merchantId = (int) ($product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id);
-            $shippingProfileId = $product?->shipping_profile_id ?: null;
-
-            if (!$shippingProfileId) {
-                $shippingProfileId = ShippingProfile::query()
-                    ->where('merchant_id', $merchantId)
-                    ->where('is_default', true)
-                    ->value('id');
-            }
-
-            $outsideAreaError = $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId);
-            if ($outsideAreaError) {
-                return response()->json(['message' => $outsideAreaError], 422);
-            }
-        }
-
         $resolvedShippingZone = null;
+        $resolvedHotspotId = null;
 
-        if (!$isServiceInquiry && !$isSelfPickup && !empty($validated['delivery_zone_id'])) {
+        if (!$isServiceInquiry && !$isSelfPickup) {
             $merchantId = (int) ($product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id);
             $shippingProfileId = $product?->shipping_profile_id ?: null;
 
@@ -1552,12 +1690,14 @@ class CheckoutController extends Controller
                     ->value('id');
             }
 
-            [$resolvedShippingZone, $deliveryZoneError] = $this->resolveCheckoutShippingZone(
-                zoneId: (int) $validated['delivery_zone_id'],
+            [$resolvedShippingZone, $deliveryZoneError, $resolvedHotspotId] = $this->resolveCheckoutShippingZone(
+                zoneId: !empty($validated['delivery_zone_id']) ? (int) $validated['delivery_zone_id'] : null,
                 shippingProfileId: $shippingProfileId ? (int) $shippingProfileId : null,
                 merchantId: $merchantId,
                 buyerLat: isset($validated['buyer_lat']) ? (float) $validated['buyer_lat'] : null,
                 buyerLng: isset($validated['buyer_lng']) ? (float) $validated['buyer_lng'] : null,
+                buyerCity: $validated['customer_city'] ?? null,
+                buyerRegion: $validated['customer_region'] ?? null,
                 eligibleLocationIds: $this->eligibleServingLocationIds($product, $selectedVariant, $selectedOfferingGroup, $requestedQuantity),
             );
 
@@ -1567,6 +1707,8 @@ class CheckoutController extends Controller
 
             if (!$resolvedShippingZone) {
                 $validated['delivery_zone_id'] = null;
+            } else {
+                $validated['delivery_zone_id'] = $resolvedShippingZone->id;
             }
         }
 
@@ -1603,7 +1745,7 @@ class CheckoutController extends Controller
         $inquiryStatus = ($isSelfPickup || $resolvedShippingZone) ? 'quoted' : 'pending';
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
 
-        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus) {
+        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId) {
             $merchantId = $product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id;
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
@@ -1657,17 +1799,19 @@ class CheckoutController extends Controller
             ]);
 
             if (!$isServiceInquiry) {
+                $isIntercity = $resolvedDeliveryType === 'intercity_bus';
+
                 \App\Models\Delivery::create([
                     'order_id' => $newOrder->id,
                     'shipping_zone_id' => $isSelfPickup ? null : ($validated['delivery_zone_id'] ?? null),
                     'delivery_type' => $resolvedDeliveryType,
                     'physical_address' => $isSelfPickup ? null : ($validated['physical_address'] ?? null),
-                    'shipping_hotspot_id' => $validated['shipping_hotspot_id'] ?? null,
+                    'shipping_hotspot_id' => $resolvedHotspotId ?? $validated['shipping_hotspot_id'] ?? null,
                     'latitude' => $validated['buyer_lat'] ?? null,
                     'longitude' => $validated['buyer_lng'] ?? null,
                     'delivery_status' => $isSelfPickup ? 'awaiting_pickup' : 'inquiry',
-                    'pickup_pin' => $isSelfPickup ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
-                    'buyer_release_pin' => $isSelfPickup ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+                    'pickup_pin' => ($isSelfPickup || $isIntercity) ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
+                    'buyer_release_pin' => ($isSelfPickup || $isIntercity) ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
                 ]);
             }
 

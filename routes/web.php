@@ -1424,7 +1424,7 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/upload', function (Merchant $merchant) {
             abort_unless($merchant->canSellProducts(), 403, 'Complete KYC before uploading products.');
-            $merchant->loadMissing('country');
+            $merchant->loadMissing(['country', 'locations']);
             $merchantTimezone = $merchant->defaultTimezone();
             $countryTimezones = $merchant->country?->timezones() ?? [];
             $timezoneOptions = array_values(array_unique(array_filter([
@@ -1437,6 +1437,17 @@ Route::middleware('auth')->group(function () {
                 'merchantUsername' => $merchant->username,
                 'merchantTimezone' => $merchantTimezone,
                 'timezoneOptions' => $timezoneOptions,
+                'merchantLocations' => $merchant->locations->map(fn ($location) => [
+                    'id' => $location->id,
+                    'name' => $location->name,
+                    'address' => $location->address,
+                    'latitude' => $location->latitude !== null ? (float) $location->latitude : null,
+                    'longitude' => $location->longitude !== null ? (float) $location->longitude : null,
+                    'is_primary' => (bool) $location->is_primary,
+                    'allow_self_pickup' => (bool) $location->allow_self_pickup,
+                    'contact_phone' => $location->contact_phone,
+                    'type' => $location->type,
+                ])->values(),
             ]);
         })->middleware('merchant_permission:products.create,digital_products.create,services.create');
 
@@ -1855,6 +1866,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/orders/{order}/custom-delivery', [MerchantOrderController::class, 'uploadCustomDelivery'])->middleware('merchant_permission:orders.dispatch');
         Route::post('/orders/{order}/rider-access', [MerchantOrderController::class, 'generateRiderAccess'])->middleware('merchant_permission:orders.dispatch,orders.update');
         Route::post('/orders/{order}/delivery-status', [MerchantOrderController::class, 'updateDeliveryStatus'])->middleware('merchant_permission:orders.dispatch,orders.update');
+        Route::post('/orders/{order}/return-request/approve', [MerchantOrderController::class, 'approveReturn'])->middleware('merchant_permission:orders.update');
+        Route::post('/orders/{order}/return-request/reject', [MerchantOrderController::class, 'rejectReturn'])->middleware('merchant_permission:orders.update');
+        Route::post('/orders/{order}/return-request/received', [MerchantOrderController::class, 'markReturnReceived'])->middleware('merchant_permission:orders.update');
+        Route::post('/orders/{order}/return-request/complete', [MerchantOrderController::class, 'completeReturn'])->middleware('merchant_permission:orders.update');
         Route::post('/dispatch/{order}/intercity', [DispatchController::class, 'intercity'])->middleware('merchant_permission:orders.dispatch');
         Route::post('/dispatch/{order}/local', [DispatchController::class, 'local'])->middleware('merchant_permission:orders.dispatch');
         Route::get('/orders/{order}', function (Merchant $merchant, \App\Models\Order $order) {

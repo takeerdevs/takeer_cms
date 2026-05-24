@@ -456,7 +456,7 @@ function StatusBadge({ feature }) {
 
 function featureDescription(feature) {
     if (feature.key === 'retail_ops') {
-        return 'Access control for your POS and shop operations module.';
+        return 'Access control for your POS and shop operations tools.';
     }
     return 'Increase upload/storage allowance for your merchant workspace.';
 }

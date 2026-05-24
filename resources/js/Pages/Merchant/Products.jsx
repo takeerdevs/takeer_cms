@@ -2020,7 +2020,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
                                                     </select>
                                                 </label>
                                                 <label className="space-y-1.5">
-                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Module status</span>
+                                                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status ya zana</span>
                                                     <select
                                                         className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
                                                         value={fulfillmentAction.fulfillment_status}

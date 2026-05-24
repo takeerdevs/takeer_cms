@@ -754,6 +754,7 @@ function OwnedCard({ entry }) {
     const [payingInquiry, setPayingInquiry] = useState(false);
 
     const isDigitalProduct = entry.item_type === 'product' && item.type === 'digital';
+    const isPhysicalProduct = entry.item_type === 'product' && item.type === 'physical';
     const isCustomDeliveryProduct = isDigitalProduct && item.digital_delivery_type === 'custom_delivery';
     const isServiceProduct = entry.item_type === 'product' && item.type === 'service';
     const disputeAllowsOptionalEvidence = isServiceProduct || isCustomDeliveryProduct;
@@ -774,7 +775,10 @@ function OwnedCard({ entry }) {
     const isDeliveryActive = isActiveDeliveryStatus(orderDetails?.delivery?.status || orderDetails?.delivery?.delivery_status);
     const hasReview = Boolean(orderDetails?.review?.id);
     const refundPolicy = orderDetails?.refund_policy || null;
+    const returnRequest = orderDetails?.return_request || null;
     const canOpenRefundClaim = !refundPolicy || refundPolicy.status === 'eligible';
+    const canOpenReturnRequest = isPhysicalProduct && canOpenRefundClaim && !returnRequest;
+    const claimButtonDisabled = isPhysicalProduct ? !canOpenReturnRequest : !canOpenRefundClaim;
     const shouldShowRefundPolicy = refundPolicy && (canOpenRefundClaim || (!isDeliveryActive && orderDetails?.payment_status !== 'escrow_locked'));
     const refundPolicyTone = canOpenRefundClaim
         ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
@@ -870,20 +874,39 @@ function OwnedCard({ entry }) {
 
     const handleFileDispute = async (e) => {
         e.preventDefault();
-        if (!disputeReason || (!disputeAllowsOptionalEvidence && !unboxingVideo)) return;
+        if (!disputeReason || (!isPhysicalProduct && !disputeAllowsOptionalEvidence && !unboxingVideo)) return;
         setDisputeSubmitting(true);
         const formData = new FormData();
-        if (unboxingVideo) formData.append('unboxing_video', unboxingVideo);
+        if (unboxingVideo) formData.append(isPhysicalProduct ? 'evidence' : 'unboxing_video', unboxingVideo);
         formData.append('reason', disputeReason);
         try {
-            await axios.post(`/api/buyer/orders/${orderDetails.id}/dispute`, formData, {
+            const endpoint = isPhysicalProduct
+                ? `/api/buyer/orders/${orderDetails.id}/return-request`
+                : `/api/buyer/orders/${orderDetails.id}/dispute`;
+            await axios.post(endpoint, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            toast.success('Mgogoro umefunguliwa. Tutawasiliana nawe.');
+            toast.success(isPhysicalProduct ? 'Return request sent to the merchant.' : 'Mgogoro umefunguliwa. Tutawasiliana nawe.');
             setShowDisputeModal(false);
             window.location.reload();
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Imeshindwa kufungua mgogoro.');
+            toast.error(error.response?.data?.message || (isPhysicalProduct ? 'Imeshindikana kutuma return request.' : 'Imeshindwa kufungua mgogoro.'));
+        } finally {
+            setDisputeSubmitting(false);
+        }
+    };
+
+    const handleEscalateReturn = async () => {
+        if (!returnRequest?.id) return;
+        setDisputeSubmitting(true);
+        try {
+            await axios.post(`/api/buyer/return-requests/${returnRequest.id}/escalate`, {
+                reason: 'Customer escalated the return request from orders.',
+            });
+            toast.success('Return request escalated to Takeer.');
+            window.location.reload();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindikana ku-escalate return request.');
         } finally {
             setDisputeSubmitting(false);
         }
@@ -1097,7 +1120,7 @@ function OwnedCard({ entry }) {
                             )}
 
                             {orderDetails?.payment_status === 'escrow_locked' && !customDelivery?.delivered_at && customDeliveryIsOverdue && (
-                                <Button variant="outline" className="w-full rounded-xl text-red-600 border-red-200" onClick={() => setShowDisputeModal(true)} disabled={!canOpenRefundClaim}>
+                                <Button variant="outline" className="w-full rounded-xl text-red-600 border-red-200" onClick={() => setShowDisputeModal(true)} disabled={claimButtonDisabled}>
                                     Dispute missed deadline
                                 </Button>
                             )}
@@ -1105,7 +1128,7 @@ function OwnedCard({ entry }) {
                             {orderDetails?.payment_status === 'escrow_locked' && customDelivery?.delivered_at && customDelivery?.status !== 'accepted' && (
                                 <div className="space-y-2">
                                     <div className="grid grid-cols-2 gap-2">
-                                        <Button variant="outline" className="rounded-xl text-red-600 border-red-200" onClick={() => setShowDisputeModal(true)} disabled={!canOpenRefundClaim}>
+                                        <Button variant="outline" className="rounded-xl text-red-600 border-red-200" onClick={() => setShowDisputeModal(true)} disabled={claimButtonDisabled}>
                                             Dispute
                                         </Button>
                                         <Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleConfirmReceipt} disabled={confirmingReceipt}>
@@ -1212,7 +1235,7 @@ function OwnedCard({ entry }) {
                                         variant="outline"
                                         className="rounded-2xl border-red-200 text-red-600 hover:bg-red-50"
                                         onClick={() => setShowDisputeModal(true)}
-                                        disabled={!canOpenRefundClaim}
+                                        disabled={claimButtonDisabled}
                                     >
                                         Fungua Mgogoro
                                     </Button>
@@ -1423,9 +1446,9 @@ function OwnedCard({ entry }) {
                                         variant="outline"
                                         className="flex-1 rounded-xl h-10 text-xs font-bold border-red-200 text-red-600 hover:bg-red-50"
                                         onClick={() => setShowDisputeModal(true)}
-                                        disabled={!canOpenRefundClaim}
+                                        disabled={claimButtonDisabled}
                                     >
-                                        File Claim
+                                        {isPhysicalProduct ? 'Return Request' : 'File Claim'}
                                     </Button>
                                     <Button
                                         className="flex-1 rounded-xl h-10 text-xs font-bold bg-green-600 hover:bg-green-700 text-white"
@@ -1481,6 +1504,28 @@ function OwnedCard({ entry }) {
                     </div>
                 )}
 
+                {returnRequest && (
+                    <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                        <p className="font-black uppercase tracking-widest">Return request: {String(returnRequest.status || '').replaceAll('_', ' ')}</p>
+                        <p className="mt-1 font-semibold">{returnRequest.merchant_note || returnRequest.reason}</p>
+                        {returnRequest.policy_snapshot?.window_ends_at && (
+                            <p className="mt-1 font-bold">Policy window ends {new Date(returnRequest.policy_snapshot.window_ends_at).toLocaleDateString()}</p>
+                        )}
+                        {!['completed', 'escalated'].includes(returnRequest.status) && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="mt-2 h-9 rounded-xl border-sky-200 bg-white text-xs font-black text-sky-700 hover:bg-sky-100"
+                                onClick={handleEscalateReturn}
+                                disabled={disputeSubmitting}
+                            >
+                                {disputeSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Escalate to Takeer
+                            </Button>
+                        )}
+                    </div>
+                )}
+
                 {reportTarget.itemId && (
                     <div className="mt-3">
                         <ContentReportButton
@@ -1507,9 +1552,11 @@ function OwnedCard({ entry }) {
                                     </button>
                                 </div>
                                 <div className="space-y-2">
-                                    <h2 className="text-2xl font-black tracking-tight">{isServiceProduct ? 'Fungua Mgogoro' : 'File a Claim'}</h2>
+                                    <h2 className="text-2xl font-black tracking-tight">{isPhysicalProduct ? 'Request a Return' : (isServiceProduct ? 'Fungua Mgogoro' : 'File a Claim')}</h2>
                                     <p className="text-sm text-muted-foreground">
-                                        {disputeAllowsOptionalEvidence
+                                        {isPhysicalProduct
+                                            ? 'Eleza tatizo na ombi lako. Muuzaji ataishughulikia kulingana na return policy ya bidhaa.'
+                                            : disputeAllowsOptionalEvidence
                                             ? 'Eleza kilichotokea. Unaweza kuongeza picha, video au PDF kama ushahidi.'
                                             : 'Tafadhali pakia video ya unboxing na maelezo ya kwanini unataka kurudisha mzigo au kurudishiwa pesa.'}
                                     </p>
@@ -1518,35 +1565,35 @@ function OwnedCard({ entry }) {
                                 <form onSubmit={handleFileDispute} className="space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                            {disputeAllowsOptionalEvidence ? 'Ushahidi (si lazima)' : 'Unboxing Video (Required)'}
+                                            {isPhysicalProduct || disputeAllowsOptionalEvidence ? 'Ushahidi (si lazima)' : 'Unboxing Video (Required)'}
                                         </label>
-                                        {disputeAllowsOptionalEvidence && (
+                                        {(isPhysicalProduct || disputeAllowsOptionalEvidence) && (
                                             <p className="text-xs leading-5 text-muted-foreground">
-                                                Unaweza kuweka picha, video au PDF. Mgogoro ukitumwa, Takeer itaendelea kushikilia malipo hadi ushahidi ukaguliwe.
+                                                Unaweza kuweka picha, video au PDF. {isPhysicalProduct ? 'Return iki-hitaji msaada, unaweza kui-escalate kwa Takeer.' : 'Mgogoro ukitumwa, Takeer itaendelea kushikilia malipo hadi ushahidi ukaguliwe.'}
                                             </p>
                                         )}
                                         <input
                                             type="file"
-                                            accept={disputeAllowsOptionalEvidence ? 'image/*,video/*,application/pdf' : 'video/*'}
+                                            accept={isPhysicalProduct || disputeAllowsOptionalEvidence ? 'image/*,video/*,application/pdf' : 'video/*'}
                                             onChange={e => setUnboxingVideo(e.target.files?.[0])}
-                                            required={!disputeAllowsOptionalEvidence}
+                                            required={!isPhysicalProduct && !disputeAllowsOptionalEvidence}
                                             className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
                                         />
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                            {isServiceProduct ? 'Sababu ya mgogoro' : 'Reason for Dispute'}
+                                            {isPhysicalProduct ? 'Sababu ya return' : (isServiceProduct ? 'Sababu ya mgogoro' : 'Reason for Dispute')}
                                         </label>
                                         <textarea
                                             required
                                             value={disputeReason}
                                             onChange={e => setDisputeReason(e.target.value)}
-                                            placeholder={isCustomDeliveryProduct ? 'Mf. Naomba ubadilishe sehemu hii, au faili si kama tulivyokubaliana...' : (isServiceProduct ? 'Mf. Huduma haikutolewa kama tulivyokubaliana...' : 'Mf. Bidhaa iliyofika imevunjika...')}
+                                            placeholder={isCustomDeliveryProduct ? 'Mf. Naomba ubadilishe sehemu hii, au faili si kama tulivyokubaliana...' : (isServiceProduct ? 'Mf. Huduma haikutolewa kama tulivyokubaliana...' : 'Mf. Bidhaa iliyofika imevunjika, si sahihi, au si kama ilivyoelezwa...')}
                                             className="w-full min-h-[100px] rounded-2xl border border-input bg-background p-3 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none"
                                         />
                                     </div>
                                     <Button type="submit" className="w-full h-12 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-brand-500/20" disabled={disputeSubmitting}>
-                                        {disputeSubmitting ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : (isServiceProduct ? 'TUMA MGOGORO' : 'SUBMIT CLAIM')}
+                                        {disputeSubmitting ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : (isPhysicalProduct ? 'TUMA RETURN REQUEST' : (isServiceProduct ? 'TUMA MGOGORO' : 'SUBMIT CLAIM'))}
                                     </Button>
                                 </form>
                             </div>

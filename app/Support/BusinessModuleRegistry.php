@@ -8,7 +8,7 @@ class BusinessModuleRegistry
 
     public static function all(): array
     {
-        return [
+        $modules = [
             'products' => [
                 'label' => 'Products',
                 'description' => 'Sell ready-made physical items with inventory and orders.',
@@ -167,6 +167,8 @@ class BusinessModuleRegistry
                 'permissions' => ['team.view', 'team.create', 'team.update', 'team.reset_pin', 'team.clear_devices'],
             ],
         ];
+
+        return self::localized($modules);
     }
 
     public static function keys(): array
@@ -214,5 +216,80 @@ class BusinessModuleRegistry
             ->unique()
             ->values()
             ->all();
+    }
+
+    private static function localized(array $modules): array
+    {
+        $swahili = self::swahiliCopy();
+
+        return collect($modules)
+            ->map(function (array $module, string $key) use ($swahili) {
+                $english = [
+                    'label' => $module['label'] ?? $key,
+                    'description' => $module['description'] ?? '',
+                ];
+                $sw = $swahili[$key] ?? $english;
+
+                return [
+                    ...$module,
+                    'label' => $sw['label'],
+                    'description' => $sw['description'],
+                    'group' => self::swahiliGroup($module['group'] ?? 'Other'),
+                    'translations' => [
+                        'sw' => $sw,
+                        'en' => $english,
+                    ],
+                ];
+            })
+            ->all();
+    }
+
+    private static function swahiliGroup(string $group): string
+    {
+        return [
+            'Commerce' => 'Mauzo',
+            'Operations' => 'Uendeshaji',
+            'Growth' => 'Ukuaji',
+            'Services' => 'Huduma',
+            'Scheduling' => 'Ratiba',
+            'Accommodation' => 'Malazi',
+            'Food' => 'Chakula',
+            'Fulfillment' => 'Ufikishaji',
+            'Education' => 'Elimu',
+            'Travel' => 'Safari',
+            'Other' => 'Nyingine',
+        ][$group] ?? $group;
+    }
+
+    private static function swahiliCopy(): array
+    {
+        return [
+            'products' => ['label' => 'Bidhaa', 'description' => 'Uza bidhaa za kushikika zenye stock, variants, na oda.'],
+            'orders' => ['label' => 'Oda', 'description' => 'Simamia manunuzi, uthibitisho, maandalizi, delivery, na status za oda.'],
+            'reports' => ['label' => 'Ripoti / Muhtasari', 'description' => 'Angalia mapato, catalog, booking, wateja, timu, na afya ya bookkeeping.'],
+            'customers' => ['label' => 'Wateja / CRM', 'description' => 'Angalia wanunuzi, wateja wa booking, wanafunzi, members, na wateja wanaorudi.'],
+            'communications' => ['label' => 'Mawasiliano', 'description' => 'Andaa follow-up, reminders, updates, na kumbukumbu za mawasiliano ya wateja.'],
+            'digital_products' => ['label' => 'Bidhaa za Digital', 'description' => 'Uza files, downloads, license keys, na materials za digital.'],
+            'services' => ['label' => 'Huduma', 'description' => 'Weka huduma za ku-book au huduma zinazohitaji maulizo kwanza.'],
+            'custom_orders' => ['label' => 'Oda Maalum', 'description' => 'Kusanya mahitaji ya mteja kabla ya kutoa bei au kukubali kazi.'],
+            'quotes' => ['label' => 'Bei ya Makubaliano', 'description' => 'Andaa bei maalum kwa kazi inayobadilika kulingana na ombi la mteja.'],
+            'bookings' => ['label' => 'Booking', 'description' => 'Pokea booking za tarehe, muda, wageni, washiriki, au vitu.'],
+            'availability' => ['label' => 'Ratiba', 'description' => 'Weka muda wa booking, slots, capacity, buffer, na sessions za tarehe maalum.'],
+            'appointments' => ['label' => 'Miadi', 'description' => 'Simamia slots za miadi kwa huduma za personal care na kazi za kitaalamu.'],
+            'rooms' => ['label' => 'Vyumba / Malazi', 'description' => 'Simamia aina za vyumba, uwezo wa wageni, availability, na tarehe zilizokaliwa.'],
+            'menu' => ['label' => 'Menu', 'description' => 'Chapisha vyakula, vinywaji, add-ons, na bei za menu.'],
+            'reservations' => ['label' => 'Reservation', 'description' => 'Pokea reservation za meza, venue, au ziara.'],
+            'rentals' => ['label' => 'Kupangisha / Kukodisha', 'description' => 'Simamia vifaa, magari, spaces, deposits, na masharti ya kukodisha.'],
+            'delivery' => ['label' => 'Delivery', 'description' => 'Tumia mtiririko wa local delivery na oda zilizo tayari kutumwa.'],
+            'courses' => ['label' => 'Kozi / Mtaala', 'description' => 'Tengeneza huduma za kujifunza zenye masomo au materials.'],
+            'workshops' => ['label' => 'Darasa / Tukio la Live', 'description' => 'Endesha sessions za tarehe maalum, cohorts, bootcamps, na matukio mafupi.'],
+            'enrollments' => ['label' => 'Usajili', 'description' => 'Fuatilia wanafunzi, waombaji, washiriki, na status za enrollment.'],
+            'subscriptions' => ['label' => 'Subscriptions', 'description' => 'Uza memberships, access ya kujifunza, au service plans za kujirudia.'],
+            'tour_departures' => ['label' => 'Safari / Ratiba ya Tour', 'description' => 'Simamia itinerary, tarehe, ukubwa wa group, na availability ya safari.'],
+            'retail_ops' => ['label' => 'Retail / POS', 'description' => 'Tumia POS, inventory, staff PINs, transfers, na controls za dukani.'],
+            'bookkeeping' => ['label' => 'Bookkeeping', 'description' => 'Rekodi miamala, matumizi, ripoti, tax support, na audit packs.'],
+            'marketing' => ['label' => 'Masoko', 'description' => 'Endesha campaigns, coupons, SMS, referrals, na mawasiliano ya wateja.'],
+            'team' => ['label' => 'Timu', 'description' => 'Alika staff na simamia ruhusa zao kulingana na role.'],
+        ];
     }
 }

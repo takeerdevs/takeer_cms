@@ -23,6 +23,7 @@ import {
     Layers,
     Play,
     ReceiptText,
+    RefreshCcw,
     Save,
     Share2,
     ShieldCheck,
@@ -316,6 +317,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const [riderLink, setRiderLink] = useState('');
     const [riderLinkExpiresAt, setRiderLinkExpiresAt] = useState(null);
     const [riderLinkGenerating, setRiderLinkGenerating] = useState(false);
+    const [returnNote, setReturnNote] = useState('');
+    const [returnResolution, setReturnResolution] = useState('replacement');
+    const [returnSubmitting, setReturnSubmitting] = useState(false);
 
     useEffect(() => {
         loadOrder();
@@ -410,6 +414,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const isSubscriptionOrder = order?.purchasable_type === 'subscription_plan';
     const isCustomDigitalDelivery = order?.product?.type === 'digital'
         && order?.product?.digital_delivery_type === 'custom_delivery';
+    const returnRequest = order?.return_request || null;
 
     async function submitDispatch(e) {
         e.preventDefault();
@@ -542,6 +547,34 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             toast.error(error?.response?.data?.message || 'Imeshindwa kupakia custom delivery.');
         } finally {
             setCustomDeliverySubmitting(false);
+        }
+    }
+
+    async function submitReturnAction(action) {
+        if (!canUpdateOrder || !order?.return_request || returnSubmitting) return;
+        if (action === 'reject' && !returnNote.trim()) {
+            toast.error('Andika sababu ya kukataa return request.');
+            return;
+        }
+
+        setReturnSubmitting(true);
+        try {
+            const payload = {};
+            if (returnNote.trim()) {
+                payload.merchant_note = returnNote.trim();
+            }
+            if (action === 'complete') {
+                payload.resolution_type = returnResolution;
+            }
+
+            await axios.post(`/merchant/${merchantUsername}/orders/${orderId}/return-request/${action}`, payload);
+            toast.success('Return request imesasishwa.');
+            setReturnNote('');
+            await loadOrder();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Imeshindikana kusasisha return request.');
+        } finally {
+            setReturnSubmitting(false);
         }
     }
 
@@ -816,6 +849,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <p><span className="text-muted-foreground">Delivery status:</span> <span className="font-semibold">{deliveryStatusLabel(order.delivery)}</span></p>
                                             {order.delivery.physical_address && (
                                                 <p><span className="text-muted-foreground">Anwani ya Mteja:</span> <span className="font-semibold">{order.delivery.physical_address}</span></p>
+                                            )}
+                                            {order.delivery.delivery_type === 'intercity_bus' && order.delivery.shipping_zone && (
+                                                <p><span className="text-muted-foreground">Inter-city destination:</span> <span className="font-semibold">{order.delivery.shipping_zone.destination_city || order.delivery.shipping_zone.zone_name || order.delivery.shipping_zone.destination_region}</span></p>
                                             )}
                                             {order.delivery.bus_company && <p><span className="text-muted-foreground">Bus company:</span> <span className="font-semibold">{order.delivery.bus_company}</span></p>}
                                             {order.delivery.waybill_tracking_number && <p><span className="text-muted-foreground">Waybill tracking:</span> <span className="font-semibold">{order.delivery.waybill_tracking_number}</span></p>}
@@ -1385,7 +1421,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                         {order.payment_status === 'escrow_locked' && order.delivery?.delivery_type === 'intercity_bus' && (
                                             <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
                                                 <p className="text-sm font-bold text-indigo-900">In Transit (Mkoani)</p>
-                                                <p className="text-sm mt-1">Mteja akichukua mzigo station na akiona kila kitu kiko sawa, atathibitisha kwenye App yake na hela zingeingia kwako moja kwa moja. Endapo kuna tatizo, mteja ataanzisha claim.</p>
+                                                <p className="text-sm mt-1">Destination na bei ya mkoa vimehifadhiwa kwenye order. Pickup/drop-off office halisi itathibitishwa kwenye waybill/risiti au simu kutoka transporter. Mteja akichukua mzigo na kila kitu kiko sawa, atathibitisha kwenye App.</p>
                                             </div>
                                         )}
 
@@ -1446,6 +1482,76 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             >
                                                 <Play className="h-3 w-3" /> TAZAMA VIDEO
                                             </a>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {returnRequest && (
+                                <Card className="rounded-2xl md:col-span-2 border-sky-200 bg-sky-50/80">
+                                    <CardContent className="p-4 text-sm">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                            <div>
+                                                <p className="font-black text-sky-800 flex items-center gap-2">
+                                                    <RefreshCcw className="h-4 w-4" />
+                                                    Return request
+                                                </p>
+                                                <p className="mt-1 text-sky-800/90"><span className="font-semibold">Status:</span> {String(returnRequest.status || '').replaceAll('_', ' ')}</p>
+                                                <p className="mt-1 text-sky-800/90"><span className="font-semibold">Customer reason:</span> {returnRequest.reason || 'N/A'}</p>
+                                                {returnRequest.policy_snapshot?.window_ends_at && (
+                                                    <p className="mt-1 text-sky-800/90"><span className="font-semibold">Policy window:</span> ends {new Date(returnRequest.policy_snapshot.window_ends_at).toLocaleDateString()}</p>
+                                                )}
+                                                {returnRequest.evidence_url && (
+                                                    <a href={returnRequest.evidence_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-black uppercase tracking-widest text-sky-700 underline">
+                                                        View evidence
+                                                    </a>
+                                                )}
+                                            </div>
+                                            {canUpdateOrder && !['completed', 'escalated'].includes(returnRequest.status) && (
+                                                <div className="w-full space-y-2 md:max-w-sm">
+                                                    <textarea
+                                                        value={returnNote}
+                                                        onChange={(e) => setReturnNote(e.target.value)}
+                                                        rows={3}
+                                                        placeholder="Message to customer: return instructions, rejection reason, or resolution note..."
+                                                        className="w-full rounded-2xl border border-sky-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-sky-500/20"
+                                                    />
+                                                    {['approved', 'item_received'].includes(returnRequest.status) && (
+                                                        <select
+                                                            value={returnResolution}
+                                                            onChange={(e) => setReturnResolution(e.target.value)}
+                                                            className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm font-bold"
+                                                        >
+                                                            <option value="replacement">Replacement sent</option>
+                                                            <option value="refund">Refund buyer</option>
+                                                            <option value="store_credit">Store credit</option>
+                                                            <option value="other">Other resolution</option>
+                                                        </select>
+                                                    )}
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {returnRequest.status === 'pending_merchant_review' && (
+                                                            <>
+                                                                <Button type="button" className="rounded-xl bg-sky-700 text-white hover:bg-sky-800" disabled={returnSubmitting} onClick={() => submitReturnAction('approve')}>
+                                                                    Approve
+                                                                </Button>
+                                                                <Button type="button" variant="outline" className="rounded-xl border-red-200 text-red-700" disabled={returnSubmitting} onClick={() => submitReturnAction('reject')}>
+                                                                    Reject
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                        {returnRequest.status === 'approved' && (
+                                                            <Button type="button" className="col-span-2 rounded-xl bg-sky-700 text-white hover:bg-sky-800" disabled={returnSubmitting} onClick={() => submitReturnAction('received')}>
+                                                                Mark Item Received
+                                                            </Button>
+                                                        )}
+                                                        {['approved', 'item_received'].includes(returnRequest.status) && (
+                                                            <Button type="button" variant="outline" className="col-span-2 rounded-xl border-emerald-200 text-emerald-700" disabled={returnSubmitting} onClick={() => submitReturnAction('complete')}>
+                                                                Complete Return
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </CardContent>
                                 </Card>

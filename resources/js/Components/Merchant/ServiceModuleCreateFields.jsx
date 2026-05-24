@@ -44,27 +44,27 @@ const SectionHeading = ({ title, description }) => (
 );
 
 const RESERVATION_TYPE_OPTIONS = [
-    { value: 'table', label: 'Table' },
-    { value: 'private_room', label: 'Private room' },
+    { value: 'table', label: 'Meza' },
+    { value: 'private_room', label: 'Chumba cha private' },
     { value: 'venue', label: 'Venue' },
-    { value: 'seat', label: 'Seat' },
+    { value: 'seat', label: 'Kiti' },
     { value: 'booth', label: 'Booth' },
-    { value: 'visit', label: 'Visit / entry slot' },
-    { value: 'other', label: 'Other' },
+    { value: 'visit', label: 'Ziara / muda wa kuingia' },
+    { value: 'other', label: 'Nyingine' },
 ];
 
 const SEATING_TYPE_OPTIONS = [
-    'Standard seating',
-    'Indoor seating',
-    'Outdoor seating',
-    'VIP seating',
-    'Private seating',
-    'Counter seating',
-    'Standing room',
+    'Seating ya kawaida',
+    'Ndani',
+    'Nje',
+    'VIP',
+    'Private',
+    'Counter',
+    'Kusimama',
     'General admission',
 ];
 
-export function RepeatableTextList({ label, value, onChange, addLabel = 'Add item', placeholder = 'Add details...' }) {
+export function RepeatableTextList({ label, value, onChange, addLabel = 'Ongeza', placeholder = 'Ongeza maelezo...' }) {
     const rows = Array.isArray(value) && value.length > 0 ? value : [''];
     const updateRow = (index, nextValue) => {
         onChange(rows.map((row, rowIndex) => rowIndex === index ? nextValue : row));
@@ -96,7 +96,7 @@ export function RepeatableTextList({ label, value, onChange, addLabel = 'Add ite
                             className="h-11 rounded-xl border bg-white text-muted-foreground hover:text-red-600 disabled:cursor-default disabled:opacity-30"
                             onClick={() => removeRow(index)}
                             disabled={rows.length === 1 && !row}
-                            aria-label={`Remove ${label.toLowerCase()} item`}
+                            aria-label={`Ondoa ${label.toLowerCase()}`}
                         >
                             <Trash2 className="mx-auto h-4 w-4" />
                         </button>
@@ -126,7 +126,6 @@ export function ServiceModuleCreateFields({
     const moduleConfig = getUploadModuleConfig(moduleKey);
 
     if (!moduleConfig || moduleConfig.type !== 'service') return null;
-    if (moduleKey === 'appointments') return null;
 
     const updateRoom = (key, value) => {
         setRoomDetails((prev) => ({ ...(prev || {}), [key]: value }));
@@ -134,10 +133,10 @@ export function ServiceModuleCreateFields({
     const durationFields = (
         <div className="grid grid-cols-2 gap-3">
             <TextField label="Duration" type="number" min="1" value={serviceDurationValue} onChange={setServiceDurationValue} placeholder="1" />
-            <SelectField label="Unit" value={serviceDurationUnit} onChange={setServiceDurationUnit}>
-                <option value="minutes">Minutes</option>
-                <option value="hours">Hours</option>
-                <option value="days">Days</option>
+            <SelectField label="Kipimo cha muda" value={serviceDurationUnit} onChange={setServiceDurationUnit}>
+                <option value="minutes">Dakika</option>
+                <option value="hours">Masaa</option>
+                <option value="days">Siku</option>
             </SelectField>
         </div>
     );
@@ -146,23 +145,23 @@ export function ServiceModuleCreateFields({
         <div className="rounded-2xl border border-purple-100 bg-white p-3 sm:p-4 space-y-4">
             <div>
                 <p className="text-xs font-black uppercase tracking-wider text-purple-700">{moduleConfig.title}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Fields here are specific to this module and are saved as module details.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Maelezo haya ni maalum kwa aina hii ya huduma.</p>
             </div>
 
             {moduleKey === 'rooms' && (
                 <div className="space-y-4">
                     <div className="grid gap-3 md:grid-cols-2">
-                        <SelectField label="Room type" value={roomDetails.room_type || 'Standard room'} onChange={(value) => updateRoom('room_type', value)}>
+                        <SelectField label="Aina ya chumba" value={roomDetails.room_type || 'Standard room'} onChange={(value) => updateRoom('room_type', value)}>
                             {roomTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                         </SelectField>
-                        <SelectField label="Bed type" value={roomDetails.bed_type || 'Double bed'} onChange={(value) => updateRoom('bed_type', value)}>
+                        <SelectField label="Aina ya kitanda" value={roomDetails.bed_type || 'Double bed'} onChange={(value) => updateRoom('bed_type', value)}>
                             {bedTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                         </SelectField>
-                        <TextField label="Max guests" type="number" min="1" value={roomDetails.max_guests} onChange={(value) => updateRoom('max_guests', value)} />
-                        <TextField label="Rooms available" type="number" min="1" value={roomDetails.room_count} onChange={(value) => updateRoom('room_count', value)} />
-                        <TextField label="Bathrooms" type="number" min="0" value={roomDetails.bathrooms} onChange={(value) => updateRoom('bathrooms', value)} />
-                        <TextField label="Check-in" type="time" value={roomDetails.checkin_time} onChange={(value) => updateRoom('checkin_time', value)} />
-                        <TextField label="Checkout" type="time" value={roomDetails.checkout_time} onChange={(value) => updateRoom('checkout_time', value)} />
+                        <TextField label="Idadi ya wageni" type="number" min="1" value={roomDetails.max_guests} onChange={(value) => updateRoom('max_guests', value)} />
+                        <TextField label="Vyumba vilivyopo" type="number" min="1" value={roomDetails.room_count} onChange={(value) => updateRoom('room_count', value)} />
+                        <TextField label="Bafu" type="number" min="0" value={roomDetails.bathrooms} onChange={(value) => updateRoom('bathrooms', value)} />
+                        <TextField label="Muda wa kuingia" type="time" value={roomDetails.checkin_time} onChange={(value) => updateRoom('checkin_time', value)} />
+                        <TextField label="Muda wa kutoka" type="time" value={roomDetails.checkout_time} onChange={(value) => updateRoom('checkout_time', value)} />
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {roomAmenityOptions.map((option) => {
@@ -194,126 +193,154 @@ export function ServiceModuleCreateFields({
                             );
                         })}
                     </div>
-                    <TextAreaField label="House rules" value={serviceDetails.house_rules} onChange={(value) => updateServiceDetail('house_rules', value)} className="min-h-24" />
-                    <TextAreaField label="Cancellation policy" value={serviceDetails.cancellation_policy} onChange={(value) => updateServiceDetail('cancellation_policy', value)} className="min-h-20" />
+                    <TextAreaField label="Sheria za nyumba" value={serviceDetails.house_rules} onChange={(value) => updateServiceDetail('house_rules', value)} className="min-h-24" />
+                    <TextAreaField label="Sera ya cancellation" value={serviceDetails.cancellation_policy} onChange={(value) => updateServiceDetail('cancellation_policy', value)} className="min-h-20" />
                 </div>
             )}
 
             {moduleKey === 'tour_departures' && (
                 <div className="space-y-4">
                     <div className="grid gap-3 md:grid-cols-2">
-                        <TextField label="Destination" value={serviceDetails.destination} onChange={(value) => updateServiceDetail('destination', value)} placeholder="Serengeti + Ngorongoro" />
-                        <TextField label="Duration label" value={serviceDetails.duration_label} onChange={(value) => updateServiceDetail('duration_label', value)} placeholder="3 days / 2 nights" />
-                        <TextField label="Pickup point" value={serviceDetails.pickup_point} onChange={(value) => updateServiceDetail('pickup_point', value)} />
-                        <TextField label="Drop-off point" value={serviceDetails.dropoff_point} onChange={(value) => updateServiceDetail('dropoff_point', value)} />
-                        <TextField label="Seats / group size" type="number" min="1" value={serviceDetails.group_size} onChange={(value) => updateServiceDetail('group_size', value)} />
-                        <SelectField label="Departure type" value={serviceDetails.departure_type || 'scheduled'} onChange={(value) => updateServiceDetail('departure_type', value)}>
-                            <option value="scheduled">Scheduled departures</option>
-                            <option value="private">Private trips</option>
-                            <option value="custom">Custom dates</option>
+                        <TextField label="Mahali pa kwenda" value={serviceDetails.destination} onChange={(value) => updateServiceDetail('destination', value)} placeholder="Serengeti + Ngorongoro" />
+                        <TextField label="Muda wa safari" value={serviceDetails.duration_label} onChange={(value) => updateServiceDetail('duration_label', value)} placeholder="Siku 3 / usiku 2" />
+                        <TextField label="Mahali pa kuchukuliwa" value={serviceDetails.pickup_point} onChange={(value) => updateServiceDetail('pickup_point', value)} />
+                        <TextField label="Mahali pa kushushwa" value={serviceDetails.dropoff_point} onChange={(value) => updateServiceDetail('dropoff_point', value)} />
+                        <TextField label="Viti / ukubwa wa group" type="number" min="1" value={serviceDetails.group_size} onChange={(value) => updateServiceDetail('group_size', value)} />
+                        <SelectField label="Aina ya safari" value={serviceDetails.departure_type || 'scheduled'} onChange={(value) => updateServiceDetail('departure_type', value)}>
+                            <option value="scheduled">Ratiba zilizopangwa</option>
+                            <option value="private">Safari ya private</option>
+                            <option value="custom">Tarehe za kuchagua</option>
                         </SelectField>
                     </div>
                     <ItineraryEditor value={serviceDetails.itinerary || []} onChange={(value) => updateServiceDetail('itinerary', value)} />
-                    <RepeatableTextList label="Included items" value={serviceDetails.included} onChange={(value) => updateServiceDetail('included', value)} addLabel="Add included item" placeholder="Describe one included item..." />
-                    <RepeatableTextList label="Excluded items" value={serviceDetails.excluded} onChange={(value) => updateServiceDetail('excluded', value)} addLabel="Add excluded item" placeholder="Describe one excluded item..." />
-                    <TextAreaField label="Traveler requirements" value={serviceDetails.requirements} onChange={(value) => updateServiceDetail('requirements', value)} className="min-h-20" />
+                    <RepeatableTextList label="Vilivyojumuishwa" value={serviceDetails.included} onChange={(value) => updateServiceDetail('included', value)} addLabel="Ongeza" placeholder="Eleza kitu kilichojumuishwa..." />
+                    <RepeatableTextList label="Visivyojumuishwa" value={serviceDetails.excluded} onChange={(value) => updateServiceDetail('excluded', value)} addLabel="Ongeza" placeholder="Eleza kitu kisichojumuishwa..." />
+                    <TextAreaField label="Mahitaji ya msafiri" value={serviceDetails.requirements} onChange={(value) => updateServiceDetail('requirements', value)} className="min-h-20" />
                 </div>
             )}
 
             {moduleKey === 'custom_orders' && (
                 <div className="space-y-3">
-                    <TextAreaField label="Customization details" value={serviceDetails.customization_notes} onChange={(value) => updateServiceDetail('customization_notes', value)} className="min-h-24" />
+                    <TextAreaField label="Maelezo ya customization" value={serviceDetails.customization_notes} onChange={(value) => updateServiceDetail('customization_notes', value)} className="min-h-24" />
                     <div className="grid gap-3 md:grid-cols-3">
-                        <TextField label="Lead time" value={serviceDetails.lead_time} onChange={(value) => updateServiceDetail('lead_time', value)} placeholder="24 hours notice" />
-                        <TextField label="Minimum order" type="number" min="1" value={serviceDetails.minimum_order} onChange={(value) => updateServiceDetail('minimum_order', value)} />
-                        <SelectField label="Quote policy" value={serviceDetails.quote_policy || 'quote_after_request'} onChange={(value) => updateServiceDetail('quote_policy', value)}>
-                            <option value="quote_after_request">Quote after request</option>
-                            <option value="deposit_before_work">Deposit before work</option>
-                            <option value="full_payment_after_quote">Full payment after quote</option>
+                        <TextField label="Muda wa maandalizi" value={serviceDetails.lead_time} onChange={(value) => updateServiceDetail('lead_time', value)} placeholder="Taarifa masaa 24 kabla" />
+                        <TextField label="Kima cha chini cha oda" type="number" min="1" value={serviceDetails.minimum_order} onChange={(value) => updateServiceDetail('minimum_order', value)} />
+                        <SelectField label="Sera ya bei" value={serviceDetails.quote_policy || 'quote_after_request'} onChange={(value) => updateServiceDetail('quote_policy', value)}>
+                            <option value="quote_after_request">Bei baada ya ombi</option>
+                            <option value="deposit_before_work">Deposit kabla ya kazi</option>
+                            <option value="full_payment_after_quote">Malipo yote baada ya bei</option>
                         </SelectField>
                     </div>
-                    <TextAreaField label="Pickup or delivery notes" value={serviceDetails.pickup_delivery_notes} onChange={(value) => updateServiceDetail('pickup_delivery_notes', value)} className="min-h-20" />
+                    <TextAreaField label="Maelezo ya pickup au delivery" value={serviceDetails.pickup_delivery_notes} onChange={(value) => updateServiceDetail('pickup_delivery_notes', value)} className="min-h-20" />
+                </div>
+            )}
+
+            {moduleKey === 'appointments' && (
+                <div className="space-y-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                        <SelectField label="Aina ya miadi" value={serviceDetails.appointment_type || 'consultation'} onChange={(value) => updateServiceDetail('appointment_type', value)}>
+                            <option value="consultation">Ushauri</option>
+                            <option value="treatment">Matibabu / care session</option>
+                            <option value="assessment">Tathmini</option>
+                            <option value="follow_up">Follow-up</option>
+                            <option value="home_visit">Huduma ya nyumbani</option>
+                            <option value="online_session">Online session</option>
+                        </SelectField>
+                        <SelectField label="Sera ya booking" value={serviceDetails.appointment_booking_policy || 'manual_confirm'} onChange={(value) => updateServiceDetail('appointment_booking_policy', value)}>
+                            <option value="instant">Booking ya moja kwa moja</option>
+                            <option value="manual_confirm">Uthibitisho wa manual</option>
+                            <option value="request_first">Ombi kwanza</option>
+                        </SelectField>
+                    </div>
+                    {durationFields}
+                    <div className="grid gap-3 md:grid-cols-2">
+                        <TextField label="Muda wa mapumziko kabla / baada" value={serviceDetails.appointment_buffer} onChange={(value) => updateServiceDetail('appointment_buffer', value)} placeholder="Dakika 15 kati ya wateja" />
+                        <TextField label="Capacity" type="number" min="1" value={serviceDetails.appointment_capacity || 1} onChange={(value) => updateServiceDetail('appointment_capacity', value)} />
+                    </div>
+                    <TextAreaField label="Kinachojumuishwa" value={serviceDetails.appointment_includes} onChange={(value) => updateServiceDetail('appointment_includes', value)} className="min-h-24" />
+                    <TextAreaField label="Maandalizi ya mteja" value={serviceDetails.client_preparation} onChange={(value) => updateServiceDetail('client_preparation', value)} className="min-h-20" />
+                    <RepeatableTextList label="Maswali ya awali" value={serviceDetails.intake_questions} onChange={(value) => updateServiceDetail('intake_questions', value)} addLabel="Ongeza swali" placeholder="Mteja ajibu nini kabla ya miadi?" />
                 </div>
             )}
 
             {moduleKey === 'reservations' && (
                 <div className="space-y-3">
                     <div className="grid gap-3 md:grid-cols-2">
-                        <SelectField label="Reservation type" value={serviceDetails.reservation_type || 'table'} onChange={(value) => updateServiceDetail('reservation_type', value)}>
+                        <SelectField label="Aina ya reservation" value={serviceDetails.reservation_type || 'table'} onChange={(value) => updateServiceDetail('reservation_type', value)}>
                             {RESERVATION_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                         </SelectField>
-                        <SelectField label="Seating type" value={serviceDetails.seating_type || 'Standard seating'} onChange={(value) => updateServiceDetail('seating_type', value)}>
+                        <SelectField label="Aina ya seating" value={serviceDetails.seating_type || 'Standard seating'} onChange={(value) => updateServiceDetail('seating_type', value)}>
                             {SEATING_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                         </SelectField>
                     </div>
                     {durationFields}
                     <div className="grid gap-3 md:grid-cols-2">
-                        <TextField label="Party size limit" type="number" min="1" value={serviceDetails.party_size_limit} onChange={(value) => updateServiceDetail('party_size_limit', value)} />
+                        <TextField label="Idadi ya watu" type="number" min="1" value={serviceDetails.party_size_limit} onChange={(value) => updateServiceDetail('party_size_limit', value)} />
                     </div>
-                    <TextAreaField label="Reservation notes" value={serviceDetails.reservation_notes} onChange={(value) => updateServiceDetail('reservation_notes', value)} className="min-h-20" />
+                    <TextAreaField label="Maelezo ya reservation" value={serviceDetails.reservation_notes} onChange={(value) => updateServiceDetail('reservation_notes', value)} className="min-h-20" />
                 </div>
             )}
 
             {moduleKey === 'rentals' && (
                 <div className="space-y-5">
                     <div className="space-y-3">
-                        <SectionHeading title="What is being rented" description="Classify the rental and tell us how many units can be booked." />
+                        <SectionHeading title="Kinachokodishwa" description="Chagua aina ya kitu na idadi inayoweza ku-bookiwa." />
                         <div className="grid gap-3 md:grid-cols-2">
-                            <SelectField label="Rental type" value={serviceDetails.rental_type || 'equipment'} onChange={(value) => updateServiceDetail('rental_type', value)}>
-                                <option value="equipment">Equipment</option>
-                                <option value="vehicle">Vehicle</option>
+                            <SelectField label="Aina ya kukodisha" value={serviceDetails.rental_type || 'equipment'} onChange={(value) => updateServiceDetail('rental_type', value)}>
+                                <option value="equipment">Vifaa</option>
+                                <option value="vehicle">Gari / usafiri</option>
                                 <option value="space">Space</option>
-                                <option value="property">Property / house</option>
-                                <option value="event_gear">Event gear</option>
+                                <option value="property">Nyumba / property</option>
+                                <option value="event_gear">Vifaa vya tukio</option>
                                 <option value="costume">Costume / props</option>
-                                <option value="other">Other</option>
+                                <option value="other">Nyingine</option>
                             </SelectField>
-                            <TextField label="Available units" type="number" min="1" value={serviceDetails.available_units ?? 1} onChange={(value) => updateServiceDetail('available_units', value)} />
+                            <TextField label="Idadi iliyopo" type="number" min="1" value={serviceDetails.available_units ?? 1} onChange={(value) => updateServiceDetail('available_units', value)} />
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <SectionHeading title="Pricing basis" description="Choose how the price should be understood by customers." />
+                        <SectionHeading title="Bei inahesabiwaje" description="Chagua namna mteja ataelewa bei ya kukodisha." />
                         <div className="grid gap-3 md:grid-cols-2">
-                            <SelectField label="Price unit" value={serviceDetails.rental_unit || 'day'} onChange={(value) => updateServiceDetail('rental_unit', value)}>
-                                <option value="hour">Per hour</option>
-                                <option value="day">Per day</option>
-                                <option value="night">Per night</option>
-                                <option value="week">Per week</option>
-                                <option value="month">Per month</option>
-                                <option value="year">Per year</option>
-                                <option value="trip">Per trip</option>
-                                <option value="event">Per event</option>
+                            <SelectField label="Kipimo cha bei" value={serviceDetails.rental_unit || 'day'} onChange={(value) => updateServiceDetail('rental_unit', value)}>
+                                <option value="hour">Kwa saa</option>
+                                <option value="day">Kwa siku</option>
+                                <option value="night">Kwa usiku</option>
+                                <option value="week">Kwa wiki</option>
+                                <option value="month">Kwa mwezi</option>
+                                <option value="year">Kwa mwaka</option>
+                                <option value="trip">Kwa safari</option>
+                                <option value="event">Kwa tukio</option>
                             </SelectField>
-                            <TextField label="Refundable security deposit" type="number" min="0" value={serviceDetails.security_deposit} onChange={(value) => updateServiceDetail('security_deposit', value)} placeholder="Optional refundable amount" />
+                            <TextField label="Deposit inayoweza kurudishwa" type="number" min="0" value={serviceDetails.security_deposit} onChange={(value) => updateServiceDetail('security_deposit', value)} placeholder="Kiasi cha optional" />
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <SectionHeading title="Rental duration" description="Set the minimum rental period for this item." />
+                        <SectionHeading title="Muda wa kukodisha" description="Weka muda wa chini wa kukodisha." />
                         <div className="grid gap-3 md:grid-cols-2">
-                            <TextField label="Minimum duration" type="number" min="1" value={serviceDurationValue} onChange={setServiceDurationValue} placeholder="1" />
-                            <SelectField label="Duration unit" value={serviceDurationUnit} onChange={setServiceDurationUnit}>
-                                <option value="minutes">Minutes</option>
-                                <option value="hours">Hours</option>
-                                <option value="days">Days</option>
-                                <option value="weeks">Weeks</option>
-                                <option value="months">Months</option>
-                                <option value="years">Years</option>
+                            <TextField label="Muda wa chini" type="number" min="1" value={serviceDurationValue} onChange={setServiceDurationValue} placeholder="1" />
+                            <SelectField label="Kipimo cha muda" value={serviceDurationUnit} onChange={setServiceDurationUnit}>
+                                <option value="minutes">Dakika</option>
+                                <option value="hours">Masaa</option>
+                                <option value="days">Siku</option>
+                                <option value="weeks">Wiki</option>
+                                <option value="months">Miezi</option>
+                                <option value="years">Miaka</option>
                             </SelectField>
                         </div>
                     </div>
 
                     <div className="space-y-3">
-                        <SectionHeading title="Included items" description="Add anything that comes with the rental, such as accessories, setup, or support." />
-                        <RepeatableTextList label="Included items" value={serviceDetails.included_items} onChange={(value) => updateServiceDetail('included_items', value)} addLabel="Add included item" placeholder="Describe one included rental item..." />
+                        <SectionHeading title="Vilivyojumuishwa" description="Ongeza kinachokuja na kukodisha, kama accessories, setup, au support." />
+                        <RepeatableTextList label="Vilivyojumuishwa" value={serviceDetails.included_items} onChange={(value) => updateServiceDetail('included_items', value)} addLabel="Ongeza" placeholder="Eleza kitu kilichojumuishwa..." />
                     </div>
 
                     <div className="space-y-3">
-                        <SectionHeading title="Handover and renter requirements" description="Explain pickup, return, ID, deposit, damage, or usage rules." />
+                        <SectionHeading title="Makabidhiano na mahitaji ya mteja" description="Eleza pickup, kurudisha, ID, deposit, uharibifu, au sheria za matumizi." />
                         <div className="grid gap-3 md:grid-cols-2">
-                            <TextAreaField label="Pickup / return notes" value={serviceDetails.pickup_return_notes} onChange={(value) => updateServiceDetail('pickup_return_notes', value)} className="min-h-24" />
-                            <TextAreaField label="Rental requirements" value={serviceDetails.rental_requirements} onChange={(value) => updateServiceDetail('rental_requirements', value)} className="min-h-24" />
+                            <TextAreaField label="Maelezo ya pickup / kurudisha" value={serviceDetails.pickup_return_notes} onChange={(value) => updateServiceDetail('pickup_return_notes', value)} className="min-h-24" />
+                            <TextAreaField label="Mahitaji ya kukodisha" value={serviceDetails.rental_requirements} onChange={(value) => updateServiceDetail('rental_requirements', value)} className="min-h-24" />
                         </div>
                     </div>
                 </div>
@@ -327,25 +354,25 @@ export function ServiceModuleCreateFields({
                             <option value="cohort">Cohort</option>
                             <option value="bootcamp">Bootcamp</option>
                             <option value="webinar">Webinar</option>
-                            <option value="in_person">In person</option>
+                            <option value="in_person">Ana kwa ana</option>
                         </SelectField>
-                        <TextField label="Session count" type="number" min="1" value={serviceDetails.session_count ?? 1} onChange={(value) => updateServiceDetail('session_count', value)} />
+                        <TextField label="Idadi ya sessions" type="number" min="1" value={serviceDetails.session_count ?? 1} onChange={(value) => updateServiceDetail('session_count', value)} />
                         <TextField label="Capacity" type="number" min="1" value={serviceDetails.workshop_capacity} onChange={(value) => updateServiceDetail('workshop_capacity', value)} />
                     </div>
                     {durationFields}
                     <div className="grid gap-3 md:grid-cols-1">
-                        <TextField label="Level" value={serviceDetails.workshop_level || 'All levels'} onChange={(value) => updateServiceDetail('workshop_level', value)} />
+                        <TextField label="Level" value={serviceDetails.workshop_level || 'Levels zote'} onChange={(value) => updateServiceDetail('workshop_level', value)} />
                     </div>
-                    <TextField label="Start note" value={serviceDetails.workshop_start_note} onChange={(value) => updateServiceDetail('workshop_start_note', value)} placeholder="Starts when cohort is full" />
-                    <RepeatableTextList label="Learning outcomes" value={serviceDetails.outcomes || serviceDetails.learning_outcomes} onChange={(value) => {
+                    <TextField label="Maelezo ya kuanza" value={serviceDetails.workshop_start_note} onChange={(value) => updateServiceDetail('workshop_start_note', value)} placeholder="Inaanza cohort ikijaa" />
+                    <RepeatableTextList label="Matokeo ya kujifunza" value={serviceDetails.outcomes || serviceDetails.learning_outcomes} onChange={(value) => {
                         updateServiceDetail('outcomes', value);
                         updateServiceDetail('learning_outcomes', value);
-                    }} addLabel="Add outcome" placeholder="Describe one learning outcome..." />
-                    <RepeatableTextList label="Requirements" value={serviceDetails.requirements || serviceDetails.workshop_requirements} onChange={(value) => {
+                    }} addLabel="Ongeza" placeholder="Eleza matokeo moja ya kujifunza..." />
+                    <RepeatableTextList label="Mahitaji" value={serviceDetails.requirements || serviceDetails.workshop_requirements} onChange={(value) => {
                         updateServiceDetail('requirements', value);
                         updateServiceDetail('workshop_requirements', value);
-                    }} addLabel="Add requirement" placeholder="Describe one requirement..." />
-                    <RepeatableTextList label="Materials included" value={serviceDetails.materials_included} onChange={(value) => updateServiceDetail('materials_included', value)} addLabel="Add material" placeholder="Describe one material or resource..." />
+                    }} addLabel="Ongeza" placeholder="Eleza hitaji moja..." />
+                    <RepeatableTextList label="Materials zilizojumuishwa" value={serviceDetails.materials_included} onChange={(value) => updateServiceDetail('materials_included', value)} addLabel="Ongeza" placeholder="Eleza material au resource moja..." />
                 </div>
             )}
         </div>
@@ -361,7 +388,7 @@ function ItineraryEditor({ value, onChange }) {
     return (
         <div className="rounded-xl border bg-slate-50/60 p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Itinerary</p>
+                <p className="text-xs font-black uppercase tracking-wider text-muted-foreground">Ratiba ya safari</p>
                 <Button
                     type="button"
                     variant="outline"
@@ -369,14 +396,14 @@ function ItineraryEditor({ value, onChange }) {
                     className="rounded-xl"
                     onClick={() => onChange([...rows, { day: rows.length + 1, title: '', description: '' }])}
                 >
-                    <Plus className="h-4 w-4 mr-1" /> Day
+                    <Plus className="h-4 w-4 mr-1" /> Siku
                 </Button>
             </div>
             {rows.map((day, index) => (
                 <div key={index} className="grid grid-cols-1 gap-2 md:grid-cols-12">
                     <Input className="h-11 md:col-span-2" type="number" min="1" value={day.day || index + 1} onChange={(event) => updateRow(index, { day: event.target.value })} />
-                    <Input className="h-11 md:col-span-4" placeholder="Day title" value={day.title || ''} onChange={(event) => updateRow(index, { title: event.target.value })} />
-                    <Input className="h-11 md:col-span-5" placeholder="Stops, meals, activities..." value={day.description || ''} onChange={(event) => updateRow(index, { description: event.target.value })} />
+                    <Input className="h-11 md:col-span-4" placeholder="Kichwa cha siku" value={day.title || ''} onChange={(event) => updateRow(index, { title: event.target.value })} />
+                    <Input className="h-11 md:col-span-5" placeholder="Stops, chakula, activities..." value={day.description || ''} onChange={(event) => updateRow(index, { description: event.target.value })} />
                     <button type="button" className="h-11 rounded-xl border bg-white text-muted-foreground hover:text-red-600 md:col-span-1" onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}>
                         <Trash2 className="mx-auto h-4 w-4" />
                     </button>

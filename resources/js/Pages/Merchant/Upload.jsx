@@ -12,7 +12,8 @@ import {
     Edit3, X, ShoppingBag, Globe, Calendar, ArrowLeft,
     FileUp, Phone, MessageCircle, ExternalLink, File, CheckCircle, Loader2,
     Plus, Search, Trash2, Info, Store, ShieldCheck, PlayCircle, Music, Images, Palette,
-    BookOpen, FileText, Code2, Layers, KeyRound, Copy, RotateCcw, Ban
+    BookOpen, FileText, Code2, Layers, KeyRound, Copy, RotateCcw, Ban,
+    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -83,6 +84,76 @@ const AUTO_POST_CHANNELS = [
     },
 ];
 
+const SERVICE_MODULE_PICKER = [
+    {
+        key: 'menu',
+        icon: Utensils,
+        title: 'Chakula / Menu',
+        description: 'Weka chakula, vinywaji, combo, add-on, muda wa kuandaa, tags za chakula, na sehemu za menu.',
+        tone: 'orange',
+    },
+    {
+        key: 'rooms',
+        icon: BedDouble,
+        title: 'Vyumba / Malazi',
+        description: 'Weka aina ya chumba, vitanda, idadi ya wageni, huduma zilizopo, muda wa kuingia/kutoka, na sheria za nyumba.',
+        tone: 'purple',
+    },
+    {
+        key: 'tour_departures',
+        icon: Landmark,
+        title: 'Safari / Ratiba ya tour',
+        description: 'Weka eneo la safari, pickup, ukubwa wa kundi, ratiba ya siku, vitu vilivyojumuishwa, na mahitaji ya msafiri.',
+        tone: 'emerald',
+    },
+    {
+        key: 'custom_orders',
+        icon: ClipboardList,
+        title: 'Oda ya kuagiza maalum',
+        description: 'Kusanya mahitaji ya mteja, muda wa kuandaa, namna ya kutoa bei, na maelezo ya pickup au delivery.',
+        tone: 'slate',
+    },
+    {
+        key: 'appointments',
+        icon: CalendarClock,
+        title: 'Miadi / Appointment',
+        description: 'Kwa ushauri, huduma za kitaalamu, salon/afya, muda wa huduma, na maswali ya awali kwa mteja.',
+        tone: 'blue',
+    },
+    {
+        key: 'reservations',
+        icon: Calendar,
+        title: 'Reservation',
+        description: 'Kwa meza, ukumbi, viti, idadi ya watu, maelezo ya booking, na muda wa kutembelea.',
+        tone: 'amber',
+    },
+    {
+        key: 'rentals',
+        icon: Car,
+        title: 'Kupangisha / Kukodisha',
+        description: 'Kwa magari, vifaa, maeneo, idadi ya vitu, deposit, na masharti ya kukodisha.',
+        tone: 'cyan',
+    },
+    {
+        key: 'workshops',
+        icon: GraduationCap,
+        title: 'Darasa / Tukio la live',
+        description: 'Kwa workshop, cohort, bootcamp, matokeo ya kujifunza, ratiba, na idadi ya washiriki.',
+        tone: 'violet',
+    },
+];
+
+const MODULE_TONE_CLASSES = {
+    orange: 'border-orange-100 bg-orange-50 text-orange-700 group-hover:border-orange-300 group-hover:bg-orange-100',
+    purple: 'border-purple-100 bg-purple-50 text-purple-700 group-hover:border-purple-300 group-hover:bg-purple-100',
+    emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700 group-hover:border-emerald-300 group-hover:bg-emerald-100',
+    slate: 'border-slate-200 bg-slate-50 text-slate-700 group-hover:border-slate-300 group-hover:bg-slate-100',
+    blue: 'border-blue-100 bg-blue-50 text-blue-700 group-hover:border-blue-300 group-hover:bg-blue-100',
+    amber: 'border-amber-100 bg-amber-50 text-amber-700 group-hover:border-amber-300 group-hover:bg-amber-100',
+    cyan: 'border-cyan-100 bg-cyan-50 text-cyan-700 group-hover:border-cyan-300 group-hover:bg-cyan-100',
+    violet: 'border-violet-100 bg-violet-50 text-violet-700 group-hover:border-violet-300 group-hover:bg-violet-100',
+};
+
 const GENERIC_SERVICE_OPTION_TEMPLATE = {
     label: 'Service option',
     description: 'Create packages or service levels customers can choose before booking.',
@@ -126,7 +197,7 @@ const isVideoMedia = (item) => item?.media_type === 'video'
     || item?.mime?.startsWith?.('video/')
     || /\.(mp4|mov|webm|ogg)(\?|$)/i.test(String(item?.url || item?.localUrl || ''));
 
-export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Dar_es_Salaam', timezoneOptions = [] }) {
+export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Dar_es_Salaam', timezoneOptions = [], merchantLocations = [] }) {
     const fileInputRef = useRef(null);
     const imageContainerRef = useRef(null);
     const digitalFileRef = useRef(null);
@@ -565,26 +636,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             if (typeParam === 'physical') setShowManualForm(true);
             const moduleConfig = getUploadModuleConfig(moduleParam);
             if (moduleConfig?.type === 'service' && typeParam === 'service') {
-                const defaults = moduleConfig.defaults || {};
-                setServiceCategory(moduleConfig.category || '');
-                setServiceSubcategory(moduleConfig.subcategory || '');
-                setServiceTemplateKey(moduleConfig.serviceTemplateKey || '');
-                if (moduleConfig.serviceSubtypeKey) {
-                    setServiceDetails((prev) => ({
-                        ...(prev || {}),
-                        service_subtype: moduleConfig.serviceSubtypeKey,
-                        ...(moduleConfig.serviceTemplateKey === 'rental' ? { rental_type: moduleConfig.serviceSubtypeKey } : {}),
-                    }));
-                }
-                if (defaults.servicePriceDisplay) setServicePriceDisplay(defaults.servicePriceDisplay);
-                if (defaults.serviceMode) {
-                    setServiceMode(defaults.serviceMode);
-                    setServiceIsShowcase(defaults.serviceMode === 'showcase_only');
-                }
-                if (defaults.serviceBookingType) setServiceBookingType(defaults.serviceBookingType);
-                if (defaults.serviceSchedulingType) setServiceSchedulingType(defaults.serviceSchedulingType);
-                if (defaults.serviceDurationValue) setServiceDurationValue(defaults.serviceDurationValue);
-                if (defaults.serviceDurationUnit) setServiceDurationUnit(defaults.serviceDurationUnit);
+                applyServiceModuleDefaults(moduleParam);
+            } else if (typeParam === 'service') {
+                setStep('service_modules');
             }
         }
         fetchCatalogRoot();
@@ -1241,7 +1295,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             </div>
         </div>
     );
-    const physicalLocations = currentMerchant?.locations || [];
+    const physicalLocations = merchantLocations.length > 0 ? merchantLocations : (currentMerchant?.locations || []);
     const servingLocations = physicalLocations.filter((loc) => String(loc.type || 'SHOP').toUpperCase() === 'SHOP' || !loc.type);
     const toggleAvailabilityLocation = (locationId) => {
         const id = String(locationId);
@@ -1264,7 +1318,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div>
                     <p className="text-xs font-black uppercase tracking-wider text-slate-700">Inapatikana kwenye shop gani?</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">Leave as all shops, or restrict this service to specific branches.</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Acha ipatikane shops zote, au chagua matawi maalum.</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                     <button
@@ -1272,14 +1326,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${mode === 'all' ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
                         onClick={() => setAvailabilityLocationIds([])}
                     >
-                        All active shop locations
+                        Shops zote zinazofanya kazi
                     </button>
                     <button
                         type="button"
                         className={`rounded-xl border px-3 py-2 text-left text-xs font-black ${mode === 'selected' ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
                         onClick={() => setAvailabilityLocationIds([String(servingLocations[0].id)])}
                     >
-                        Selected locations only
+                        Matawi uliyochagua tu
                     </button>
                 </div>
                 {mode === 'selected' && (
@@ -1877,9 +1931,64 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         }
     };
 
+    const applyServiceModuleDefaults = (moduleKey) => {
+        const moduleConfig = getUploadModuleConfig(moduleKey);
+        if (moduleConfig?.type !== 'service') return;
+
+        const defaults = moduleConfig.defaults || {};
+        setServiceCategory(moduleConfig.category || '');
+        setServiceSubcategory(moduleConfig.subcategory || '');
+        setServiceTemplateKey(moduleConfig.serviceTemplateKey || '');
+        if (moduleConfig.serviceSubtypeKey) {
+            setServiceDetails((prev) => ({
+                ...(prev || {}),
+                service_subtype: moduleConfig.serviceSubtypeKey,
+                ...(moduleConfig.serviceTemplateKey === 'rental' ? { rental_type: moduleConfig.serviceSubtypeKey } : {}),
+            }));
+        }
+        if (defaults.servicePriceDisplay) setServicePriceDisplay(defaults.servicePriceDisplay);
+        if (defaults.serviceMode) {
+            setServiceMode(defaults.serviceMode);
+            setServiceIsShowcase(defaults.serviceMode === 'showcase_only');
+        }
+        if (defaults.serviceBookingType) setServiceBookingType(defaults.serviceBookingType);
+        if (defaults.serviceSchedulingType) setServiceSchedulingType(defaults.serviceSchedulingType);
+        if (defaults.serviceDurationValue) setServiceDurationValue(defaults.serviceDurationValue);
+        if (defaults.serviceDurationUnit) setServiceDurationUnit(defaults.serviceDurationUnit);
+    };
+
+    const handleModuleSelect = (moduleKey) => {
+        const moduleConfig = getUploadModuleConfig(moduleKey);
+        if (!moduleConfig) return;
+
+        setUploadModule(moduleKey);
+        if (moduleConfig.type === 'physical') {
+            setProductType('physical');
+            setStep('physical');
+            setShowManualForm(true);
+            setManualStepCompleted(false);
+            setPhysicalFlowStep(1);
+            return;
+        }
+
+        setProductType('service');
+        setStep('service');
+        applyServiceModuleDefaults(moduleKey);
+    };
+
+    const handleCustomServiceSelect = () => {
+        setUploadModule(null);
+        setProductType('service');
+        setStep('service');
+        setServiceCategory('');
+        setServiceSubcategory('');
+        setServiceTemplateKey('');
+        setServiceDetails({});
+    };
+
     const handleTypeSelect = (type) => {
         setProductType(type);
-        setStep(type);
+        setStep(type === 'service' ? 'service_modules' : type);
         if (type === 'physical') {
             setShowManualForm(true);
             setManualStepCompleted(false);
@@ -2117,7 +2226,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const activeUploadModule = getUploadModuleConfig(uploadModule);
     const isMenuUpload = activeUploadModule?.key === 'menu' && step === 'physical';
     const isModuleServiceUpload = step === 'service' && activeUploadModule?.type === 'service';
-    const useFocusedModuleServiceForm = isModuleServiceUpload && uploadModule !== 'rooms';
+    const useFocusedModuleServiceForm = isModuleServiceUpload;
     const showRoomDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'rooms' || selectedServiceTemplateKey === 'stay') && hasConcreteServiceSubtype;
     const showReservationDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'reservations' || selectedServiceTemplateKey === 'space_booking') && hasConcreteServiceSubtype;
     const showRentalDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'rentals' || selectedServiceTemplateKey === 'rental') && hasConcreteServiceSubtype;
@@ -2135,10 +2244,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (step !== 'physical') return '';
         if (isUploadingMedia) return 'Subiri media zimalize kupanda.';
         if (isFocusedPhysicalModule) return '';
-        if (requiresLocationInventory && physicalLocations.length === 0) return 'Ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.';
+        if (requiresLocationInventory && physicalLocations.length === 0) return 'Ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio.';
         if (requiresLocationInventory && !hasVariants && locationStockTotal <= 0) return `Weka stock kwenye angalau eneo moja (${stockUnitLabel}).`;
         if (hasVariants && configuredPhysicalVariants.length === 0) return 'Jaza angalau variant moja yenye bei.';
-        if (requiresLocationInventory && hasVariants && configuredVariantStockTotal <= 0) return 'Weka stock ya angalau variant moja kwenye eneo la stock/pickup.';
+        if (requiresLocationInventory && hasVariants && configuredVariantStockTotal <= 0) return 'Weka stock ya angalau variant moja kwenye duka au eneo la stock/pickup.';
         if (fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) return 'Weka jina na simu ya supplier kwa Takeer.';
         if (fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours === '') return 'Weka muda wa kuthibitisha au kupata bidhaa kwa masaa.';
         if (fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') return 'Weka muda wa kuandaa bidhaa.';
@@ -2572,11 +2681,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && requiresLocationInventory && physicalLocations.length === 0) {
-            toast.error('Tafadhali ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.');
+            toast.error('Tafadhali ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio.');
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && requiresLocationInventory && !hasVariants && locationStockTotal <= 0) {
-            toast.error(`Tafadhali weka stock kwenye angalau eneo moja la stock/pickup (${stockUnitLabel}).`);
+            toast.error(`Tafadhali weka stock kwenye angalau duka au eneo la stock/pickup (${stockUnitLabel}).`);
             return;
         }
         if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) {
@@ -2619,7 +2728,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 return;
             }
             if (requiresLocationInventory && configuredVariantStockTotal <= 0) {
-                toast.error('Tafadhali weka stock ya angalau variant moja kwenye eneo la stock/pickup.');
+                toast.error('Tafadhali weka stock ya angalau variant moja kwenye duka au eneo la stock/pickup.');
                 return;
             }
         }
@@ -3016,7 +3125,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             return;
         }
         if (isFocusedPhysicalModule) {
-            setAiResult({ category: activeUploadModule?.title || 'Module item', sub_category: '', colors: [], suggested_description_swahili: manualTitle });
+            setAiResult({ category: activeUploadModule?.title || 'Bidhaa maalum', sub_category: '', colors: [], suggested_description_swahili: manualTitle });
             setShowManualForm(false);
             setManualStepCompleted(true);
             setPhysicalFlowStep(3);
@@ -3244,6 +3353,79 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 <div className="h-[80vh] flex flex-col items-center justify-center space-y-4">
                     <Loader2 className="h-10 w-10 animate-spin text-brand-600" />
                     <p className="font-bold text-muted-foreground">Inapakia taarifa za bidhaa...</p>
+                </div>
+            </AppLayout>
+        );
+    }
+
+    if (step === 'service_modules') {
+        return (
+            <AppLayout>
+                <Head title="Chagua Aina ya Huduma | Takeer" />
+                <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6 pb-24">
+                    <div className="flex items-center gap-4">
+                        <button
+                            type="button"
+                            onClick={() => setStep('select')}
+                            className="h-10 w-10 bg-accent rounded-full flex items-center justify-center hover:bg-accent/80 transition-colors"
+                        >
+                            <ArrowLeft className="h-5 w-5" />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-black tracking-tight">Chagua aina ya huduma</h1>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Chagua muundo unaofanana na huduma unayotaka kuweka.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-3">
+                        {SERVICE_MODULE_PICKER.map((module) => {
+                            const Icon = module.icon;
+                            const toneClass = MODULE_TONE_CLASSES[module.tone] || MODULE_TONE_CLASSES.slate;
+
+                            return (
+                                <button
+                                    key={module.key}
+                                    type="button"
+                                    onClick={() => handleModuleSelect(module.key)}
+                                    className="group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md"
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors ${toneClass}`}>
+                                            <Icon className="h-5 w-5" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <h2 className="text-base font-black text-slate-950">{module.title}</h2>
+                                            <p className="mt-2 text-sm font-medium leading-relaxed text-slate-500">{module.description}</p>
+                                        </div>
+                                        <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-brand-600" />
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 sm:p-5">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <h2 className="text-base font-black text-slate-950">Tengeneza huduma ya kawaida</h2>
+                                <p className="mt-1 text-sm font-medium text-slate-500">
+                                    Tumia fomu ya kawaida kama hakuna aina hapo juu inayofanana na huduma yako.
+                                </p>
+                            </div>
+                            <Button
+                                type="button"
+                                onClick={handleCustomServiceSelect}
+                                className="h-11 rounded-xl bg-slate-900 px-4 text-white hover:bg-slate-800"
+                            >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Huduma ya kawaida
+                            </Button>
+                        </div>
+                    </div>
+
+                    <PolicyNotice />
                 </div>
             </AppLayout>
         );
@@ -3901,8 +4083,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {step === 'physical' && physicalDetailsReady && uploadModule === 'menu' && (
                                             <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4 space-y-4">
                                                 <div>
-                                                    <p className="text-xs font-black uppercase tracking-wider text-orange-800">Menu details</p>
-                                                    <p className="text-xs text-orange-700 mt-1">These fields shape how this item appears in the restaurant/menu module.</p>
+                                                    <p className="text-xs font-black uppercase tracking-wider text-orange-800">Maelezo ya menu</p>
+                                                    <p className="text-xs text-orange-700 mt-1">Maelezo haya yanaamua chakula au kinywaji kitaonekanaje kwenye menu kwa wateja.</p>
                                                 </div>
 
                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -4114,7 +4296,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                                                 </div>
                                                                                 {physicalLocations.length === 0 && (
                                                                                     <p className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] font-semibold text-orange-800">
-                                                                                        Ongeza eneo la stock/pickup kwenye Mipangilio ili kuweka stock ya variants.
+                                                                                        Ongeza duka au eneo la stock/pickup kwenye Mipangilio ili kuweka stock ya variants.
                                                                                     </p>
                                                                                 )}
                                                                             </>
@@ -4490,9 +4672,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                             <div className="p-4 rounded-xl border border-orange-200 bg-orange-50 flex items-start gap-3">
                                                                 <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0" />
                                                                 <div className="space-y-1">
-                                                                    <p className="text-sm font-bold text-orange-800">Hujajaza eneo la stock/pickup</p>
+                                                                    <p className="text-sm font-bold text-orange-800">Hujajaza duka au eneo la stock/pickup</p>
                                                                     <p className="text-xs text-orange-700 leading-relaxed">
-                                                                        Ili kuuza bidhaa uliyonayo mkononi, ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.
+                                                                        Ili kuuza bidhaa uliyonayo mkononi, tumia duka lililopo au ongeza eneo la stock/pickup kwenye Mipangilio.
                                                                     </p>
                                                                     <button
                                                                         type="button"
@@ -4787,9 +4969,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 <div className="p-4 rounded-xl border border-orange-200 bg-orange-50 flex items-start gap-3">
                                                     <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0" />
                                                     <div className="space-y-1">
-                                                        <p className="text-sm font-bold text-orange-800">Hujajaza eneo la stock/pickup</p>
+                                                        <p className="text-sm font-bold text-orange-800">Hujajaza duka au eneo la stock/pickup</p>
                                                         <p className="text-xs text-orange-700 leading-relaxed">
-                                                            Ili kuuza bidhaa uliyonayo mkononi, ongeza angalau eneo moja la stock/pickup kwenye Mipangilio.
+                                                            Ili kuuza bidhaa uliyonayo mkononi, tumia duka lililopo au ongeza eneo la stock/pickup kwenye Mipangilio.
                                                         </p>
                                                         <button
                                                             type="button"

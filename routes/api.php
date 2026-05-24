@@ -118,6 +118,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{order}/complete', [CheckoutController::class, 'complete']);
     Route::post('/buyer/orders/{order}/confirm-receipt', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'confirmReceipt']);
     Route::post('/buyer/orders/{order}/request-revision', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestCustomRevision']);
+    Route::post('/buyer/orders/{order}/return-request', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestReturn']);
+    Route::post('/buyer/return-requests/{returnRequest}/escalate', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'escalateReturn']);
     Route::post('/buyer/orders/{order}/dispute', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'fileDispute']);
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
     Route::post('/orders/{order}/send-download-link', [\App\Http\Controllers\Api\DownloadController::class, 'sendDownloadLink']);
@@ -178,6 +180,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{merchant:username}/orders/{order:id}/verify-delivery', [MerchantOrderController::class, 'verifyDelivery'])->middleware('merchant_permission:orders.verify_pickup');
         Route::post('/{merchant:username}/orders/{order:id}/rider-access', [MerchantOrderController::class, 'generateRiderAccess'])->middleware('merchant_permission:orders.dispatch,orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/delivery-status', [MerchantOrderController::class, 'updateDeliveryStatus'])->middleware('merchant_permission:orders.dispatch,orders.update');
+        Route::post('/{merchant:username}/orders/{order:id}/return-request/approve', [MerchantOrderController::class, 'approveReturn'])->middleware('merchant_permission:orders.update');
+        Route::post('/{merchant:username}/orders/{order:id}/return-request/reject', [MerchantOrderController::class, 'rejectReturn'])->middleware('merchant_permission:orders.update');
+        Route::post('/{merchant:username}/orders/{order:id}/return-request/received', [MerchantOrderController::class, 'markReturnReceived'])->middleware('merchant_permission:orders.update');
+        Route::post('/{merchant:username}/orders/{order:id}/return-request/complete', [MerchantOrderController::class, 'completeReturn'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/extend-lock', [MerchantOrderController::class, 'extendExpiration'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/release-inventory', [MerchantOrderController::class, 'releaseInventory'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/dispatch/{order:id}/{mode}', [MerchantOrderController::class, 'dispatchOrder'])->middleware('merchant_permission:orders.dispatch');

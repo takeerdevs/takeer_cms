@@ -69,6 +69,8 @@ class CheckoutRequest extends FormRequest
                 'string',
                 'min:3',
             ],
+            'customer_city' => 'nullable|string|max:120',
+            'customer_region' => 'nullable|string|max:120',
             'buyer_lat' => [Rule::requiredIf($requiresShipping), 'nullable', 'numeric', 'between:-90,90'],
             'buyer_lng' => [Rule::requiredIf($requiresShipping), 'nullable', 'numeric', 'between:-180,180'],
             'latitude' => 'nullable|numeric|between:-90,90',

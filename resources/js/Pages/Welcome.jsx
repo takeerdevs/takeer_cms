@@ -83,7 +83,6 @@ function PasswordlessEntry({ intended }) {
                     {step === 'phone' ? <Smartphone className="h-6 w-6" /> : <KeyRound className="h-6 w-6" />}
                 </div>
                 <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">Ingia Haraka</p>
                     <h2 className="mt-2 text-2xl font-black tracking-tight text-foreground">
                         {step === 'phone' ? 'Karibu Takeer' : 'Thibitisha namba'}
                     </h2>
@@ -220,7 +219,7 @@ export default function Welcome({ auth, intended }) {
                             </motion.h1>
 
                             <motion.p variants={itemVariants} className="text-lg md:text-xl text-muted-foreground max-w-lg leading-relaxed">
-                                Jukwaa Maalum linalounganisha wauzaji binafsi na biashara kubwa kwenye mfumo mmoja salama.
+                                Jukwaa Maalum linalounganisha wanunuzi, wauzaji binafsi na biashara kubwa kwenye mfumo mmoja salama.
                             </motion.p>
 
                             <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4 pt-4">
@@ -334,7 +333,7 @@ export default function Welcome({ auth, intended }) {
                                     Akaunti ya kuanzia kwa kila mtumiaji. Uza bidhaa za kidijitali, huduma, na bidhaa za kawaida ukitumia wasifu wako wa binafsi. Inafaa kwa wataalamu (freelancers) na wauziaji wa mara moja.
                                 </p>
                                 <ul className="space-y-3 mb-8">
-                                    {['Selling enabled by default', 'Escrow protection', 'Digital & Physical products', 'Instant Payouts'].map(feat => (
+                                    {['Selling enabled by default', 'Escrow protection', 'Services, Digital & Physical products', 'Instant Payouts'].map(feat => (
                                         <li key={feat} className="flex items-center gap-3 text-sm font-bold text-foreground">
                                             <CheckCircle2 className="h-4 w-4 text-brand-500" /> {feat}
                                         </li>

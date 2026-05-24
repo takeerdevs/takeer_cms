@@ -6,7 +6,7 @@ class CommerceModeRegistry
 {
     public static function all(): array
     {
-        return [
+        $modes = [
             'physical_products' => [
                 'label' => 'Physical products',
                 'description' => 'Ready-made goods with categories, variants, stock, delivery, and orders.',
@@ -43,6 +43,8 @@ class CommerceModeRegistry
                 'modules' => ['subscriptions', 'orders', 'customers', 'communications', 'reports', 'bookkeeping'],
             ],
         ];
+
+        return self::localized($modes);
     }
 
     public static function keys(): array
@@ -70,5 +72,38 @@ class CommerceModeRegistry
                 ->flatMap(fn (string $key) => $modes[$key]['modules'] ?? [])
                 ->all()
         );
+    }
+
+    private static function localized(array $modes): array
+    {
+        $swahili = [
+            'physical_products' => ['label' => 'Bidhaa za Kushikika', 'description' => 'Bidhaa zilizo tayari kuuzwa zenye categories, variants, stock, delivery, na oda.'],
+            'services_bookings' => ['label' => 'Huduma / Booking', 'description' => 'Huduma, miadi, reservations, na checkout ya booking.'],
+            'digital_products' => ['label' => 'Bidhaa za Digital', 'description' => 'Downloads, files, license keys, access ya digital, na materials za kujifunza.'],
+            'food_menu' => ['label' => 'Chakula / Menu', 'description' => 'Menu, add-ons, oda za restaurant, delivery, na reservations.'],
+            'courses_learning' => ['label' => 'Kozi / Kujifunza', 'description' => 'Kozi, workshops, cohorts, enrollments, na access ya wanafunzi.'],
+            'custom_orders_quotes' => ['label' => 'Oda Maalum / Bei ya Makubaliano', 'description' => 'Mahitaji ya mteja, quotation, kazi za kuagiza, na approvals.'],
+            'subscriptions_memberships' => ['label' => 'Subscriptions / Memberships', 'description' => 'Plans za kujirudia, memberships, access, na usimamizi wa members.'],
+        ];
+
+        return collect($modes)
+            ->map(function (array $mode, string $key) use ($swahili) {
+                $english = [
+                    'label' => $mode['label'] ?? $key,
+                    'description' => $mode['description'] ?? '',
+                ];
+                $sw = $swahili[$key] ?? $english;
+
+                return [
+                    ...$mode,
+                    'label' => $sw['label'],
+                    'description' => $sw['description'],
+                    'translations' => [
+                        'sw' => $sw,
+                        'en' => $english,
+                    ],
+                ];
+            })
+            ->all();
     }
 }

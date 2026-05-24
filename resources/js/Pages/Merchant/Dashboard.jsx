@@ -12,6 +12,7 @@ import {
 import { router } from '@inertiajs/react';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import { businessToolLabel } from '@/lib/businessToolCopy';
 
 export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const { auth } = usePage().props;
@@ -88,64 +89,64 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const setupQuickActions = [
         ...(canAny(['settings.view', 'settings.update']) ? [{
             key: 'modules',
-            label: 'Business Modules',
+            label: 'Zana za Biashara',
             icon: Settings,
             href: `/merchant/${merchantSlug}/modules`,
         }] : []),
         ...((hasModule('products') || hasMode('physical_products')) && can('products.create') ? [{
             key: 'product',
-            label: 'Add Product',
+            label: 'Ongeza Bidhaa',
             icon: Package,
             href: `/merchant/${merchantSlug}/upload?type=physical`,
             primary: true,
         }] : []),
         ...((hasModule('menu') || hasMode('food_menu')) && can('products.create') ? [{
             key: 'menu',
-            label: 'Add Menu Item',
+            label: 'Ongeza Menu Item',
             icon: ShoppingBag,
             href: `/merchant/${merchantSlug}/upload?type=physical&module=menu`,
             primary: !hasModule('products') && !hasMode('physical_products'),
         }] : []),
         ...((hasModule('services') || hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('workshops') || hasModule('rooms') || hasModule('tour_departures') || hasMode('services_bookings')) && can('services.create') ? [{
             key: 'service',
-            label: hasModule('rooms') ? 'Add Room / Stay' : hasModule('tour_departures') ? 'Add Tour' : hasModule('rentals') ? 'Add Rental' : hasModule('workshops') ? 'Add Workshop' : hasModule('appointments') ? 'Add Appointment' : hasModule('reservations') ? 'Add Reservation' : 'Add Service',
+            label: hasModule('rooms') ? 'Ongeza Chumba / Malazi' : hasModule('tour_departures') ? 'Ongeza Safari' : hasModule('rentals') ? 'Ongeza cha Kukodisha' : hasModule('workshops') ? 'Ongeza Darasa / Tukio' : hasModule('appointments') ? 'Ongeza Miadi' : hasModule('reservations') ? 'Ongeza Reservation' : 'Ongeza Huduma',
             icon: hasModule('tour_departures') && !hasModule('rooms') ? MapPin : CalendarClock,
             href: `/merchant/${merchantSlug}/upload?type=service${hasModule('rooms') ? '&module=rooms' : hasModule('tour_departures') ? '&module=tour_departures' : hasModule('rentals') ? '&module=rentals' : hasModule('workshops') ? '&module=workshops' : hasModule('appointments') ? '&module=appointments' : hasModule('reservations') ? '&module=reservations' : ''}`,
             primary: !hasModule('products') && !hasMode('physical_products') && !hasModule('menu') && !hasMode('food_menu'),
         }] : []),
         ...((hasModule('availability') || hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('rooms') || hasModule('tour_departures') || hasModule('workshops') || hasMode('services_bookings')) && canAny(['services.view', 'services.schedule']) ? [{
             key: 'availability',
-            label: 'Availability',
+            label: 'Ratiba',
             icon: Settings,
             href: `/merchant/${merchantSlug}/availability`,
         }] : []),
         ...((hasModule('bookings') || hasModule('appointments') || hasModule('reservations') || hasModule('rentals') || hasModule('rooms') || hasModule('tour_departures') || hasModule('workshops') || hasMode('services_bookings')) && canAny(['services.view', 'services.schedule']) ? [{
             key: 'booking-calendar',
-            label: 'Booking Calendar',
+            label: 'Kalenda ya Booking',
             icon: CalendarClock,
             href: `/merchant/${merchantSlug}/bookings`,
         }] : []),
         ...((hasModule('digital_products') || hasMode('digital_products')) && can('digital_products.create') ? [{
             key: 'digital',
-            label: 'Add Digital Product',
+            label: 'Ongeza Bidhaa ya Digital',
             icon: Download,
             href: `/merchant/${merchantSlug}/upload?type=digital`,
         }] : []),
         ...((hasModule('custom_orders') || hasModule('quotes') || hasMode('custom_orders_quotes')) && can('services.create') ? [{
             key: 'custom-order',
-            label: 'Add Custom Order',
+            label: 'Ongeza Oda Maalum',
             icon: Boxes,
             href: `/merchant/${merchantSlug}/upload?type=service&module=custom_orders`,
         }] : []),
         ...((hasModule('courses') || hasModule('workshops') || hasMode('courses_learning')) && can('bundles.view') ? [{
             key: 'course',
-            label: 'Courses / Workshops',
+            label: 'Kozi / Madarasa',
             icon: BookOpenText,
             href: `/merchant/${merchantSlug}/courses`,
         }] : []),
         ...((hasModule('enrollments') || hasModule('courses') || hasModule('workshops') || hasMode('courses_learning')) && canAny(['bundles.manage_course', 'orders.view']) ? [{
             key: 'enrollments',
-            label: 'Manage Enrollments',
+            label: 'Simamia Usajili',
             icon: FileCheck,
             href: `/merchant/${merchantSlug}/enrollments`,
         }] : []),
@@ -157,25 +158,25 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
         }] : []),
         ...((hasModule('customers') || hasModule('orders') || hasModule('marketing') || hasMode('physical_products') || hasMode('services_bookings') || hasMode('courses_learning') || hasMode('subscriptions_memberships')) && canAny(['orders.view', 'marketing.view', 'retail.customers']) ? [{
             key: 'customers',
-            label: 'Customers',
+            label: 'Wateja',
             icon: ShieldCheck,
             href: `/merchant/${merchantSlug}/customers`,
         }] : []),
         ...((hasModule('communications') || hasModule('customers') || hasModule('marketing') || hasModule('orders') || hasMode('physical_products') || hasMode('services_bookings') || hasMode('courses_learning') || hasMode('subscriptions_memberships')) && canAny(['marketing.view', 'orders.view', 'services.view']) ? [{
             key: 'communications',
-            label: 'Communications',
+            label: 'Mawasiliano',
             icon: MessageSquare,
             href: `/merchant/${merchantSlug}/communications`,
         }] : []),
         ...((hasModule('team') || hasModule('retail_ops')) && can('team.view') ? [{
             key: 'team',
-            label: 'Team',
+            label: 'Timu',
             icon: Store,
             href: `/merchant/${merchantSlug}/team`,
         }] : []),
         ...((hasModule('reports') || hasModule('bookkeeping') || hasModule('orders')) && canAny(['dashboard.view', 'orders.view', 'bookkeeping.view']) ? [{
             key: 'overview',
-            label: 'Business Overview',
+            label: 'Muhtasari wa Biashara',
             icon: TrendingUp,
             href: `/merchant/${merchantSlug}/overview`,
         }] : []),
@@ -183,24 +184,24 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const primaryAction = setupQuickActions.find(action => action.primary) || setupQuickActions[0];
     const secondaryActions = setupQuickActions.filter(action => action.key !== primaryAction?.key).slice(0, 5);
     const workspaceItems = [
-        { key: 'products', label: 'Products', description: 'Inventory, variants, stock, and product listings.', icon: Package, href: `/merchant/${merchantSlug}/products`, permissions: ['products.view'], modules: ['products'], modes: ['physical_products'] },
-        { key: 'menu', label: 'Menu', description: 'Food, drinks, add-ons, and menu pricing.', icon: Utensils, href: `/merchant/${merchantSlug}/menu`, permissions: ['products.view'], modules: ['menu'], modes: ['food_menu'] },
-        { key: 'orders', label: 'Orders', description: 'Purchases, payment status, fulfillment, and dispatch.', icon: ShoppingBag, href: `/merchant/${merchantSlug}/orders`, permissions: ['orders.view'], modules: ['orders'], modes: ['physical_products', 'food_menu', 'digital_products', 'custom_orders_quotes', 'subscriptions_memberships'] },
-        { key: 'services', label: hasModule('rooms') ? 'Rooms & Stays' : hasModule('tour_departures') ? 'Tours' : hasModule('rentals') ? 'Rentals' : hasModule('appointments') ? 'Appointments' : hasModule('reservations') ? 'Reservations' : 'Services', description: 'Service listings, packages, enquiry flows, and booking offers.', icon: hasModule('rooms') ? BedDouble : CalendarClock, href: hasModule('rooms') ? `/merchant/${merchantSlug}/rooms` : hasModule('tour_departures') ? `/merchant/${merchantSlug}/tours` : hasModule('rentals') ? `/merchant/${merchantSlug}/rentals` : hasModule('workshops') ? `/merchant/${merchantSlug}/workshops` : hasModule('appointments') ? `/merchant/${merchantSlug}/appointments` : hasModule('reservations') ? `/merchant/${merchantSlug}/reservations` : `/merchant/${merchantSlug}/services`, permissions: ['services.view'], modules: ['services', 'rooms', 'tour_departures', 'rentals', 'appointments', 'reservations', 'workshops'], modes: ['services_bookings'] },
-        { key: 'custom_orders', label: 'Custom Orders', description: 'Customer requirements, quotes, and made-to-order work.', icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permissions: ['services.view'], modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
-        { key: 'availability', label: 'Availability', description: 'Rules, slots, capacity, buffers, and fixed sessions.', icon: Clock3, href: `/merchant/${merchantSlug}/availability`, permissions: ['services.view', 'services.schedule'], modules: ['availability', 'bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
-        { key: 'bookings', label: 'Booking Calendar', description: 'Scheduled requests, sessions, reservations, and upcoming work.', icon: CalendarClock, href: `/merchant/${merchantSlug}/bookings`, permissions: ['services.view', 'services.schedule'], modules: ['bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
-        { key: 'digital_products', label: 'Digital Products', description: 'Downloads, files, content access, and license keys.', icon: Download, href: `/merchant/${merchantSlug}/downloads`, permissions: ['digital_products.view'], modules: ['digital_products'], modes: ['digital_products'] },
-        { key: 'courses', label: 'Courses & Workshops', description: 'Structured learning offers, lessons, cohorts, and materials.', icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permissions: ['bundles.view'], modules: ['courses', 'workshops'], modes: ['courses_learning'] },
-        { key: 'enrollments', label: 'Enrollments', description: 'Students, attendees, applicants, and class status.', icon: ClipboardList, href: `/merchant/${merchantSlug}/enrollments`, permissions: ['bundles.manage_course', 'orders.view'], modules: ['enrollments', 'courses', 'workshops'], modes: ['courses_learning'] },
-        { key: 'subscriptions', label: 'Subscriptions', description: 'Membership plans, recurring access, and members.', icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permissions: ['subscriptions.view'], modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
-        { key: 'customers', label: 'Customers / CRM', description: 'Buyers, guests, students, members, and repeat customers.', icon: Users, href: `/merchant/${merchantSlug}/customers`, permissions: ['orders.view', 'marketing.view', 'retail.customers'], modules: ['customers'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
-        { key: 'communications', label: 'Communications', description: 'Follow-ups, reminders, updates, and contact logs.', icon: MessageSquare, href: `/merchant/${merchantSlug}/communications`, permissions: ['marketing.view', 'orders.view', 'services.view'], modules: ['communications'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
-        { key: 'marketing', label: 'Marketing', description: 'Campaigns, coupons, referrals, SMS, social DMs, and WhatsApp.', icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permissions: ['marketing.view'], modules: ['marketing'], modes: [] },
-        { key: 'reports', label: 'Business Overview', description: 'Revenue, customers, bookings, catalog, team, and operations.', icon: BarChart3, href: `/merchant/${merchantSlug}/overview`, permissions: ['dashboard.view', 'orders.view', 'bookkeeping.view'], modules: ['reports'], modes: [] },
-        { key: 'bookkeeping', label: 'Bookkeeping', description: 'Income, expenses, statements, audit support, and tax readiness.', icon: Calculator, href: `/merchant/${merchantSlug}/retail/bookkeeping`, permissions: ['bookkeeping.view'], modules: ['bookkeeping'], modes: [], requiresModules: ['retail_ops'] },
-        { key: 'team', label: 'Team', description: 'Staff roles, workplace access, PINs, and permissions.', icon: UserCog, href: `/merchant/${merchantSlug}/team`, permissions: ['team.view'], modules: ['team', 'retail_ops'], modes: [] },
-        { key: 'retail_ops', label: 'Retail Ops / POS', description: 'POS, inventory, transfers, storekeeper tools, and counters.', icon: Store, href: `/merchant/${merchantSlug}/retail/dashboard`, permissions: ['retail.dashboard', 'retail.pos', 'retail.inventory'], modules: ['retail_ops'], modes: [] },
+        { key: 'products', label: 'Bidhaa', description: 'Inventory, variants, stock, na product listings.', icon: Package, href: `/merchant/${merchantSlug}/products`, permissions: ['products.view'], modules: ['products'], modes: ['physical_products'] },
+        { key: 'menu', label: 'Menu', description: 'Chakula, vinywaji, add-ons, na bei za menu.', icon: Utensils, href: `/merchant/${merchantSlug}/menu`, permissions: ['products.view'], modules: ['menu'], modes: ['food_menu'] },
+        { key: 'orders', label: 'Oda', description: 'Manunuzi, payment status, fulfillment, na dispatch.', icon: ShoppingBag, href: `/merchant/${merchantSlug}/orders`, permissions: ['orders.view'], modules: ['orders'], modes: ['physical_products', 'food_menu', 'digital_products', 'custom_orders_quotes', 'subscriptions_memberships'] },
+        { key: 'services', label: hasModule('rooms') ? 'Vyumba / Malazi' : hasModule('tour_departures') ? 'Safari' : hasModule('rentals') ? 'Kukodisha' : hasModule('appointments') ? 'Miadi' : hasModule('reservations') ? 'Reservations' : 'Huduma', description: 'Huduma, packages, maulizo, na booking offers.', icon: hasModule('rooms') ? BedDouble : CalendarClock, href: hasModule('rooms') ? `/merchant/${merchantSlug}/rooms` : hasModule('tour_departures') ? `/merchant/${merchantSlug}/tours` : hasModule('rentals') ? `/merchant/${merchantSlug}/rentals` : hasModule('workshops') ? `/merchant/${merchantSlug}/workshops` : hasModule('appointments') ? `/merchant/${merchantSlug}/appointments` : hasModule('reservations') ? `/merchant/${merchantSlug}/reservations` : `/merchant/${merchantSlug}/services`, permissions: ['services.view'], modules: ['services', 'rooms', 'tour_departures', 'rentals', 'appointments', 'reservations', 'workshops'], modes: ['services_bookings'] },
+        { key: 'custom_orders', label: 'Oda Maalum', description: 'Mahitaji ya mteja, quotes, na kazi za made-to-order.', icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permissions: ['services.view'], modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
+        { key: 'availability', label: 'Ratiba', description: 'Rules, slots, capacity, buffers, na sessions za tarehe maalum.', icon: Clock3, href: `/merchant/${merchantSlug}/availability`, permissions: ['services.view', 'services.schedule'], modules: ['availability', 'bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
+        { key: 'bookings', label: 'Kalenda ya Booking', description: 'Maombi yaliyopangwa, sessions, reservations, na kazi zijazo.', icon: CalendarClock, href: `/merchant/${merchantSlug}/bookings`, permissions: ['services.view', 'services.schedule'], modules: ['bookings', 'appointments', 'reservations', 'rentals', 'rooms', 'tour_departures', 'workshops'], modes: ['services_bookings'] },
+        { key: 'digital_products', label: 'Bidhaa za Digital', description: 'Downloads, files, content access, na license keys.', icon: Download, href: `/merchant/${merchantSlug}/downloads`, permissions: ['digital_products.view'], modules: ['digital_products'], modes: ['digital_products'] },
+        { key: 'courses', label: 'Kozi / Madarasa', description: 'Huduma za kujifunza, masomo, cohorts, na materials.', icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permissions: ['bundles.view'], modules: ['courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'enrollments', label: 'Usajili', description: 'Wanafunzi, washiriki, applicants, na status za darasa.', icon: ClipboardList, href: `/merchant/${merchantSlug}/enrollments`, permissions: ['bundles.manage_course', 'orders.view'], modules: ['enrollments', 'courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'subscriptions', label: 'Subscriptions', description: 'Membership plans, recurring access, na members.', icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permissions: ['subscriptions.view'], modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
+        { key: 'customers', label: 'Wateja / CRM', description: 'Wanunuzi, wageni, wanafunzi, members, na wateja wanaorudi.', icon: Users, href: `/merchant/${merchantSlug}/customers`, permissions: ['orders.view', 'marketing.view', 'retail.customers'], modules: ['customers'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+        { key: 'communications', label: 'Mawasiliano', description: 'Follow-ups, reminders, updates, na contact logs.', icon: MessageSquare, href: `/merchant/${merchantSlug}/communications`, permissions: ['marketing.view', 'orders.view', 'services.view'], modules: ['communications'], modes: ['physical_products', 'services_bookings', 'courses_learning', 'subscriptions_memberships'] },
+        { key: 'marketing', label: 'Masoko', description: 'Campaigns, coupons, referrals, SMS, social DMs, na WhatsApp.', icon: Megaphone, href: `/merchant/${merchantSlug}/marketing`, permissions: ['marketing.view'], modules: ['marketing'], modes: [] },
+        { key: 'reports', label: 'Muhtasari wa Biashara', description: 'Mapato, wateja, booking, catalog, timu, na operations.', icon: BarChart3, href: `/merchant/${merchantSlug}/overview`, permissions: ['dashboard.view', 'orders.view', 'bookkeeping.view'], modules: ['reports'], modes: [] },
+        { key: 'bookkeeping', label: 'Bookkeeping', description: 'Mapato, matumizi, statements, audit support, na utayari wa tax.', icon: Calculator, href: `/merchant/${merchantSlug}/retail/bookkeeping`, permissions: ['bookkeeping.view'], modules: ['bookkeeping'], modes: [], requiresModules: ['retail_ops'] },
+        { key: 'team', label: 'Timu', description: 'Staff roles, workplace access, PINs, na permissions.', icon: UserCog, href: `/merchant/${merchantSlug}/team`, permissions: ['team.view'], modules: ['team', 'retail_ops'], modes: [] },
+        { key: 'retail_ops', label: 'Retail / POS', description: 'POS, inventory, transfers, storekeeper tools, na counters.', icon: Store, href: `/merchant/${merchantSlug}/retail/dashboard`, permissions: ['retail.dashboard', 'retail.pos', 'retail.inventory'], modules: ['retail_ops'], modes: [] },
     ]
         .filter(item => item.modules.some(hasModule) || item.modes.some(hasMode))
         .filter(item => (item.requiresModules || []).every(hasModule))
@@ -296,14 +297,14 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                 {isVerified && activeModules.length === 0 && recommendedModules.length > 0 && can('settings.update') && (
                     <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
-                            <h3 className="font-black text-brand-950">Choose how this business operates</h3>
+                            <h3 className="font-black text-brand-950">Chagua biashara hii inafanya nini</h3>
                             <p className="text-sm text-brand-800 mt-1 max-w-2xl">
-                                Your selected operations have recommended modules ready. Pick what this business actually uses: products, menu, rooms, bookings, courses, orders, bookkeeping, and more.
+                                Kuna zana zilizopendekezwa kulingana na shughuli ulizochagua. Chagua biashara hii inatumia nini: bidhaa, menu, vyumba, booking, kozi, oda, bookkeeping, na zaidi.
                             </p>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                                 {recommendedModules.slice(0, 8).map(module => (
                                     <span key={module} className="rounded-full bg-white border border-brand-100 px-2.5 py-1 text-[10px] font-black text-brand-700">
-                                        {module.replace(/_/g, ' ')}
+                                        {businessToolLabel(module)}
                                     </span>
                                 ))}
                             </div>
@@ -312,7 +313,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                             className="shrink-0 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold"
                             onClick={() => router.visit(`/merchant/${merchantSlug}/settings`)}
                         >
-                            Set Up Modules
+                            Weka zana
                         </Button>
                     </div>
                 )}
@@ -438,7 +439,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                     onClick={() => router.visit(`/merchant/${merchantSlug}/modules`)}
                                 >
                                     <LayoutGrid className="mr-2 h-4 w-4" />
-                                    Modules
+                                    Zana
                                 </Button>
                             )}
                         </div>
@@ -446,7 +447,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                         {workspaceItems.length === 0 ? (
                             <div className="rounded-3xl border border-dashed border-border bg-card/40 p-6 text-center">
                                 <LayoutGrid className="mx-auto h-8 w-8 text-muted-foreground" />
-                                <p className="mt-3 text-sm font-semibold text-muted-foreground">No available module tools for your current permissions.</p>
+                                <p className="mt-3 text-sm font-semibold text-muted-foreground">Hakuna zana zinazopatikana kwa ruhusa zako za sasa.</p>
                             </div>
                         ) : (
                             <div className="grid gap-3 md:grid-cols-2">

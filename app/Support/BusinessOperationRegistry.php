@@ -76,11 +76,25 @@ class BusinessOperationRegistry
         ];
 
         return collect($operations)
-            ->map(fn (array $operation) => [
-                ...$operation,
-                'commerce_modes' => CommerceModeRegistry::normalize($operation['commerce_modes'] ?? []),
-                'modules' => BusinessModuleRegistry::normalize($operation['modules'] ?? []),
-            ])
+            ->map(function (array $operation, string $key) {
+                $english = [
+                    'label' => $operation['label'] ?? $key,
+                    'description' => $operation['description'] ?? '',
+                ];
+                $sw = self::swahiliCopy()[$key] ?? $english;
+
+                return [
+                    ...$operation,
+                    'label' => $sw['label'],
+                    'description' => $sw['description'],
+                    'translations' => [
+                        'sw' => $sw,
+                        'en' => $english,
+                    ],
+                    'commerce_modes' => CommerceModeRegistry::normalize($operation['commerce_modes'] ?? []),
+                    'modules' => BusinessModuleRegistry::normalize($operation['modules'] ?? []),
+                ];
+            })
             ->all();
     }
 
@@ -125,6 +139,23 @@ class BusinessOperationRegistry
             'recommended_commerce_modes' => CommerceModeRegistry::normalize(
                 collect($selected)->flatMap(fn ($key) => $all[$key]['commerce_modes'] ?? [])->all()
             ),
+        ];
+    }
+
+    private static function swahiliCopy(): array
+    {
+        return [
+            'physical_products' => ['label' => 'Nauza bidhaa za kushikika', 'description' => 'Bidhaa za retail, stock, variants, product categories, delivery, na oda.'],
+            'digital_products' => ['label' => 'Nauza bidhaa za digital', 'description' => 'Downloads, files, keys, paid media, digital access, na learning materials.'],
+            'general_services' => ['label' => 'Natoa huduma', 'description' => 'Huduma za ku-book au kuulizia, miadi, ratiba, na maombi ya huduma.'],
+            'food_menu' => ['label' => 'Biashara ya chakula / menu', 'description' => 'Chakula, vinywaji, add-ons, oda za restaurant, delivery, na reservations.'],
+            'custom_orders' => ['label' => 'Oda maalum / bei ya makubaliano', 'description' => 'Printing, tailoring, fabrication, kazi za ubunifu, na maombi ya made-to-order.'],
+            'education_training' => ['label' => 'Elimu / Mafunzo', 'description' => 'Kozi, workshops, cohorts, short courses, enrollments, na learning access.'],
+            'accommodation_stays' => ['label' => 'Malazi / Stays', 'description' => 'Vyumba, guest houses, motels, hotels, occupancy, booking requests, na guest flow.'],
+            'travel_tours' => ['label' => 'Safari / Tours', 'description' => 'Trips, tour departures, itineraries, seat capacity, pickup, na travel bookings.'],
+            'rentals_hire' => ['label' => 'Kupangisha / Kukodisha', 'description' => 'Vifaa, magari, spaces, deposits, pickup, return, na ratiba ya kukodisha.'],
+            'subscriptions_memberships' => ['label' => 'Subscriptions / Memberships', 'description' => 'Recurring plans, member access, paid communities, na membership management.'],
+            'other' => ['label' => 'Nyingine / Sijajua bado', 'description' => 'Anza kwa njia rahisi, kisha chagua zana zaidi kwenye dashboard baadaye.'],
         ];
     }
 }

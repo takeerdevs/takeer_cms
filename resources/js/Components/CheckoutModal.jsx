@@ -181,6 +181,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     // Map Picker State
     const [customerLat, setCustomerLat] = useState(null);
     const [customerLng, setCustomerLng] = useState(null);
+    const [customerCity, setCustomerCity] = useState('');
     const [customerRegion, setCustomerRegion] = useState('');
     const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
     const [isShopLocationsOpen, setIsShopLocationsOpen] = useState(false);
@@ -228,6 +229,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
         setPhysicalAddress(displayAddress);
         setExtraAddressDetails(addr.extra_details || '');
+        setCustomerCity('');
 
         findBestShippingZone(parseFloat(addr.latitude), parseFloat(addr.longitude), '');
     };
@@ -237,8 +239,9 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         setCustomerLng(data.lng);
         setPhysicalAddress(data.address);
         setExtraAddressDetails(data.extraDetails);
+        setCustomerCity(data.city || '');
         setCustomerRegion(data.region);
-        findBestShippingZone(data.lat, data.lng, data.region);
+        findBestShippingZone(data.lat, data.lng, data.region, data.city || '');
 
         // Persistent saving for authenticated users
         if (!isGuest) {
@@ -260,7 +263,24 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         }
     };
 
-    const findBestShippingZone = (lat, lng, region) => {
+    const normalizeLocationName = (value) => String(value || '').trim().toLowerCase();
+    const intercityZoneCoversCustomer = (zone, lat, lng, region, city) => {
+        const normalizedCity = normalizeLocationName(city);
+        const normalizedRegion = normalizeLocationName(region);
+        const zoneCity = normalizeLocationName(zone.destination_city);
+        const zoneRegion = normalizeLocationName(zone.destination_region);
+
+        if (normalizedCity && zoneCity && normalizedCity === zoneCity) return true;
+        if (!zoneCity && normalizedRegion && zoneRegion && normalizedRegion === zoneRegion) return true;
+
+        const destinationLat = Number(zone.reference_lat);
+        const destinationLng = Number(zone.reference_lng);
+        if (!Number.isFinite(destinationLat) || !Number.isFinite(destinationLng)) return false;
+
+        return calculateHaversine(lat, lng, destinationLat, destinationLng) <= 30;
+    };
+
+    const findBestShippingZone = (lat, lng, region, city = customerCity) => {
         if (!shippingZones.length) return;
 
         setSelectedHotspot(null);
@@ -273,7 +293,9 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             || eligibleLocationIds.includes(String(zone.merchant_location_id))
         );
 
-        // 1. Try Local based on distance
+        const normalizedCity = normalizeLocationName(city);
+
+        // 1. Try local delivery first. Same-city shop locations are preferred, with radius as a fallback.
         const localZones = shippingZones.filter(z => z.delivery_type === 'local_boda' && z.location && eligibleLocalZone(z));
 
         let bestLocalMatch = null;
@@ -281,11 +303,12 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         localZones.forEach(zone => {
             const dist = calculateHaversine(lat, lng, Number(zone.location.latitude), Number(zone.location.longitude));
             const radius = Number(zone.max_distance_km);
-            if (dist <= radius) {
+            const sameCity = normalizedCity && normalizeLocationName(zone.location.city) === normalizedCity;
+            if (sameCity || dist <= radius) {
                 const match = {
                     zone,
                     distance: dist,
-                    radius,
+                    radius: sameCity ? 0 : radius,
                     fee: Number(zone.flat_rate_fee || 0),
                 };
 
@@ -306,36 +329,64 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             return;
         }
 
-        // 2. Try Intercity Bus based on region
-        if (region) {
-            const busZone = shippingZones.find(z =>
-                z.delivery_type === 'intercity_bus' &&
-                z.destination_region?.toLowerCase().includes(region.toLowerCase())
+        // 2. Inter-city: match the merchant's priced destination/region.
+        let bestIntercityMatch = null;
+        const canUseNearestOutsideArea = (shippingProfile?.outside_area_policy || 'inquiry') !== 'block';
+        shippingZones
+            .filter(z => z.delivery_type === 'intercity_bus')
+            .filter(z => canUseNearestOutsideArea || intercityZoneCoversCustomer(z, lat, lng, region, city))
+            .forEach((zone) => {
+                const directMatch = intercityZoneCoversCustomer(zone, lat, lng, region, city);
+                const destinationLat = Number(zone.reference_lat);
+                const destinationLng = Number(zone.reference_lng);
+                const distance = directMatch
+                    ? 0
+                    : (Number.isFinite(destinationLat) && Number.isFinite(destinationLng)
+                        ? calculateHaversine(lat, lng, destinationLat, destinationLng)
+                        : Infinity);
+                const fee = Number(zone.flat_rate_fee || 0);
+
+                if (!directMatch && (!canUseNearestOutsideArea || !Number.isFinite(distance))) return;
+
+                const match = { zone, distance, fee };
+                if (
+                    !bestIntercityMatch
+                    || match.distance < bestIntercityMatch.distance
+                    || (match.distance === bestIntercityMatch.distance && match.fee < bestIntercityMatch.fee)
+                ) {
+                    bestIntercityMatch = match;
+                }
+            });
+
+        if (bestIntercityMatch) {
+            setSelectedShippingZoneId(String(bestIntercityMatch.zone.id));
+            setSelectedHotspot(null);
+            toast.info(Number(bestIntercityMatch.zone.flat_rate_fee || 0) > 0
+                ? `Tumekupatia gharama ya inter-city: ${bestIntercityMatch.zone.zone_name}`
+                : `Destination ya inter-city imepatikana: ${bestIntercityMatch.zone.zone_name}. Gharama itathibitishwa kwenye chat.`
             );
+            return;
+        }
+
+        // 3. Region fallback for older inter-city zones that do not yet have coordinates.
+        if (region && canUseNearestOutsideArea) {
+            const normalizedRegion = normalizeLocationName(region);
+            const busZone = shippingZones.find(z => (
+                z.delivery_type === 'intercity_bus'
+                && normalizeLocationName(z.destination_region).includes(normalizedRegion)
+            ));
             if (busZone) {
                 setSelectedShippingZoneId(String(busZone.id));
-
-                // Find closest hotspot within this bus zone
-                if (busZone.hotspots && busZone.hotspots.length > 0) {
-                    let closest = null;
-                    let minHsDist = Infinity;
-                    busZone.hotspots.forEach(hs => {
-                        const d = calculateHaversine(lat, lng, Number(hs.latitude), Number(hs.longitude));
-                        if (d < minHsDist) {
-                            minHsDist = d;
-                            closest = hs;
-                        }
-                    });
-                    setSelectedHotspot(closest);
-                    toast.info(`Tumekupatia gharama ya mkoa: ${region}. Kituo cha karibu: ${closest.name}`);
-                } else {
-                    toast.info(`Tumekupatia gharama ya usafiri ya basi ya mkoa wako: ${region}`);
-                }
+                setSelectedHotspot(null);
+                toast.info(Number(busZone.flat_rate_fee || 0) > 0
+                    ? `Tumekupatia gharama ya inter-city: ${busZone.zone_name}`
+                    : `Destination ya inter-city imepatikana: ${busZone.zone_name}. Gharama itathibitishwa kwenye chat.`
+                );
                 return;
             }
         }
 
-        // 3. Fallback to Inquiry
+        // 4. Fallback to inquiry
         setSelectedShippingZoneId('');
     };
 
@@ -435,8 +486,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
     useEffect(() => {
         if (!isOpen || isSelfPickupChoice || !shippingZones.length || !customerLat || !customerLng) return;
-        findBestShippingZone(customerLat, customerLng, customerRegion);
-    }, [isOpen, isSelfPickupChoice, shippingZones.length, customerLat, customerLng, customerRegion]);
+        findBestShippingZone(customerLat, customerLng, customerRegion, customerCity);
+    }, [isOpen, isSelfPickupChoice, shippingZones.length, customerLat, customerLng, customerRegion, customerCity, shippingProfile?.outside_area_policy]);
 
     const itemTitle = activeProduct?.title || activeProduct?.name || 'Inapatikana kwa malipo';
     const requiresOwnedStock = activeProduct?.type === 'physical' && (activeProduct?.fulfillment_mode || 'own_stock') === 'own_stock';
@@ -689,7 +740,17 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const radiusCoverageMessage = deliveryCoverageAnchors.length
         ? `Tunasafirisha ndani ya ${deliveryCoverageAnchors.map((anchor) => `kilomita ${anchor.radiusLabel} kutoka ${anchor.label}`).join(', ')}.`
         : 'Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.';
-    const outsideAreaMessage = `${radiusCoverageMessage} Chagua anwani iliyo karibu au pickup (Kuchukua mwenyewe)`;
+    const intercityDestinations = useMemo(() => (
+        shippingZones
+            .filter((zone) => zone?.is_active !== false && zone?.delivery_type === 'intercity_bus')
+            .map((zone) => zone.destination_city || zone.zone_name || zone.destination_region)
+            .filter(Boolean)
+            .filter((value, index, values) => values.indexOf(value) === index)
+    ), [shippingZones]);
+    const intercityCoverageMessage = intercityDestinations.length
+        ? ` Inter-city inapatikana kwenda: ${intercityDestinations.join(', ')}.`
+        : '';
+    const outsideAreaMessage = `${radiusCoverageMessage}${intercityCoverageMessage} Chagua anwani iliyo karibu au pickup (Kuchukua mwenyewe)`;
     const radiusCoverageNode = deliveryCoverageAnchors.length ? (
         <span>
             Tunasafirisha ndani ya{' '}
@@ -718,9 +779,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     ) : (
         <span>Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.</span>
     );
+    const isIntercityDelivery = activeShippingZone?.delivery_type === 'intercity_bus';
     const matchedShippingFeeLabel = Number(activeShippingZone?.flat_rate_fee || 0) > 0
         ? `Fee TZS ${Number(activeShippingZone.flat_rate_fee || 0).toLocaleString()}`
-        : 'Free shipping';
+        : (isIntercityDelivery ? 'Shipping fee will be confirmed in order chat' : 'Free shipping');
+    const intercityDestinationLabel = activeShippingZone?.destination_city || activeShippingZone?.zone_name || activeShippingZone?.destination_region;
 
     // Step management based on product type
     useEffect(() => {
@@ -896,12 +959,14 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 country_iso2: detectedIso2 || undefined,
                 delivery_type: isPhysicalProduct ? (isSelfPickupChoice ? 'self_pickup' : 'shipping') : undefined,
                 delivery_zone_id: (isPhysicalProduct && !isSelfPickupChoice) ? selectedShippingZoneId : undefined,
+                customer_city: isPhysicalProduct ? (customerCity || undefined) : undefined,
+                customer_region: isPhysicalProduct ? (customerRegion || undefined) : undefined,
                 quantity: isPhysicalProduct && itemType === 'product' ? requestedPhysicalQuantity : 1,
                 idempotency_key: `q-${itemType}-${activeProduct.id}-${activeProduct.service_request_payment?.id || activeProduct.service_request_id || 'standard'}-${Date.now()}`,
                 buyer_lat: isPhysicalProduct ? customerLat : undefined,
                 buyer_lng: isPhysicalProduct ? customerLng : undefined,
                 physical_address: isPhysicalProduct ? (extraAddressDetails ? `${physicalAddress} (${extraAddressDetails})` : physicalAddress) : undefined,
-                shipping_hotspot_id: (isPhysicalProduct && !isSelfPickupChoice && selectedHotspot) ? selectedHotspot.id : undefined,
+                shipping_hotspot_id: undefined,
                 payment_page_id: activeProduct.payment_page_id || undefined,
                 coupon_code: couponCode.trim() || undefined,
                 group_sale_campaign_id: activeProduct.group_sale_campaign_id || activeProduct.group_sale_offer?.id || undefined,
@@ -1234,7 +1299,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                             ? 'border-red-200 bg-red-50 text-red-900'
                                                             : 'border-amber-200 bg-amber-50 text-amber-900'
                                                     }`}>
-                                                        {activeShippingZone ? (
+                                                        {isIntercityDelivery ? (
+                                                            <span>
+                                                                Inter-city shipping to {intercityDestinationLabel}. {matchedShippingFeeLabel}. Exact pickup/drop-off office will be confirmed by transporter or waybill.
+                                                            </span>
+                                                        ) : activeShippingZone ? (
                                                             deliveryCoverageAnchors.length ? (
                                                                 <button
                                                                     type="button"

@@ -22,6 +22,8 @@ class Delivery extends Model
         'waybill_photo_url',
         'delivery_type',
         'delivery_status',
+        'delivered_at',
+        'confirmed_at',
         'buyer_release_pin',
         'pickup_pin',
         'whatsapp_pin_url',
@@ -34,6 +36,8 @@ class Delivery extends Model
     protected function casts(): array
     {
         return [
+            'delivered_at' => 'datetime',
+            'confirmed_at' => 'datetime',
             'rider_access_expires_at' => 'datetime',
             'rider_access_revoked_at' => 'datetime',
         ];
@@ -41,6 +45,16 @@ class Delivery extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (Delivery $delivery): void {
+            if ($delivery->isDirty('delivery_status') && in_array($delivery->delivery_status, ['delivered', 'customer_confirmed'], true)) {
+                $delivery->delivered_at ??= now();
+            }
+
+            if ($delivery->isDirty('delivery_status') && $delivery->delivery_status === 'customer_confirmed') {
+                $delivery->confirmed_at ??= now();
+            }
+        });
+
         static::updated(function (Delivery $delivery): void {
             app(\App\Services\PulseNotificationService::class)->deliveryUpdated($delivery);
         });

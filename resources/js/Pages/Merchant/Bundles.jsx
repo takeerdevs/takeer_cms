@@ -430,7 +430,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         if (Array.isArray(bundle?.course_modules) && bundle.course_modules.length > 0) {
             return bundle.course_modules.map((module, moduleIndex) => ({
                 id: module.id || `${Date.now()}-${moduleIndex}`,
-                title: module.title || `Moduli ya ${moduleIndex + 1}`,
+                title: module.title || `Sehemu ya ${moduleIndex + 1}`,
                 sort_order: module.sort_order ?? moduleIndex,
                 lessons: (module.lessons || []).map((lesson, lessonIndex) => makeCourseLesson(module, lessonIndex, {
                     id: lesson.id,
@@ -459,7 +459,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
         const grouped = new Map();
         (bundle?.items || []).forEach((item, itemIndex) => {
-            const title = item.section_title || 'Moduli ya 1';
+            const title = item.section_title || 'Sehemu ya 1';
             if (!grouped.has(title)) {
                 grouped.set(title, {
                     id: `${Date.now()}-${grouped.size}-${title}`,
@@ -503,7 +503,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         });
 
         if (grouped.size === 0) {
-            grouped.set('Moduli ya 1', { id: `${Date.now()}-module`, title: 'Moduli ya 1', sort_order: 0, lessons: [] });
+            grouped.set('Sehemu ya 1', { id: `${Date.now()}-module`, title: 'Sehemu ya 1', sort_order: 0, lessons: [] });
         }
 
         return Array.from(grouped.values());
@@ -511,7 +511,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
     function ensureCourseModuleExists() {
         if (courseModules.length > 0) return;
-        setCourseModules([{ id: `${Date.now()}-module`, title: 'Moduli ya 1', sort_order: 0, lessons: [] }]);
+        setCourseModules([{ id: `${Date.now()}-module`, title: 'Sehemu ya 1', sort_order: 0, lessons: [] }]);
     }
 
     async function saveBundle() {
@@ -529,7 +529,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                 course_outcomes: splitCourseList(bundleForm.course_outcomes_text),
                 course_requirements: splitCourseList(bundleForm.course_requirements_text),
                 course_modules: bundleForm.is_course ? courseModules.map((module, moduleIndex) => ({
-                    title: module.title || `Moduli ya ${moduleIndex + 1}`,
+                    title: module.title || `Sehemu ya ${moduleIndex + 1}`,
                     sort_order: moduleIndex,
                     lessons: (module.lessons || []).map((lesson, lessonIndex) => ({
                         title: lesson.title || `Somo la ${lessonIndex + 1}`,
@@ -645,7 +645,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     function addCourseModule() {
         setCourseModules((current) => ([
             ...current,
-            { id: `${Date.now()}-${current.length + 1}`, title: `Moduli ya ${current.length + 1}`, sort_order: current.length, lessons: [] },
+            { id: `${Date.now()}-${current.length + 1}`, title: `Sehemu ya ${current.length + 1}`, sort_order: current.length, lessons: [] },
         ]));
     }
 
@@ -686,7 +686,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         const module = courseModules.find((entry) => entry.id === moduleId);
         if (!module) return;
         const moduleLessons = module.lessons || [];
-        if (moduleLessons.length > 0 && !window.confirm('Moduli hii ina masomo. Ukifuta moduli, masomo yake yataondolewa kwenye course. Endelea?')) return;
+        if (moduleLessons.length > 0 && !window.confirm('Sehemu hii ina masomo. Ukifuta sehemu, masomo yake yataondolewa kwenye course. Endelea?')) return;
 
         setCourseModules((current) => current.filter((entry) => entry.id !== moduleId));
         setCourseAttachSelection((current) => {
@@ -1336,12 +1336,12 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                 <div className="border-t border-blue-100 pt-6 space-y-5">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
-                                            <p className="text-xs font-black uppercase tracking-widest text-blue-700">Curriculum Builder</p>
-                                            <p className="text-xs text-muted-foreground mt-1">Create modules, add lessons, then attach existing products, downloads, services, or content to each lesson.</p>
+                                            <p className="text-xs font-black uppercase tracking-widest text-blue-700">Mpangilio wa Kozi</p>
+                                            <p className="text-xs text-muted-foreground mt-1">Tengeneza sehemu, ongeza masomo, kisha ambatanisha bidhaa, downloads, huduma, au content kwenye kila somo.</p>
                                         </div>
                                         <Button variant="outline" className="rounded-xl border-blue-200 bg-white text-blue-700" onClick={addCourseModule}>
                                             <Plus className="mr-2 h-4 w-4" />
-                                            Add Module
+                                            Ongeza sehemu
                                         </Button>
                                     </div>
 
@@ -1370,7 +1370,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
 
                                     <div className="space-y-4">
                                         {courseModules.map((module, moduleIndex) => {
-                                            const moduleTitle = module.title || `Moduli ya ${moduleIndex + 1}`;
+                                            const moduleTitle = module.title || `Sehemu ya ${moduleIndex + 1}`;
                                             const moduleLessons = module.lessons || [];
 
                                             return (
@@ -1383,7 +1383,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                             className="h-9 border-0 bg-transparent p-0 text-base font-black focus-visible:ring-0"
                                                             value={module.title}
                                                             onChange={(e) => renameCourseModule(module.id, e.target.value)}
-                                                            placeholder={`Moduli ya ${moduleIndex + 1}`}
+                                                            placeholder={`Sehemu ya ${moduleIndex + 1}`}
                                                         />
                                                         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl text-muted-foreground hover:text-red-600" onClick={() => removeCourseModule(module.id)}>
                                                             <Trash2 className="h-4 w-4" />
@@ -1861,7 +1861,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                                                                 <Input
                                                                     value={selectedItem?.section_title || ''}
                                                                     onChange={(e) => updateSelectedCourseItem(option, { section_title: e.target.value })}
-                                                                    placeholder="Module title (e.g. Module 1)"
+                                                                    placeholder="Jina la sehemu (mf. Utangulizi)"
                                                                 />
                                                                 <Input
                                                                     value={selectedItem?.lesson_title || ''}

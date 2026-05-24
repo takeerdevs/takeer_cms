@@ -1028,7 +1028,7 @@ class UploadController extends Controller
 
         if ($request->input('type') === 'physical' && ! $isFocusedPhysicalModule) {
             if ($requiresLocationInventory && $merchantLocationIds->isEmpty()) {
-                return response()->json(['message' => 'Tafadhali ongeza angalau eneo moja la stock/pickup kwenye Mipangilio kabla ya kuuza bidhaa uliyonayo mkononi.'], 422);
+                return response()->json(['message' => 'Tafadhali ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio kabla ya kuuza bidhaa uliyonayo mkononi.'], 422);
             }
 
             $inventoryLocationIds = collect(array_keys((array) $request->input('location_inventories', [])));
@@ -1041,7 +1041,7 @@ class UploadController extends Controller
                 ->values();
 
             if ($invalidLocationIds->isNotEmpty()) {
-                return response()->json(['message' => 'Stock inaweza kuwekwa kwenye maeneo yako ya stock/pickup pekee.'], 422);
+                return response()->json(['message' => 'Stock inaweza kuwekwa kwenye maduka au maeneo yako ya stock/pickup pekee.'], 422);
             }
 
             if ($fulfillmentMode === 'supplier_sourced') {
@@ -1203,10 +1203,10 @@ class UploadController extends Controller
             if ($requiresLocationInventory && $hasVariants) {
                 $variantLocationStockTotal = $preparedVariants->sum(fn ($variant) => $sumMerchantLocationStock((array) ($variant['location_inventories'] ?? [])));
                 if ($variantLocationStockTotal <= 0) {
-                    return response()->json(['message' => 'Tafadhali weka stock ya angalau variant moja kwenye eneo la stock/pickup.'], 422);
+                    return response()->json(['message' => 'Tafadhali weka stock ya angalau variant moja kwenye duka au eneo la stock/pickup.'], 422);
                 }
             } elseif ($requiresLocationInventory && $sumMerchantLocationStock((array) $request->input('location_inventories', [])) <= 0) {
-                return response()->json(['message' => 'Tafadhali weka stock kwenye angalau eneo moja la stock/pickup.'], 422);
+                return response()->json(['message' => 'Tafadhali weka stock kwenye angalau duka au eneo la stock/pickup.'], 422);
             }
         }
 

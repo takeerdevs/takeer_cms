@@ -477,8 +477,10 @@ class ProductResource extends JsonResource
                     'address' => $loc->address,
                     'latitude' => (float) $loc->latitude,
                     'longitude' => (float) $loc->longitude,
+                    'is_primary' => (bool) $loc->is_primary,
                     'allow_self_pickup' => (bool) $loc->allow_self_pickup,
                     'contact_phone' => $loc->contact_phone,
+                    'type' => $loc->type,
                 ])->values() : [],
             ]),
             'location_inventories' => $this->whenLoaded('locationInventories', fn() => $this->locationInventories->map(fn($inv) => [

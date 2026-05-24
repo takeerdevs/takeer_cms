@@ -15,8 +15,24 @@ class MerchantShippingZoneController extends Controller
 {
     private function merchantFromRequest(Request $request): Merchant
     {
+        if ($request->attributes->has('active_merchant')) {
+            return $request->attributes->get('active_merchant');
+        }
+
         $user = $request->user();
-        $merchant = $user->merchantProfiles()->where('is_default', true)->first()
+        $merchantId = $request->input('merchant_id') ?? session('active_merchant_id');
+
+        if ($merchantId) {
+            $merchant = $user->merchantProfiles()
+                ->where('merchants.id', $merchantId)
+                ->first();
+
+            abort_unless($merchant, 403, 'Unauthorized merchant context.');
+
+            return $merchant;
+        }
+
+        $merchant = $user->merchantProfiles()->where('is_active', true)->first()
             ?? $user->merchantProfiles()->first();
 
         if (!$merchant) {
@@ -114,9 +130,13 @@ class MerchantShippingZoneController extends Controller
                 return response()->json(['message' => 'Tafadhali weka umbali au chagua eneo kwenye ramani kwa ajili ya boda.'], 422);
             }
         } elseif ($validated['delivery_type'] === 'intercity_bus') {
-            if (empty($validated['destination_region'])) {
-                return response()->json(['message' => 'Tafadhali weka mkoa unakoenda kwa ajili ya basi.'], 422);
+            if (empty($validated['destination_region']) && empty($validated['destination_city']) && empty($validated['reference_name'])) {
+                return response()->json(['message' => 'Tafadhali weka destination au mkoa unakoenda kwa ajili ya inter-city.'], 422);
             }
+
+            $validated['destination_region'] = ($validated['destination_region'] ?? null)
+                ?: (($validated['destination_city'] ?? null)
+                ?: (($validated['reference_name'] ?? null) ?: null));
         }
 
         $zone = ShippingZone::create([
@@ -198,6 +218,16 @@ class MerchantShippingZoneController extends Controller
                     $refLat, $refLng
                 );
             }
+        }
+
+        if (($validated['delivery_type'] ?? $shippingZone->delivery_type) === 'intercity_bus') {
+            if (empty($validated['destination_region']) && empty($validated['destination_city']) && empty($validated['reference_name'])) {
+                return response()->json(['message' => 'Tafadhali weka destination au mkoa unakoenda kwa ajili ya inter-city.'], 422);
+            }
+
+            $validated['destination_region'] = ($validated['destination_region'] ?? null)
+                ?: (($validated['destination_city'] ?? null)
+                ?: (($validated['reference_name'] ?? null) ?: $shippingZone->destination_region));
         }
 
         if (array_key_exists('merchant_location_id', $validated) && !empty($validated['merchant_location_id'])) {

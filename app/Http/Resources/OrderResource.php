@@ -46,6 +46,13 @@ class OrderResource extends JsonResource
                 'delivery_type' => $this->delivery?->delivery_type,
                 'type' => $this->delivery?->delivery_type,
                 'physical_address' => $this->delivery?->physical_address,
+                'shipping_zone' => $this->delivery?->shippingZone ? [
+                    'id' => $this->delivery->shippingZone->id,
+                    'zone_name' => $this->delivery->shippingZone->zone_name,
+                    'destination_city' => $this->delivery->shippingZone->destination_city,
+                    'destination_region' => $this->delivery->shippingZone->destination_region,
+                    'flat_rate_fee' => $this->delivery->shippingZone->flat_rate_fee,
+                ] : null,
                 'pickup_pin' => $this->delivery?->pickup_pin,
                 'buyer_release_pin' => $this->delivery?->buyer_release_pin,
                 'bus_company' => $this->delivery?->bus_company,

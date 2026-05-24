@@ -51,6 +51,7 @@ class AdminController extends Controller
             'order.merchant:id,display_name,username',
             'order.product:id,title,type,digital_delivery_type,refund_policy,refund_window_days,refund_policy_note',
             'order.delivery:id,order_id,bus_company,waybill_tracking_number,waybill_photo_url,delivery_status',
+            'order.returnRequest',
             'order.customDeliveryEvents',
             'resolution:id,order_id,admin_id,verdict,reason_notes,created_at',
             'resolution.admin:id,name',
@@ -88,6 +89,15 @@ class AdminController extends Controller
                     'refund_locked_at' => $order->refund_locked_at?->toISOString(),
                     'refund_lock_reason' => $order->refund_lock_reason,
                     'refund_policy' => $order->refundPolicyContext(),
+                    'return_request' => $order->returnRequest ? [
+                        'id' => $order->returnRequest->id,
+                        'status' => $order->returnRequest->status,
+                        'resolution_type' => $order->returnRequest->resolution_type,
+                        'reason' => $order->returnRequest->reason,
+                        'merchant_note' => $order->returnRequest->merchant_note,
+                        'customer_note' => $order->returnRequest->customer_note,
+                        'evidence_url' => $order->returnRequest->evidence_url,
+                    ] : null,
                     'custom_delivery_due_at' => $order->custom_delivery_due_at?->toISOString(),
                     'custom_delivery_status' => $order->custom_delivery_status,
                     'custom_delivery_revision_count' => (int) $order->custom_delivery_revision_count,
@@ -210,13 +220,13 @@ class AdminController extends Controller
                         'payment_status' => 'refunded',
                         'delivery_status' => 'disputed',
                     ]);
-                // Refund logic (M-Pesa B2C or Wallet) goes here
                 $wallet = $order->merchant->wallet()->firstOrCreate(
                     ['merchant_id' => $order->merchant_id],
                     ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
                 );
-                $wallet->decrement('frozen_balance', $order->total_paid);
+                $this->debitRefundAmount($wallet, (float) $order->total_paid);
             } else {
+                $wasAlreadyPaid = $order->payment_status === 'resolved_merchant_paid';
                 $order->update(['payment_status' => 'resolved_merchant_paid']);
                 \App\Models\ServiceRequest::query()
                     ->where('payment_order_id', $order->id)
@@ -236,8 +246,10 @@ class AdminController extends Controller
                     ->latest()
                     ->value('net_amount')
                     ?? app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['net_amount'];
-                $merchantWallet->decrement('frozen_balance', $order->total_paid);
-                $merchantWallet->increment('balance', $netAmount);
+                if (! $wasAlreadyPaid) {
+                    $merchantWallet->decrement('frozen_balance', $order->total_paid);
+                    $merchantWallet->increment('balance', $netAmount);
+                }
             }
         });
 
@@ -348,10 +360,26 @@ class AdminController extends Controller
             && ($order->payment_mode === 'online_escrow' || $isServiceSafePay)
             && in_array($order->payment_status, [
                 'escrow_locked',
+                'shipped',
+                'disputed',
                 'awaiting_merchant_confirmation',
                 'paid_pending_confirmation',
                 'paid',
+                'resolved_merchant_paid',
             ], true);
+    }
+
+    private function debitRefundAmount(\App\Models\Wallet $wallet, float $amount): void
+    {
+        $fromFrozen = min($amount, max(0, (float) $wallet->frozen_balance));
+        if ($fromFrozen > 0) {
+            $wallet->decrement('frozen_balance', $fromFrozen);
+        }
+
+        $remaining = $amount - $fromFrozen;
+        if ($remaining > 0) {
+            $wallet->decrement('balance', $remaining);
+        }
     }
 
     private function trustSafetyActionLabel(string $action): string
@@ -459,11 +487,29 @@ class AdminController extends Controller
      */
     public function toggleSuspension(Request $request, \App\Models\Merchant $merchant): JsonResponse
     {
+        $wasSuspended = (bool) $merchant->is_suspended;
+
         $merchant->update([
-            'is_suspended' => !$merchant->is_suspended,
+            'is_suspended' => ! $wasSuspended,
         ]);
 
+        $merchant->refresh()->loadMissing('user');
         $status = $merchant->is_suspended ? 'suspended' : 're-activated';
+
+        if ($wasSuspended !== (bool) $merchant->is_suspended) {
+            $this->notifyMerchantAccountChange(
+                $merchant,
+                $merchant->is_suspended ? 'merchant_account_suspended' : 'merchant_account_reactivated',
+                $merchant->is_suspended ? 'Your Takeer business account was suspended' : 'Your Takeer business account was re-activated',
+                $merchant->is_suspended
+                    ? "Takeer: {$this->merchantDisplayName($merchant)} has been suspended by admin review. You cannot publish or sell until the restriction is lifted. Contact Takeer support if you need help."
+                    : "Takeer: {$this->merchantDisplayName($merchant)} has been re-activated. You can continue managing your services, physical products, and digital products.",
+                [
+                    'admin_id' => $request->user()?->id,
+                    'is_suspended' => (bool) $merchant->is_suspended,
+                ]
+            );
+        }
 
         return response()->json([
             'message' => "Merchant account {$status} successfully.",
@@ -497,6 +543,19 @@ class AdminController extends Controller
             ]);
         });
 
+        $merchant->refresh()->loadMissing('user');
+        $this->notifyMerchantAccountChange(
+            $merchant,
+            'merchant_account_suspended',
+            'Your Takeer business account was suspended',
+            "Takeer: {$this->merchantDisplayName($merchant)} has been suspended after a Trust & Safety review. Reason: {$notes} You cannot publish or sell until the restriction is lifted.",
+            [
+                'admin_id' => $request->user()?->id,
+                'reason_notes' => $notes,
+                'source' => 'service_risk',
+            ]
+        );
+
         return response()->json([
             'message' => 'Merchant suspended and service risk strike recorded.',
             'merchant' => $merchant->fresh(),
@@ -515,7 +574,12 @@ class AdminController extends Controller
             'kyc_status' => 'sometimes|nullable|string|max:40',
         ]);
 
+        $before = $merchant->only(['is_suspended', 'is_verified', 'is_active', 'kyc_status']);
+
         $merchant->update($validated);
+        $merchant->refresh()->loadMissing('user');
+
+        $this->notifyMerchantAdminFieldChanges($merchant, $before, $validated, $request->user()?->id);
 
         return response()->json([
             'message' => 'Merchant updated successfully.',
@@ -533,6 +597,7 @@ class AdminController extends Controller
         ]);
 
         $settings = $merchant->retail_settings;
+        $oldDisablePosPaymentLinks = (bool) ($settings['disable_pos_payment_links'] ?? false);
         $oldPayoutControls = $settings['payout_controls'] ?? ['overrides' => []];
 
         if (array_key_exists('disable_pos_payment_links', $validated)) {
@@ -577,7 +642,6 @@ class AdminController extends Controller
             app(PlatformNotificationService::class)->dispatchToUser($merchant->user, [
                 'subject' => 'Your Takeer payout settings changed',
                 'message' => $this->payoutPolicyChangeMessage($merchant, $settings['payout_controls'], $validated['reason_notes'] ?? null),
-                'channels' => ['sms', 'email'],
                 'dedupe_key' => 'merchant-payout-policy-updated:' . $merchant->id . ':' . md5(json_encode($settings['payout_controls'])),
                 'metadata' => [
                     'event_type' => 'merchant_payout_policy_updated',
@@ -585,6 +649,28 @@ class AdminController extends Controller
                     'reason_notes' => $validated['reason_notes'] ?? null,
                 ],
             ]);
+        }
+
+        if (
+            array_key_exists('disable_pos_payment_links', $validated)
+            && $oldDisablePosPaymentLinks !== (bool) ($settings['disable_pos_payment_links'] ?? false)
+            && $merchant->user
+        ) {
+            $disabled = (bool) ($settings['disable_pos_payment_links'] ?? false);
+            $this->notifyMerchantAccountChange(
+                $merchant->fresh(['user:id,name,phone_number,email']),
+                $disabled ? 'merchant_pos_payment_links_disabled' : 'merchant_pos_payment_links_enabled',
+                $disabled ? 'Your Takeer POS payment links were disabled' : 'Your Takeer POS payment links were enabled',
+                $disabled
+                    ? "Takeer: POS payment links for {$this->merchantDisplayName($merchant)} have been disabled by admin review. Existing shop activity can continue, but payment-link checkout is restricted until this is reviewed."
+                    : "Takeer: POS payment links for {$this->merchantDisplayName($merchant)} have been enabled again. You can use payment links for eligible sales.",
+                [
+                    'admin_id' => $request->user()?->id,
+                    'disable_pos_payment_links' => $disabled,
+                    'reason_notes' => $validated['reason_notes'] ?? null,
+                ],
+                'merchant-pos-links:' . $merchant->id . ':' . ($disabled ? 'disabled' : 'enabled') . ':' . $merchant->updated_at?->timestamp
+            );
         }
 
         return response()->json([
@@ -781,6 +867,122 @@ class AdminController extends Controller
         ]);
     }
 
+    private function notifyMerchantAdminFieldChanges(\App\Models\Merchant $merchant, array $before, array $validated, ?int $adminId): void
+    {
+        $fields = ['is_verified', 'kyc_status', 'is_suspended', 'is_active'];
+
+        foreach ($fields as $field) {
+            if (! array_key_exists($field, $validated)) {
+                continue;
+            }
+
+            $oldValue = $before[$field] ?? null;
+            $newValue = $merchant->{$field};
+
+            if ($oldValue == $newValue) {
+                continue;
+            }
+
+            [$eventType, $subject, $message] = $this->merchantAdminFieldNotificationCopy($merchant, $field, $oldValue, $newValue);
+
+            $this->notifyMerchantAccountChange(
+                $merchant,
+                $eventType,
+                $subject,
+                $message,
+                [
+                    'admin_id' => $adminId,
+                    'field' => $field,
+                    'old_value' => $oldValue,
+                    'new_value' => $newValue,
+                ],
+                "merchant-account-field:{$merchant->id}:{$field}:{$oldValue}:{$newValue}:{$merchant->updated_at?->timestamp}"
+            );
+        }
+    }
+
+    private function merchantAdminFieldNotificationCopy(\App\Models\Merchant $merchant, string $field, mixed $oldValue, mixed $newValue): array
+    {
+        $businessName = $this->merchantDisplayName($merchant);
+
+        if ($field === 'is_verified') {
+            $verified = (bool) $newValue;
+
+            return [
+                $verified ? 'merchant_business_verified' : 'merchant_business_verification_removed',
+                $verified ? 'Your Takeer business has been verified' : 'Your Takeer business verification changed',
+                $verified
+                    ? "Takeer: {$businessName} has been verified. You can now add services, physical products, and digital products for sale. Some categories may still require a specific certificate before listings can be published."
+                    : "Takeer: Verification for {$businessName} is no longer active. Some publishing and selling features may be limited until verification is restored.",
+            ];
+        }
+
+        if ($field === 'kyc_status') {
+            $status = strtolower((string) $newValue);
+
+            return [
+                "merchant_kyc_status_{$status}",
+                'Your Takeer verification status changed',
+                "Takeer: Verification status for {$businessName} changed from {$oldValue} to {$newValue}. Check your business account for next steps.",
+            ];
+        }
+
+        if ($field === 'is_suspended') {
+            $suspended = (bool) $newValue;
+
+            return [
+                $suspended ? 'merchant_account_suspended' : 'merchant_account_reactivated',
+                $suspended ? 'Your Takeer business account was suspended' : 'Your Takeer business account was re-activated',
+                $suspended
+                    ? "Takeer: {$businessName} has been suspended by admin review. You cannot publish or sell until the restriction is lifted. Contact Takeer support if you need help."
+                    : "Takeer: {$businessName} has been re-activated. You can continue managing your services, physical products, and digital products.",
+            ];
+        }
+
+        $active = (bool) $newValue;
+
+        return [
+            $active ? 'merchant_account_enabled' : 'merchant_account_disabled',
+            $active ? 'Your Takeer business account was enabled' : 'Your Takeer business account was disabled',
+            $active
+                ? "Takeer: {$businessName} has been enabled again. You can continue using your business tools."
+                : "Takeer: {$businessName} has been disabled by admin review. Publishing and selling features may be unavailable until the account is enabled again.",
+        ];
+    }
+
+    private function notifyMerchantAccountChange(
+        \App\Models\Merchant $merchant,
+        string $eventType,
+        string $subject,
+        string $message,
+        array $metadata = [],
+        ?string $dedupeKey = null
+    ): void {
+        $merchant->loadMissing('user');
+
+        if (! $merchant->user) {
+            return;
+        }
+
+        app(PlatformNotificationService::class)->dispatchToUser($merchant->user, [
+            'subject' => $subject,
+            'message' => $message,
+            'dedupe_key' => $dedupeKey ?: "merchant-account-change:{$eventType}:{$merchant->id}:{$merchant->updated_at?->timestamp}",
+            'metadata' => [
+                ...$metadata,
+                'event_type' => $eventType,
+                'kind' => 'merchant_account_change',
+                'merchant_id' => $merchant->id,
+                'merchant_name' => $this->merchantDisplayName($merchant),
+            ],
+        ]);
+    }
+
+    private function merchantDisplayName(\App\Models\Merchant $merchant): string
+    {
+        return $merchant->display_name ?: $merchant->username ?: "Business #{$merchant->id}";
+    }
+
     private function payoutPolicyChangeMessage(\App\Models\Merchant $merchant, array $controls, ?string $reason): string
     {
         $labels = app(PayoutPolicyService::class)->labels();
@@ -816,6 +1018,19 @@ class AdminController extends Controller
             $merchant->kyc->update(['status' => 'verified']);
         }
 
+        $merchant->refresh()->loadMissing('user');
+        $this->notifyMerchantAccountChange(
+            $merchant,
+            'merchant_business_verified',
+            'Your Takeer business has been verified',
+            "Takeer: {$this->merchantDisplayName($merchant)} has been verified. You can now add services, physical products, and digital products for sale. Some categories may still require a specific certificate before listings can be published.",
+            [
+                'admin_id' => $request->user()?->id,
+                'kyc_status' => 'verified',
+                'is_verified' => true,
+            ]
+        );
+
         return response()->json([
             'message' => 'Merchant identity verified successfully.',
             'merchant' => $merchant->fresh(),
@@ -842,6 +1057,20 @@ class AdminController extends Controller
                 'rejection_reason' => $request->input('reason'),
             ]);
         }
+
+        $merchant->refresh()->loadMissing('user');
+        $this->notifyMerchantAccountChange(
+            $merchant,
+            'merchant_business_verification_rejected',
+            'Your Takeer business verification was rejected',
+            "Takeer: Verification for {$this->merchantDisplayName($merchant)} was rejected. Reason: {$request->input('reason')} Please update your documents/details and submit again.",
+            [
+                'admin_id' => $request->user()?->id,
+                'kyc_status' => 'rejected',
+                'is_verified' => false,
+                'reason' => $request->input('reason'),
+            ]
+        );
 
         return response()->json([
             'message' => 'Merchant identity rejected.',

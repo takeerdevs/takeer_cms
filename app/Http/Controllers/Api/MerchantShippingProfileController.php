@@ -12,8 +12,24 @@ class MerchantShippingProfileController extends Controller
 {
     private function merchantFromRequest(Request $request): Merchant
     {
+        if ($request->attributes->has('active_merchant')) {
+            return $request->attributes->get('active_merchant');
+        }
+
         $user = $request->user();
-        $merchant = $user->merchantProfiles()->where('is_default', true)->first()
+        $merchantId = $request->input('merchant_id') ?? session('active_merchant_id');
+
+        if ($merchantId) {
+            $merchant = $user->merchantProfiles()
+                ->where('merchants.id', $merchantId)
+                ->first();
+
+            abort_unless($merchant, 403, 'Unauthorized merchant context.');
+
+            return $merchant;
+        }
+
+        $merchant = $user->merchantProfiles()->where('is_active', true)->first()
             ?? $user->merchantProfiles()->first();
 
         if (!$merchant) {

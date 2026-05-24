@@ -267,6 +267,11 @@ class Order extends Model
         return $this->hasOne(Dispute::class);
     }
 
+    public function returnRequest(): HasOne
+    {
+        return $this->hasOne(ReturnRequest::class);
+    }
+
     public function customDeliveryEvents(): HasMany
     {
         return $this->hasMany(CustomDeliveryEvent::class);
@@ -411,19 +416,28 @@ class Order extends Model
         $deliveryType = (string) ($product?->digital_delivery_type ?? '');
         $isDigital = $product?->type === 'digital';
         $isService = $product?->type === 'service';
+        $isPhysical = $product?->type === 'physical';
         $policy = (string) ($product?->refund_policy ?: 'standard');
         $windowDays = $product?->refund_window_days;
-        $createdAt = $this->created_at ?: now();
-        $windowEndsAt = $windowDays ? $createdAt->copy()->addDays((int) $windowDays) : null;
+        $windowStartsAt = $isPhysical ? $this->physicalReturnWindowStartsAt() : ($this->created_at ?: now());
+        $windowEndsAt = $windowStartsAt && $windowDays !== null
+            ? $windowStartsAt->copy()->addDays((int) $windowDays)
+            : null;
         $status = 'eligible';
         $reason = 'Eligible for review while payment is held by Takeer.';
 
-        if (! in_array($this->payment_status, ['escrow_locked', 'shipped'], true)) {
-            $status = 'not_eligible';
-            $reason = 'Refund claims are only available while payment is still held or shipment is active.';
-        } elseif ($policy === 'final_sale') {
+        if ($policy === 'final_sale') {
             $status = 'not_eligible';
             $reason = 'The creator marked this item as final sale.';
+        } elseif ($isPhysical && ! in_array($this->payment_status, ['escrow_locked', 'shipped', 'resolved_merchant_paid'], true)) {
+            $status = 'not_eligible';
+            $reason = 'Return requests are only available after payment and before the order is closed from return handling.';
+        } elseif ($isPhysical && ! $windowStartsAt) {
+            $status = 'not_eligible';
+            $reason = 'Return window starts once the item is delivered to the customer or forwarding address.';
+        } elseif (! $isPhysical && ! in_array($this->payment_status, ['escrow_locked', 'shipped'], true)) {
+            $status = 'not_eligible';
+            $reason = 'Refund claims are only available while payment is still held or shipment is active.';
         } elseif ($windowEndsAt && now()->greaterThan($windowEndsAt)) {
             $status = 'not_eligible';
             $reason = 'The refund window has ended.';
@@ -444,6 +458,8 @@ class Order extends Model
             $reason = 'Digital access has already started.';
         } elseif ($isService) {
             $reason = 'Service refund requests are reviewed against delivery evidence and SafePay status.';
+        } elseif ($isPhysical && $this->payment_status === 'resolved_merchant_paid') {
+            $reason = 'Return request is available within the seller policy window; merchant will handle the normal return workflow.';
         } elseif ($isDigital && $deliveryType === 'custom_delivery') {
             $reason = 'Custom work can be disputed before acceptance; revisions should be requested first when possible.';
         } elseif ($isDigital) {
@@ -454,7 +470,8 @@ class Order extends Model
             'status' => $status,
             'reason' => $reason,
             'policy' => $policy,
-            'window_days' => $windowDays ? (int) $windowDays : null,
+            'window_days' => $windowDays !== null ? (int) $windowDays : null,
+            'window_starts_at' => $windowStartsAt?->toISOString(),
             'window_ends_at' => $windowEndsAt?->toISOString(),
             'note' => $product?->refund_policy_note,
             'download_count' => (int) $this->download_count,
@@ -462,6 +479,35 @@ class Order extends Model
             'refund_locked_at' => $this->refund_locked_at?->toISOString(),
             'refund_lock_reason' => $this->refund_lock_reason,
         ];
+    }
+
+    public function physicalReturnWindowStartsAt(): ?\Illuminate\Support\Carbon
+    {
+        $this->loadMissing(['delivery.events']);
+        $delivery = $this->delivery;
+
+        if (! $delivery) {
+            return null;
+        }
+
+        if ($delivery->delivered_at) {
+            return $delivery->delivered_at;
+        }
+
+        if ($delivery->confirmed_at) {
+            return $delivery->confirmed_at;
+        }
+
+        if (in_array($delivery->delivery_status, ['delivered', 'customer_confirmed'], true)) {
+            $event = $delivery->events
+                ->filter(fn ($event) => in_array($event->status, ['delivered', 'customer_confirmed'], true))
+                ->sortBy('created_at')
+                ->first();
+
+            return $event?->created_at ?? $delivery->updated_at ?? $this->created_at;
+        }
+
+        return null;
     }
 
     public function canOpenRefundDispute(): bool

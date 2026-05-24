@@ -13,6 +13,7 @@ use App\Models\OfferingGroup;
 use App\Models\Order;
 use App\Models\Post;
 use App\Models\Product;
+use App\Models\ReturnRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\UserSubscription;
 use App\Services\SmsService;
@@ -47,7 +48,7 @@ class MerchantOrderController extends Controller
     {
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
 
-        $query = Order::with(['buyer', 'product.unitType', 'variant'])
+        $query = Order::with(['buyer', 'product.unitType', 'variant', 'returnRequest'])
             ->where('merchant_id', $merchant->id)
             ->latest();
 
@@ -112,6 +113,7 @@ class MerchantOrderController extends Controller
                 'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
                 'is_merchant_confirmed' => $order->merchant_confirmed_at !== null,
                 'shipping_fee' => $order->shipping_fee !== null ? (float) $order->shipping_fee : null,
+                'return_request' => $order->returnRequest ? $this->returnRequestPayload($order->returnRequest) : null,
             ];
         });
 
@@ -254,7 +256,7 @@ class MerchantOrderController extends Controller
         abort_unless($merchant->user_id === $request->user()->id, 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
 
-        $order->load(['buyer', 'product.unitType', 'variant', 'delivery.shippingZone', 'delivery.events.actor', 'merchant.locations', 'dispute', 'review']);
+        $order->load(['buyer', 'product.unitType', 'variant', 'delivery.shippingZone', 'delivery.events.actor', 'merchant.locations', 'dispute', 'review', 'returnRequest']);
         $display = $this->resolveDisplay($order);
 
         return response()->json([
@@ -340,6 +342,13 @@ class MerchantOrderController extends Controller
                 'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
                 'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
                 'shipping_zone_id' => $order->delivery->shipping_zone_id,
+                'shipping_zone' => $order->delivery->shippingZone ? [
+                    'id' => $order->delivery->shippingZone->id,
+                    'zone_name' => $order->delivery->shippingZone->zone_name,
+                    'destination_city' => $order->delivery->shippingZone->destination_city,
+                    'destination_region' => $order->delivery->shippingZone->destination_region,
+                    'flat_rate_fee' => $order->delivery->shippingZone->flat_rate_fee,
+                ] : null,
                 'shipping_hotspot_id' => $order->delivery->shipping_hotspot_id,
                 'confirmed_at' => $order->delivery->confirmed_at?->toISOString(),
                 'delivered_at' => $order->delivery->delivered_at?->toISOString(),
@@ -382,13 +391,122 @@ class MerchantOrderController extends Controller
             'dispute' => $order->dispute ? [
                 'id' => $order->dispute->id,
                 'status' => $order->dispute->status,
-                'reason' => $order->dispute->reason,
+                'reason' => $order->dispute->dispute_reason,
             ] : null,
+            'return_request' => $order->returnRequest ? $this->returnRequestPayload($order->returnRequest) : null,
             'display_title' => $display['title'],
             'display_kind' => $display['kind'],
             'display_icon' => $display['icon'],
             'is_escrow_order' => $display['is_escrow_order'],
             'order_flow' => $display['is_escrow_order'] ? 'escrow' : 'instant',
+        ]);
+    }
+
+    public function approveReturn(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        $returnRequest = $this->returnRequestForMerchant($request, $merchant, $order);
+
+        $validated = $request->validate([
+            'merchant_note' => 'nullable|string|max:2000',
+        ]);
+
+        abort_unless($returnRequest->status === ReturnRequest::STATUS_PENDING, 422, 'Return request cannot be approved from this state.');
+
+        $returnRequest->update([
+            'status' => ReturnRequest::STATUS_APPROVED,
+            'merchant_note' => $validated['merchant_note'] ?? null,
+            'approved_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Return request approved.',
+            'return_request' => $this->returnRequestPayload($returnRequest->fresh()),
+        ]);
+    }
+
+    public function rejectReturn(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        $returnRequest = $this->returnRequestForMerchant($request, $merchant, $order);
+
+        $validated = $request->validate([
+            'merchant_note' => 'required|string|max:2000',
+        ]);
+
+        abort_unless(in_array($returnRequest->status, [ReturnRequest::STATUS_PENDING, ReturnRequest::STATUS_APPROVED], true), 422, 'Return request cannot be rejected from this state.');
+
+        $returnRequest->update([
+            'status' => ReturnRequest::STATUS_REJECTED,
+            'merchant_note' => $validated['merchant_note'],
+            'rejected_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Return request rejected.',
+            'return_request' => $this->returnRequestPayload($returnRequest->fresh()),
+        ]);
+    }
+
+    public function markReturnReceived(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        $returnRequest = $this->returnRequestForMerchant($request, $merchant, $order);
+
+        $validated = $request->validate([
+            'merchant_note' => 'nullable|string|max:2000',
+        ]);
+
+        abort_unless($returnRequest->status === ReturnRequest::STATUS_APPROVED, 422, 'Approve the return before marking the item received.');
+
+        $returnRequest->update([
+            'status' => ReturnRequest::STATUS_ITEM_RECEIVED,
+            'merchant_note' => $validated['merchant_note'] ?? $returnRequest->merchant_note,
+            'received_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Returned item marked as received.',
+            'return_request' => $this->returnRequestPayload($returnRequest->fresh()),
+        ]);
+    }
+
+    public function completeReturn(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        $returnRequest = $this->returnRequestForMerchant($request, $merchant, $order);
+
+        $validated = $request->validate([
+            'resolution_type' => 'required|string|in:refund,replacement,store_credit,other',
+            'merchant_note' => 'nullable|string|max:2000',
+        ]);
+
+        abort_unless(in_array($returnRequest->status, [ReturnRequest::STATUS_APPROVED, ReturnRequest::STATUS_ITEM_RECEIVED], true), 422, 'Return request cannot be completed from this state.');
+
+        DB::transaction(function () use ($order, $returnRequest, $validated) {
+            $returnRequest->update([
+                'status' => ReturnRequest::STATUS_COMPLETED,
+                'resolution_type' => $validated['resolution_type'],
+                'merchant_note' => $validated['merchant_note'] ?? $returnRequest->merchant_note,
+                'completed_at' => now(),
+            ]);
+
+            if ($validated['resolution_type'] === 'refund' && in_array($order->payment_status, ['escrow_locked', 'shipped', 'disputed'], true)) {
+                $order->update(['payment_status' => 'resolved_buyer_refunded']);
+                $wallet = $order->merchant->wallet()->firstOrCreate(
+                    ['merchant_id' => $order->merchant_id],
+                    ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
+                );
+                $fromFrozen = min((float) $order->total_paid, max(0, (float) $wallet->frozen_balance));
+                if ($fromFrozen > 0) {
+                    $wallet->decrement('frozen_balance', $fromFrozen);
+                }
+                $remaining = (float) $order->total_paid - $fromFrozen;
+                if ($remaining > 0) {
+                    $wallet->decrement('balance', $remaining);
+                }
+            }
+        });
+
+        return response()->json([
+            'message' => 'Return request completed.',
+            'return_request' => $this->returnRequestPayload($returnRequest->fresh()),
         ]);
     }
 
@@ -1336,5 +1454,37 @@ class MerchantOrderController extends Controller
             'message' => 'Stock imeachiwa na agizo limesitishwa.',
             'order' => $order
         ]);
+    }
+
+    private function returnRequestForMerchant(Request $request, Merchant $merchant, Order $order): ReturnRequest
+    {
+        abort_unless($merchant->user_id === $request->user()->id, 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+
+        $returnRequest = $order->returnRequest()->first();
+        abort_unless($returnRequest, 404, 'Return request not found for this order.');
+
+        return $returnRequest;
+    }
+
+    private function returnRequestPayload(ReturnRequest $returnRequest): array
+    {
+        return [
+            'id' => $returnRequest->id,
+            'status' => $returnRequest->status,
+            'resolution_type' => $returnRequest->resolution_type,
+            'reason' => $returnRequest->reason,
+            'evidence_url' => $returnRequest->evidence_url,
+            'policy_snapshot' => $returnRequest->policy_snapshot,
+            'merchant_note' => $returnRequest->merchant_note,
+            'customer_note' => $returnRequest->customer_note,
+            'requested_at' => $returnRequest->requested_at?->toISOString(),
+            'approved_at' => $returnRequest->approved_at?->toISOString(),
+            'rejected_at' => $returnRequest->rejected_at?->toISOString(),
+            'received_at' => $returnRequest->received_at?->toISOString(),
+            'completed_at' => $returnRequest->completed_at?->toISOString(),
+            'escalated_at' => $returnRequest->escalated_at?->toISOString(),
+            'dispute_id' => $returnRequest->dispute_id,
+        ];
     }
 }

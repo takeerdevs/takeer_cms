@@ -276,6 +276,11 @@ function OrderCard({ order, merchantUsername }) {
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${config.classes}`}>
                             {config.label}
                         </span>
+                        {order.return_request && (
+                            <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-sky-700">
+                                Return: {String(order.return_request.status || '').replaceAll('_', ' ')}
+                            </span>
+                        )}
                         <span className="text-xs font-bold text-muted-foreground">{displayId}</span>
                     </div>
 

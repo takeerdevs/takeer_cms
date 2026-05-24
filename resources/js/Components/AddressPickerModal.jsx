@@ -31,6 +31,7 @@ export default function AddressPickerModal({
     const [lng, setLng] = useState(parseFloat(initialLng) || DEFAULT_CENTER.lng);
     const [address, setAddress] = useState(initialAddress || '');
     const [extraDetails, setExtraDetails] = useState(initialExtraDetails || '');
+    const [city, setCustomerCity] = useState('');
     const [region, setCustomerRegion] = useState('');
     const [mapCenter, setMapCenter] = useState({
         lat: parseFloat(initialLat) || DEFAULT_CENTER.lat,
@@ -56,6 +57,8 @@ export default function AddressPickerModal({
             setLng(startLng);
             setAddress(initialAddress || '');
             setExtraDetails(initialExtraDetails || '');
+            setCustomerCity('');
+            setCustomerRegion('');
             setMapCenter({ lat: startLat, lng: startLng });
         }
     }, [isOpen]); // Depend only on isOpen to trigger initialization once per open
@@ -67,9 +70,13 @@ export default function AddressPickerModal({
                 const newLat = place.geometry.location.lat();
                 const newLng = place.geometry.location.lng();
 
+                let placeCity = '';
                 let placeRegion = '';
                 if (place.address_components) {
                     for (const component of place.address_components) {
+                        if (component.types.includes('locality') || component.types.includes('administrative_area_level_2')) {
+                            placeCity = component.long_name;
+                        }
                         if (component.types.includes('administrative_area_level_1')) {
                             placeRegion = component.long_name;
                         }
@@ -79,6 +86,7 @@ export default function AddressPickerModal({
                 const newPos = { lat: newLat, lng: newLng };
                 setLat(newLat);
                 setLng(newLng);
+                setCustomerCity(placeCity);
                 setCustomerRegion(placeRegion);
                 setMapCenter(newPos);
                 setAddress(place.formatted_address || place.name || '');
@@ -98,12 +106,17 @@ export default function AddressPickerModal({
             if (status === 'OK' && results[0]) {
                 setAddress(results[0].formatted_address);
 
+                let placeCity = '';
                 let placeRegion = '';
                 for (const component of results[0].address_components) {
+                    if (component.types.includes('locality') || component.types.includes('administrative_area_level_2')) {
+                        placeCity = component.long_name;
+                    }
                     if (component.types.includes('administrative_area_level_1')) {
                         placeRegion = component.long_name;
                     }
                 }
+                setCustomerCity(placeCity);
                 setCustomerRegion(placeRegion);
             }
         });
@@ -123,6 +136,7 @@ export default function AddressPickerModal({
             lng,
             address,
             extraDetails,
+            city,
             region
         });
         onOpenChange(false);

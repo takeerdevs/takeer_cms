@@ -98,7 +98,7 @@ export default function Overview({ merchantUsername }) {
 
                         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
                             <Card>
-                                <CardHeader><CardTitle>Revenue By Module</CardTitle></CardHeader>
+                                <CardHeader><CardTitle>Mapato kwa Zana</CardTitle></CardHeader>
                                 <CardContent className="space-y-3">
                                     {(data?.module_revenue || []).length === 0 ? (
                                         <p className="text-sm text-muted-foreground">No paid revenue in this period.</p>

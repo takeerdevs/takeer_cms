@@ -18,8 +18,13 @@ const DEFAULT_CENTER = {
 };
 
 const libraries = ['places'];
+const EMPTY_INTERCITY_FEE_PARTS = {
+    first_mile_fee: '',
+    transport_fee: '',
+    handling_fee: '',
+};
 
-export default function ShippingZonesManager({ profileId, locations = [], fixedLocationId = null, onRefresh: onParentRefresh }) {
+export default function ShippingZonesManager({ profileId, locations = [], fixedLocationId = null, merchantId = null, onRefresh: onParentRefresh }) {
     const [profile, setProfile] = useState(null);
     const [zones, setZones] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -45,6 +50,8 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
 
     const [hotspotSearch, setHotspotSearch] = useState('');
     const [pendingHotspot, setPendingHotspot] = useState(null);
+    const [intercityFeeParts, setIntercityFeeParts] = useState(EMPTY_INTERCITY_FEE_PARTS);
+    const [intercityFeeKnown, setIntercityFeeKnown] = useState(false);
     const hotspotAutocompleteRef = useRef(null);
 
     const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -78,7 +85,9 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         }
         setLoading(true);
         try {
-            const res = await window.axios.get(`/api/merchant/shipping-profiles/${profileId}/zones`);
+            const res = await window.axios.get(`/api/merchant/shipping-profiles/${profileId}/zones`, {
+                params: { merchant_id: merchantId },
+            });
             let fetchedZones = res.data.data || [];
             if (fixedLocationId) {
                 fetchedZones = fetchedZones.filter(z => String(z.merchant_location_id) === String(fixedLocationId));
@@ -111,6 +120,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         setSavingFeeId(zone.id);
         try {
             const res = await window.axios.put(`/api/merchant/shipping-zones/${zone.id}`, {
+                merchant_id: merchantId,
                 flat_rate_fee: draftValue,
             });
             setZones(prev => prev.map(item => item.id === zone.id ? res.data.data : item));
@@ -123,6 +133,19 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
             setSavingFeeId(null);
         }
     };
+
+    const handleIntercityFeePartChange = (key, value) => {
+        setIntercityFeeParts(prev => {
+            const next = { ...prev, [key]: value };
+            const total = Object.values(next).reduce((sum, item) => sum + Number(item || 0), 0);
+            setNewZone(zone => ({ ...zone, flat_rate_fee: total }));
+
+            return next;
+        });
+    };
+
+    const intercityFeeTotal = Object.values(intercityFeeParts)
+        .reduce((sum, item) => sum + Number(item || 0), 0);
 
     const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 6371; // km
@@ -150,28 +173,41 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        
-        if (!newZone.zone_name || newZone.flat_rate_fee === '') {
-            toast.error('Tafadhali jaza jina na gharama.');
+        const isIntercity = newZone.delivery_type === 'intercity_bus';
+        const destinationName = newZone.destination_city || newZone.destination_region || newZone.reference_name || newZone.zone_name;
+        const payload = {
+            ...newZone,
+            hotspots: isIntercity ? [] : newZone.hotspots,
+            flat_rate_fee: isIntercity ? (intercityFeeKnown ? intercityFeeTotal : 0) : newZone.flat_rate_fee,
+            zone_name: isIntercity ? (destinationName || 'Destination ya inter-city') : newZone.zone_name,
+        };
+
+        if (!isIntercity && !payload.zone_name) {
+            toast.error('Tafadhali jaza jina la ukanda.');
+            return;
+        }
+
+        if (payload.flat_rate_fee === '' || Number(payload.flat_rate_fee) < 0 || (isIntercity && intercityFeeKnown && intercityFeeTotal <= 0)) {
+            toast.error(isIntercity ? 'Weka gharama sahihi au chagua ithibitishwe kwenye chat.' : 'Tafadhali jaza gharama.');
             return;
         }
 
         // Validations
-        if (newZone.delivery_type === 'local_boda') {
-            if (!newZone.merchant_location_id) {
+        if (payload.delivery_type === 'local_boda') {
+            if (!payload.merchant_location_id) {
                 toast.error('Tafadhali chagua eneo la duka.');
                 return;
             }
-            if (!newZone.reference_lat && !newZone.max_distance_km) {
+            if (!payload.reference_lat && !payload.max_distance_km) {
                 toast.error('Tafadhali chagua eneo mwisho au weka umbali wa KM.');
                 return;
             }
         }
 
-        if (newZone.delivery_type === 'intercity_bus') {
-            // Auto-fill zone_name with destination_region if empty or inter-region
-            if (!newZone.zone_name) {
-                newZone.zone_name = newZone.destination_region || 'Inter-region Zone';
+        if (isIntercity) {
+            if (!destinationName) {
+                toast.error('Tafadhali chagua au andika destination/region ya inter-city.');
+                return;
             }
         }
 
@@ -183,15 +219,15 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         setIsSaving(true);
         try {
             if (editingId) {
-                const res = await window.axios.put(`/api/merchant/shipping-zones/${editingId}`, newZone);
+                const res = await window.axios.put(`/api/merchant/shipping-zones/${editingId}`, { ...payload, merchant_id: merchantId });
                 setZones(zones.map(z => z.id === editingId ? res.data.data : z));
                 toast.success('Njia ya usafirishaji imesasishwa!');
             } else {
-                const res = await window.axios.post(`/api/merchant/shipping-profiles/${profileId}/zones`, newZone);
+                const res = await window.axios.post(`/api/merchant/shipping-profiles/${profileId}/zones`, { ...payload, merchant_id: merchantId });
                 setZones([res.data.data, ...zones]);
                 toast.success('Njia ya usafirishaji imeongezwa!');
             }
-            
+
             handleCancelEdit();
             if (onParentRefresh) onParentRefresh();
         } catch (err) {
@@ -218,7 +254,12 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
             is_active: zone.is_active ?? true,
             hotspots: zone.hotspots || [],
         });
-        
+        setIntercityFeeParts(zone.delivery_type === 'intercity_bus' && Number(zone.flat_rate_fee || 0) > 0
+            ? { ...EMPTY_INTERCITY_FEE_PARTS, transport_fee: zone.flat_rate_fee }
+            : EMPTY_INTERCITY_FEE_PARTS
+        );
+        setIntercityFeeKnown(zone.delivery_type === 'intercity_bus' ? Number(zone.flat_rate_fee || 0) > 0 : false);
+
         // Scroll to form
         if (formRef.current) {
             formRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -242,6 +283,8 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
             is_active: true,
             hotspots: [],
         });
+        setIntercityFeeParts(EMPTY_INTERCITY_FEE_PARTS);
+        setIntercityFeeKnown(false);
     };
 
     const extractLocationMetadata = (place) => {
@@ -264,7 +307,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         if (!confirm('Je, una uhakika unataka kufuta njia hii?')) return;
 
         try {
-            await window.axios.delete(`/api/merchant/shipping-zones/${id}`);
+            await window.axios.delete(`/api/merchant/shipping-zones/${id}`, { data: { merchant_id: merchantId } });
             setZones(zones.filter(z => z.id !== id));
             toast.success('Imefutwa kikamilifu.');
             if (onParentRefresh) onParentRefresh();
@@ -293,7 +336,7 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                     destination_city: city,
                     destination_region: region,
                     destination_country: country,
-                    zone_name: prev.zone_name || `Area around ${place.name || 'this location'}`,
+                    zone_name: prev.zone_name || `Eneo la ${place.name || 'hapa'}`,
                 }));
             }
         }
@@ -305,31 +348,29 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
         setNewZone(prev => ({ ...prev, reference_lat: lat, reference_lng: lng }));
     };
 
-    // Hotspot Handlers
-    const handleAddHotspotFromSearch = () => {
+    const handleIntercityDestinationChanged = () => {
         if (hotspotAutocompleteRef.current !== null) {
             const place = hotspotAutocompleteRef.current.getPlace();
             if (place && place.geometry) {
                 const { city, region, country } = extractLocationMetadata(place);
-                let name = place.name || '';
-
-                // Construct enriched name
-                const enrichedName = [name, city, country].filter(Boolean).join(', ');
-                
+                const name = place.name || city || region || place.formatted_address || '';
                 const lat = place.geometry.location.lat();
                 const lng = place.geometry.location.lng();
-                
-                const newHs = { name: enrichedName, latitude: lat, longitude: lng };
+                const destinationName = city || region || name;
+
                 setNewZone(prev => ({
                     ...prev,
-                    hotspots: [...prev.hotspots, newHs],
-                    // Silently auto-fill region/city/country if not already set
-                    destination_city: prev.destination_city || city,
-                    destination_region: prev.destination_region || region,
-                    destination_country: prev.destination_country || country,
+                    hotspots: [],
+                    zone_name: destinationName || prev.zone_name,
+                    reference_name: name || place.formatted_address || destinationName,
+                    reference_lat: lat,
+                    reference_lng: lng,
+                    destination_city: city,
+                    destination_region: region || city,
+                    destination_country: country,
                 }));
                 setHotspotSearch('');
-                toast.success(`Kituo kimeongezwa: ${name}`);
+                toast.success(`Destination imewekwa: ${destinationName || name}`);
             }
         }
     };
@@ -342,15 +383,16 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
     };
 
     const formatDeliveryType = (type) => {
-        if (type === 'self_pickup') return 'Tuma Dereva (Pickup)';
-        if (type === 'local_boda') return 'Dereva wa Local (Local Delivery)';
-        if (type === 'intercity_bus') return 'Basi (Mikoani)';
+        if (type === 'self_pickup') return 'Mteja kuchukua';
+        if (type === 'local_boda') return 'Dereva wa karibu';
+        if (type === 'intercity_bus') return 'Basi la mikoani';
         return type;
     };
 
-    const formatShippingFee = (fee) => {
+    const formatShippingFee = (fee, deliveryType = null) => {
         const amount = Number(fee || 0);
-        return amount > 0 ? `TZS ${amount.toLocaleString()}` : 'Free shipping';
+        if (deliveryType === 'intercity_bus' && amount <= 0) return 'Itathibitishwa kwenye chat';
+        return amount > 0 ? `TZS ${amount.toLocaleString()}` : 'Bure';
     };
 
     return (
@@ -373,15 +415,15 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                         <p className="col-span-full text-[11px] text-brand-600 font-bold bg-brand-50/50 p-3 rounded-xl border border-brand-100 border-dashed text-center">
                             Bado hujaweka njia yoyote hapa.
                         </p>
-                        ) : (
-                            zones.map(zone => (
-                                <div key={zone.id} className="p-2.5 rounded-xl border border-input bg-background/50 group h-full space-y-2">
-                                    <div className="flex items-start justify-between gap-2">
+                    ) : (
+                        zones.map(zone => (
+                            <div key={zone.id} className="p-2.5 rounded-xl border border-input bg-background/50 group h-full space-y-2">
+                                <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
                                         <p className="text-xs font-black truncate">{zone.zone_name}</p>
                                         <div className="flex flex-wrap gap-1.5 items-center text-[9px] text-muted-foreground mt-0.5 font-bold">
                                             <span className="text-brand-600 font-black">
-                                                {formatShippingFee(zone.flat_rate_fee)}
+                                                {formatShippingFee(zone.flat_rate_fee, zone.delivery_type)}
                                             </span>
                                             <span className="opacity-50">•</span>
                                             <span>{formatDeliveryType(zone.delivery_type)}</span>
@@ -391,10 +433,10 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                                     <span>{Number(zone.max_distance_km).toFixed(1)}km</span>
                                                 </>
                                             )}
-                                            {zone.delivery_type === 'intercity_bus' && zone.hotspots?.length > 0 && (
+                                            {zone.delivery_type === 'intercity_bus' && (
                                                 <>
                                                     <span className="opacity-50">•</span>
-                                                    <span>{zone.hotspots.length} vituo</span>
+                                                    <span>{zone.destination_city || zone.destination_region || zone.reference_name}</span>
                                                 </>
                                             )}
                                         </div>
@@ -407,7 +449,8 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                             <Trash2 className="h-3.5 w-3.5" />
                                         </Button>
                                     </div>
-                                    </div>
+                                </div>
+                                {zone.delivery_type !== 'intercity_bus' && (
                                     <div className="flex items-center gap-2">
                                         <Input
                                             type="number"
@@ -424,225 +467,324 @@ export default function ShippingZonesManager({ profileId, locations = [], fixedL
                                             onClick={() => handleQuickFeeSave(zone)}
                                             className="h-8 rounded-lg px-3 text-[10px] font-black uppercase bg-brand-600 hover:bg-brand-700"
                                         >
-                                            {savingFeeId === zone.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                                            {savingFeeId === zone.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Hifadhi'}
                                         </Button>
                                     </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                )}
-
-                <form ref={formRef} onSubmit={handleSubmit} className={`space-y-4 border-t pt-4 border-dashed mt-4 p-4 rounded-2xl transition-colors duration-300 ${editingId ? 'bg-brand-50/50 border-brand-200' : 'border-slate-200'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                            <div className={`p-1.5 rounded-lg ${editingId ? 'bg-brand-600' : 'bg-slate-900'} text-white`}>
-                                {editingId ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                                )}
                             </div>
-                            <h3 className="text-xs font-black uppercase tracking-wider">
-                                {editingId ? 'Hariri Njia ya Usafirishaji' : 'Ongeza Njia Mpya'}
-                            </h3>
+                        ))
+                    )}
+                </div>
+            )}
+
+            <form ref={formRef} onSubmit={handleSubmit} className={`space-y-4 border-t pt-4 border-dashed mt-4 p-4 rounded-2xl transition-colors duration-300 ${editingId ? 'bg-brand-50/50 border-brand-200' : 'border-slate-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-lg ${editingId ? 'bg-brand-600' : 'bg-slate-900'} text-white`}>
+                            {editingId ? <Pencil className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                         </div>
-                        {editingId && (
-                            <Button variant="ghost" size="sm" onClick={handleCancelEdit} className="h-7 text-xs font-bold gap-1 text-slate-500 hover:text-slate-900 border border-slate-200">
-                                <X className="h-3 w-3" /> Ghairi
-                            </Button>
-                        )}
+                        <h3 className="text-xs font-black uppercase tracking-wider">
+                            {editingId ? 'Hariri Njia ya Usafirishaji' : 'Ongeza Njia Mpya'}
+                        </h3>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Aina ya Usafiri</label>
-                            <select
-                                value={newZone.delivery_type}
-                                onChange={e => setNewZone({ ...newZone, delivery_type: e.target.value })}
-                                className="flex h-11 w-full rounded-xl border border-input bg-muted/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 font-bold"
-                            >
-                                <option value="local_boda">Dereva wa Local (Local Delivery)</option>
-                                <option value="intercity_bus">Kwa Basi (Inter-region Bus)</option>
-                            </select>
-                        </div>
+                    {editingId && (
+                        <Button variant="ghost" size="sm" onClick={handleCancelEdit} className="h-7 text-xs font-bold gap-1 text-slate-500 hover:text-slate-900 border border-slate-200">
+                            <X className="h-3 w-3" /> Ghairi
+                        </Button>
+                    )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Aina ya Usafiri</label>
+                        <select
+                            value={newZone.delivery_type}
+                            onChange={e => {
+                                const deliveryType = e.target.value;
+                                setNewZone({
+                                    ...newZone,
+                                    delivery_type: deliveryType,
+                                    flat_rate_fee: deliveryType === 'intercity_bus' ? 0 : newZone.flat_rate_fee,
+                                });
+                                if (deliveryType === 'intercity_bus') {
+                                    setIntercityFeeKnown(false);
+                                    setIntercityFeeParts(EMPTY_INTERCITY_FEE_PARTS);
+                                }
+                            }}
+                            className="flex h-11 w-full rounded-xl border border-input bg-muted/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 font-bold"
+                        >
+                            <option value="local_boda">Dereva wa karibu(Bodaboda, Gari n.k)</option>
+                            <option value="intercity_bus">Wadau wa Usafiri (Basi/Lori n.k)</option>
+                        </select>
+                    </div>
+                    {newZone.delivery_type !== 'intercity_bus' ? (
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Gharama ya Usafiri (TZS)</label>
                             <Input
                                 type="number"
                                 min="0"
-                                placeholder="0 means free shipping"
+                                placeholder="0 maana yake ni bure"
                                 value={newZone.flat_rate_fee}
                                 onChange={e => setNewZone({ ...newZone, flat_rate_fee: e.target.value })}
                                 required
                                 className="bg-muted/30 rounded-xl h-11 font-bold"
                             />
                         </div>
-                    </div>
-
-                    {newZone.delivery_type !== 'intercity_bus' && (
-                        <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Jina la Ukanda / Labeli (Mf. Dar - Karibu na Duka)</label>
-                            <Input
-                                placeholder="Jina la utambulisho (halitaonekana kwa mteja)"
-                                value={newZone.zone_name}
-                                onChange={e => setNewZone({ ...newZone, zone_name: e.target.value })}
-                                required
-                                className="bg-muted/30 rounded-xl h-11 font-bold"
-                            />
+                    ) : (
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Bei ya inter-city</label>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIntercityFeeKnown(prev => {
+                                        const next = !prev;
+                                        if (!next) {
+                                            setNewZone(zone => ({ ...zone, flat_rate_fee: 0 }));
+                                            setIntercityFeeParts(EMPTY_INTERCITY_FEE_PARTS);
+                                        }
+                                        return next;
+                                    });
+                                }}
+                                className={`flex h-11 w-full items-center justify-between rounded-xl border px-3 text-left text-xs font-black uppercase tracking-wider ${intercityFeeKnown ? 'border-brand-300 bg-brand-50 text-brand-800' : 'border-input bg-muted/30 text-muted-foreground'}`}
+                            >
+                                <span>{intercityFeeKnown ? 'Najua gharama ya destination hii' : 'Gharama itathibitishwa kwenye chat'}</span>
+                                <span className={`h-5 w-9 rounded-full p-0.5 transition ${intercityFeeKnown ? 'bg-brand-600' : 'bg-slate-300'}`}>
+                                    <span className={`block h-4 w-4 rounded-full bg-white transition ${intercityFeeKnown ? 'translate-x-4' : ''}`} />
+                                </span>
+                            </button>
+                            <p className="text-[10px] font-semibold text-muted-foreground leading-4">
+                                Kama hujui bei kwa sababu ya uzito au msafirishaji, acha ithibitishwe kwenye order chat.
+                            </p>
                         </div>
                     )}
+                </div>
 
-                    {newZone.delivery_type === 'local_boda' && (
-                        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 bg-brand-50/30 p-4 rounded-2xl border border-brand-100">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {!fixedLocationId ? (
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Chagua Eneo la Duka</label>
-                                        <select
-                                            value={newZone.merchant_location_id}
-                                            onChange={e => setNewZone({ ...newZone, merchant_location_id: e.target.value })}
-                                            className="flex h-11 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                                        >
-                                            <option value="" disabled>Chagua duka...</option>
-                                            {locations.map(loc => (
-                                                <option key={loc.id} value={loc.id}>{loc.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-1">
-                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Eneo la Duka</label>
-                                         <div className="h-11 flex items-center px-4 bg-white border border-brand-200 rounded-xl text-xs font-bold text-brand-800">
-                                            <MapPin className="h-3 w-3 mr-2 text-brand-500" /> {selectedShop?.name}
-                                         </div>
-                                    </div>
-                                )}
+                {newZone.delivery_type !== 'intercity_bus' && (
+                    <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Jina la Ukanda / Labeli (Mf. Dar - Karibu na Duka)</label>
+                        <Input
+                            placeholder="Jina la utambulisho (halitaonekana kwa mteja)"
+                            value={newZone.zone_name}
+                            onChange={e => setNewZone({ ...newZone, zone_name: e.target.value })}
+                            required
+                            className="bg-muted/30 rounded-xl h-11 font-bold"
+                        />
+                    </div>
+                )}
+
+                {newZone.delivery_type === 'local_boda' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 bg-brand-50/30 p-4 rounded-2xl border border-brand-100">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {!fixedLocationId ? (
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tafuta Sehemu / Eneo la Mwisho (Pikisha Pini)</label>
-                                    {isLoaded ? (
-                                        <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged}>
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Chagua Eneo la Duka</label>
+                                    <select
+                                        value={newZone.merchant_location_id}
+                                        onChange={e => setNewZone({ ...newZone, merchant_location_id: e.target.value })}
+                                        className="flex h-11 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                    >
+                                        <option value="" disabled>Chagua duka...</option>
+                                        {locations.map(loc => (
+                                            <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Eneo la Duka</label>
+                                    <div className="h-11 flex items-center px-4 bg-white border border-brand-200 rounded-xl text-xs font-bold text-brand-800">
+                                        <MapPin className="h-3 w-3 mr-2 text-brand-500" /> {selectedShop?.name}
+                                    </div>
+                                </div>
+                            )}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tafuta Eneo la Mwisho kwa Umbali</label>
+                                {isLoaded ? (
+                                    <Autocomplete onLoad={onLoad} onPlaceChanged={onPlaceChanged}>
+                                        <Input
+                                            placeholder="Mf. Kariakoo, Posta, Kimara..."
+                                            className="bg-white rounded-xl h-11"
+                                        />
+                                    </Autocomplete>
+                                ) : (
+                                    <Input disabled placeholder="Inapakia ramani..." className="bg-white rounded-xl h-11" />
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="border border-brand-200 rounded-xl overflow-hidden relative">
+                            {isLoaded ? (
+                                <GoogleMap
+                                    mapContainerStyle={MAP_CONTAINER_STYLE}
+                                    center={newZone.reference_lat ? { lat: Number(newZone.reference_lat), lng: Number(newZone.reference_lng) } : (selectedShop ? { lat: Number(selectedShop.latitude), lng: Number(selectedShop.longitude) } : DEFAULT_CENTER)}
+                                    zoom={13}
+                                    options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false }}
+                                >
+                                    {selectedShop && (
+                                        <Marker
+                                            position={{ lat: Number(selectedShop.latitude), lng: Number(selectedShop.longitude) }}
+                                            label="DUKA"
+                                        />
+                                    )}
+                                    {newZone.reference_lat && (
+                                        <Marker
+                                            position={{ lat: Number(newZone.reference_lat), lng: Number(newZone.reference_lng) }}
+                                            draggable={true}
+                                            onDragEnd={onMarkerDragEnd}
+                                            label="MWISHO"
+                                        />
+                                    )}
+                                    {selectedShop && newZone.max_distance_km && (
+                                        <Circle
+                                            center={{ lat: Number(selectedShop.latitude), lng: Number(selectedShop.longitude) }}
+                                            radius={Number(newZone.max_distance_km) * 1000}
+                                            options={{
+                                                strokeColor: '#2563eb',
+                                                strokeOpacity: 0.8,
+                                                strokeWeight: 2,
+                                                fillColor: '#2563eb',
+                                                fillOpacity: 0.15,
+                                                clickable: false,
+                                                draggable: false,
+                                                editable: false,
+                                                visible: true,
+                                                zIndex: 1
+                                            }}
+                                        />
+                                    )}
+                                </GoogleMap>
+                            ) : (
+                                <div className="w-full h-[200px] bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                                    Weka VITE_GOOGLE_MAPS_API_KEY kuona ramani
+                                </div>
+                            )}
+                            <div className="absolute bottom-2 left-2 right-2 bg-white/90 backdrop-blur-sm p-2 rounded-lg border shadow-sm flex items-center">
+                                <p className="text-[10px] font-bold text-brand-800">
+                                    {newZone.reference_name ? `Eneo: ${newZone.reference_name}` : 'Tafuta au angusha pini kuweka umbali wa mwisho.'}
+                                </p>
+                                {newZone.max_distance_km && (
+                                    <p className="text-[10px] font-black text-brand-600 ml-6">Umbali: {Number(newZone.max_distance_km).toFixed(1)} km</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {newZone.delivery_type === 'intercity_bus' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200 bg-brand-50/30 p-4 rounded-2xl border border-brand-100">
+                        <div className="space-y-3">
+                            <div className="flex items-start flex-col gap-1 ">
+                                <label className="text-[10px] font-black text-brand-700 uppercase tracking-widest">Destination / Region ya inter-city</label>
+                                <span className="text-[10px] font-medium italic">Weka mkoa au mji unaoweza kutumiwa kama destination. Utathibitisha bei kwenye chat ya order kulingana na oda husika, hii ni kwa makadirio tu kwa mteja.</span>
+                            </div>
+
+                            {intercityFeeKnown && (
+                                <div className="rounded-2xl border border-brand-100 bg-white p-3 space-y-3">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Shipping fee breakdown</p>
+                                        <p className="mt-1 text-[10px] font-semibold leading-4 text-brand-700/70">
+                                            Jumuisha first mile, transport na handling kama unatoza. Mteja ataona total moja tu.
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                        <label className="space-y-1">
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">First mile</span>
                                             <Input
-                                                placeholder="Mf. Kariakoo, Posta, Kimara..."
-                                                className="bg-white rounded-xl h-11"
+                                                type="number"
+                                                min="0"
+                                                placeholder="Dukani -> ofisi"
+                                                value={intercityFeeParts.first_mile_fee}
+                                                onChange={e => handleIntercityFeePartChange('first_mile_fee', e.target.value)}
+                                                className="h-10 rounded-xl bg-brand-50/40 text-xs font-bold"
+                                            />
+                                        </label>
+                                        <label className="space-y-1">
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Transport (Kadirio la juu)</span>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                placeholder="Basi/lori"
+                                                value={intercityFeeParts.transport_fee}
+                                                onChange={e => handleIntercityFeePartChange('transport_fee', e.target.value)}
+                                                className="h-10 rounded-xl bg-brand-50/40 text-xs font-bold"
+                                            />
+                                        </label>
+                                        <label className="space-y-1">
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Handling</span>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                placeholder="Packaging"
+                                                value={intercityFeeParts.handling_fee}
+                                                onChange={e => handleIntercityFeePartChange('handling_fee', e.target.value)}
+                                                className="h-10 rounded-xl bg-brand-50/40 text-xs font-bold"
+                                            />
+                                        </label>
+                                    </div>
+                                    {intercityFeeTotal > 0 && (
+                                        <div className="flex items-center justify-between rounded-xl bg-brand-900 px-3 py-2 text-white">
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Total inayohifadhiwa</span>
+                                            <span className="text-sm font-black">TZS {intercityFeeTotal.toLocaleString()}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {isLoaded ? (
+                                <div className="flex gap-2">
+                                    <div className="flex-1">
+                                        <Autocomplete
+                                            onLoad={(a) => hotspotAutocompleteRef.current = a}
+                                            onPlaceChanged={handleIntercityDestinationChanged}
+                                        >
+                                            <Input
+                                                placeholder="Tafuta mkoa/mji, mf. Morogoro, Dodoma, Mwanza"
+                                                value={hotspotSearch}
+                                                onChange={e => setHotspotSearch(e.target.value)}
+                                                className="bg-white border-brand-200 rounded-xl h-11 text-sm font-medium"
                                             />
                                         </Autocomplete>
-                                    ) : (
-                                        <Input disabled placeholder="Inapakia ramani..." className="bg-white rounded-xl h-11" />
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="border border-brand-200 rounded-xl overflow-hidden relative">
-                                {isLoaded ? (
-                                    <GoogleMap
-                                        mapContainerStyle={MAP_CONTAINER_STYLE}
-                                        center={newZone.reference_lat ? { lat: Number(newZone.reference_lat), lng: Number(newZone.reference_lng) } : (selectedShop ? { lat: Number(selectedShop.latitude), lng: Number(selectedShop.longitude) } : DEFAULT_CENTER)}
-                                        zoom={13}
-                                        options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false }}
-                                    >
-                                        {selectedShop && (
-                                            <Marker
-                                                position={{ lat: Number(selectedShop.latitude), lng: Number(selectedShop.longitude) }}
-                                                label="SHOP"
-                                            />
-                                        )}
-                                        {newZone.reference_lat && (
-                                            <Marker
-                                                position={{ lat: Number(newZone.reference_lat), lng: Number(newZone.reference_lng) }}
-                                                draggable={true}
-                                                onDragEnd={onMarkerDragEnd}
-                                                label="LIMIT"
-                                            />
-                                        )}
-                                        {selectedShop && newZone.max_distance_km && (
-                                            <Circle
-                                                center={{ lat: Number(selectedShop.latitude), lng: Number(selectedShop.longitude) }}
-                                                radius={Number(newZone.max_distance_km) * 1000}
-                                                options={{
-                                                    strokeColor: '#2563eb',
-                                                    strokeOpacity: 0.8,
-                                                    strokeWeight: 2,
-                                                    fillColor: '#2563eb',
-                                                    fillOpacity: 0.15,
-                                                    clickable: false,
-                                                    draggable: false,
-                                                    editable: false,
-                                                    visible: true,
-                                                    zIndex: 1
-                                                }}
-                                            />
-                                        )}
-                                    </GoogleMap>
-                                ) : (
-                                    <div className="w-full h-[200px] bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                                        Weka VITE_GOOGLE_MAPS_API_KEY kuona ramani
                                     </div>
-                                )}
-                                <div className="absolute bottom-2 left-2 right-2 bg-white/90 backdrop-blur-sm p-2 rounded-lg border shadow-sm flex items-center">
-                                    <p className="text-[10px] font-bold text-brand-800">
-                                        {newZone.reference_name ? `Eneo: ${newZone.reference_name}` : 'Tafuta au angusha pini kuweka umbali wa mwisho.'}
-                                    </p>
-                                    {newZone.max_distance_km && (
-                                        <p className="text-[10px] font-black text-brand-600 ml-6">Umbali: {Number(newZone.max_distance_km).toFixed(1)} km</p>
-                                    )}
                                 </div>
-                            </div>
-                        </div>
-                    )}
+                            ) : (
+                                <Input
+                                    placeholder="Andika mkoa/mji, mf. Morogoro, Dodoma, Mwanza"
+                                    value={newZone.zone_name}
+                                    onChange={e => setNewZone({
+                                        ...newZone,
+                                        zone_name: e.target.value,
+                                        reference_name: e.target.value,
+                                        destination_region: e.target.value,
+                                    })}
+                                    className="bg-white border-brand-200 rounded-xl h-11 text-sm font-medium"
+                                />
+                            )}
 
-                    {newZone.delivery_type === 'intercity_bus' && (
-                        <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200 bg-brand-50/30 p-4 rounded-2xl border border-brand-100">
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[10px] font-black text-brand-700 uppercase tracking-widest">Vituo vya Kushushia (Hotspots)</label>
-                                    <span className="text-[10px] text-brand-600/60 font-medium italic">Weka stendi au maeneo mteja anayoweza kuchukua mzigo</span>
-                                </div>
-                                
-                                {isLoaded && (
-                                    <div className="flex gap-2">
-                                        <div className="flex-1">
-                                            <Autocomplete 
-                                                onLoad={(a) => hotspotAutocompleteRef.current = a} 
-                                                onPlaceChanged={handleAddHotspotFromSearch}
-                                            >
-                                                <Input
-                                                    placeholder="Tafuta kituo/stand (e.g. Ubungo, Magufuli Bus Terminal)"
-                                                    value={hotspotSearch}
-                                                    onChange={e => setHotspotSearch(e.target.value)}
-                                                    className="bg-white border-brand-200 rounded-xl h-11 text-sm font-medium"
-                                                />
-                                            </Autocomplete>
+                            {(newZone.destination_region || newZone.destination_city || newZone.reference_name) && (
+                                <div className="p-2.5 bg-white border border-brand-100 rounded-xl shadow-sm">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <div className="h-6 w-6 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+                                            <MapPin className="h-3 w-3 text-brand-600" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-bold text-brand-900 truncate">{newZone.zone_name || newZone.destination_city || newZone.destination_region || newZone.reference_name}</p>
+                                            <p className="text-[10px] text-brand-700/70 truncate">
+                                                {intercityFeeKnown && Number(newZone.flat_rate_fee || 0) > 0
+                                                    ? `Mteja ataona TZS ${Number(newZone.flat_rate_fee || 0).toLocaleString()}`
+                                                    : 'Gharama itathibitishwa kwenye order chat; waybill itaonyesha pickup/drop-off halisi.'}
+                                            </p>
                                         </div>
                                     </div>
-                                )}
-
-                                {newZone.hotspots.length > 0 && (
-                                    <div className="grid grid-cols-1 gap-1.5">
-                                        {newZone.hotspots.map((hs, idx) => (
-                                            <div key={idx} className="flex items-center justify-between p-2.5 bg-white border border-brand-100 rounded-xl shadow-sm">
-                                                <div className="flex items-center gap-2 overflow-hidden">
-                                                    <div className="h-6 w-6 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
-                                                        <MapPin className="h-3 w-3 text-brand-600" />
-                                                    </div>
-                                                    <p className="text-xs font-bold text-brand-900 truncate">{hs.name}</p>
-                                                </div>
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="icon" 
-                                                    className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
-                                                    onClick={() => removeHotspot(idx)}
-                                                >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
                         </div>
-                    )}
+                    </div>
+                )}
 
-                    <Button type="submit" disabled={isSaving} className={`w-full ${editingId ? 'bg-brand-600 hover:bg-brand-700' : 'bg-slate-900 hover:bg-slate-800'} h-11 rounded-xl font-black uppercase tracking-widest flex gap-2 shadow-lg ${editingId ? 'shadow-brand-600/20' : 'shadow-slate-900/20'} text-sm`}>
-                        {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : (editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />)}
-                        {editingId ? 'SASISHA NJIA' : 'HIFADHI NJIA'}
-                    </Button>
-                </form>
+                <Button type="submit" disabled={isSaving} className={`w-full ${editingId ? 'bg-brand-600 hover:bg-brand-700' : 'bg-slate-900 hover:bg-slate-800'} h-11 rounded-xl font-black uppercase tracking-widest flex gap-2 shadow-lg ${editingId ? 'shadow-brand-600/20' : 'shadow-slate-900/20'} text-sm`}>
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : (editingId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />)}
+                    {editingId ? 'SASISHA NJIA' : 'HIFADHI NJIA'}
+                </Button>
+            </form>
         </div>
     );
 }

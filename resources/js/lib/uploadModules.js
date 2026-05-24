@@ -2,7 +2,11 @@ export const UPLOAD_MODULES = {
     menu: {
         key: 'menu',
         type: 'physical',
-        title: 'Menu Item',
+        title: 'Chakula / Kinywaji',
+        translations: {
+            sw: { title: 'Chakula / Kinywaji' },
+            en: { title: 'Menu Item' },
+        },
         titlePlaceholder: 'Mf. Pilau ya Kuku',
         mediaLabel: 'Media za Menu Item',
         focusedPhysical: true,
@@ -10,7 +14,11 @@ export const UPLOAD_MODULES = {
     rooms: {
         key: 'rooms',
         type: 'service',
-        title: 'Room / Stay',
+        title: 'Chumba / Malazi',
+        translations: {
+            sw: { title: 'Chumba / Malazi' },
+            en: { title: 'Room / Stay' },
+        },
         category: 'Accommodation & Stays',
         subcategory: 'Hotel',
         serviceTemplateKey: 'stay',
@@ -25,7 +33,11 @@ export const UPLOAD_MODULES = {
     tour_departures: {
         key: 'tour_departures',
         type: 'service',
-        title: 'Tour Departure',
+        title: 'Safari / Ratiba ya Tour',
+        translations: {
+            sw: { title: 'Safari / Ratiba ya Tour' },
+            en: { title: 'Tour Departure' },
+        },
         category: 'Travel & Recreation',
         subcategory: 'Tour package',
         serviceTemplateKey: 'tour',
@@ -39,7 +51,11 @@ export const UPLOAD_MODULES = {
     custom_orders: {
         key: 'custom_orders',
         type: 'service',
-        title: 'Custom Order',
+        title: 'Oda ya Kuagiza Maalum',
+        translations: {
+            sw: { title: 'Oda ya Kuagiza Maalum' },
+            en: { title: 'Custom Order' },
+        },
         category: 'Other',
         subcategory: 'Other',
         serviceTemplateKey: 'orderable_service',
@@ -53,7 +69,11 @@ export const UPLOAD_MODULES = {
     appointments: {
         key: 'appointments',
         type: 'service',
-        title: 'Appointment',
+        title: 'Miadi',
+        translations: {
+            sw: { title: 'Miadi' },
+            en: { title: 'Appointment' },
+        },
         category: 'Professional Services',
         subcategory: 'Consulting',
         serviceTemplateKey: 'appointment_or_quote',
@@ -70,6 +90,10 @@ export const UPLOAD_MODULES = {
         key: 'reservations',
         type: 'service',
         title: 'Reservation',
+        translations: {
+            sw: { title: 'Reservation' },
+            en: { title: 'Reservation' },
+        },
         category: 'Events & Hospitality',
         subcategory: 'Venue',
         serviceTemplateKey: 'space_booking',
@@ -85,7 +109,11 @@ export const UPLOAD_MODULES = {
     rentals: {
         key: 'rentals',
         type: 'service',
-        title: 'Rental / Hire',
+        title: 'Kupangisha / Kukodisha',
+        translations: {
+            sw: { title: 'Kupangisha / Kukodisha' },
+            en: { title: 'Rental / Hire' },
+        },
         category: 'Transport & Hire',
         subcategory: 'Equipment hire',
         serviceTemplateKey: 'rental',
@@ -101,7 +129,11 @@ export const UPLOAD_MODULES = {
     workshops: {
         key: 'workshops',
         type: 'service',
-        title: 'Live Session / Event',
+        title: 'Darasa / Tukio la Live',
+        translations: {
+            sw: { title: 'Darasa / Tukio la Live' },
+            en: { title: 'Live Session / Event' },
+        },
         category: 'Education & Training',
         subcategory: 'Workshop',
         serviceTemplateKey: 'learning',
@@ -118,7 +150,13 @@ export const UPLOAD_MODULES = {
 
 export const KNOWN_UPLOAD_MODULE_KEYS = Object.keys(UPLOAD_MODULES);
 
-export const getUploadModuleConfig = (key) => UPLOAD_MODULES[key] || null;
+export const getUploadModuleConfig = (key, locale = 'sw') => {
+    const config = UPLOAD_MODULES[key] || null;
+    if (!config) return null;
+
+    const localized = config.translations?.[locale] || config.translations?.sw || {};
+    return { ...config, ...localized };
+};
 
 export const moduleMatchesStep = (key, step) => UPLOAD_MODULES[key]?.type === step;
 

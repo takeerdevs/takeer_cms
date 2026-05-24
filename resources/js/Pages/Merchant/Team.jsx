@@ -160,7 +160,7 @@ export default function Team({ merchant }) {
                     <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Operations</p>
                         <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Team & Access</h1>
-                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Create staff profiles, assign module permissions, control POS access, and reset terminal PINs.</p>
+                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Create staff profiles, assign tool permissions, control POS access, and reset terminal PINs.</p>
                     </div>
                     <Button variant="outline" onClick={loadTeam} disabled={loading}>
                         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
@@ -195,11 +195,11 @@ export default function Team({ merchant }) {
                             <div className="grid gap-3 md:grid-cols-2">
                                 <label className="flex items-start gap-3 rounded-lg border border-border p-3">
                                     <input type="checkbox" className="mt-1" checked={form.dashboard_access_enabled} onChange={(event) => setForm((prev) => ({ ...prev, dashboard_access_enabled: event.target.checked }))} />
-                                    <span><span className="block text-sm font-bold">Merchant dashboard</span><span className="block text-xs text-muted-foreground">Allow access to selected business modules.</span></span>
+                                    <span><span className="block text-sm font-bold">Dashboard ya biashara</span><span className="block text-xs text-muted-foreground">Ruhusu access kwenye zana za biashara zilizochaguliwa.</span></span>
                                 </label>
                                 <label className="flex items-start gap-3 rounded-lg border border-border p-3">
                                     <input type="checkbox" className="mt-1" checked={form.pos_access_enabled} onChange={(event) => setForm((prev) => ({ ...prev, pos_access_enabled: event.target.checked }))} />
-                                    <span><span className="block text-sm font-bold">POS terminal</span><span className="block text-xs text-muted-foreground">Allow terminal PIN login and retail tools.</span></span>
+                                    <span><span className="block text-sm font-bold">POS terminal</span><span className="block text-xs text-muted-foreground">Ruhusu PIN login ya terminal na zana za retail.</span></span>
                                 </label>
                             </div>
 

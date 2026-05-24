@@ -26,7 +26,7 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
     const [selectedForwarder, setSelectedForwarder] = useState(null);
     const [forwarderInputs, setForwarderInputs] = useState({});
     const [forwarderSearchQuery, setForwarderSearchQuery] = useState('');
-    
+
     const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
@@ -63,8 +63,8 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
     const filteredForwarders = useMemo(() => {
         if (!forwarderSearchQuery) return forwarders;
         const q = forwarderSearchQuery.toLowerCase();
-        return forwarders.filter(f => 
-            f.name.toLowerCase().includes(q) || 
+        return forwarders.filter(f =>
+            f.name.toLowerCase().includes(q) ||
             (f.country?.name || '').toLowerCase().includes(q)
         );
     }, [forwarders, forwarderSearchQuery]);
@@ -139,7 +139,7 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
 
     const handleImportForwarder = async () => {
         if (!selectedForwarder) return;
-        
+
         const details = Object.entries(forwarderInputs)
             .map(([k, v]) => `${k.replace('_', ' ').toUpperCase()}: ${v}`)
             .join(' | ');
@@ -181,21 +181,19 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
     return (
         <div className="space-y-4">
             {/* Address List */}
-            <div className={`grid gap-3 ${mode === 'select' ? 'max-h-72 overflow-y-auto overscroll-contain pr-1' : ''}`}>
+            <div className={`grid gap-3 ${mode === 'select' ? 'max-h-40 overflow-y-auto overscroll-contain pr-1' : ''}`}>
                 {addresses.map((addr) => (
-                    <div 
+                    <div
                         key={addr.id}
                         onClick={() => mode === 'select' && onSelect?.(addr)}
-                        className={`group relative rounded-2xl border-2 transition-all cursor-pointer ${mode === 'select' ? 'p-3' : 'p-4'} ${
-                            selectedId === addr.id 
-                                ? 'border-brand-500 bg-brand-50/50' 
-                                : 'border-border hover:border-brand-200 bg-card'
-                        }`}
+                        className={`group relative rounded-2xl border-2 transition-all cursor-pointer ${mode === 'select' ? 'p-3' : 'p-4'} ${selectedId === addr.id
+                            ? 'border-brand-500 bg-brand-50/50'
+                            : 'border-border hover:border-brand-200 bg-card'
+                            }`}
                     >
                         <div className="flex items-start gap-3">
-                            <div className={`rounded-xl shrink-0 ${mode === 'select' ? 'p-2' : 'p-2'} ${
-                                addr.type === 'forwarder' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'
-                            }`}>
+                            <div className={`rounded-xl shrink-0 ${mode === 'select' ? 'p-2' : 'p-2'} ${addr.type === 'forwarder' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'
+                                }`}>
                                 {addr.type === 'forwarder' ? <Ship className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -210,24 +208,24 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
                                     <p className="text-xs font-mono text-brand-600 mt-1">ID: {addr.forwarder_customer_id}</p>
                                 )}
                             </div>
-                            
+
                             {mode === 'manage' && (
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     {!addr.is_default && (
-                                        <Button 
+                                        <Button
                                             type="button"
-                                            size="icon" 
-                                            variant="ghost" 
+                                            size="icon"
+                                            variant="ghost"
                                             className="h-8 w-8 text-muted-foreground hover:text-brand-600"
                                             onClick={(e) => { e.stopPropagation(); handleSetDefault(addr.id); }}
                                         >
                                             <CheckCircle2 className="h-4 w-4" />
                                         </Button>
                                     )}
-                                    <Button 
+                                    <Button
                                         type="button"
-                                        size="icon" 
-                                        variant="ghost" 
+                                        size="icon"
+                                        variant="ghost"
                                         className="h-8 w-8 text-muted-foreground hover:text-red-600"
                                         onClick={(e) => { e.stopPropagation(); handleDelete(addr.id); }}
                                     >
@@ -249,18 +247,18 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
 
             {/* Actions */}
             <div className="grid grid-cols-2 gap-3">
-                <Button 
+                <Button
                     type="button"
-                    variant="outline" 
+                    variant="outline"
                     className="h-12 rounded-xl gap-2 font-bold text-xs uppercase tracking-widest"
                     onClick={() => setIsMapOpen(true)}
                 >
                     <Plus className="h-4 w-4" /> Ongeza Mahali
                 </Button>
                 {!isGuest && (
-                    <Button 
+                    <Button
                         type="button"
-                        variant="outline" 
+                        variant="outline"
                         className="h-12 rounded-xl gap-2 font-bold text-xs uppercase tracking-widest border-indigo-100 text-indigo-700 hover:bg-indigo-50"
                         onClick={() => { fetchForwarders(); setIsForwarderPickerOpen(true); }}
                     >
@@ -269,7 +267,7 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
                 )}
             </div>
 
-            <AddressPickerModal 
+            <AddressPickerModal
                 isOpen={isMapOpen}
                 onOpenChange={setIsMapOpen}
                 onSave={handleSaveFromMap}
@@ -277,26 +275,44 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
 
             {/* Forwarder Picker Drawer Redesign */}
             <Drawer open={isForwarderPickerOpen} onOpenChange={setIsForwarderPickerOpen}>
-                <DrawerContent className="max-w-xl mx-auto h-[90vh]">
-                    <div className="flex flex-col h-full overflow-hidden">
-                        <DrawerHeader className="shrink-0">
-                            <DrawerTitle className="text-xl font-black">Mawakala wa Kusafirisha</DrawerTitle>
-                            <DrawerDescription>Pata anuani ya wakala wako wa kusafirisha mizigo toka nje.</DrawerDescription>
-                            
+                <DrawerContent
+                    overlayClassName="bg-slate-950/55 backdrop-blur-[2px]"
+                    className="mx-auto h-[88vh] max-w-xl overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-950/20"
+                >
+                    <div className="flex h-full flex-col overflow-hidden bg-white">
+                        <DrawerHeader className="shrink-0 border-b border-slate-100 bg-white px-5 pb-4 pt-3 text-left">
+                            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200" />
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                    <DrawerTitle className="text-2xl font-black tracking-tight text-slate-950">Mawakala wa Kusafirisha</DrawerTitle>
+                                    <DrawerDescription className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+                                        Pata anuani ya wakala wako wa kusafirisha mizigo toka nje.
+                                    </DrawerDescription>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsForwarderPickerOpen(false)}
+                                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
+                                    aria-label="Funga"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+
                             {!selectedForwarder && (
                                 <div className="mt-4 relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                    <Input 
+                                    <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                                    <Input
                                         placeholder="Tafuta wakala au nchi..."
                                         value={forwarderSearchQuery}
                                         onChange={(e) => setForwarderSearchQuery(e.target.value)}
-                                        className="h-12 pl-10 rounded-xl bg-muted/30 border-none font-bold"
+                                        className="h-14 rounded-2xl border-slate-200 bg-slate-50 pl-12 text-base font-bold text-slate-900 shadow-inner shadow-slate-200/40 placeholder:text-slate-400 focus:bg-white"
                                     />
                                 </div>
                             )}
                         </DrawerHeader>
 
-                        <div className="flex-1 overflow-y-auto px-4 pb-4 bg-slate-50/50">
+                        <div className="flex-1 overflow-y-auto bg-slate-50 px-5 pb-5">
                             {!selectedForwarder ? (
                                 <div className="space-y-6 pt-4">
                                     {Object.entries(groupedForwarders).map(([country, items]) => (
@@ -307,7 +323,7 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
                                             </div>
                                             <div className="grid gap-2">
                                                 {items.map(f => (
-                                                    <div 
+                                                    <div
                                                         key={f.id}
                                                         onClick={() => setSelectedForwarder(f)}
                                                         className="p-4 rounded-2xl border border-white hover:border-brand-500 cursor-pointer flex items-center justify-between group transition-all bg-white shadow-sm hover:shadow-md"
@@ -328,22 +344,27 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
                                         </div>
                                     ))}
                                     {Object.keys(groupedForwarders).length === 0 && (
-                                        <div className="py-20 text-center">
-                                            <Search className="h-10 w-10 mx-auto text-muted-foreground/30 mb-2" />
-                                            <p className="text-sm font-medium text-muted-foreground">Hatujapata wakala anayelingana na utafutaji wako.</p>
+                                        <div className="flex min-h-[320px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white px-8 text-center">
+                                            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                                                <Search className="h-8 w-8" />
+                                            </div>
+                                            <p className="text-base font-black text-slate-800">Hakuna wakala aliyepatikana</p>
+                                            <p className="mt-2 max-w-xs text-sm font-semibold leading-6 text-slate-500">
+                                                Jaribu kutafuta kwa jina la wakala au nchi nyingine.
+                                            </p>
                                         </div>
                                     )}
                                 </div>
                             ) : (
                                 <div className="space-y-6 pt-4 animate-in slide-in-from-right-4 duration-300">
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={() => setSelectedForwarder(null)}
                                         className="flex items-center gap-2 text-xs font-bold text-brand-600 uppercase tracking-widest hover:translate-x-[-4px] transition-transform"
                                     >
                                         <ArrowLeft className="h-3 w-3" /> Rudi kwenye orodha
                                     </button>
-                                    
+
                                     <div className="p-6 rounded-3xl bg-indigo-600 text-white shadow-xl shadow-indigo-200">
                                         <div className="flex items-center gap-4 mb-4">
                                             <div className="h-14 w-14 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
@@ -374,9 +395,9 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
                                                         mapContainerStyle={MAP_CONTAINER_STYLE}
                                                         center={{ lat: parseFloat(selectedForwarder.latitude), lng: parseFloat(selectedForwarder.longitude) }}
                                                         zoom={14}
-                                                        options={{ 
-                                                            streetViewControl: false, 
-                                                            mapTypeControl: false, 
+                                                        options={{
+                                                            streetViewControl: false,
+                                                            mapTypeControl: false,
                                                             fullscreenControl: false,
                                                             zoomControl: false,
                                                         }}
@@ -416,14 +437,14 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
                                                 <h4 className="font-black text-brand-900">Mahitaji ya Wakala</h4>
                                                 <p className="text-xs text-muted-foreground font-medium">Jaza taarifa hizi ili anuani yako iwe kamili na wakala akutambue.</p>
                                             </div>
-                                            
+
                                             <div className="space-y-4">
                                                 {(selectedForwarder.required_fields || ['customer_id']).map(field => (
                                                     <div key={field} className="space-y-1.5">
                                                         <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
                                                             {field === 'customer_id' ? 'ID Yako ya Mteja (Customer ID)' : field.replace('_', ' ')}
                                                         </label>
-                                                        <Input 
+                                                        <Input
                                                             placeholder={`Ingiza ${field}...`}
                                                             value={forwarderInputs[field] || ''}
                                                             onChange={(e) => setForwarderInputs(prev => ({ ...prev, [field]: e.target.value }))}
@@ -438,12 +459,12 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
                             )}
                         </div>
 
-                        <DrawerFooter className="shrink-0 border-t border-border bg-background p-4">
-                            <div className="flex gap-3 max-w-xl mx-auto w-full">
-                                <Button 
-                                    type="button" 
-                                    variant="outline" 
-                                    className="flex-1 h-12 rounded-xl font-black uppercase tracking-widest text-xs" 
+                        <DrawerFooter className="shrink-0 border-t border-slate-200 bg-white p-4">
+                            <div className="mx-auto flex w-full max-w-xl gap-3">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-14 flex-1 rounded-2xl border-slate-200 bg-white text-xs font-black uppercase tracking-widest text-slate-950 shadow-sm hover:bg-slate-50"
                                     onClick={() => {
                                         if (selectedForwarder) setSelectedForwarder(null);
                                         else setIsForwarderPickerOpen(false);
@@ -451,9 +472,9 @@ export default function UserAddressManager({ onSelect, selectedId, mode = 'manag
                                 >
                                     {selectedForwarder ? 'Rudi' : 'Funga'}
                                 </Button>
-                                <Button 
+                                <Button
                                     type="button"
-                                    className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 font-black uppercase tracking-widest text-xs"
+                                    className="h-14 flex-1 rounded-2xl bg-brand-600 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-brand-600/20 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
                                     disabled={!selectedForwarder || (selectedForwarder.required_fields || ['customer_id']).some(f => !forwarderInputs[f])}
                                     onClick={handleImportForwarder}
                                 >

@@ -6,6 +6,7 @@ import { Button } from '@/Components/ui/Button';
 import { Check, ChevronRight, LayoutGrid, Loader2, RefreshCw, Save, Settings2, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { businessToolCopy } from '@/lib/businessToolCopy';
 
 export default function Modules({ merchantUsername }) {
     const [loading, setLoading] = useState(true);
@@ -22,7 +23,7 @@ export default function Modules({ merchantUsername }) {
             setActiveModules(response.data?.merchant?.active_modules || []);
             setCommerceModes(response.data?.merchant?.commerce_modes || []);
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to load business modules.');
+            toast.error(error.response?.data?.message || 'Imeshindikana kupakia zana za biashara.');
         } finally {
             setLoading(false);
         }
@@ -81,9 +82,9 @@ export default function Modules({ merchantUsername }) {
             setPayload(response.data);
             setActiveModules(response.data?.merchant?.active_modules || []);
             setCommerceModes(response.data?.merchant?.commerce_modes || []);
-            toast.success('Business modules updated.');
+            toast.success('Zana za biashara zimehifadhiwa.');
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to save modules.');
+            toast.error(error.response?.data?.message || 'Imeshindikana kuhifadhi zana.');
         } finally {
             setSaving(false);
         }
@@ -91,24 +92,24 @@ export default function Modules({ merchantUsername }) {
 
     return (
         <AppLayout>
-            <Head title="Business Modules | Takeer" />
+            <Head title="Zana za Biashara | Takeer" />
             <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
-                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Business setup</p>
-                        <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Business Modules</h1>
+                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Mpangilio wa biashara</p>
+                        <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Zana za Biashara</h1>
                         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                            Choose what this business actually runs: products, bookings, menu, courses, team, reports, communications, and bookkeeping.
+                            Chagua biashara hii inatumia nini: bidhaa, booking, menu, kozi, timu, ripoti, mawasiliano, na bookkeeping.
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={loadModules} disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                            Refresh
+                            Pakia upya
                         </Button>
                         <Button onClick={saveModules} disabled={saving || loading}>
                             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                            Save modules
+                            Hifadhi zana
                         </Button>
                     </div>
                 </div>
@@ -117,7 +118,7 @@ export default function Modules({ merchantUsername }) {
                     <Card>
                         <CardContent className="flex min-h-72 flex-col items-center justify-center">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            <p className="mt-3 text-sm text-muted-foreground">Loading module setup...</p>
+                            <p className="mt-3 text-sm text-muted-foreground">Inapakia mpangilio wa zana...</p>
                         </CardContent>
                     </Card>
                 ) : (
@@ -125,7 +126,7 @@ export default function Modules({ merchantUsername }) {
                         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Commerce modes</CardTitle>
+                                    <CardTitle>Aina za mauzo</CardTitle>
                                 </CardHeader>
                                 <CardContent className="grid gap-3 md:grid-cols-2">
                                     {Object.entries(payload?.commerce_modes || {}).map(([key, mode]) => {
@@ -148,20 +149,20 @@ export default function Modules({ merchantUsername }) {
                             <div className="space-y-4">
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>Presets</CardTitle>
+                                        <CardTitle>Mapendekezo</CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-3">
                                         <PresetBlock
                                             icon={Sparkles}
-                                            title="Category preset"
+                                            title="Kulingana na aina ya biashara"
                                             text={payload?.business_context?.subcategory_label ? `${payload.business_context.label} / ${payload.business_context.subcategory_label}` : payload?.business_context?.label || 'No category selected'}
                                             count={recommendedModules.length}
                                             onClick={applyCategoryPreset}
                                         />
                                         <PresetBlock
                                             icon={Settings2}
-                                            title="Selected modes"
-                                            text={`${selectedModeModules.length} suggested modules from selected commerce modes`}
+                                            title="Aina za mauzo ulizochagua"
+                                            text={`${selectedModeModules.length} zana zilizopendekezwa kutokana na aina za mauzo`}
                                             count={selectedModeModules.length}
                                             onClick={applyModePreset}
                                         />
@@ -170,12 +171,12 @@ export default function Modules({ merchantUsername }) {
 
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>Active setup</CardTitle>
+                                        <CardTitle>Mpangilio uliopo</CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-3 text-sm">
-                                        <MiniStat label="Commerce modes" value={commerceModes.length} />
-                                        <MiniStat label="Active modules" value={activeModules.length} />
-                                        <MiniStat label="Recommended modules" value={recommendedModules.length} />
+                                        <MiniStat label="Aina za mauzo" value={commerceModes.length} />
+                                        <MiniStat label="Zana zinazotumika" value={activeModules.length} />
+                                        <MiniStat label="Zana zilizopendekezwa" value={recommendedModules.length} />
                                     </CardContent>
                                 </Card>
                             </div>
@@ -186,29 +187,30 @@ export default function Modules({ merchantUsername }) {
                                 <section key={group} className="space-y-3">
                                     <div className="flex items-center justify-between gap-3">
                                         <h2 className="text-lg font-black">{group}</h2>
-                                        <p className="text-sm text-muted-foreground">{modules.filter(([key]) => activeModules.includes(key)).length}/{modules.length} active</p>
+                                        <p className="text-sm text-muted-foreground">{modules.filter(([key]) => activeModules.includes(key)).length}/{modules.length} zinatumika</p>
                                     </div>
                                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                         {modules.map(([key, module]) => {
                                             const active = activeModules.includes(key);
                                             const recommended = recommendedModules.includes(key);
                                             const modeSuggested = selectedModeModules.includes(key);
+                                            const toolCopy = businessToolCopy(key);
 
                                             return (
                                                 <button key={key} type="button" onClick={() => toggleModule(key)} className={`rounded-lg border p-4 text-left transition ${active ? 'border-brand-500 bg-brand-50' : 'border-border hover:bg-muted/50'}`}>
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div>
-                                                            <p className="font-black">{module.label}</p>
-                                                            <p className="mt-1 text-sm text-muted-foreground">{module.description}</p>
+                                                            <p className="font-black">{toolCopy.label || module.label}</p>
+                                                            <p className="mt-1 text-sm text-muted-foreground">{toolCopy.description || module.description}</p>
                                                         </div>
                                                         <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${active ? 'border-brand-600 bg-brand-600 text-white' : 'border-border'}`}>
                                                             {active && <Check className="h-4 w-4" />}
                                                         </span>
                                                     </div>
                                                     <div className="mt-3 flex flex-wrap gap-1.5">
-                                                        {recommended && <Tag>Recommended</Tag>}
-                                                        {modeSuggested && <Tag>Mode</Tag>}
-                                                        {module.requires_approval && <Tag>Approval</Tag>}
+                                                        {recommended && <Tag>Imependekezwa</Tag>}
+                                                        {modeSuggested && <Tag>Aina ya mauzo</Tag>}
+                                                        {module.requires_approval && <Tag>Inahitaji ruhusa</Tag>}
                                                     </div>
                                                 </button>
                                             );
@@ -221,13 +223,13 @@ export default function Modules({ merchantUsername }) {
                         <div className="flex flex-wrap justify-end gap-2">
                             <Button variant="outline" asChild>
                                 <Link href={`/merchant/${merchantUsername}/settings`}>
-                                    Business settings
+                                    Mipangilio ya biashara
                                     <ChevronRight className="ml-2 h-4 w-4" />
                                 </Link>
                             </Button>
                             <Button onClick={saveModules} disabled={saving}>
                                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LayoutGrid className="mr-2 h-4 w-4" />}
-                                Save modules
+                                Hifadhi zana
                             </Button>
                         </div>
                     </>

@@ -226,7 +226,7 @@ class EntitlementController extends Controller
 
         $inquiries = collect();
         if (in_array($filterType, ['all', 'physical_product'], true)) {
-            $inquiriesQuery = Order::with(['merchant', 'product', 'delivery.shippingZone', 'delivery.events.actor'])
+            $inquiriesQuery = Order::with(['merchant', 'product', 'delivery.shippingZone', 'delivery.events.actor', 'returnRequest'])
                 ->where('buyer_id', $request->user()->id)
                 ->where('is_inquiry', true)
                 ->whereNotIn('payment_status', ['resolved_buyer_refunded']);
@@ -606,7 +606,7 @@ class EntitlementController extends Controller
 
     private function buildEntitlementOrderDetails(int $orderId, Product|ContentItem|Bundle|SubscriptionPlan|Post|OfferingGroup|null $resolved): ?array
     {
-        $order = Order::with(['delivery.shippingZone', 'delivery.events.actor', 'review'])->find($orderId);
+        $order = Order::with(['delivery.shippingZone', 'delivery.events.actor', 'review', 'returnRequest'])->find($orderId);
         if (!$order) {
             return null;
         }
@@ -665,6 +665,23 @@ class EntitlementController extends Controller
             'download_count' => (int) $order->download_count,
             'first_downloaded_at' => $order->first_downloaded_at?->toISOString(),
             'refund_policy' => $order->refundPolicyContext(),
+            'return_request' => $order->returnRequest ? [
+                'id' => $order->returnRequest->id,
+                'status' => $order->returnRequest->status,
+                'resolution_type' => $order->returnRequest->resolution_type,
+                'reason' => $order->returnRequest->reason,
+                'evidence_url' => $order->returnRequest->evidence_url,
+                'policy_snapshot' => $order->returnRequest->policy_snapshot,
+                'merchant_note' => $order->returnRequest->merchant_note,
+                'customer_note' => $order->returnRequest->customer_note,
+                'requested_at' => $order->returnRequest->requested_at?->toISOString(),
+                'approved_at' => $order->returnRequest->approved_at?->toISOString(),
+                'rejected_at' => $order->returnRequest->rejected_at?->toISOString(),
+                'received_at' => $order->returnRequest->received_at?->toISOString(),
+                'completed_at' => $order->returnRequest->completed_at?->toISOString(),
+                'escalated_at' => $order->returnRequest->escalated_at?->toISOString(),
+                'dispute_id' => $order->returnRequest->dispute_id,
+            ] : null,
             'custom_delivery' => [
                 'file_name' => $order->custom_delivery_file_name,
                 'file_mime' => $order->custom_delivery_file_mime,

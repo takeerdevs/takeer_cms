@@ -16,6 +16,7 @@ import ProfileSwitcher from '@/Components/ProfileSwitcher';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { businessToolLabel } from '@/lib/businessToolCopy';
 
 import {
     Dialog as CreateDialog,
@@ -67,32 +68,32 @@ export default function Profile({
     const commerceModes = activeMerchant?.business_profile?.commerce_modes || [];
     const hasModule = (module) => activeModules.includes(module);
     const hasMode = (mode) => commerceModes.includes(mode);
-    const usesConfiguredSetup = activeModules.length > 0 || commerceModes.length > 0;
     const shouldShowHubItem = (item) => {
-        if (!usesConfiguredSetup) return true;
+        if (isBusinessMerchant) return true;
+        if (activeModules.length === 0 && commerceModes.length === 0) return true;
 
         return (item.modules || []).some(hasModule) || (item.modes || []).some(hasMode);
     };
     const commerceHubItems = [
-        { key: 'products', title: 'Physical Products', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products'], modes: ['physical_products'] },
-        { key: 'menu', title: 'Menu', count: commerceHubSummary.menu ?? 0, icon: ShoppingBag, href: `/merchant/${merchantSlug}/menu`, permission: 'products.view', modules: ['menu'], modes: ['food_menu'] },
-        { key: 'digital', title: 'Digital Downloads', count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
-        { key: 'services', title: 'Services/Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services'], modes: ['services_bookings'] },
-        { key: 'rooms', title: 'Rooms & Bookings', count: commerceHubSummary.rooms ?? 0, icon: BedDouble, href: `/merchant/${merchantSlug}/rooms`, permission: 'services.view', modules: ['rooms'], modes: [] },
-        { key: 'tours', title: 'Tour Departures', count: commerceHubSummary.tour_departures ?? 0, icon: Landmark, href: `/merchant/${merchantSlug}/tours`, permission: 'services.view', modules: ['tour_departures'], modes: [] },
-        { key: 'custom-orders', title: 'Custom Orders', count: commerceHubSummary.custom_orders ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permission: 'services.view', modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
-        { key: 'appointments', title: 'Appointments', count: commerceHubSummary.appointments ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/appointments`, permission: 'services.view', modules: ['appointments'], modes: [] },
-        { key: 'reservations', title: 'Reservations', count: commerceHubSummary.reservations ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/reservations`, permission: 'services.view', modules: ['reservations'], modes: ['food_menu'] },
-        { key: 'rentals', title: 'Rentals & Hire', count: commerceHubSummary.rentals ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/rentals`, permission: 'services.view', modules: ['rentals'], modes: [] },
-        { key: 'workshops', title: 'Live Sessions', count: commerceHubSummary.workshops ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/workshops`, permission: 'services.view', modules: ['workshops'], modes: [] },
+        { key: 'products', title: 'Bidhaa za Kushikika', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products'], modes: ['physical_products'] },
+        { key: 'menu', title: businessToolLabel('menu'), count: commerceHubSummary.menu ?? 0, icon: ShoppingBag, href: `/merchant/${merchantSlug}/menu`, permission: 'products.view', modules: ['menu'], modes: ['food_menu'] },
+        { key: 'digital', title: businessToolLabel('digital_products'), count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
+        { key: 'services', title: 'Huduma / Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services'], modes: ['services_bookings'] },
+        { key: 'rooms', title: businessToolLabel('rooms'), count: commerceHubSummary.rooms ?? 0, icon: BedDouble, href: `/merchant/${merchantSlug}/rooms`, permission: 'services.view', modules: ['rooms'], modes: [] },
+        { key: 'tours', title: businessToolLabel('tour_departures'), count: commerceHubSummary.tour_departures ?? 0, icon: Landmark, href: `/merchant/${merchantSlug}/tours`, permission: 'services.view', modules: ['tour_departures'], modes: [] },
+        { key: 'custom-orders', title: businessToolLabel('custom_orders'), count: commerceHubSummary.custom_orders ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permission: 'services.view', modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
+        { key: 'appointments', title: businessToolLabel('appointments'), count: commerceHubSummary.appointments ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/appointments`, permission: 'services.view', modules: ['appointments'], modes: [] },
+        { key: 'reservations', title: businessToolLabel('reservations'), count: commerceHubSummary.reservations ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/reservations`, permission: 'services.view', modules: ['reservations'], modes: ['food_menu'] },
+        { key: 'rentals', title: businessToolLabel('rentals'), count: commerceHubSummary.rentals ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/rentals`, permission: 'services.view', modules: ['rentals'], modes: [] },
+        { key: 'workshops', title: businessToolLabel('workshops'), count: commerceHubSummary.workshops ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/workshops`, permission: 'services.view', modules: ['workshops'], modes: [] },
         { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view', modules: ['marketing'], modes: [] },
-        { key: 'offerings', title: 'Offering Groups', count: commerceHubSummary.offerings ?? 0, icon: Layers, href: `/merchant/${merchantSlug}/offering-groups`, permission: 'services.view', modules: ['services', 'menu', 'courses', 'tour_departures'], modes: ['services_bookings', 'food_menu', 'courses_learning'] },
-        { key: 'bundles', title: 'Courses & Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: [], modes: [] },
-        { key: 'courses', title: 'Courses / Curriculum', count: commerceHubSummary.bundles ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permission: 'bundles.view', modules: ['courses', 'workshops'], modes: ['courses_learning'] },
+        { key: 'offerings', title: 'Makundi ya Huduma', count: commerceHubSummary.offerings ?? 0, icon: Layers, href: `/merchant/${merchantSlug}/offering-groups`, permission: 'services.view', modules: ['services', 'menu', 'courses', 'tour_departures'], modes: ['services_bookings', 'food_menu', 'courses_learning'] },
+        { key: 'bundles', title: 'Kozi & Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: [], modes: [] },
+        { key: 'courses', title: businessToolLabel('courses'), count: commerceHubSummary.bundles ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permission: 'bundles.view', modules: ['courses', 'workshops'], modes: ['courses_learning'] },
         { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permission: 'subscriptions.view', modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
     ].filter((item) => can(item.permission) && (!item.businessOnly || isBusinessMerchant) && shouldShowHubItem(item) && (item.requiresModules || []).every(hasModule));
     const hasMenuCommerce = hasModule('menu') || hasMode('food_menu');
-    const canAddProduct = can('products.create') && (hasModule('products') || hasMenuCommerce || hasMode('physical_products') || !usesConfiguredSetup);
+    const canAddProduct = can('products.create');
 
     // Verification State
     const [verifView, setVerifView] = useState('main'); // main, selection, form
@@ -1228,10 +1229,10 @@ export default function Profile({
                                         </div>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full max-w-2xl">
                                             {[
-                                                { icon: Package, label: 'Physical products' },
-                                                { icon: DownloadCloud, label: 'Digital downloads' },
-                                                { icon: Briefcase, label: 'Services' },
-                                                { icon: BookOpenText, label: 'Paid knowledge' },
+                                                { icon: Package, label: 'Bidhaa za kushikika' },
+                                                { icon: DownloadCloud, label: 'Bidhaa za digital' },
+                                                { icon: Briefcase, label: 'Huduma' },
+                                                { icon: BookOpenText, label: 'Maarifa ya kulipia' },
                                             ].map((item) => {
                                                 const Icon = item.icon;
 

@@ -7,17 +7,18 @@ import { Input } from '@/Components/ui/Input';
 import { CalendarClock, ChevronRight, Clock, Loader2, MapPin, RefreshCw, Search, Users } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { businessToolLabel } from '@/lib/businessToolCopy';
 
 const MODULE_OPTIONS = [
-    { value: 'all', label: 'All modules' },
-    { value: 'rooms', label: 'Rooms' },
-    { value: 'appointments', label: 'Appointments' },
-    { value: 'reservations', label: 'Reservations' },
-    { value: 'rentals', label: 'Rentals' },
-    { value: 'workshops', label: 'Workshops' },
-    { value: 'tour_departures', label: 'Tours' },
-    { value: 'custom_orders', label: 'Custom orders' },
-    { value: 'services', label: 'Services' },
+    { value: 'all', label: 'Aina zote za huduma' },
+    { value: 'rooms', label: businessToolLabel('rooms') },
+    { value: 'appointments', label: businessToolLabel('appointments') },
+    { value: 'reservations', label: businessToolLabel('reservations') },
+    { value: 'rentals', label: businessToolLabel('rentals') },
+    { value: 'workshops', label: businessToolLabel('workshops') },
+    { value: 'tour_departures', label: businessToolLabel('tour_departures') },
+    { value: 'custom_orders', label: businessToolLabel('custom_orders') },
+    { value: 'services', label: businessToolLabel('services') },
 ];
 
 const STATUS_OPTIONS = [
@@ -112,7 +113,7 @@ export default function BookingCalendar({ merchantUsername }) {
                         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Operations</p>
                         <h1 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Booking Calendar</h1>
                         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                            Scheduled requests, fixed sessions, capacity, and unscheduled customer requests across your service modules.
+                            Maombi yaliyopangwa, sessions za tarehe maalum, capacity, na maombi ya wateja kwenye aina zako za huduma.
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">

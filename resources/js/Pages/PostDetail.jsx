@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { MessageCircle, Send, CornerDownRight, ChevronLeft, Loader2, Share2, MoreHorizontal, ShoppingBag, ShieldCheck, BadgeCheck, Crown, Unlock, X, User, Lock, Boxes, Trash2, Eye, SmilePlus } from 'lucide-react';
+import { MessageCircle, Send, CornerDownRight, ChevronLeft, Loader2, Share2, MoreHorizontal, ShoppingBag, ShieldCheck, BadgeCheck, Crown, Unlock, X, User, Lock, Boxes, Trash2, Eye, SmilePlus, Utensils, Route, Layers, PlayCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import ShoppablePin from '@/Components/ShoppablePin';
@@ -703,6 +703,18 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     // Bundle Items parsing
     const promotableBundleRouteKey = promotableItem?.slug || firstPromotable?.id;
     const isBundlePromotable = promotableType === 'bundle' && Boolean(promotableBundleRouteKey);
+    const offeringGroupRouteKey = promotableItem?.id || firstPromotable?.id;
+    const isOfferingGroupPromotable = promotableType === 'offering_group' && Boolean(offeringGroupRouteKey);
+    const offeringGroupItems = Array.isArray(promotableItem?.items) ? promotableItem.items : [];
+    const offeringGroupTemplate = promotableItem?.template_key || 'service_package';
+    const offeringGroupLayout = promotableItem?.display_settings?.layout || (
+        offeringGroupTemplate === 'menu_board' ? 'classic_menu' : offeringGroupTemplate === 'itinerary' ? 'timeline' : 'package'
+    );
+    const offeringGroupLabel = offeringGroupTemplate === 'menu_board'
+        ? 'Menu Board'
+        : offeringGroupTemplate === 'itinerary'
+            ? 'Itinerary'
+            : 'Offering';
     const bundleItems = Array.isArray(promotableItem?.bundle_items) ? promotableItem.bundle_items : [];
     const courseModules = Array.isArray(promotableItem?.course_modules) ? promotableItem.course_modules : [];
     const isCourseBundle = Boolean(promotableItem?.is_course);
@@ -1247,6 +1259,109 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 )}
 
                 {renderProductAttachmentCard('mb-2')}
+
+                {isOfferingGroupPromotable && (
+                    <div className="mx-5 mb-6 overflow-hidden rounded-2xl border border-orange-200/80 bg-[#fffaf2] shadow-sm">
+                        <Link
+                            href={`/offerings/${offeringGroupRouteKey}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="block"
+                        >
+                            <div className="relative min-h-48 overflow-hidden bg-slate-950 text-white">
+                                {promotableItem?.image_url ? (
+                                    <img src={promotableItem.image_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-65" />
+                                ) : (
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,#f97316,transparent_38%),linear-gradient(135deg,#111827,#7c2d12)]" />
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/10" />
+                                <div className="relative p-5">
+                                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[10px] font-black uppercase tracking-wider backdrop-blur">
+                                        {offeringGroupTemplate === 'menu_board' ? <Utensils className="h-3.5 w-3.5" /> : offeringGroupTemplate === 'itinerary' ? <Route className="h-3.5 w-3.5" /> : <Layers className="h-3.5 w-3.5" />}
+                                        {offeringGroupLabel}
+                                    </span>
+                                    <h3 className="mt-12 text-3xl md:text-4xl font-black leading-none tracking-tight">{promotableItem?.title || post.title}</h3>
+                                    {promotableItem?.description && (
+                                        <p className="mt-3 max-w-xl text-base font-semibold leading-7 text-white/80">{promotableItem.description}</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {offeringGroupTemplate === 'menu_board' ? (
+                                <div className="bg-white px-5 py-5">
+                                    <div className="mb-4 flex items-center justify-between gap-3 border-b border-dashed border-orange-200 pb-3">
+                                        <p className="font-serif text-2xl font-black text-orange-950">Today&apos;s menu</p>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-orange-700">{offeringGroupLayout.replace(/_/g, ' ')}</span>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {offeringGroupItems.slice(0, 8).map((item) => {
+                                            const thumbnailUrl = item.thumbnail_url || item.image_url;
+                                            const isVideoItem = String(item.media_type || '').toLowerCase() === 'video';
+
+                                            return (
+                                                <div key={item.id} className="grid grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-4">
+                                                    <div className="relative h-16 w-16 overflow-hidden rounded-xl bg-orange-50 ring-1 ring-orange-100">
+                                                        {thumbnailUrl ? (
+                                                            <img src={thumbnailUrl} alt={item.title || ''} className="h-full w-full object-cover object-center" />
+                                                        ) : (
+                                                            <div className="flex h-full w-full items-center justify-center text-orange-700">
+                                                                <Utensils className="h-5 w-5" />
+                                                            </div>
+                                                        )}
+                                                        {isVideoItem && (
+                                                            <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white">
+                                                                <PlayCircle className="h-6 w-6 drop-shadow" />
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-base font-black text-slate-950">{item.title}</p>
+                                                        <p className="mt-0.5 text-sm font-semibold text-slate-500">
+                                                            {item.section || 'Menu'}{Array.isArray(item.add_ons) && item.add_ons.length > 0 ? ` · ${item.add_ons.length} add-on${item.add_ons.length === 1 ? '' : 's'}` : ''}
+                                                        </p>
+                                                    </div>
+                                                    <p className="text-base font-black text-orange-700">
+                                                        {Number(item.price || 0) > 0 ? `TZS ${Number(item.price || 0).toLocaleString()}` : 'Quote'}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })}
+                                        {offeringGroupItems.length === 0 && (
+                                            <p className="rounded-xl bg-orange-50 px-3 py-3 text-sm font-bold text-orange-900">Open to view this menu.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid gap-2 bg-white p-4">
+                                    {offeringGroupItems.slice(0, 6).map((item, index) => (
+                                        <div key={item.id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-xs font-black text-slate-700">{index + 1}</span>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-black text-slate-950">{item.title}</p>
+                                                <p className="truncate text-xs font-semibold text-slate-500">{item.section || item.role || 'Included'}</p>
+                                            </div>
+                                            {Number(item.price || 0) > 0 && (
+                                                <span className="text-xs font-black text-brand-700">TZS {Number(item.price || 0).toLocaleString()}</span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </Link>
+                        <div className="border-t border-orange-100 bg-white px-5 pb-5 pt-4">
+                            <button
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    router.visit(`/offerings/${offeringGroupRouteKey}`);
+                                }}
+                                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 text-base font-black text-white shadow-md shadow-orange-500/20 transition-all hover:bg-orange-700 active:scale-[0.99]"
+                            >
+                                <ShoppingBag className="h-5 w-5" />
+                                Open offering
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {isSubscriptionPromotable && (
                     <div className="mx-5 mb-6 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60">

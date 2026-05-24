@@ -89,11 +89,14 @@ class MerchantLocationController extends Controller
             'is_primary' => 'boolean',
             'allow_self_pickup' => 'boolean',
             'contact_phone' => 'nullable|string|max:50',
-            'type' => 'nullable|string|in:shop,store,warehouse',
+            'type' => 'nullable|string',
         ]);
 
         if (array_key_exists('type', $validated)) {
             $validated['type'] = $this->normalizeLocationType($validated['type']);
+            if (! $validated['type']) {
+                return response()->json(['message' => 'Aina ya eneo si sahihi.'], 422);
+            }
         }
 
         if ($validated['is_primary'] ?? false) {
@@ -138,11 +141,14 @@ class MerchantLocationController extends Controller
             'is_primary' => 'boolean',
             'allow_self_pickup' => 'boolean',
             'contact_phone' => 'nullable|string|max:50',
-            'type' => 'nullable|string|in:shop,store,warehouse',
+            'type' => 'nullable|string',
         ]);
 
         if (array_key_exists('type', $validated)) {
             $validated['type'] = $this->normalizeLocationType($validated['type']);
+            if (! $validated['type']) {
+                return response()->json(['message' => 'Aina ya eneo si sahihi.'], 422);
+            }
         }
 
         if ($validated['is_primary'] ?? false) {
