@@ -13,12 +13,18 @@ class ShippingProfile extends Model
         'name',
         'is_default',
         'outside_area_policy',
+        'in_city_enabled',
+        'intercity_enabled',
+        'international_enabled',
     ];
 
     protected function casts(): array
     {
         return [
             'is_default' => 'boolean',
+            'in_city_enabled' => 'boolean',
+            'intercity_enabled' => 'boolean',
+            'international_enabled' => 'boolean',
         ];
     }
 

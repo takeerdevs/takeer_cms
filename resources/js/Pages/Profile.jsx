@@ -9,7 +9,7 @@ import {
     User, UserCircle, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
     Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, Banknote, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
     Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone, Layers,
-    Search, Loader2, KeyRound, BedDouble
+    Search, Loader2, KeyRound, MapPin, Globe, Ship
 } from 'lucide-react';
 import axios from 'axios';
 import ProfileSwitcher from '@/Components/ProfileSwitcher';
@@ -41,7 +41,9 @@ export default function Profile({
     currencies = [],
     businessCategories = {},
     merchantKyc = null,
-    merchantKycStatus = 'unverified'
+    merchantKycStatus = 'unverified',
+    forwarderApplication = null,
+    hasVerifiedPersonalProfile = false
 }) {
     const { auth } = usePage().props;
     const merchants = auth?.user?.merchant_profiles ?? [];
@@ -76,24 +78,25 @@ export default function Profile({
     };
     const commerceHubItems = [
         { key: 'products', title: 'Bidhaa za Kushikika', count: commerceHubSummary.physical ?? 0, icon: Package, href: `/merchant/${merchantSlug}/products`, permission: 'products.view', modules: ['products'], modes: ['physical_products'] },
-        { key: 'menu', title: businessToolLabel('menu'), count: commerceHubSummary.menu ?? 0, icon: ShoppingBag, href: `/merchant/${merchantSlug}/menu`, permission: 'products.view', modules: ['menu'], modes: ['food_menu'] },
         { key: 'digital', title: businessToolLabel('digital_products'), count: commerceHubSummary.digital ?? 0, icon: DownloadCloud, href: `/merchant/${merchantSlug}/downloads`, permission: 'digital_products.view', modules: ['digital_products'], modes: ['digital_products'] },
         { key: 'services', title: 'Huduma / Booking', count: commerceHubSummary.services ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/services`, permission: 'services.view', modules: ['services'], modes: ['services_bookings'] },
-        { key: 'rooms', title: businessToolLabel('rooms'), count: commerceHubSummary.rooms ?? 0, icon: BedDouble, href: `/merchant/${merchantSlug}/rooms`, permission: 'services.view', modules: ['rooms'], modes: [] },
-        { key: 'tours', title: businessToolLabel('tour_departures'), count: commerceHubSummary.tour_departures ?? 0, icon: Landmark, href: `/merchant/${merchantSlug}/tours`, permission: 'services.view', modules: ['tour_departures'], modes: [] },
-        { key: 'custom-orders', title: businessToolLabel('custom_orders'), count: commerceHubSummary.custom_orders ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/custom-orders`, permission: 'services.view', modules: ['custom_orders', 'quotes'], modes: ['custom_orders_quotes'] },
-        { key: 'appointments', title: businessToolLabel('appointments'), count: commerceHubSummary.appointments ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/appointments`, permission: 'services.view', modules: ['appointments'], modes: [] },
-        { key: 'reservations', title: businessToolLabel('reservations'), count: commerceHubSummary.reservations ?? 0, icon: CalendarClock, href: `/merchant/${merchantSlug}/reservations`, permission: 'services.view', modules: ['reservations'], modes: ['food_menu'] },
-        { key: 'rentals', title: businessToolLabel('rentals'), count: commerceHubSummary.rentals ?? 0, icon: Briefcase, href: `/merchant/${merchantSlug}/rentals`, permission: 'services.view', modules: ['rentals'], modes: [] },
-        { key: 'workshops', title: businessToolLabel('workshops'), count: commerceHubSummary.workshops ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/workshops`, permission: 'services.view', modules: ['workshops'], modes: [] },
         { key: 'posts', title: 'Posts', count: commerceHubSummary.posts ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/posts`, permission: 'posts.view', modules: ['marketing'], modes: [] },
         { key: 'offerings', title: 'Makundi ya Huduma', count: commerceHubSummary.offerings ?? 0, icon: Layers, href: `/merchant/${merchantSlug}/offering-groups`, permission: 'services.view', modules: ['services', 'menu', 'courses', 'tour_departures'], modes: ['services_bookings', 'food_menu', 'courses_learning'] },
         { key: 'bundles', title: 'Kozi & Bundles', count: commerceHubSummary.bundles ?? 0, icon: Boxes, href: `/merchant/${merchantSlug}/bundles`, permission: 'bundles.view', modules: [], modes: [] },
-        { key: 'courses', title: businessToolLabel('courses'), count: commerceHubSummary.bundles ?? 0, icon: BookOpenText, href: `/merchant/${merchantSlug}/courses`, permission: 'bundles.view', modules: ['courses', 'workshops'], modes: ['courses_learning'] },
         { key: 'subscriptions', title: 'Subscriptions', count: commerceHubSummary.subscriptions ?? 0, icon: Crown, href: `/merchant/${merchantSlug}/subscriptions`, permission: 'subscriptions.view', modules: ['subscriptions'], modes: ['subscriptions_memberships'] },
     ].filter((item) => can(item.permission) && (!item.businessOnly || isBusinessMerchant) && shouldShowHubItem(item) && (item.requiresModules || []).every(hasModule));
-    const hasMenuCommerce = hasModule('menu') || hasMode('food_menu');
-    const canAddProduct = can('products.create');
+    const forwarderStatus = forwarderApplication?.verification_status || null;
+    const forwarderApproved = forwarderStatus === 'verified' || forwarderApplication?.is_verified;
+    const forwarderApplied = Boolean(forwarderApplication);
+    const freightHubItems = [
+        { key: 'forwarder_profile', title: 'Forwarder Profile', icon: Truck, href: `/merchant/${merchantSlug}/forwarders/setup`, description: 'Manage freight business profile.', permission: 'services.view' },
+        { key: 'locations', title: 'Locations', icon: MapPin, href: `/merchant/${merchantSlug}/forwarders/locations`, description: 'Warehouses and collection offices.', permission: 'services.create' },
+        { key: 'routes', title: 'Routes', icon: Globe, href: `/merchant/${merchantSlug}/forwarders/routes`, description: 'Origin to destination routes.', permission: 'services.create' },
+        { key: 'schedules', title: 'Schedules', icon: CalendarClock, href: `/merchant/${merchantSlug}/forwarders/schedules`, description: 'Route shipping schedules.', permission: 'services.create' },
+        { key: 'shipments', title: 'Shipments', icon: Ship, href: `/merchant/${merchantSlug}/forwarders/shipments`, description: 'Incoming customer cargo requests.', permission: 'services.view' },
+        { key: 'updates', title: 'Updates', icon: Megaphone, href: `/merchant/${merchantSlug}/posts?compose=1&source=forwarder_update`, description: 'Post logistics announcements.', permission: 'posts.create' },
+    ].filter((item) => can(item.permission));
+    const canAddNew = can('products.create') || can('digital_products.create') || can('services.create');
 
     // Verification State
     const [verifView, setVerifView] = useState('main'); // main, selection, form
@@ -695,11 +698,8 @@ export default function Profile({
                                         <div className="space-y-3">
                                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Actions</h3>
                                             <div className="grid grid-cols-2 gap-3">
-                                                {canAddProduct && (
-                                                    <ActionBtn icon={hasMenuCommerce ? ShoppingBag : Package} label={hasMenuCommerce ? 'Add Menu Item' : 'Add Product'} href={`/merchant/${merchantSlug}/upload?type=physical${hasMenuCommerce ? '&module=menu' : ''}`} color="bg-brand-600" textColor="text-white" />
-                                                )}
-                                                {!canAddProduct && (can('products.create') || can('digital_products.create') || can('services.create')) && (
-                                                    <ActionBtn icon={Plus} label="New Item" href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
+                                                {canAddNew && (
+                                                    <ActionBtn icon={Plus} label="Add New" href={`/merchant/${merchantSlug}/upload`} color="bg-brand-600" textColor="text-white" />
                                                 )}
                                                 {can('orders.verify_pickup') && (
                                                     <ActionBtn icon={KeyRound} label="Order Checkup" onClick={() => setIsOrderCheckupOpen(true)} color="bg-emerald-50" textColor="text-emerald-700" borderColor="border-emerald-100" />
@@ -722,8 +722,56 @@ export default function Profile({
                                                 {can('settings.view') && (
                                                     <ActionBtn icon={Settings} label="Settings" href={`/merchant/${merchantSlug}/settings`} color="bg-slate-50" textColor="text-slate-700" borderColor="border-slate-100" />
                                                 )}
+                                                {isBusinessMerchant && hasVerifiedPersonalProfile && !forwarderApplied && can('services.create') && (
+                                                    <ActionBtn icon={Truck} label="Apply Freight" href={`/merchant/${merchantSlug}/forwarders/setup`} color="bg-indigo-50" textColor="text-indigo-700" borderColor="border-indigo-100" />
+                                                )}
                                             </div>
                                         </div>
+
+                                        {isBusinessMerchant && !hasVerifiedPersonalProfile && can('services.create') && (
+                                            <Card className="border border-slate-200 bg-slate-50 rounded-2xl shadow-sm">
+                                                <CardContent className="p-4">
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600">
+                                                            <ShieldCheck className="h-5 w-5" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-black text-slate-950">Verify personal profile first</p>
+                                                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+                                                                Freight and forwarding applications unlock after the owner has a verified personal profile.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        )}
+
+                                        {isBusinessMerchant && forwarderApplied && !forwarderApproved && (
+                                            <Card className="border border-amber-200 bg-amber-50 rounded-2xl shadow-sm">
+                                                <CardContent className="p-4">
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-amber-700">
+                                                            <ShieldAlert className="h-5 w-5" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-black text-amber-950">
+                                                                {forwarderStatus === 'rejected' ? 'Freight application needs updates' : 'Freight application under review'}
+                                                            </p>
+                                                            <p className="mt-1 text-xs font-semibold leading-5 text-amber-800">
+                                                                {forwarderStatus === 'rejected'
+                                                                    ? (forwarderApplication?.admin_notes || 'Admin rejected this application. Update your proof and submit again.')
+                                                                    : 'Admin will review your permits and business proof before logistics tools are enabled.'}
+                                                            </p>
+                                                            {can('services.create') && (
+                                                                <Link href={`/merchant/${merchantSlug}/forwarders/setup`} className="mt-3 inline-flex h-9 items-center rounded-xl bg-amber-600 px-3 text-xs font-black text-white">
+                                                                    Update application
+                                                                </Link>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        )}
 
                                         <Card className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                                             <CardHeader className="pb-2">
@@ -766,6 +814,37 @@ export default function Profile({
                                                 ))}
                                             </div>
                                         </div>
+
+                                        {isBusinessMerchant && forwarderApproved && freightHubItems.length > 0 && (
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between px-1">
+                                                    <div>
+                                                        <h3 className="text-xs font-bold uppercase tracking-wider">Freight Hub</h3>
+                                                        <p className="mt-1 text-xs text-slate-500">Forwarding tools enabled after being verified.</p>
+                                                    </div>
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+                                                        <ShieldCheck className="h-3.5 w-3.5" /> Verified
+                                                    </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+                                                    {freightHubItems.map((item) => (
+                                                        <button
+                                                            key={item.key}
+                                                            type="button"
+                                                            onClick={() => router.visit(item.href)}
+                                                            className="group rounded-2xl border border-indigo-100 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
+                                                        >
+                                                            <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-100 group-hover:bg-indigo-700 group-hover:text-white transition-colors">
+                                                                <item.icon className="h-5 w-5" />
+                                                            </div>
+                                                            <p className="mt-3 text-sm font-black text-slate-900 leading-tight">{item.title}</p>
+                                                            <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-400">{item.description}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between px-1">

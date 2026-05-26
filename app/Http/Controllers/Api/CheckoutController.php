@@ -9,6 +9,8 @@ use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\MarketingEvent;
 use App\Models\Order;
+use App\Models\ForwarderRoute;
+use App\Models\ForwarderShipment;
 use App\Models\MerchantCoupon;
 use App\Models\MerchantReferralLink;
 use App\Models\MerchantGroupSaleCampaign;
@@ -20,11 +22,13 @@ use App\Models\ServiceRequest;
 use App\Models\ShippingProfile;
 use App\Models\ShippingZone;
 use App\Models\SubscriptionPlan;
+use App\Models\UserAddress;
 use App\Payments\GatewayRegistry;
 use App\Services\EntitlementService;
 use App\Services\OfferingGroupCheckoutResolver;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
+use App\Support\GeographyResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -38,6 +42,7 @@ class CheckoutController extends Controller
     public function __construct(
         private readonly GatewayRegistry $gatewayRegistry,
         private readonly SmsService $smsService,
+        private readonly GeographyResolver $geography,
     ) {
     }
 
@@ -80,6 +85,27 @@ class CheckoutController extends Controller
             }
         } else {
             $accountPhone = $buyer->phone_number;
+        }
+
+        $selectedCheckoutAddress = null;
+        if (($validated['delivery_type'] ?? 'shipping') !== 'self_pickup' && !empty($validated['user_address_id'])) {
+            $selectedCheckoutAddress = UserAddress::query()
+                ->whereKey($validated['user_address_id'])
+                ->where('user_id', $buyer->id)
+                ->with(['forwarderRoute', 'country', 'state', 'cityRecord'])
+                ->first();
+
+            if (!$selectedCheckoutAddress) {
+                return response()->json(['message' => 'Anwani uliyochagua haipatikani kwenye akaunti yako.'], 422);
+            }
+
+            if ($selectedCheckoutAddress?->type === 'forwarder' && $selectedCheckoutAddress->forwarder_route_id && !$selectedCheckoutAddress->forwarderRoute?->is_active) {
+                return response()->json([
+                    'message' => 'This imported freight route is no longer active for new orders. Choose another forwarder route or delivery address.',
+                ], 422);
+            }
+
+            $validated = $this->applyCheckoutAddressGeo($validated, $selectedCheckoutAddress);
         }
 
         // ── Idempotency guard ─────────────────────────────────────────────────
@@ -205,8 +231,9 @@ class CheckoutController extends Controller
         $zone = null;
         $deliveryType = null;
 
-        if ($product?->isPhysical() || ($selectedOfferingGroup['has_physical_items'] ?? false)) {
-            $shippingProfileId = $product?->shipping_profile_id;
+        if ($product?->isPhysical() || ($purchasable instanceof Bundle && $purchasable->items()->where('item_type', 'product')->exists()) || ($selectedOfferingGroup['has_physical_items'] ?? false)) {
+            $shippingProfileId = $product?->shipping_profile_id
+                ?: ($purchasable instanceof Bundle ? $purchasable->shipping_profile_id : null);
 
             // If product has no profile, try to find the merchant's default profile
             if (!$shippingProfileId) {
@@ -220,6 +247,7 @@ class CheckoutController extends Controller
 
             $deliveryType = $validated['delivery_type'] ?? null;
             $zoneId = $validated['delivery_zone_id'] ?? null;
+            $buyerGeo = $this->resolveBuyerGeo($validated);
 
             if ($deliveryType === 'self_pickup') {
                 // If explicit self-pickup, bypass zone lookup and use 0 fee
@@ -233,6 +261,10 @@ class CheckoutController extends Controller
                     buyerLng: isset($validated['buyer_lng']) ? (float) $validated['buyer_lng'] : null,
                     buyerCity: $validated['customer_city'] ?? null,
                     buyerRegion: $validated['customer_region'] ?? null,
+                    buyerCountry: $validated['customer_country'] ?? null,
+                    buyerCountryId: $buyerGeo['country_id'],
+                    buyerStateId: $buyerGeo['state_id'],
+                    buyerCityId: $buyerGeo['city_id'],
                     eligibleLocationIds: $this->eligibleServingLocationIds($product, $selectedVariant, $selectedOfferingGroup, $requestedQuantity),
                 );
 
@@ -416,6 +448,7 @@ class CheckoutController extends Controller
 
                 $newOrder = Order::create([
                     'buyer_id' => $buyer->id,
+                    'user_address_id' => $validated['user_address_id'] ?? null,
                     'merchant_id' => $purchasable->merchant_id,
                     'product_id' => $product?->id,
                     'variant_id' => $selectedVariant?->id,
@@ -497,7 +530,7 @@ class CheckoutController extends Controller
                     ]);
                 }
 
-                if (($product?->isPhysical() || ($selectedOfferingGroup['has_physical_items'] ?? false)) && isset($zone)) {
+                if (($product?->isPhysical() || ($purchasable instanceof Bundle && $purchasable->items()->where('item_type', 'product')->exists()) || ($selectedOfferingGroup['has_physical_items'] ?? false)) && isset($zone)) {
                     $isPickup = $zone->delivery_type === 'self_pickup';
                     $isIntercity = $zone->delivery_type === 'intercity_bus';
 
@@ -542,6 +575,10 @@ class CheckoutController extends Controller
                         $subscription = app(SubscriptionRenewalService::class)->createOrExtendFromOrder($newOrder);
                         app(\App\Services\EntitlementService::class)->grantForSubscription($subscription);
                     }
+                }
+
+                if (!$newOrder->is_inquiry && $newOrder->payment_status !== 'pending') {
+                    $this->createTakeerOrderForwarderShipment($newOrder, $validated['user_address_id'] ?? null);
                 }
 
                 return $newOrder;
@@ -703,8 +740,12 @@ class CheckoutController extends Controller
             ->where('shipping_profile_id', $profile->id)
             ->where('is_active', true)
             ->where('delivery_type', 'intercity_bus')
-            ->get(['zone_name', 'destination_city', 'destination_region'])
-            ->map(fn (ShippingZone $zone) => $zone->destination_city ?: $zone->zone_name ?: $zone->destination_region)
+            ->get(['zone_name', 'destination_city', 'destination_region', 'destination_country', 'destination_country_id', 'coverage_scope'])
+            ->map(fn (ShippingZone $zone) => match ($zone->coverage_scope) {
+                'countrywide' => 'nchi nzima' . ($zone->destination_country ? ' (' . $zone->destination_country . ')' : ''),
+                'international' => 'kimataifa kwenda ' . ($zone->destination_country ?: $zone->zone_name),
+                default => $zone->destination_city ?: $zone->zone_name ?: $zone->destination_region,
+            })
             ->filter()
             ->unique()
             ->values();
@@ -716,17 +757,79 @@ class CheckoutController extends Controller
         return "Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.{$coverageText}{$intercityDestinationText} Chagua anwani iliyo karibu, pickup, au angalia muuzaji mwingine.";
     }
 
-    private function resolveCheckoutShippingZone(?int $zoneId, ?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null, ?array $eligibleLocationIds = null): array
+    private function resolveBuyerGeo(array $validated): array
+    {
+        return $this->geography->resolve(
+            countryId: isset($validated['customer_country_id']) ? (int) $validated['customer_country_id'] : null,
+            countryIso2: $validated['customer_country_iso2'] ?? null,
+            countryName: $validated['customer_country'] ?? null,
+            stateId: isset($validated['customer_state_id']) ? (int) $validated['customer_state_id'] : null,
+            stateName: $validated['customer_region'] ?? null,
+            cityId: isset($validated['customer_city_id']) ? (int) $validated['customer_city_id'] : null,
+            cityName: $validated['customer_city'] ?? null,
+        );
+    }
+
+    private function applyCheckoutAddressGeo(array $validated, ?UserAddress $address): array
+    {
+        if (!$address) {
+            return $validated;
+        }
+
+        if ($address->latitude !== null) {
+            $validated['buyer_lat'] = (float) $address->latitude;
+        }
+
+        if ($address->longitude !== null) {
+            $validated['buyer_lng'] = (float) $address->longitude;
+        }
+
+        if ($address->address_line) {
+            $validated['physical_address'] = trim($address->address_line . ($address->extra_details ? " ({$address->extra_details})" : ''));
+        }
+
+        if ($address->country_id) {
+            $validated['customer_country_id'] = (int) $address->country_id;
+        }
+
+        if ($address->state_id) {
+            $validated['customer_state_id'] = (int) $address->state_id;
+        }
+
+        if ($address->city_id) {
+            $validated['customer_city_id'] = (int) $address->city_id;
+        }
+
+        if ($address->country?->name) {
+            $validated['customer_country'] = $address->country->name;
+        }
+
+        if ($address->country?->iso_alpha2) {
+            $validated['customer_country_iso2'] = $address->country->iso_alpha2;
+        }
+
+        if ($address->state?->name) {
+            $validated['customer_region'] = $address->state->name;
+        }
+
+        if ($address->cityRecord?->name) {
+            $validated['customer_city'] = $address->cityRecord->name;
+        }
+
+        return $validated;
+    }
+
+    private function resolveCheckoutShippingZone(?int $zoneId, ?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null, ?string $buyerCountry = null, ?int $buyerCountryId = null, ?int $buyerStateId = null, ?int $buyerCityId = null, ?array $eligibleLocationIds = null): array
     {
         $blocksOutsideAreas = $this->shippingProfileBlocksOutsideAreas($shippingProfileId, $merchantId);
 
         if (!$zoneId) {
-            $bestLocalZone = $this->bestLocalShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $eligibleLocationIds, $buyerCity);
+            $bestLocalZone = $this->bestLocalShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $eligibleLocationIds, $buyerCityId);
             if ($bestLocalZone) {
                 return [$bestLocalZone, null, null];
             }
 
-            $bestIntercity = $this->bestIntercityShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, allowNearestOutsideArea: !$blocksOutsideAreas);
+            $bestIntercity = $this->bestIntercityShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, $buyerCountry, $buyerCountryId, $buyerStateId, $buyerCityId, allowNearestOutsideArea: !$blocksOutsideAreas);
             if ($bestIntercity) {
                 return [$bestIntercity['zone'], null, $bestIntercity['hotspot_id']];
             }
@@ -760,7 +863,11 @@ class CheckoutController extends Controller
         }
 
         if ($zone->delivery_type === 'intercity_bus') {
-            if ($blocksOutsideAreas && !$this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion)) {
+            if (!$this->profileAllowsShippingZone($shippingProfileId, $merchantId, $zone)) {
+                return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId), null];
+            }
+
+            if ($blocksOutsideAreas && !$this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, $buyerCountry, $buyerCountryId, $buyerStateId, $buyerCityId)) {
                 return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId), null];
             }
 
@@ -771,12 +878,12 @@ class CheckoutController extends Controller
             return [$zone, null, null];
         }
 
-        $bestLocalZone = $this->bestLocalShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $eligibleLocationIds, $buyerCity);
+        $bestLocalZone = $this->bestLocalShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $eligibleLocationIds, $buyerCityId);
         if ($bestLocalZone) {
             return [$bestLocalZone, null, null];
         }
 
-        $bestIntercity = $this->bestIntercityShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, allowNearestOutsideArea: !$blocksOutsideAreas);
+        $bestIntercity = $this->bestIntercityShippingZone($shippingProfileId, $merchantId, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, $buyerCountry, $buyerCountryId, $buyerStateId, $buyerCityId, allowNearestOutsideArea: !$blocksOutsideAreas);
         if ($bestIntercity) {
             return [$bestIntercity['zone'], null, $bestIntercity['hotspot_id']];
         }
@@ -803,9 +910,13 @@ class CheckoutController extends Controller
         return [null, $this->outsideAreaErrorForProfile($shippingProfileId, $merchantId), null];
     }
 
-    private function bestLocalShippingZone(?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?array $eligibleLocationIds = null, ?string $buyerCity = null): ?ShippingZone
+    private function bestLocalShippingZone(?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?array $eligibleLocationIds = null, ?int $buyerCityId = null): ?ShippingZone
     {
-        if (($buyerLat === null || $buyerLng === null) && !$buyerCity) {
+        if (!$this->profileSectionEnabled($shippingProfileId, $merchantId, 'in_city_enabled')) {
+            return null;
+        }
+
+        if (($buyerLat === null || $buyerLng === null) && !$buyerCityId) {
             return null;
         }
 
@@ -820,13 +931,13 @@ class CheckoutController extends Controller
             ->when($shippingProfileId, fn ($query) => $query->where('shipping_profile_id', $shippingProfileId))
             ->when($eligibleLocationIds !== null, fn ($query) => $query->whereIn('merchant_location_id', $eligibleLocationIds))
             ->get()
-            ->map(function (ShippingZone $zone) use ($buyerLat, $buyerLng, $buyerCity) {
+            ->map(function (ShippingZone $zone) use ($buyerLat, $buyerLng, $buyerCityId) {
                 $shopLat = $zone->location?->latitude;
                 $shopLng = $zone->location?->longitude;
                 $radiusKm = (float) $zone->max_distance_km;
-                $sameCity = $buyerCity
-                    && $zone->location?->city
-                    && strcasecmp(trim((string) $buyerCity), trim((string) $zone->location->city)) === 0;
+                $sameCity = $buyerCityId
+                    && $zone->location?->city_id
+                    && (int) $zone->location->city_id === $buyerCityId;
 
                 if (!$sameCity && ($shopLat === null || $shopLng === null || $radiusKm <= 0 || $buyerLat === null || $buyerLng === null)) {
                     return null;
@@ -877,13 +988,14 @@ class CheckoutController extends Controller
             ->all();
     }
 
-    private function bestIntercityShippingZone(?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null, bool $allowNearestOutsideArea = true): ?array
+    private function bestIntercityShippingZone(?int $shippingProfileId, int $merchantId, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null, ?string $buyerCountry = null, ?int $buyerCountryId = null, ?int $buyerStateId = null, ?int $buyerCityId = null, bool $allowNearestOutsideArea = true): ?array
     {
+        $profile = $this->shippingProfileFor($shippingProfileId, $merchantId);
         $zones = ShippingZone::query()
             ->where('merchant_id', $merchantId)
             ->where('is_active', true)
             ->where('delivery_type', 'intercity_bus')
-            ->with(['hotspots', 'location'])
+            ->with(['hotspots', 'location', 'destinationCountryRecord', 'destinationStateRecord', 'destinationCityRecord'])
             ->when($shippingProfileId, fn ($query) => $query->where('shipping_profile_id', $shippingProfileId))
             ->get();
 
@@ -892,16 +1004,24 @@ class CheckoutController extends Controller
         }
 
         return $zones
-            ->flatMap(function (ShippingZone $zone) use ($buyerLat, $buyerLng, $buyerCity, $buyerRegion, $allowNearestOutsideArea) {
-                if (!$allowNearestOutsideArea && !$this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion)) {
+            ->filter(fn (ShippingZone $zone) => $this->profileAllowsShippingZoneObject($profile, $zone))
+            ->flatMap(function (ShippingZone $zone) use ($buyerLat, $buyerLng, $buyerCity, $buyerRegion, $buyerCountry, $buyerCountryId, $buyerStateId, $buyerCityId, $allowNearestOutsideArea) {
+                if (!$allowNearestOutsideArea && !$this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, $buyerCountry, $buyerCountryId, $buyerStateId, $buyerCityId)) {
                     return collect();
                 }
 
-                if ($this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion)) {
+                if ($this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, $buyerCountry, $buyerCountryId, $buyerStateId, $buyerCityId)) {
+                    $coverageRank = match ($zone->coverage_scope) {
+                        'city_region' => 0,
+                        'countrywide' => 1,
+                        'international' => 2,
+                        default => 3,
+                    };
+
                     return collect([[
                         'zone' => $zone,
                         'hotspot_id' => null,
-                        'distance' => 0.0,
+                        'distance' => $coverageRank,
                         'fee' => (float) $zone->flat_rate_fee,
                     ]]);
                 }
@@ -954,24 +1074,70 @@ class CheckoutController extends Controller
             ?->blocksOutsideAreas();
     }
 
-    private function intercityZoneCoversCustomer(ShippingZone $zone, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null): bool
+    private function shippingProfileFor(?int $shippingProfileId, int $merchantId): ?ShippingProfile
     {
-        $customerCity = $this->normalizeAreaName($buyerCity);
-        $customerRegion = $this->normalizeAreaName($buyerRegion);
-        $zoneCity = $this->normalizeAreaName($zone->destination_city);
-        $zoneRegion = $this->normalizeAreaName($zone->destination_region);
+        if (!$shippingProfileId) {
+            return null;
+        }
 
-        if ($customerCity && $zoneCity && $customerCity === $zoneCity) {
+        return ShippingProfile::query()
+            ->where('merchant_id', $merchantId)
+            ->find($shippingProfileId);
+    }
+
+    private function profileSectionEnabled(?int $shippingProfileId, int $merchantId, string $section): bool
+    {
+        $profile = $this->shippingProfileFor($shippingProfileId, $merchantId);
+        return !$profile || (bool) ($profile->{$section} ?? true);
+    }
+
+    private function profileAllowsShippingZone(?int $shippingProfileId, int $merchantId, ShippingZone $zone): bool
+    {
+        return $this->profileAllowsShippingZoneObject($this->shippingProfileFor($shippingProfileId, $merchantId), $zone);
+    }
+
+    private function profileAllowsShippingZoneObject(?ShippingProfile $profile, ShippingZone $zone): bool
+    {
+        if (!$profile) {
             return true;
         }
 
-        if (!$zoneCity && $customerRegion && $zoneRegion && $customerRegion === $zoneRegion) {
+        if ($zone->delivery_type === 'local_boda') {
+            return (bool) $profile->in_city_enabled;
+        }
+
+        if ($zone->coverage_scope === 'international') {
+            return (bool) $profile->international_enabled;
+        }
+
+        return (bool) $profile->intercity_enabled;
+    }
+
+    private function intercityZoneCoversCustomer(ShippingZone $zone, ?float $buyerLat, ?float $buyerLng, ?string $buyerCity = null, ?string $buyerRegion = null, ?string $buyerCountry = null, ?int $buyerCountryId = null, ?int $buyerStateId = null, ?int $buyerCityId = null): bool
+    {
+        $coverageScope = $zone->coverage_scope ?: 'city_region';
+
+        if ($coverageScope === 'countrywide') {
+            return $zone->destination_country_id
+                && $buyerCountryId
+                && (int) $zone->destination_country_id === $buyerCountryId;
+        }
+
+        if ($coverageScope === 'international') {
+            return $zone->destination_country_id
+                && $buyerCountryId
+                && (int) $zone->destination_country_id === $buyerCountryId;
+        }
+
+        if ($zone->destination_city_id && $buyerCityId && (int) $zone->destination_city_id === $buyerCityId) {
             return true;
         }
 
-        $nearestDistance = $this->distanceOrFallback($buyerLat, $buyerLng, $zone->reference_lat, $zone->reference_lng);
+        if (!$zone->destination_city_id && $zone->destination_state_id && $buyerStateId && (int) $zone->destination_state_id === $buyerStateId) {
+            return true;
+        }
 
-        return $nearestDistance !== null && $nearestDistance <= 30;
+        return false;
     }
 
     private function normalizeAreaName(?string $value): string
@@ -1567,8 +1733,16 @@ class CheckoutController extends Controller
             'account_phone' => 'required|string',
             'buyer_name' => 'nullable|string|max:255',
             'delivery_type' => 'nullable|in:shipping,self_pickup',
+            'user_address_id' => 'nullable|integer|exists:user_addresses,id',
             'delivery_zone_id' => 'nullable|integer|exists:shipping_zones,id',
             'physical_address' => 'nullable|string|min:3',
+            'customer_city' => 'nullable|string|max:120',
+            'customer_region' => 'nullable|string|max:120',
+            'customer_country' => 'nullable|string|max:120',
+            'customer_country_iso2' => 'nullable|string|size:2',
+            'customer_country_id' => 'nullable|integer|exists:countries,id',
+            'customer_state_id' => 'nullable|integer|exists:country_states,id',
+            'customer_city_id' => 'nullable|integer|exists:country_cities,id',
             'buyer_lat' => 'nullable|numeric',
             'buyer_lng' => 'nullable|numeric',
             'shipping_hotspot_id' => 'nullable|integer|exists:shipping_hotspots,id',
@@ -1592,6 +1766,27 @@ class CheckoutController extends Controller
         $deliveryType = $validated['delivery_type'] ?? 'shipping';
         $isSelfPickup = $deliveryType === 'self_pickup';
         $servicePricingInputs = $this->normalizeServicePricingInputs($validated['service_pricing_inputs'] ?? []);
+
+        $selectedCheckoutAddress = null;
+        if (!$isSelfPickup && !empty($validated['user_address_id'])) {
+            $selectedCheckoutAddress = UserAddress::query()
+                ->whereKey($validated['user_address_id'])
+                ->where('user_id', $request->user()?->id)
+                ->with(['forwarderRoute', 'country', 'state', 'cityRecord'])
+                ->first();
+
+            if (!$selectedCheckoutAddress) {
+                return response()->json(['message' => 'Anwani uliyochagua haipatikani kwenye akaunti yako.'], 422);
+            }
+
+            if ($selectedCheckoutAddress?->type === 'forwarder' && $selectedCheckoutAddress->forwarder_route_id && !$selectedCheckoutAddress->forwarderRoute?->is_active) {
+                return response()->json([
+                    'message' => 'This imported freight route is no longer active for new orders. Choose another forwarder route or delivery address.',
+                ], 422);
+            }
+
+            $validated = $this->applyCheckoutAddressGeo($validated, $selectedCheckoutAddress);
+        }
 
         $isServiceInquiry = false;
         $product = null;
@@ -1690,6 +1885,8 @@ class CheckoutController extends Controller
                     ->value('id');
             }
 
+            $buyerGeo = $this->resolveBuyerGeo($validated);
+
             [$resolvedShippingZone, $deliveryZoneError, $resolvedHotspotId] = $this->resolveCheckoutShippingZone(
                 zoneId: !empty($validated['delivery_zone_id']) ? (int) $validated['delivery_zone_id'] : null,
                 shippingProfileId: $shippingProfileId ? (int) $shippingProfileId : null,
@@ -1698,6 +1895,10 @@ class CheckoutController extends Controller
                 buyerLng: isset($validated['buyer_lng']) ? (float) $validated['buyer_lng'] : null,
                 buyerCity: $validated['customer_city'] ?? null,
                 buyerRegion: $validated['customer_region'] ?? null,
+                buyerCountry: $validated['customer_country'] ?? null,
+                buyerCountryId: $buyerGeo['country_id'],
+                buyerStateId: $buyerGeo['state_id'],
+                buyerCityId: $buyerGeo['city_id'],
                 eligibleLocationIds: $this->eligibleServingLocationIds($product, $selectedVariant, $selectedOfferingGroup, $requestedQuantity),
             );
 
@@ -1749,6 +1950,7 @@ class CheckoutController extends Controller
             $merchantId = $product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id;
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
+                'user_address_id' => $validated['user_address_id'] ?? null,
                 'merchant_id' => $merchantId,
                 'product_id' => $product?->id,
                 'variant_id' => $selectedVariant?->id,
@@ -1910,6 +2112,10 @@ class CheckoutController extends Controller
                 ]);
             }
 
+            if ($isPhysical) {
+                $this->createTakeerOrderForwarderShipment($order, $order->user_address_id);
+            }
+
             // Log TRA-ready transaction simulation
             $fee = app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid);
             \App\Models\Transaction::create([
@@ -1962,6 +2168,118 @@ class CheckoutController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function createTakeerOrderForwarderShipment(Order $order, ?int $userAddressId): ?ForwarderShipment
+    {
+        if (!$userAddressId || !$order->buyer_id) {
+            return null;
+        }
+
+        $address = UserAddress::query()
+            ->whereKey($userAddressId)
+            ->where('user_id', $order->buyer_id)
+            ->with(['forwarder', 'forwarderRoute', 'forwarderLocation', 'country', 'state', 'cityRecord'])
+            ->first();
+
+        if (!$address || $address->type !== 'forwarder' || !$address->forwarder_id) {
+            return null;
+        }
+
+        $route = null;
+        if ($address->forwarder_route_id) {
+            $route = ForwarderRoute::query()
+                ->where('forwarder_id', $address->forwarder_id)
+                ->with([
+                    'originLocations.country',
+                    'originLocations.state',
+                    'originLocations.cityRecord',
+                    'destinationLocations.country',
+                    'destinationLocations.state',
+                    'destinationLocations.cityRecord',
+                    'transportModes',
+                ])
+                ->find($address->forwarder_route_id);
+        }
+
+        if ($route && !$route->is_active) {
+            return null;
+        }
+
+        $shipment = ForwarderShipment::query()->firstOrCreate(
+            ['order_id' => $order->id, 'source_type' => 'takeer_order'],
+            [
+                'user_id' => $order->buyer_id,
+                'forwarder_id' => $address->forwarder_id,
+                'forwarder_route_id' => $route?->id,
+                'transport_mode' => $address->forwarder_transport_mode,
+                'origin_location_id' => $address->forwarder_location_id,
+                'destination_location_id' => $route?->destinationLocations->first()?->id,
+                'user_address_id' => $address->id,
+                'status' => ForwarderShipment::STATUS_INCOMING,
+                'seller_name' => $order->merchant?->display_name,
+                'seller_platform' => 'Takeer',
+                'external_order_ref' => $order->public_id ?: (string) $order->id,
+                'package_description' => $this->forwarderShipmentPackageDescription($order),
+                'package_count' => max(1, (int) ceil((float) ($order->requested_quantity ?: $order->quantity ?: 1))),
+                'address_snapshot' => $address->toArray(),
+                'route_snapshot' => $route ? [
+                    'id' => $route->id,
+                    'route_uid' => $route->route_uid,
+                    'origin_country_id' => $route->origin_country_id,
+                    'destination_country_id' => $route->destination_country_id,
+                    'origin_locations' => $route->originLocations->values()->all(),
+                    'destination_locations' => $route->destinationLocations->values()->all(),
+                    'transport_modes' => $route->transportModes->values()->all(),
+                    'estimate' => $route->estimate,
+                    'rates_info' => $route->rates_info,
+                ] : null,
+                'metadata' => [
+                    'takeer_protection' => true,
+                    'payment_status' => $order->payment_status,
+                    'transport_mode' => $address->forwarder_transport_mode,
+                ],
+            ],
+        );
+
+        if ($shipment->wasRecentlyCreated) {
+            $shipment->events()->create([
+                'actor_user_id' => $order->buyer_id,
+                'status' => ForwarderShipment::STATUS_INCOMING,
+                'note' => 'Takeer order paid/confirmed using an imported forwarder address.',
+                'metadata' => [
+                    'order_id' => $order->id,
+                    'source' => 'takeer_checkout',
+                ],
+            ]);
+        }
+
+        return $shipment;
+    }
+
+    private function forwarderShipmentPackageDescription(Order $order): string
+    {
+        $order->loadMissing(['product']);
+
+        if ($order->product?->title) {
+            return $order->product->title;
+        }
+
+        if (!empty($order->bundle_item_selection)) {
+            return collect($order->bundle_item_selection)
+                ->pluck('title')
+                ->filter()
+                ->join(', ') ?: 'Takeer bundle order';
+        }
+
+        if (!empty($order->offering_group_selection['lines'])) {
+            return collect($order->offering_group_selection['lines'])
+                ->pluck('title')
+                ->filter()
+                ->join(', ') ?: 'Takeer order';
+        }
+
+        return 'Takeer order';
     }
 
     private function initializeOrderChat(Order $order): void

@@ -15,6 +15,9 @@ return new class extends Migration {
             $table->decimal('latitude', 10, 8)->nullable();
             $table->decimal('longitude', 11, 8)->nullable();
             $table->string('place_id')->nullable();
+            $table->foreignId('country_id')->nullable()->constrained('countries')->nullOnDelete();
+            $table->foreignId('state_id')->nullable()->constrained('country_states')->nullOnDelete();
+            $table->foreignId('city_id')->nullable()->constrained('country_cities')->nullOnDelete();
             $table->string('city')->nullable();
             $table->string('region')->nullable();
             $table->boolean('is_primary')->default(false);

@@ -50,6 +50,17 @@ class MerchantBundleController extends Controller
             'description' => 'nullable|string',
             'price' => 'nullable|numeric|min:0',
             'currency_id' => 'nullable|integer|exists:currencies,id',
+            'shipping_profile_id' => 'nullable|integer|exists:shipping_profiles,id',
+            'delivery_promise_override_enabled' => 'nullable|boolean',
+            'delivery_handling_min_days' => 'nullable|integer|min:0|max:365',
+            'delivery_handling_max_days' => 'nullable|integer|min:0|max:365|gte:delivery_handling_min_days',
+            'delivery_transit_min_days' => 'nullable|integer|min:0|max:365',
+            'delivery_transit_max_days' => 'nullable|integer|min:0|max:365|gte:delivery_transit_min_days',
+            'delivery_cutoff_time' => 'nullable|date_format:H:i',
+            'delivery_business_days_only' => 'nullable|boolean',
+            'delivery_promise_label' => 'nullable|string|max:255',
+            'delivery_promise_note' => 'nullable|string|max:1000',
+            'delivery_requires_confirmation' => 'nullable|boolean',
             'is_individual_sale' => 'nullable|boolean',
             'is_course' => 'nullable|boolean',
             'course_format' => 'nullable|string|in:self_paced,cohort,live',
@@ -83,6 +94,10 @@ class MerchantBundleController extends Controller
             'items.*.sort_order' => 'nullable|integer|min:0',
         ]);
 
+        if (!empty($validated['shipping_profile_id'])) {
+            $this->assertShippingProfileBelongsToMerchant($merchant->id, (int) $validated['shipping_profile_id']);
+        }
+
         $bundle = DB::transaction(function () use ($validated, $merchant) {
             $bundle = Bundle::create([
                 'merchant_id' => $merchant->id,
@@ -91,6 +106,17 @@ class MerchantBundleController extends Controller
                 'description' => $validated['description'] ?? null,
                 'price' => $validated['price'] ?? null,
                 'currency_id' => $validated['currency_id'] ?? null,
+                'shipping_profile_id' => $validated['shipping_profile_id'] ?? null,
+                'delivery_promise_override_enabled' => $validated['delivery_promise_override_enabled'] ?? false,
+                'delivery_handling_min_days' => $validated['delivery_handling_min_days'] ?? null,
+                'delivery_handling_max_days' => $validated['delivery_handling_max_days'] ?? null,
+                'delivery_transit_min_days' => $validated['delivery_transit_min_days'] ?? null,
+                'delivery_transit_max_days' => $validated['delivery_transit_max_days'] ?? null,
+                'delivery_cutoff_time' => $validated['delivery_cutoff_time'] ?? null,
+                'delivery_business_days_only' => $validated['delivery_business_days_only'] ?? true,
+                'delivery_promise_label' => $validated['delivery_promise_label'] ?? null,
+                'delivery_promise_note' => $validated['delivery_promise_note'] ?? null,
+                'delivery_requires_confirmation' => $validated['delivery_requires_confirmation'] ?? false,
                 'is_individual_sale' => $validated['is_individual_sale'] ?? true,
                 'is_course' => $validated['is_course'] ?? false,
                 'course_format' => $validated['course_format'] ?? null,
@@ -156,6 +182,17 @@ class MerchantBundleController extends Controller
             'description' => 'nullable|string',
             'price' => 'nullable|numeric|min:0',
             'currency_id' => 'nullable|integer|exists:currencies,id',
+            'shipping_profile_id' => 'nullable|integer|exists:shipping_profiles,id',
+            'delivery_promise_override_enabled' => 'nullable|boolean',
+            'delivery_handling_min_days' => 'nullable|integer|min:0|max:365',
+            'delivery_handling_max_days' => 'nullable|integer|min:0|max:365|gte:delivery_handling_min_days',
+            'delivery_transit_min_days' => 'nullable|integer|min:0|max:365',
+            'delivery_transit_max_days' => 'nullable|integer|min:0|max:365|gte:delivery_transit_min_days',
+            'delivery_cutoff_time' => 'nullable|date_format:H:i',
+            'delivery_business_days_only' => 'nullable|boolean',
+            'delivery_promise_label' => 'nullable|string|max:255',
+            'delivery_promise_note' => 'nullable|string|max:1000',
+            'delivery_requires_confirmation' => 'nullable|boolean',
             'is_individual_sale' => 'nullable|boolean',
             'is_course' => 'nullable|boolean',
             'course_format' => 'nullable|string|in:self_paced,cohort,live',
@@ -188,6 +225,10 @@ class MerchantBundleController extends Controller
             'items.*.is_preview' => 'nullable|boolean',
             'items.*.sort_order' => 'nullable|integer|min:0',
         ]);
+
+        if (!empty($validated['shipping_profile_id'])) {
+            $this->assertShippingProfileBelongsToMerchant($merchant->id, (int) $validated['shipping_profile_id']);
+        }
 
         if (array_key_exists('course_outcomes', $validated)) {
             $validated['course_outcomes'] = $this->sanitizeStringArray($validated['course_outcomes'] ?? []);
@@ -322,6 +363,18 @@ class MerchantBundleController extends Controller
     private function ensureOwnership(int $merchantId, int $bundleMerchantId): void
     {
         abort_if($merchantId !== $bundleMerchantId, 403, 'Unauthorized.');
+    }
+
+    private function assertShippingProfileBelongsToMerchant(int $merchantId, int $shippingProfileId): void
+    {
+        abort_unless(
+            \App\Models\ShippingProfile::query()
+                ->where('merchant_id', $merchantId)
+                ->whereKey($shippingProfileId)
+                ->exists(),
+            422,
+            'Shipping profile haipo kwenye biashara hii.'
+        );
     }
 
     private function sanitizeStringArray(array $items): array

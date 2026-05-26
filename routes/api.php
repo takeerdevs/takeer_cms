@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminCatalogController;
+use App\Http\Controllers\Api\AdminForwarderController;
 use App\Http\Controllers\Api\AdminSettingsController;
 use App\Http\Controllers\Api\AiSearchController;
 use App\Http\Controllers\Api\AuthController;
@@ -14,8 +15,10 @@ use App\Http\Controllers\Api\DiscoveryController;
 use App\Http\Controllers\Api\DispatchController;
 use App\Http\Controllers\Api\EntitlementController;
 use App\Http\Controllers\Api\FeedController;
+use App\Http\Controllers\Api\ForwarderShipmentController;
 use App\Http\Controllers\Api\MerchantBundleController;
 use App\Http\Controllers\Api\MerchantContentController;
+use App\Http\Controllers\Api\MerchantForwarderController;
 use App\Http\Controllers\Api\MarketingEventController;
 use App\Http\Controllers\Api\MerchantOrderController;
 use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
@@ -104,7 +107,6 @@ Route::get('/search/unified/posts', [UnifiedSearchController::class, 'posts'])->
 // ─── PROTECTED ROUTES ───────────────────────────────────────────────────────
 // Guest Checkout accessible without auth
 Route::post('/v1/checkout/initiate', [CheckoutController::class, 'initiate']);
-
 Route::middleware('auth:sanctum')->group(function () {
 
     // Auth & Profile
@@ -113,6 +115,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/profile/one-click/setup', [ProfileController::class, 'setupOneClick']);
     Route::post('/platform-notifications/dispatch', [PlatformNotificationController::class, 'dispatch'])
         ->middleware('throttle:30,1');
+    Route::post('/forwarders/enroll', [\App\Http\Controllers\Api\ForwarderController::class, 'enroll'])
+        ->middleware('throttle:5,10');
 
     // Buyer Checkout & Orders
     Route::post('/orders/{order}/complete', [CheckoutController::class, 'complete']);
@@ -143,6 +147,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/me/addresses/{address}', [\App\Http\Controllers\Api\UserAddressController::class, 'update']);
     Route::delete('/me/addresses/{address}', [\App\Http\Controllers\Api\UserAddressController::class, 'destroy']);
     Route::post('/me/addresses/{address}/set-default', [\App\Http\Controllers\Api\UserAddressController::class, 'setDefault']);
+    Route::get('/me/forwarder-shipments', [ForwarderShipmentController::class, 'myShipments']);
+    Route::post('/me/forwarder-shipments', [ForwarderShipmentController::class, 'store']);
     
     // Forwarders
     Route::get('/forwarders', [\App\Http\Controllers\Api\ForwarderController::class, 'index']);
@@ -227,6 +233,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/locations/{merchantLocation:id}', [\App\Http\Controllers\Api\MerchantLocationController::class, 'destroy'])->middleware('merchant_permission:settings.update');
     });
 
+    Route::prefix('merchant/{merchant}')->group(function () {
+        Route::patch('/forwarders/profile', [MerchantForwarderController::class, 'updateProfile'])->middleware('merchant_permission:services.update');
+        Route::post('/forwarders/locations', [MerchantForwarderController::class, 'storeLocation'])->middleware('merchant_permission:services.update');
+        Route::put('/forwarders/locations/{location:id}', [MerchantForwarderController::class, 'updateLocation'])->middleware('merchant_permission:services.update');
+        Route::delete('/forwarders/locations/{location:id}', [MerchantForwarderController::class, 'destroyLocation'])->middleware('merchant_permission:services.update');
+        Route::get('/forwarders/routes', [MerchantForwarderController::class, 'routesContext'])->middleware('merchant_permission:services.view');
+        Route::put('/forwarders/routes', [MerchantForwarderController::class, 'updateDestinations'])->middleware('merchant_permission:services.update');
+        Route::put('/forwarders/schedules', [MerchantForwarderController::class, 'updateSchedules'])->middleware('merchant_permission:services.update');
+        Route::put('/forwarders/updates', [MerchantForwarderController::class, 'updateUpdates'])->middleware('merchant_permission:posts.create,services.update');
+        Route::get('/forwarders/shipments', [ForwarderShipmentController::class, 'merchantShipments'])->middleware('merchant_permission:services.view');
+        Route::patch('/forwarders/shipments/lookup/{identifier}', [ForwarderShipmentController::class, 'updateStatusByIdentifier'])->middleware('merchant_permission:services.update');
+        Route::patch('/forwarders/shipments/{shipment:id}', [ForwarderShipmentController::class, 'updateStatus'])->middleware('merchant_permission:services.update');
+    });
+
     // Phase 11 Safe-Chat
     Route::get('/chat/order/{order}/messages', [ChatController::class, 'index']);
     Route::post('/chat/order/{order}/messages', [ChatController::class, 'store']);
@@ -281,6 +301,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/merchants/{merchant:id}/posts', [AdminController::class, 'merchantPosts']);
         Route::get('/merchants/{merchant:id}/orders', [AdminController::class, 'merchantOrders']);
         Route::get('/merchants/{merchant:id}/catalog/{type}', [AdminController::class, 'merchantCatalogByType']);
+        Route::get('/forwarders', [AdminForwarderController::class, 'index']);
+        Route::post('/forwarders', [AdminForwarderController::class, 'store']);
+        Route::put('/forwarders/{forwarder:id}', [AdminForwarderController::class, 'update']);
+        Route::patch('/forwarders/{forwarder:id}/status', [AdminForwarderController::class, 'updateStatus']);
+        Route::delete('/forwarders/{forwarder:id}', [AdminForwarderController::class, 'destroy']);
+        Route::post('/forwarders/{forwarder:id}/locations', [AdminForwarderController::class, 'storeLocation']);
+        Route::put('/forwarder-locations/{location:id}', [AdminForwarderController::class, 'updateLocation']);
+        Route::delete('/forwarder-locations/{location:id}', [AdminForwarderController::class, 'destroyLocation']);
         Route::post('/merchants/{merchant:id}/toggle-suspension', [AdminController::class, 'toggleSuspension']);
         Route::put('/merchants/{merchant:id}', [AdminController::class, 'updateMerchant']);
         Route::get('/feed', [AdminController::class, 'adminFeed']);

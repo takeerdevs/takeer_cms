@@ -33,6 +33,8 @@ export default function AddressPickerModal({
     const [extraDetails, setExtraDetails] = useState(initialExtraDetails || '');
     const [city, setCustomerCity] = useState('');
     const [region, setCustomerRegion] = useState('');
+    const [country, setCustomerCountry] = useState('');
+    const [countryCode, setCustomerCountryCode] = useState('');
     const [mapCenter, setMapCenter] = useState({
         lat: parseFloat(initialLat) || DEFAULT_CENTER.lat,
         lng: parseFloat(initialLng) || DEFAULT_CENTER.lng
@@ -59,6 +61,8 @@ export default function AddressPickerModal({
             setExtraDetails(initialExtraDetails || '');
             setCustomerCity('');
             setCustomerRegion('');
+            setCustomerCountry('');
+            setCustomerCountryCode('');
             setMapCenter({ lat: startLat, lng: startLng });
         }
     }, [isOpen]); // Depend only on isOpen to trigger initialization once per open
@@ -72,6 +76,8 @@ export default function AddressPickerModal({
 
                 let placeCity = '';
                 let placeRegion = '';
+                let placeCountry = '';
+                let placeCountryCode = '';
                 if (place.address_components) {
                     for (const component of place.address_components) {
                         if (component.types.includes('locality') || component.types.includes('administrative_area_level_2')) {
@@ -79,6 +85,10 @@ export default function AddressPickerModal({
                         }
                         if (component.types.includes('administrative_area_level_1')) {
                             placeRegion = component.long_name;
+                        }
+                        if (component.types.includes('country')) {
+                            placeCountry = component.long_name;
+                            placeCountryCode = component.short_name || '';
                         }
                     }
                 }
@@ -88,6 +98,8 @@ export default function AddressPickerModal({
                 setLng(newLng);
                 setCustomerCity(placeCity);
                 setCustomerRegion(placeRegion);
+                setCustomerCountry(placeCountry);
+                setCustomerCountryCode(placeCountryCode);
                 setMapCenter(newPos);
                 setAddress(place.formatted_address || place.name || '');
 
@@ -108,6 +120,8 @@ export default function AddressPickerModal({
 
                 let placeCity = '';
                 let placeRegion = '';
+                let placeCountry = '';
+                let placeCountryCode = '';
                 for (const component of results[0].address_components) {
                     if (component.types.includes('locality') || component.types.includes('administrative_area_level_2')) {
                         placeCity = component.long_name;
@@ -115,9 +129,15 @@ export default function AddressPickerModal({
                     if (component.types.includes('administrative_area_level_1')) {
                         placeRegion = component.long_name;
                     }
+                    if (component.types.includes('country')) {
+                        placeCountry = component.long_name;
+                        placeCountryCode = component.short_name || '';
+                    }
                 }
                 setCustomerCity(placeCity);
                 setCustomerRegion(placeRegion);
+                setCustomerCountry(placeCountry);
+                setCustomerCountryCode(placeCountryCode);
             }
         });
     };
@@ -137,7 +157,9 @@ export default function AddressPickerModal({
             address,
             extraDetails,
             city,
-            region
+            region,
+            country,
+            countryCode
         });
         onOpenChange(false);
     };

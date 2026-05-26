@@ -34,6 +34,7 @@ import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
 
 const tabs = [
     { key: 'library', label: 'Library', icon: Library },
+    { key: 'cargo', label: 'Cargo', icon: Truck },
     { key: 'memberships', label: 'Memberships', icon: Crown },
     { key: 'pulse', label: 'Pulse', icon: Store },
 ];
@@ -64,6 +65,8 @@ export default function Orders() {
     const [pulseItems, setPulseItems] = useState([]);
     const [pulseMeta, setPulseMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [pulseLoading, setPulseLoading] = useState(false);
+    const [cargoShipments, setCargoShipments] = useState([]);
+    const [cargoLoading, setCargoLoading] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -98,6 +101,11 @@ export default function Orders() {
         if (loading || activeTab !== 'memberships') return;
         loadSubscriptionsPage();
     }, [subscriptionPage, subscriptionPerPage, activeTab]);
+
+    useEffect(() => {
+        if (loading || activeTab !== 'cargo') return;
+        loadCargoShipments();
+    }, [loading, activeTab]);
 
     useEffect(() => {
         if (!isMerchant || !auth?.user || !window.Echo) return;
@@ -221,6 +229,20 @@ export default function Orders() {
             toast.error('Imeshindwa kuchuja library.');
         } finally {
             setLibraryLoading(false);
+        }
+    }
+
+    async function loadCargoShipments() {
+        setCargoLoading(true);
+        try {
+            const sessionApi = axios.create();
+            delete sessionApi.defaults.headers.common.Authorization;
+            const res = await sessionApi.get('/api/me/forwarder-shipments');
+            setCargoShipments(res.data?.shipments || []);
+        } catch (error) {
+            toast.error('Imeshindwa kupakia cargo tracking.');
+        } finally {
+            setCargoLoading(false);
         }
     }
 
@@ -512,6 +534,37 @@ export default function Orders() {
                     </div>
                 )}
 
+                {activeTab === 'cargo' && (
+                    <section className="space-y-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                            <div>
+                                <h2 className="text-2xl font-black tracking-tight text-slate-900">Cargo Tracking</h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Shipments created from imported forwarder addresses. Takeer orders are protected here; external purchases are tracking-only.
+                                </p>
+                            </div>
+                            <Button type="button" variant="outline" className="rounded-xl" onClick={loadCargoShipments} disabled={cargoLoading}>
+                                {cargoLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+                                Refresh
+                            </Button>
+                        </div>
+
+                        {cargoLoading ? (
+                            <div className="flex items-center justify-center py-16">
+                                <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
+                            </div>
+                        ) : cargoShipments.length === 0 ? (
+                            <EmptyPane icon={Truck} title="No cargo shipments yet" body="Imported forwarder addresses and paid Takeer orders will appear here once a shipment request is created." />
+                        ) : (
+                            <div className="grid gap-4">
+                                {cargoShipments.map((shipment) => (
+                                    <CargoShipmentCard key={shipment.id} shipment={shipment} />
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                )}
+
                 {activeTab === 'memberships' && (
                     <div className="space-y-3">
                         <div className="flex justify-end">
@@ -633,6 +686,133 @@ function PulseNotification({ item }) {
             </div>
 
         </div>
+    );
+}
+
+const cargoStatusLabels = {
+    incoming: 'Incoming',
+    received_at_origin: 'Received at origin',
+    in_transit: 'In transit',
+    arrived_country: 'Arrived in country',
+    customs_handling: 'Customs / handling',
+    ready_for_pickup: 'Ready for pickup',
+    completed: 'Completed',
+    on_hold: 'On hold',
+};
+
+function cargoPaymentTermLabel(term) {
+    return {
+        pay_on_pickup: 'Pay on pickup',
+        pay_before_shipping: 'Pay before shipping',
+        deposit_balance: 'Deposit + balance',
+        quote_after_receiving: 'Quote after receiving',
+        included_or_seller_paid: 'Included / seller paid',
+    }[term] || '';
+}
+
+function cargoPaymentTermText(shipment) {
+    const detail = shipment.route_snapshot?.payment_terms?.[shipment.transport_mode] || {};
+    const label = cargoPaymentTermLabel(detail.payment_term);
+    if (!label) return '';
+    if (detail.payment_term === 'deposit_balance' && detail.deposit_value) {
+        const deposit = detail.deposit_type === 'fixed' ? detail.deposit_value : `${detail.deposit_value}%`;
+        return `${label}: ${deposit}${detail.balance_due ? `, balance ${detail.balance_due}` : ''}`;
+    }
+    return [label, detail.payment_notes].filter(Boolean).join(' · ');
+}
+
+function CargoShipmentCard({ shipment }) {
+    const events = [...(shipment.events || [])].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    const latestEvent = events[events.length - 1];
+    const isTakeerOrder = shipment.source_type === 'takeer_order';
+    const paymentText = cargoPaymentTermText(shipment);
+    const routeName = shipment.route_snapshot?.label || [
+        shipment.route?.origin_country?.name || shipment.route?.originCountry?.name,
+        shipment.route?.destination_country?.name || shipment.route?.destinationCountry?.name,
+    ].filter(Boolean).join(' to ');
+
+    return (
+        <Card className="overflow-hidden rounded-[24px] border-border/70 bg-card shadow-sm">
+            <CardContent className="p-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">{shipment.public_id}</p>
+                        <h3 className="mt-1 text-xl font-black text-slate-950">{shipment.package_description || shipment.external_order_ref || 'Cargo shipment'}</h3>
+                        <p className="mt-1 text-sm font-semibold text-muted-foreground">{shipment.forwarder?.name || 'Forwarder'}{routeName ? ` · ${routeName}` : ''}</p>
+                    </div>
+                    <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${isTakeerOrder ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {isTakeerOrder ? 'Takeer protected' : 'External tracking'}
+                    </span>
+                </div>
+
+                <div className="mt-4 grid gap-2 text-xs font-bold text-slate-500 md:grid-cols-3">
+                    <span className="rounded-xl bg-slate-50 px-3 py-2">Status: {cargoStatusLabels[shipment.status] || shipment.status}</span>
+                    <span className="rounded-xl bg-slate-50 px-3 py-2">Tracking: {shipment.tracking_number || 'Not added yet'}</span>
+                    <span className="rounded-xl bg-slate-50 px-3 py-2">Seller: {shipment.seller_name || shipment.seller_platform || 'Not provided'}</span>
+                </div>
+
+                {paymentText && (
+                    <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">
+                        Forwarder payment: {paymentText}
+                    </div>
+                )}
+
+                {!isTakeerOrder && (
+                    <div className="mt-3 grid gap-2 text-xs font-bold text-slate-500 md:grid-cols-4">
+                        <span className="rounded-xl bg-slate-50 px-3 py-2">Order ref: {shipment.external_order_ref || 'Not provided'}</span>
+                        <span className="rounded-xl bg-slate-50 px-3 py-2">Packages: {shipment.package_count || 'Not set'}</span>
+                        <span className="rounded-xl bg-slate-50 px-3 py-2">Weight: {shipment.weight_estimate || 'Not set'}</span>
+                        <span className="rounded-xl bg-slate-50 px-3 py-2">Declared: {[shipment.metadata?.declared_currency, shipment.metadata?.declared_value].filter(Boolean).join(' ') || 'Not set'}</span>
+                    </div>
+                )}
+
+                {!isTakeerOrder && (
+                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                        This purchase was paid outside Takeer. We show freight tracking, but refunds or seller disputes stay with the platform where you paid.
+                    </div>
+                )}
+
+                {Array.isArray(shipment.attachments) && shipment.attachments.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {shipment.attachments.map((attachment, index) => (
+                            <a
+                                key={`${attachment.type || 'file'}-${index}`}
+                                href={attachment.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-700 hover:bg-brand-50"
+                            >
+                                <ExternalLink className="h-3 w-3" />
+                                {attachment.type || 'Attachment'}
+                            </a>
+                        ))}
+                    </div>
+                )}
+
+                {latestEvent && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Latest update</p>
+                        <p className="mt-1 text-sm font-black text-slate-900">{cargoStatusLabels[latestEvent.status] || latestEvent.status}{latestEvent.location?.name ? ` · ${latestEvent.location.name}` : ''}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">{latestEvent.note || 'Status updated.'}</p>
+                    </div>
+                )}
+
+                {events.length > 1 && (
+                    <div className="mt-4 space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">History</p>
+                        {events.slice().reverse().map((event) => (
+                            <div key={event.id} className="flex gap-3 text-xs">
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-500" />
+                                <div>
+                                    <p className="font-black text-slate-800">{cargoStatusLabels[event.status] || event.status}{event.location?.name ? ` · ${event.location.name}` : ''}</p>
+                                    <p className="font-semibold text-slate-500">{event.note || 'Status updated.'}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 }
 

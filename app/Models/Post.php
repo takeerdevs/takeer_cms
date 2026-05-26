@@ -18,6 +18,10 @@ class Post extends Model
     protected $fillable = [
         'public_id',
         'merchant_id',
+        'forwarder_id',
+        'forwarder_route_id',
+        'forwarder_route_label',
+        'forwarder_route_snapshot',
         'created_by_user_id',
         'created_by_staff_id',
         'content_item_id',
@@ -51,6 +55,7 @@ class Post extends Model
             'likes_count' => 'integer',
             'share_count' => 'integer',
             'comment_count' => 'integer',
+            'forwarder_route_snapshot' => 'array',
         ];
     }
 
@@ -107,6 +112,11 @@ class Post extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class, 'merchant_id');
+    }
+
+    public function forwarder(): BelongsTo
+    {
+        return $this->belongsTo(Forwarder::class);
     }
 
     public function createdByUser(): BelongsTo

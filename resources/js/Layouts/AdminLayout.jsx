@@ -18,6 +18,7 @@ const adminNav = [
     { name: 'Tracked Links', href: '/admin/tracked-links', icon: LinkIcon },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Merchants', href: '/admin/merchants', icon: Store },
+    { name: 'Forwarders', href: '/admin/forwarders', icon: Globe },
     { name: 'Verifications', href: '/admin/verifications', icon: ShieldCheck },
     { name: 'Content Reports', href: '/admin/content-reports', icon: Flag },
     { name: 'Feed Monitor', href: '/admin/feed', icon: Newspaper },

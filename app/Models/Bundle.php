@@ -18,6 +18,7 @@ class Bundle extends Model
 
     protected $fillable = [
         'merchant_id',
+        'shipping_profile_id',
         'title',
         'slug',
         'description',
@@ -29,6 +30,16 @@ class Bundle extends Model
         'course_outcomes',
         'course_requirements',
         'course_cover_image_url',
+        'delivery_promise_override_enabled',
+        'delivery_handling_min_days',
+        'delivery_handling_max_days',
+        'delivery_transit_min_days',
+        'delivery_transit_max_days',
+        'delivery_cutoff_time',
+        'delivery_business_days_only',
+        'delivery_promise_label',
+        'delivery_promise_note',
+        'delivery_requires_confirmation',
         'status',
     ];
 
@@ -40,6 +51,14 @@ class Bundle extends Model
             'is_course' => 'boolean',
             'course_outcomes' => 'array',
             'course_requirements' => 'array',
+            'shipping_profile_id' => 'integer',
+            'delivery_promise_override_enabled' => 'boolean',
+            'delivery_handling_min_days' => 'integer',
+            'delivery_handling_max_days' => 'integer',
+            'delivery_transit_min_days' => 'integer',
+            'delivery_transit_max_days' => 'integer',
+            'delivery_business_days_only' => 'boolean',
+            'delivery_requires_confirmation' => 'boolean',
         ];
     }
 

@@ -59,6 +59,7 @@ class CheckoutRequest extends FormRequest
             'country_iso2' => 'nullable|string|size:2',
             'account_phone' => [Rule::requiredIf(!$this->user()), 'nullable', 'string', 'max:24'],
             'payment_number' => 'required|string|max:24',
+            'user_address_id' => 'nullable|integer|exists:user_addresses,id',
             'delivery_zone_id' => [
                 'nullable',
                 'exists:shipping_zones,id'
@@ -71,6 +72,11 @@ class CheckoutRequest extends FormRequest
             ],
             'customer_city' => 'nullable|string|max:120',
             'customer_region' => 'nullable|string|max:120',
+            'customer_country' => 'nullable|string|max:120',
+            'customer_country_iso2' => 'nullable|string|size:2',
+            'customer_country_id' => 'nullable|integer|exists:countries,id',
+            'customer_state_id' => 'nullable|integer|exists:country_states,id',
+            'customer_city_id' => 'nullable|integer|exists:country_cities,id',
             'buyer_lat' => [Rule::requiredIf($requiresShipping), 'nullable', 'numeric', 'between:-90,90'],
             'buyer_lng' => [Rule::requiredIf($requiresShipping), 'nullable', 'numeric', 'between:-180,180'],
             'latitude' => 'nullable|numeric|between:-90,90',

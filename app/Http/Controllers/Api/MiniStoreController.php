@@ -469,10 +469,10 @@ class MiniStoreController extends Controller
             $query->where('shipping_profile_id', $profile->id);
         }
 
-        $zones = $query->with(['location', 'hotspots'])->latest()->get();
+        $zones = $query->with(['location', 'hotspots', 'destinationCountryRecord', 'destinationStateRecord', 'destinationCityRecord'])->latest()->get();
 
         return response()->json([
-            'profile' => $profile?->only(['id', 'name', 'is_default', 'outside_area_policy']),
+            'profile' => $profile?->only(['id', 'name', 'is_default', 'outside_area_policy', 'in_city_enabled', 'intercity_enabled', 'international_enabled']),
             'data' => $zones,
         ]);
     }

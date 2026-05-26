@@ -44,7 +44,7 @@ export default function MerchantProducts({ merchantUsername, typeScope = 'all', 
     const [serviceSessions, setServiceSessions] = useState([]);
     const [deletingProductId, setDeletingProductId] = useState(null);
     const normalizedTypeScope = ['physical', 'digital', 'service'].includes(typeScope) ? typeScope : 'all';
-    const normalizedModuleScope = ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops'].includes(moduleScope) ? moduleScope : null;
+    const normalizedModuleScope = ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops', 'forwarders'].includes(moduleScope) ? moduleScope : null;
     const { can, canAny } = useMerchantPermissions(merchantUsername);
     const resourceForScope = normalizedTypeScope === 'digital'
         ? 'digital_products'

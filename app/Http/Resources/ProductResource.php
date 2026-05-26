@@ -395,6 +395,18 @@ class ProductResource extends JsonResource
             'purchases_count' => isset($this->purchases_count) ? (int) $this->purchases_count : 0,
             'views_count' => (int) ($this->views_count ?? 0),
             'shipping_profile_id' => $this->shipping_profile_id,
+            'delivery_promise' => [
+                'override_enabled' => (bool) ($this->delivery_promise_override_enabled ?? false),
+                'handling_min_days' => $this->delivery_handling_min_days !== null ? (int) $this->delivery_handling_min_days : null,
+                'handling_max_days' => $this->delivery_handling_max_days !== null ? (int) $this->delivery_handling_max_days : null,
+                'transit_min_days' => $this->delivery_transit_min_days !== null ? (int) $this->delivery_transit_min_days : null,
+                'transit_max_days' => $this->delivery_transit_max_days !== null ? (int) $this->delivery_transit_max_days : null,
+                'cutoff_time' => $this->delivery_cutoff_time,
+                'business_days_only' => (bool) ($this->delivery_business_days_only ?? true),
+                'label' => $this->delivery_promise_label,
+                'note' => $this->delivery_promise_note,
+                'requires_confirmation' => (bool) ($this->delivery_requires_confirmation ?? false),
+            ],
             'attributes' => $this->whenLoaded('attributes', function() {
                 $attr = $this->getRelationValue('attributes');
                 return [

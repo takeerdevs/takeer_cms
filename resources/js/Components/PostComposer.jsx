@@ -149,7 +149,7 @@ function MediaGrid({ files, onRemove }) {
     );
 }
 
-export default function PostComposer({ isOpen, onClose, prefillProduct = null, prefillMedia = [], initialMode = 'short' }) {
+export default function PostComposer({ isOpen, onClose, prefillProduct = null, prefillMedia = [], initialMode = 'short', initialMerchantUsername = null, prefillText = '', forwarderRoutes = [] }) {
     const { auth } = usePage().props;
     const merchantProfiles = auth.user?.merchant_profiles || [];
     const postableProfiles = useMemo(() => (
@@ -174,6 +174,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     const [showProducts, setShowProducts] = useState(false); // We'll rename this logic to showPromotions
     const [submitting, setSubmitting] = useState(false);
     const [composerMode, setComposerMode] = useState('short');
+    const [forwarderRouteId, setForwarderRouteId] = useState('');
 
     // Support for legacy/compatibility
     const [product, setProduct] = useState(null);
@@ -225,10 +226,29 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
     // Default to is_default profile
     useEffect(() => {
         if (postableProfiles.length > 0 && !selectedProfile) {
-            const def = postableProfiles.find(p => p.is_default) || postableProfiles[0];
+            const def = postableProfiles.find(p => p.username === initialMerchantUsername)
+                || postableProfiles.find(p => p.is_default)
+                || postableProfiles[0];
             setSelectedProfile(def);
         }
-    }, [postableProfiles, selectedProfile]);
+    }, [postableProfiles, selectedProfile, initialMerchantUsername]);
+
+    useEffect(() => {
+        if (!isOpen || !initialMerchantUsername) return;
+        const requested = postableProfiles.find(p => p.username === initialMerchantUsername);
+        if (requested) setSelectedProfile(requested);
+    }, [isOpen, initialMerchantUsername, postableProfiles]);
+
+    useEffect(() => {
+        if (!isOpen || !prefillText) return;
+        setText((current) => current || prefillText);
+    }, [isOpen, prefillText]);
+
+    useEffect(() => {
+        if (!forwarderRouteId) return;
+        if (forwarderRoutes.some((route) => String(route.id) === String(forwarderRouteId))) return;
+        setForwarderRouteId('');
+    }, [forwarderRoutes, forwarderRouteId]);
 
     useEffect(() => {
         if (!selectedProfile) return;
@@ -381,6 +401,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         setLongEditorKey((current) => current + 1);
         setLongAutosaveStatus('Draft not saved yet');
         setLastLongAutosaveSignature('');
+        setForwarderRouteId('');
     };
 
     const handleClose = () => { reset(); onClose(); };
@@ -469,6 +490,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                 promotables: selectedPromotables.map(p => ({ id: p.id, type: p.type })),
                 product_id: promotedProduct?.id || null,
                 restricted_price: shouldLockPost ? parsedShortPrice : null,
+                forwarder_route_id: forwarderRouteId || null,
             };
 
             // 3. Submit to Unified Post API
@@ -589,6 +611,29 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                                             })}
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {forwarderRoutes.length > 0 && (
+                                <div className="bg-card/70 backdrop-blur-md border border-border/50 rounded-3xl p-4 shadow-sm">
+                                    <label className="block space-y-2">
+                                        <span className="block text-[10px] font-black uppercase tracking-widest text-muted-foreground">Attach freight route</span>
+                                        <select
+                                            value={forwarderRouteId}
+                                            onChange={(event) => setForwarderRouteId(event.target.value)}
+                                            className="h-12 w-full rounded-2xl border border-border bg-background px-4 text-sm font-bold text-foreground"
+                                        >
+                                            <option value="">General freight update</option>
+                                            {forwarderRoutes.map((route) => (
+                                                <option key={route.id} value={route.id}>
+                                                    {route.label}{route.estimate ? ` · ${route.estimate}` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">
+                                        Pick a route only when this update applies to a specific shipping lane.
+                                    </p>
                                 </div>
                             )}
 

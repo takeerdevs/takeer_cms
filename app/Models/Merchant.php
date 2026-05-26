@@ -276,6 +276,11 @@ class Merchant extends Model
         return $this->hasMany(MerchantLocation::class, 'merchant_id');
     }
 
+    public function forwarderProfile(): HasOne
+    {
+        return $this->hasOne(Forwarder::class, 'merchant_id');
+    }
+
     public function shippingProfiles(): HasMany
     {
         return $this->hasMany(ShippingProfile::class, 'merchant_id');

@@ -146,6 +146,24 @@ export const UPLOAD_MODULES = {
             serviceDurationUnit: 'hours',
         },
     },
+    forwarders: {
+        key: 'forwarders',
+        type: 'service',
+        title: 'Forwarder / Import Logistics',
+        translations: {
+            sw: { title: 'Forwarder / Import Logistics' },
+            en: { title: 'Forwarder / Import Logistics' },
+        },
+        category: 'Transport & Hire',
+        subcategory: 'Import logistics',
+        serviceTemplateKey: 'orderable_service',
+        defaults: {
+            servicePriceDisplay: 'quote_only',
+            serviceMode: 'request_quote',
+            serviceBookingType: 'manual_confirm',
+            serviceSchedulingType: 'none',
+        },
+    },
 };
 
 export const KNOWN_UPLOAD_MODULE_KEYS = Object.keys(UPLOAD_MODULES);

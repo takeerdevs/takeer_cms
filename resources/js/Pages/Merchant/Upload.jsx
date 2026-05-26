@@ -13,7 +13,7 @@ import {
     FileUp, Phone, MessageCircle, ExternalLink, File, CheckCircle, Loader2,
     Plus, Search, Trash2, Info, Store, ShieldCheck, PlayCircle, Music, Images, Palette,
     BookOpen, FileText, Code2, Layers, KeyRound, Copy, RotateCcw, Ban,
-    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap
+    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap, Clock3, Ship
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -23,6 +23,13 @@ import { KNOWN_UPLOAD_MODULE_KEYS, getUploadModuleConfig, publishModuleKey } fro
 import { RepeatableTextList, ServiceModuleCreateFields } from '@/Components/Merchant/ServiceModuleCreateFields';
 
 const CATEGORIES = ['Nguo', 'Viatu', 'Simu na Vifaa', 'Chakula', 'Nyumba na Bustani', 'Michezo', 'Watoto', 'Afya & Uzuri', 'Nyingine'];
+const DELIVERY_PROMISE_PRESETS = [
+    { key: 'same_day', label: 'Leo leo', hint: 'Bidhaa hii inaweza kufika siku hiyo hiyo.', handling: [0, 0], transit: [0, 0], buyerLabel: 'Same day delivery' },
+    { key: 'next_day', label: 'Kesho', hint: 'Bidhaa ifike kesho.', handling: [0, 1], transit: [1, 1], buyerLabel: 'Delivery by tomorrow' },
+    { key: 'one_two', label: 'Siku 1-2', hint: 'Kwa bidhaa za kawaida ndani ya mji.', handling: [0, 1], transit: [1, 2], buyerLabel: 'Delivery in 1-2 days' },
+    { key: 'made_order', label: 'Kutengenezwa', hint: 'Kwa custom/made-to-order.', handling: [2, 5], transit: [1, 2], buyerLabel: 'Made to order: delivery in 3-7 days' },
+    { key: 'confirm', label: 'Tutathibitisha', hint: 'Kwa mzigo mkubwa au delivery inayobadilika.', handling: ['', ''], transit: ['', ''], buyerLabel: 'Delivery time will be confirmed in chat', confirm: true },
+];
 
 const PHYSICAL_FULFILLMENT_MODES = [
     {
@@ -141,6 +148,13 @@ const SERVICE_MODULE_PICKER = [
         description: 'Kwa workshop, cohort, bootcamp, matokeo ya kujifunza, ratiba, na idadi ya washiriki.',
         tone: 'violet',
     },
+    {
+        key: 'forwarders',
+        icon: Ship,
+        title: 'Forwarder / Import logistics',
+        description: 'Kwa kampuni za cargo/import: warehouses za origin, collection offices, routes, nyaraka, na maelekezo ya mteja.',
+        tone: 'indigo',
+    },
 ];
 
 const MODULE_TONE_CLASSES = {
@@ -152,6 +166,7 @@ const MODULE_TONE_CLASSES = {
     amber: 'border-amber-100 bg-amber-50 text-amber-700 group-hover:border-amber-300 group-hover:bg-amber-100',
     cyan: 'border-cyan-100 bg-cyan-50 text-cyan-700 group-hover:border-cyan-300 group-hover:bg-cyan-100',
     violet: 'border-violet-100 bg-violet-50 text-violet-700 group-hover:border-violet-300 group-hover:bg-violet-100',
+    indigo: 'border-indigo-100 bg-indigo-50 text-indigo-700 group-hover:border-indigo-300 group-hover:bg-indigo-100',
 };
 
 const GENERIC_SERVICE_OPTION_TEMPLATE = {
@@ -393,6 +408,18 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [promotablesLoading, setPromotablesLoading] = useState(false);
     const [shippingProfiles, setShippingProfiles] = useState([]);
     const [selectedShippingProfileId, setSelectedShippingProfileId] = useState('');
+    const [deliveryPromiseOverrideEnabled, setDeliveryPromiseOverrideEnabled] = useState(false);
+    const [deliveryPromise, setDeliveryPromise] = useState({
+        handling_min_days: '',
+        handling_max_days: '',
+        transit_min_days: '',
+        transit_max_days: '',
+        cutoff_time: '',
+        business_days_only: true,
+        label: '',
+        note: '',
+        requires_confirmation: false,
+    });
     const [digitalAccessTab, setDigitalAccessTab] = useState('plan');
     const [assignedAccessGroup, setAssignedAccessGroup] = useState(null); // { id, type, title }
 
@@ -624,6 +651,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         const editId = params.get('edit');
         const typeParam = params.get('type');
         const moduleParam = params.get('module');
+        if (!editId && moduleParam === 'forwarders') {
+            window.location.href = `/merchant/${merchantUsername}/forwarders/setup`;
+            return;
+        }
         if (KNOWN_UPLOAD_MODULE_KEYS.includes(moduleParam)) {
             setUploadModule(moduleParam);
         }
@@ -853,6 +884,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setProductType(p.type);
             setStep(p.type);
             setUploadModule(p.module_key || null);
+            if (p.module_key === 'forwarders') {
+                window.location.href = `/merchant/${merchantUsername}/forwarders/setup?edit=${id}`;
+                return;
+            }
             if (p.module_key === 'menu') {
                 setMenuDetails({
                     section: p.module_details?.section || 'Main menu',
@@ -916,6 +951,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     outcomes: Array.isArray(p.module_details?.learning_outcomes) ? p.module_details.learning_outcomes : (p.service_details?.outcomes || []),
                     requirements: Array.isArray(p.module_details?.workshop_requirements) ? p.module_details.workshop_requirements : (p.service_details?.requirements || []),
                 });
+            } else if (p.module_key === 'forwarders') {
+                setServiceTemplateKey('orderable_service');
+                setServiceDetails({
+                    ...(p.service_details || {}),
+                    ...(p.module_details || {}),
+                    origin_locations: Array.isArray(p.module_details?.origin_locations) ? p.module_details.origin_locations : [],
+                    destination_locations: Array.isArray(p.module_details?.destination_locations) ? p.module_details.destination_locations : [],
+                    required_fields: Array.isArray(p.module_details?.required_fields) ? p.module_details.required_fields : ['customer_id'],
+                    service_types: Array.isArray(p.module_details?.service_types) ? p.module_details.service_types : ['import_forwarding'],
+                });
             }
             setManualTitle(p.title);
             setPrice(p.price);
@@ -953,6 +998,18 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setMinOrderQuantity(p.min_order_quantity ?? '');
             setOrderIncrement(p.order_increment ?? '');
             setSelectedShippingProfileId(p.shipping_profile_id ? String(p.shipping_profile_id) : '');
+            setDeliveryPromiseOverrideEnabled(Boolean(p.delivery_promise?.override_enabled));
+            setDeliveryPromise({
+                handling_min_days: p.delivery_promise?.handling_min_days ?? '',
+                handling_max_days: p.delivery_promise?.handling_max_days ?? '',
+                transit_min_days: p.delivery_promise?.transit_min_days ?? '',
+                transit_max_days: p.delivery_promise?.transit_max_days ?? '',
+                cutoff_time: p.delivery_promise?.cutoff_time ? String(p.delivery_promise.cutoff_time).slice(0, 5) : '',
+                business_days_only: p.delivery_promise?.business_days_only ?? true,
+                label: p.delivery_promise?.label || '',
+                note: p.delivery_promise?.note || '',
+                requires_confirmation: p.delivery_promise?.requires_confirmation ?? false,
+            });
             setDescription(p.attributes?.suggested_description || '');
             setSelectedCategoryId(p.attributes?.category_id ? String(p.attributes.category_id) : '');
             setSelectedSubCategoryId(p.attributes?.sub_category_id ? String(p.attributes.sub_category_id) : '');
@@ -1242,6 +1299,96 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const effectiveRefundPolicy = useCustomReturnPolicy ? refundPolicy : (selectedReturnPolicy?.policy || refundPolicy);
     const effectiveRefundWindowDays = useCustomReturnPolicy ? refundWindowDays : (selectedReturnPolicy?.window_days ?? refundWindowDays);
     const effectiveRefundPolicyNote = useCustomReturnPolicy ? refundPolicyNote : (selectedReturnPolicy?.note || refundPolicyNote);
+    const hasPromiseDayValue = (value) => value !== null && value !== undefined && value !== '';
+    const isSameDayDeliveryPromise = (promise) => {
+        const label = String(promise.label || '').toLowerCase();
+        const hasExplicitDays = [
+            promise.handling_min_days,
+            promise.handling_max_days,
+            promise.transit_min_days,
+            promise.transit_max_days,
+        ].some(hasPromiseDayValue);
+
+        return label.includes('same day')
+            || label.includes('leo leo')
+            || (hasExplicitDays && Number(promise.handling_max_days || 0) <= 0 && Number(promise.transit_max_days || 0) <= 0);
+    };
+    const showDeliveryPromiseDays = !deliveryPromise.requires_confirmation;
+    const showDeliveryPromiseCutoff = showDeliveryPromiseDays && isSameDayDeliveryPromise(deliveryPromise);
+    const updateDeliveryPromise = (key, value) => setDeliveryPromise(prev => ({ ...prev, [key]: value }));
+    const applyDeliveryPromisePreset = (preset) => {
+        setDeliveryPromise(prev => ({
+            ...prev,
+            handling_min_days: preset.handling[0],
+            handling_max_days: preset.handling[1],
+            transit_min_days: preset.transit[0],
+            transit_max_days: preset.transit[1],
+            label: preset.buyerLabel,
+            requires_confirmation: Boolean(preset.confirm),
+            cutoff_time: preset.key === 'same_day' ? prev.cutoff_time : '',
+        }));
+    };
+    const renderDeliveryPromiseOverride = () => (
+        <div className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2">
+                    <Clock3 className="mt-0.5 h-4 w-4 text-emerald-700" />
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-emerald-900">Muda wa bidhaa hii kufika</p>
+                        <p className="text-xs text-emerald-800/80">Tumia hapa tu kama bidhaa hii ni tofauti na delivery template uliyochagua.</p>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => setDeliveryPromiseOverrideEnabled(prev => !prev)}
+                    className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${deliveryPromiseOverrideEnabled ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}
+                >
+                    {deliveryPromiseOverrideEnabled ? 'Override on' : 'Use profile'}
+                </button>
+            </div>
+            {deliveryPromiseOverrideEnabled && (
+                <div className="space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        {DELIVERY_PROMISE_PRESETS.map((preset) => (
+                            <button key={preset.key} type="button" onClick={() => applyDeliveryPromisePreset(preset)} className={`rounded-2xl border bg-white px-3 py-2 text-left transition hover:border-emerald-300 ${deliveryPromise.label === preset.buyerLabel ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-emerald-100'}`}>
+                                <span className="block text-xs font-black text-emerald-900">{preset.label}</span>
+                                <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-emerald-700/75">{preset.hint}</span>
+                            </button>
+                        ))}
+                    </div>
+                    {showDeliveryPromiseDays ? (
+                        <div className="space-y-2">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <Input type="number" min="0" placeholder="Kuandaa kuanzia" value={deliveryPromise.handling_min_days} onChange={e => updateDeliveryPromise('handling_min_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                                <Input type="number" min="0" placeholder="Kuandaa mpaka" value={deliveryPromise.handling_max_days} onChange={e => updateDeliveryPromise('handling_max_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                                <Input type="number" min="0" placeholder="Safari kuanzia" value={deliveryPromise.transit_min_days} onChange={e => updateDeliveryPromise('transit_min_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                                <Input type="number" min="0" placeholder="Safari mpaka" value={deliveryPromise.transit_max_days} onChange={e => updateDeliveryPromise('transit_max_days', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                            </div>
+                            {showDeliveryPromiseCutoff && (
+                                <Input type="time" value={deliveryPromise.cutoff_time} onChange={e => updateDeliveryPromise('cutoff_time', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                            )}
+                        </div>
+                    ) : (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
+                            Siku na deadline zimefichwa kwa sababu muda utathibitishwa kwenye chat.
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-2">
+                        <Input placeholder="Maneno ya mteja, mf. Made to order: siku 3-5" value={deliveryPromise.label} onChange={e => updateDeliveryPromise('label', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => updateDeliveryPromise('business_days_only', !deliveryPromise.business_days_only)} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${deliveryPromise.business_days_only ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
+                            {deliveryPromise.business_days_only ? 'Siku za kazi' : 'Kila siku'}
+                        </button>
+                        <button type="button" onClick={() => setDeliveryPromise(prev => ({ ...prev, requires_confirmation: !prev.requires_confirmation, cutoff_time: prev.requires_confirmation ? prev.cutoff_time : '' }))} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${deliveryPromise.requires_confirmation ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
+                            {deliveryPromise.requires_confirmation ? 'Tuta-confirm kwa chat' : 'Mteja aone estimate'}
+                        </button>
+                    </div>
+                    <Input placeholder="Ujumbe wa ziada, mf. Kwa mzigo mkubwa tutapanga cargo kwenye chat" value={deliveryPromise.note} onChange={e => updateDeliveryPromise('note', e.target.value)} className="h-10 bg-white text-xs font-bold" />
+                </div>
+            )}
+        </div>
+    );
     const renderProductFaqEditor = () => (
         <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
             <div className="flex items-start justify-between gap-3">
@@ -1961,6 +2108,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         const moduleConfig = getUploadModuleConfig(moduleKey);
         if (!moduleConfig) return;
 
+        if (moduleKey === 'forwarders') {
+            window.location.href = `/merchant/${merchantUsername}/forwarders/setup`;
+            return;
+        }
+
         setUploadModule(moduleKey);
         if (moduleConfig.type === 'physical') {
             setProductType('physical');
@@ -2226,7 +2378,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const activeUploadModule = getUploadModuleConfig(uploadModule);
     const isMenuUpload = activeUploadModule?.key === 'menu' && step === 'physical';
     const isModuleServiceUpload = step === 'service' && activeUploadModule?.type === 'service';
-    const useFocusedModuleServiceForm = isModuleServiceUpload;
+    const useFocusedModuleServiceForm = isModuleServiceUpload && uploadModule !== 'forwarders';
     const showRoomDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'rooms' || selectedServiceTemplateKey === 'stay') && hasConcreteServiceSubtype;
     const showReservationDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'reservations' || selectedServiceTemplateKey === 'space_booking') && hasConcreteServiceSubtype;
     const showRentalDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'rentals' || selectedServiceTemplateKey === 'rental') && hasConcreteServiceSubtype;
@@ -2925,6 +3077,21 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     learning_outcomes: Array.isArray(serviceDetails.learning_outcomes) ? serviceDetails.learning_outcomes.filter(Boolean) : Array.isArray(serviceDetails.outcomes) ? serviceDetails.outcomes.filter(Boolean) : [],
                     workshop_requirements: Array.isArray(serviceDetails.workshop_requirements) ? serviceDetails.workshop_requirements.filter(Boolean) : Array.isArray(serviceDetails.requirements) ? serviceDetails.requirements.filter(Boolean) : [],
                     materials_included: Array.isArray(serviceDetails.materials_included) ? serviceDetails.materials_included.filter(Boolean) : [],
+                } : uploadModule === 'forwarders' && step === 'service' ? {
+                    legal_name: serviceDetails.legal_name || '',
+                    contact_person: serviceDetails.contact_person || '',
+                    contact_email: serviceDetails.contact_email || '',
+                    whatsapp_phone: serviceDetails.whatsapp_phone || serviceContactValue || '',
+                    website: serviceDetails.website || '',
+                    logo_url: serviceDetails.logo_url || '',
+                    service_types: Array.isArray(serviceDetails.service_types) ? serviceDetails.service_types.filter(Boolean) : ['import_forwarding'],
+                    required_fields: Array.isArray(serviceDetails.required_fields) ? serviceDetails.required_fields.filter(Boolean) : ['customer_id'],
+                    origin_locations: Array.isArray(serviceDetails.origin_locations) ? serviceDetails.origin_locations : [],
+                    destination_locations: Array.isArray(serviceDetails.destination_locations) ? serviceDetails.destination_locations : [],
+                    merchant_instructions: serviceDetails.merchant_instructions || '',
+                    customer_instructions: serviceDetails.customer_instructions || '',
+                    license_notes: serviceDetails.license_notes || '',
+                    rates_info: serviceDetails.rates_info || '',
                 } : null,
                 // Digital product: either the uploaded file or external link
                 digital_file_url: (step === 'digital' && digitalDeliveryMode === 'upload') ? digitalFile?.url : null,
@@ -3097,6 +3264,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 description: description, // Include description in the payload
                 product_id: productId,
                 shipping_profile_id: selectedShippingProfileId ? Number(selectedShippingProfileId) : null,
+                delivery_promise_override_enabled: deliveryPromiseOverrideEnabled,
+                delivery_handling_min_days: deliveryPromiseOverrideEnabled ? (deliveryPromise.handling_min_days || null) : null,
+                delivery_handling_max_days: deliveryPromiseOverrideEnabled ? (deliveryPromise.handling_max_days || null) : null,
+                delivery_transit_min_days: deliveryPromiseOverrideEnabled ? (deliveryPromise.transit_min_days || null) : null,
+                delivery_transit_max_days: deliveryPromiseOverrideEnabled ? (deliveryPromise.transit_max_days || null) : null,
+                delivery_cutoff_time: deliveryPromiseOverrideEnabled && showDeliveryPromiseCutoff ? (deliveryPromise.cutoff_time || null) : null,
+                delivery_business_days_only: deliveryPromise.business_days_only,
+                delivery_promise_label: deliveryPromiseOverrideEnabled ? (deliveryPromise.label || null) : null,
+                delivery_promise_note: deliveryPromiseOverrideEnabled ? (deliveryPromise.note || null) : null,
+                delivery_requires_confirmation: deliveryPromiseOverrideEnabled && deliveryPromise.requires_confirmation,
                 access_group_type: step === 'digital' ? assignedAccessGroup?.type || null : null,
                 access_group_id: step === 'digital' ? assignedAccessGroup?.id || null : null,
             });
@@ -4712,6 +4889,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         <p className="text-[10px] text-muted-foreground italic">Templates hizi zimewekwa kwenye Settings {'>'} Shipping Profiles.</p>
                                                     </div>
                                                 )}
+                                                {step === 'physical' && renderDeliveryPromiseOverride()}
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                     <div className="space-y-1.5">
                                                         <label className="text-xs font-bold text-brand-600 uppercase tracking-wider">Bei ya Sasa (TZS)</label>
@@ -5007,6 +5185,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </select>
                                                 <p className="text-[10px] text-muted-foreground italic">Templates hizi zimewekwa kwenye Settings {'>'} Shipping Profiles.</p>
                                             </div>
+                                            {renderDeliveryPromiseOverride()}
                                             {renderProductFaqEditor()}
                                             <Button
                                                 className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"

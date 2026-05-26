@@ -48,7 +48,7 @@ export default function BundleDetail({ bundle }) {
         (bundle?.items || []).filter((item) => item.item_type === 'product' && item.product_type === 'physical')
     ), [bundle?.items]);
     const hasPhysicalItems = physicalBundleItems.length > 0;
-    const firstPhysicalShippingProfileId = physicalBundleItems.find((item) => item.shipping_profile_id)?.shipping_profile_id || null;
+    const firstPhysicalShippingProfileId = bundle?.shipping_profile_id || physicalBundleItems.find((item) => item.shipping_profile_id)?.shipping_profile_id || null;
 
     const courseModules = useMemo(() => {
         if (Array.isArray(bundle?.course_modules) && bundle.course_modules.length > 0) {
@@ -89,6 +89,7 @@ export default function BundleDetail({ bundle }) {
                 return item?.product_type === 'physical';
             }),
             shipping_profile_id: firstPhysicalShippingProfileId,
+            delivery_promise: bundle?.delivery_promise,
             merchant,
         }
         : {
@@ -96,6 +97,7 @@ export default function BundleDetail({ bundle }) {
             checkoutType: 'bundle',
             has_physical_items: hasPhysicalItems,
             shipping_profile_id: firstPhysicalShippingProfileId,
+            delivery_promise: bundle?.delivery_promise,
             merchant,
         };
     const isImageLikeUrl = (value) => {

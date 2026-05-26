@@ -44,6 +44,40 @@ export default function MerchantPosts({ merchantUsername = '' }) {
     }, []);
 
     useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('compose') !== '1') return;
+
+        const source = params.get('source');
+        const text = source === 'forwarder_update'
+            ? 'Freight update: '
+            : '';
+        let cancelled = false;
+        const open = async () => {
+            let forwarderRoutes = [];
+            if (source === 'forwarder_update') {
+                try {
+                    const res = await axios.get(`/api/merchant/${merchantUsername}/forwarders/routes`);
+                    forwarderRoutes = res.data?.routes || [];
+                } catch (error) {
+                    forwarderRoutes = [];
+                }
+            }
+            if (cancelled) return;
+            window.__openComposer?.({
+                mode: 'short',
+                merchantUsername,
+                text,
+                forwarderRoutes,
+            });
+        };
+        const timer = window.setTimeout(open, 150);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timer);
+        };
+    }, [merchantUsername]);
+
+    useEffect(() => {
         loadPosts();
     }, [merchantUsername, postPage, postSearch, postTypeFilter]);
 

@@ -110,7 +110,11 @@ export default function ProfileSwitcher({ className, onCreateBusiness }) {
 
                             <div className="p-2 border-t border-border/50">
                                 {(() => {
-                                    const hasVerifiedProfile = merchants.some(m => m.access_type === 'owner' && (m.is_verified || m.kyc?.status === 'verified'));
+                                    const hasVerifiedProfile = merchants.some(m => (
+                                        m.access_type === 'owner'
+                                        && m.type === 'personal'
+                                        && (m.is_verified || ['approved', 'verified'].includes(String(m.kyc_status || '').toLowerCase()) || ['approved', 'verified'].includes(String(m.kyc?.status || '').toLowerCase()))
+                                    ));
                                     
                                     if (!hasVerifiedProfile) {
                                         return (

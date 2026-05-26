@@ -21,8 +21,21 @@ class ShippingZone extends Model
         'destination_region',
         'destination_city',
         'destination_country',
+        'destination_country_id',
+        'destination_state_id',
+        'destination_city_id',
         'delivery_type',
+        'coverage_scope',
         'is_active',
+        'handling_min_days',
+        'handling_max_days',
+        'transit_min_days',
+        'transit_max_days',
+        'cutoff_time',
+        'business_days_only',
+        'delivery_promise_label',
+        'delivery_promise_note',
+        'requires_delivery_confirmation',
     ];
 
     protected function casts(): array
@@ -33,6 +46,12 @@ class ShippingZone extends Model
             'reference_lat' => 'decimal:8',
             'reference_lng' => 'decimal:8',
             'is_active' => 'boolean',
+            'handling_min_days' => 'integer',
+            'handling_max_days' => 'integer',
+            'transit_min_days' => 'integer',
+            'transit_max_days' => 'integer',
+            'business_days_only' => 'boolean',
+            'requires_delivery_confirmation' => 'boolean',
         ];
     }
 
@@ -49,6 +68,21 @@ class ShippingZone extends Model
     public function location(): BelongsTo
     {
         return $this->belongsTo(MerchantLocation::class, 'merchant_location_id');
+    }
+
+    public function destinationCountryRecord(): BelongsTo
+    {
+        return $this->belongsTo(Country::class, 'destination_country_id');
+    }
+
+    public function destinationStateRecord(): BelongsTo
+    {
+        return $this->belongsTo(CountryState::class, 'destination_state_id');
+    }
+
+    public function destinationCityRecord(): BelongsTo
+    {
+        return $this->belongsTo(CountryCity::class, 'destination_city_id');
     }
 
     /**

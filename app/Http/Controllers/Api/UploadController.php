@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\Forwarder;
 use App\Models\ProductBrand;
 use App\Models\ProductBrandModel;
 use App\Models\ProductCategory;
@@ -33,6 +34,7 @@ use App\Services\MediaUploadService;
 use App\Services\ProductIntelligenceService;
 use App\Support\MerchantPermissions;
 use App\Support\ServiceTemplateRegistry;
+use App\Support\GeographyResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -74,7 +76,7 @@ class UploadController extends Controller
             $query->where('products.type', $type);
         }
 
-        if (in_array($module, ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops'], true) && Schema::hasColumn('products', 'module_key')) {
+        if (in_array($module, ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops', 'forwarders'], true) && Schema::hasColumn('products', 'module_key')) {
             $query->where('products.module_key', $module);
         }
 
@@ -715,7 +717,7 @@ class UploadController extends Controller
             'media_items.*.height' => 'nullable|integer|min:0',
             'media_items.*.processing_status' => 'nullable|string|in:pending,processing,ready,failed',
             'type' => 'required|string|in:physical,digital,service',
-            'module_key' => 'nullable|string|in:menu,rooms,tour_departures,custom_orders,appointments,reservations,rentals,workshops',
+            'module_key' => 'nullable|string|in:menu,rooms,tour_departures,custom_orders,appointments,reservations,rentals,workshops,forwarders',
             'module_details' => 'nullable|array',
             'module_details.section' => 'nullable|string|max:80',
             'module_details.item_type' => 'nullable|string|max:80',
@@ -794,6 +796,38 @@ class UploadController extends Controller
             'module_details.workshop_requirements.*' => 'string|max:160',
             'module_details.materials_included' => 'nullable|array',
             'module_details.materials_included.*' => 'string|max:160',
+            'module_details.legal_name' => 'nullable|string|max:160',
+            'module_details.contact_person' => 'nullable|string|max:120',
+            'module_details.contact_email' => 'nullable|email|max:160',
+            'module_details.whatsapp_phone' => 'nullable|string|max:40',
+            'module_details.website' => 'nullable|string|max:2048',
+            'module_details.logo_url' => 'nullable|string|max:2048',
+            'module_details.service_types' => 'nullable|array',
+            'module_details.service_types.*' => 'string|max:80',
+            'module_details.required_fields' => 'nullable|array',
+            'module_details.required_fields.*' => 'string|max:80',
+            'module_details.origin_locations' => 'nullable|array',
+            'module_details.origin_locations.*.name' => 'nullable|string|max:120',
+            'module_details.origin_locations.*.country_name' => 'nullable|string|max:120',
+            'module_details.origin_locations.*.country_iso2' => 'nullable|string|max:2',
+            'module_details.origin_locations.*.state_name' => 'nullable|string|max:120',
+            'module_details.origin_locations.*.city_name' => 'nullable|string|max:120',
+            'module_details.origin_locations.*.address_line' => 'nullable|string|max:500',
+            'module_details.origin_locations.*.contact_phone' => 'nullable|string|max:40',
+            'module_details.origin_locations.*.instructions' => 'nullable|string|max:1000',
+            'module_details.destination_locations' => 'nullable|array',
+            'module_details.destination_locations.*.name' => 'nullable|string|max:120',
+            'module_details.destination_locations.*.country_name' => 'nullable|string|max:120',
+            'module_details.destination_locations.*.country_iso2' => 'nullable|string|max:2',
+            'module_details.destination_locations.*.state_name' => 'nullable|string|max:120',
+            'module_details.destination_locations.*.city_name' => 'nullable|string|max:120',
+            'module_details.destination_locations.*.address_line' => 'nullable|string|max:500',
+            'module_details.destination_locations.*.contact_phone' => 'nullable|string|max:40',
+            'module_details.destination_locations.*.instructions' => 'nullable|string|max:1000',
+            'module_details.merchant_instructions' => 'nullable|string|max:3000',
+            'module_details.customer_instructions' => 'nullable|string|max:3000',
+            'module_details.license_notes' => 'nullable|string|max:3000',
+            'module_details.rates_info' => 'nullable|string|max:3000',
             'fulfillment_mode' => 'nullable|string|in:own_stock,made_to_order,supplier_sourced,farm_harvest,preorder,group_sale',
             'source_details' => 'nullable|array',
             'source_details.supplier_name' => 'nullable|string|max:160',
@@ -948,6 +982,16 @@ class UploadController extends Controller
             'access_group_type' => 'nullable|string|in:bundle,plan',
             'access_group_id' => 'nullable|integer',
             'shipping_profile_id' => 'nullable|integer|exists:shipping_profiles,id',
+            'delivery_promise_override_enabled' => 'nullable|boolean',
+            'delivery_handling_min_days' => 'nullable|integer|min:0|max:365',
+            'delivery_handling_max_days' => 'nullable|integer|min:0|max:365|gte:delivery_handling_min_days',
+            'delivery_transit_min_days' => 'nullable|integer|min:0|max:365',
+            'delivery_transit_max_days' => 'nullable|integer|min:0|max:365|gte:delivery_transit_min_days',
+            'delivery_cutoff_time' => 'nullable|date_format:H:i',
+            'delivery_business_days_only' => 'nullable|boolean',
+            'delivery_promise_label' => 'nullable|string|max:255',
+            'delivery_promise_note' => 'nullable|string|max:1000',
+            'delivery_requires_confirmation' => 'nullable|boolean',
             'location_inventories' => 'nullable|array', // { location_id: quantity }
             'location_inventories.*' => 'nullable|numeric|min:0',
             'availability_location_ids' => 'nullable|array',
@@ -1189,6 +1233,9 @@ class UploadController extends Controller
                 ->where('is_default', true)
                 ->value('id') 
                 ?? \App\Models\ShippingProfile::where('merchant_id', $merchantProfile->id)->value('id');
+        }
+        if ($shippingProfileId && !\App\Models\ShippingProfile::where('merchant_id', $merchantProfile->id)->whereKey($shippingProfileId)->exists()) {
+            return response()->json(['message' => 'Shipping profile haipo kwenye biashara hii.'], 422);
         }
 
         if ($request->input('type') === 'physical' && count($mediaItems) === 0) {
@@ -1640,6 +1687,16 @@ class UploadController extends Controller
             'service_contact_channel' => $serviceContactChannel,
             'service_contact_value' => $serviceContactValue,
             'shipping_profile_id' => $shippingProfileId,
+            'delivery_promise_override_enabled' => $request->boolean('delivery_promise_override_enabled'),
+            'delivery_handling_min_days' => $request->input('delivery_handling_min_days'),
+            'delivery_handling_max_days' => $request->input('delivery_handling_max_days'),
+            'delivery_transit_min_days' => $request->input('delivery_transit_min_days'),
+            'delivery_transit_max_days' => $request->input('delivery_transit_max_days'),
+            'delivery_cutoff_time' => $request->input('delivery_cutoff_time'),
+            'delivery_business_days_only' => $request->boolean('delivery_business_days_only', true),
+            'delivery_promise_label' => $request->input('delivery_promise_label'),
+            'delivery_promise_note' => $request->input('delivery_promise_note'),
+            'delivery_requires_confirmation' => $request->boolean('delivery_requires_confirmation'),
         ];
 
         if (Schema::hasColumn('products', 'module_key')) {
@@ -1653,6 +1710,7 @@ class UploadController extends Controller
                 $requestedModule === 'reservations' && $request->input('type') === 'service' => 'reservations',
                 $requestedModule === 'rentals' && $request->input('type') === 'service' => 'rentals',
                 $requestedModule === 'workshops' && $request->input('type') === 'service' => 'workshops',
+                $requestedModule === 'forwarders' && $request->input('type') === 'service' => 'forwarders',
                 default => null,
             };
             $productData['module_details'] = match ($productData['module_key']) {
@@ -1664,6 +1722,7 @@ class UploadController extends Controller
                 'reservations' => $this->sanitizeReservationModuleDetails($request->input('module_details', [])),
                 'rentals' => $this->sanitizeRentalModuleDetails($request->input('module_details', [])),
                 'workshops' => $this->sanitizeWorkshopModuleDetails($request->input('module_details', [])),
+                'forwarders' => $this->sanitizeForwarderModuleDetails($request->input('module_details', [])),
                 default => null,
             };
         }
@@ -1693,6 +1752,15 @@ class UploadController extends Controller
 
         if ($request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream') {
             ProcessPremiumProductVideo::dispatch($product->id)->afterCommit();
+        }
+
+        if (($productData['module_key'] ?? null) === 'forwarders') {
+            $this->syncForwarderService($product, $merchantProfile, $request->user()?->id);
+        } else {
+            Forwarder::query()
+                ->where('product_id', $product->id)
+                ->where('merchant_id', $merchantProfile->id)
+                ->delete();
         }
 
         if ($request->has('availability_location_ids')) {
@@ -2782,6 +2850,134 @@ class UploadController extends Controller
             'workshop_requirements' => $stringList($details['workshop_requirements'] ?? []),
             'materials_included' => $stringList($details['materials_included'] ?? []),
         ];
+    }
+
+    private function sanitizeForwarderModuleDetails(array $details): array
+    {
+        $stringList = fn ($value, int $limit = 12) => collect((array) $value)
+            ->map(fn ($item) => Str::limit(trim((string) $item), 80, ''))
+            ->filter()
+            ->unique()
+            ->take($limit)
+            ->values()
+            ->all();
+
+        $locations = fn ($value) => collect((array) $value)
+            ->map(fn ($row) => [
+                'name' => Str::limit(trim((string) ($row['name'] ?? '')), 120, ''),
+                'country_name' => Str::limit(trim((string) ($row['country_name'] ?? '')), 120, ''),
+                'country_iso2' => strtoupper(Str::limit(trim((string) ($row['country_iso2'] ?? '')), 2, '')),
+                'state_name' => Str::limit(trim((string) ($row['state_name'] ?? '')), 120, ''),
+                'city_name' => Str::limit(trim((string) ($row['city_name'] ?? '')), 120, ''),
+                'address_line' => Str::limit(trim((string) ($row['address_line'] ?? '')), 500, ''),
+                'contact_phone' => Str::limit(trim((string) ($row['contact_phone'] ?? '')), 40, ''),
+                'instructions' => Str::limit(trim((string) ($row['instructions'] ?? '')), 1000, ''),
+            ])
+            ->filter(fn ($row) => $row['name'] !== '' || $row['address_line'] !== '' || $row['country_name'] !== '' || $row['city_name'] !== '')
+            ->take(20)
+            ->values()
+            ->all();
+
+        $serviceTypes = $stringList($details['service_types'] ?? ['import_forwarding']);
+        $requiredFields = collect($stringList($details['required_fields'] ?? ['customer_id']))
+            ->map(fn ($field) => Str::slug($field, '_'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'legal_name' => Str::limit(trim((string) ($details['legal_name'] ?? '')), 160, ''),
+            'contact_person' => Str::limit(trim((string) ($details['contact_person'] ?? '')), 120, ''),
+            'contact_email' => Str::limit(trim((string) ($details['contact_email'] ?? '')), 160, ''),
+            'whatsapp_phone' => Str::limit(trim((string) ($details['whatsapp_phone'] ?? '')), 40, ''),
+            'website' => Str::limit(trim((string) ($details['website'] ?? '')), 2048, ''),
+            'logo_url' => Str::limit(trim((string) ($details['logo_url'] ?? '')), 2048, ''),
+            'service_types' => $serviceTypes ?: ['import_forwarding'],
+            'required_fields' => $requiredFields ?: ['customer_id'],
+            'origin_locations' => $locations($details['origin_locations'] ?? []),
+            'destination_locations' => $locations($details['destination_locations'] ?? []),
+            'merchant_instructions' => Str::limit(trim((string) ($details['merchant_instructions'] ?? '')), 3000, ''),
+            'customer_instructions' => Str::limit(trim((string) ($details['customer_instructions'] ?? '')), 3000, ''),
+            'license_notes' => Str::limit(trim((string) ($details['license_notes'] ?? '')), 3000, ''),
+            'rates_info' => Str::limit(trim((string) ($details['rates_info'] ?? '')), 3000, ''),
+        ];
+    }
+
+    private function syncForwarderService(Product $product, Merchant $merchant, ?int $userId): void
+    {
+        $details = $product->module_details ?? [];
+        $allLocations = collect($details['destination_locations'] ?? [])
+            ->merge($details['origin_locations'] ?? []);
+        $primaryLocation = $allLocations->firstWhere('address_line') ?? $allLocations->first() ?? [];
+
+        $forwarder = Forwarder::query()->updateOrCreate(
+            ['product_id' => $product->id],
+            [
+                'merchant_id' => $merchant->id,
+                'name' => $product->title,
+                'legal_name' => $details['legal_name'] ?: $product->title,
+                'address_line' => $primaryLocation['address_line'] ?? ($merchant->display_name ?: $product->title),
+                'contact_phone' => $details['whatsapp_phone'] ?: null,
+                'contact_person' => $details['contact_person'] ?: null,
+                'contact_email' => $details['contact_email'] ?: null,
+                'whatsapp_phone' => $details['whatsapp_phone'] ?: null,
+                'website' => $details['website'] ?: null,
+                'logo_url' => $details['logo_url'] ?: $product->image_url,
+                'description' => $product->description,
+                'rates_info' => $details['rates_info'] ?: null,
+                'required_fields' => $details['required_fields'] ?? ['customer_id'],
+                'service_types' => $details['service_types'] ?? ['import_forwarding'],
+                'documents' => array_filter([
+                    'license_notes' => $details['license_notes'] ?? null,
+                ]),
+                'submitted_by_user_id' => $userId,
+                'verification_status' => 'pending',
+                'is_verified' => false,
+                'verified_at' => null,
+            ]
+        );
+
+        $forwarder->locations()->delete();
+        $this->syncForwarderServiceLocations($forwarder, $details['origin_locations'] ?? [], 'origin', $details);
+        $this->syncForwarderServiceLocations($forwarder, $details['destination_locations'] ?? [], 'destination', $details);
+    }
+
+    private function syncForwarderServiceLocations(Forwarder $forwarder, array $locations, string $role, array $details): void
+    {
+        $resolver = app(GeographyResolver::class);
+
+        foreach ($locations as $location) {
+            $geo = $resolver->resolve(
+                countryIso2: $location['country_iso2'] ?? null,
+                countryName: $location['country_name'] ?? null,
+                stateName: $location['state_name'] ?? null,
+                cityName: $location['city_name'] ?? null,
+            );
+
+            $forwarder->locations()->create([
+                'roles' => [$role],
+                'name' => $location['name'] ?: ($role === 'origin' ? 'Origin warehouse' : 'Collection office'),
+                'address_line' => $location['address_line'] ?: trim(collect([
+                    $location['city_name'] ?? null,
+                    $location['state_name'] ?? null,
+                    $location['country_name'] ?? null,
+                ])->filter()->join(', ')),
+                'country_id' => $geo['country_id'] ?? null,
+                'state_id' => $geo['state_id'] ?? null,
+                'city_id' => $geo['city_id'] ?? null,
+                'contact_phone' => $location['contact_phone'] ?: ($details['whatsapp_phone'] ?? null),
+                'merchant_instructions' => $role === 'origin'
+                    ? ($location['instructions'] ?: ($details['merchant_instructions'] ?? null))
+                    : null,
+                'customer_instructions' => $role === 'destination'
+                    ? ($location['instructions'] ?: ($details['customer_instructions'] ?? null))
+                    : null,
+                'required_fields' => $details['required_fields'] ?? ['customer_id'],
+                'is_verified' => false,
+                'is_active' => true,
+            ]);
+        }
     }
 
     private function defaultServiceSchedulingType(?string $serviceMode, ?string $bookingProvider): string

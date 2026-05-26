@@ -676,6 +676,7 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                             onRefreshZones={fetchProfiles}
                             merchantId={merchant.id}
                             personalMode={merchant?.type === 'personal'}
+                            countries={countries}
                         />
 
                         <ReturnPoliciesManager />

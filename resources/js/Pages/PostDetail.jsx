@@ -12,6 +12,7 @@ import EditorJsRenderer from '@/Components/EditorJsRenderer';
 import LinkifiedText from '@/Components/LinkifiedText';
 import LinkPreviewCard from '@/Components/LinkPreviewCard';
 import VideoPlayer from '@/Components/VideoPlayer';
+import FreightRouteCard from '@/Components/FreightRouteCard';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
 import { trackAttributionEvent } from '@/lib/attribution';
 import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
@@ -691,6 +692,16 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const hasSingleUnlockOption = isRestricted && post.restricted_price !== null;
     const hasPromotableOption = isRestricted && promotables.length > 0;
     const linkPreview = post.link_preview || null;
+    const isForwarderRoutePost = Boolean(post.forwarder_route_snapshot || post.source === 'forwarder_route');
+    const forwarderRouteSnapshot = post.forwarder_route_snapshot || {
+        id: post.forwarder_route_id || null,
+        label: post.forwarder_route_label || post.title,
+        transport_details: {},
+        transport_modes: [],
+    };
+    const forwarderRouteHref = (forwarderRouteSnapshot?.id || post.forwarder_route_id)
+        ? `/freight/routes/${forwarderRouteSnapshot?.id || post.forwarder_route_id}`
+        : null;
     const deletedAtLabel = post.deleted_at
         ? new Date(post.deleted_at).toLocaleString(undefined, {
             month: 'short',
@@ -1118,7 +1129,17 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 </div>
 
                 {/* Content Header / Summary */}
-                {(post.title || post.excerpt || post.caption) && (
+                {isForwarderRoutePost && !isLocked && (
+                    <div className="px-5 pb-6">
+                        <FreightRouteCard
+                            snapshot={forwarderRouteSnapshot}
+                            routeHref={forwarderRouteHref}
+                            onOpen={() => forwarderRouteHref && router.visit(forwarderRouteHref)}
+                        />
+                    </div>
+                )}
+
+                {(post.title || post.excerpt || post.caption) && !isForwarderRoutePost && (
                     <div className="px-5 pb-6 space-y-3">
                         {post.title && (
                             <h2 className="text-2xl md:text-3xl font-black tracking-tight leading-tight">{post.title}</h2>

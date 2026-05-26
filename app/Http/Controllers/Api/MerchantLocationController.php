@@ -5,12 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Merchant;
 use App\Models\MerchantLocation;
+use App\Support\GeographyResolver;
 use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class MerchantLocationController extends Controller
 {
+    public function __construct(private GeographyResolver $geography)
+    {
+    }
+
     private function normalizeLocationType(?string $type): ?string
     {
         if (!$type) return null;
@@ -61,7 +66,7 @@ class MerchantLocationController extends Controller
             $locationsQuery->where('id', $assignedLocationId);
         }
 
-        $locations = $locationsQuery->get();
+        $locations = $locationsQuery->with(['country', 'state', 'cityRecord'])->get();
 
         return response()->json([
             'data' => $locations
@@ -84,6 +89,13 @@ class MerchantLocationController extends Controller
             'latitude' => 'required|numeric',
             'longitude' => 'required|numeric',
             'place_id' => 'nullable|string',
+            'country_id' => 'nullable|exists:countries,id',
+            'country_iso2' => 'nullable|string|size:2',
+            'country_name' => 'nullable|string|max:120',
+            'state_id' => 'nullable|exists:country_states,id',
+            'state_name' => 'nullable|string|max:120',
+            'city_id' => 'nullable|exists:country_cities,id',
+            'city_name' => 'nullable|string|max:120',
             'city' => 'nullable|string',
             'region' => 'nullable|string',
             'is_primary' => 'boolean',
@@ -103,6 +115,7 @@ class MerchantLocationController extends Controller
             MerchantLocation::where('merchant_id', $merchant->id)->update(['is_primary' => false]);
         }
 
+        $validated = $this->applyGeography($validated);
         $location = $merchant->locations()->create($validated);
 
         if ($merchant->isBusinessProfile()) {
@@ -119,7 +132,7 @@ class MerchantLocationController extends Controller
 
         return response()->json([
             'message' => $merchant->type === 'personal' ? 'Stock/pickup point saved.' : 'Shop location saved.',
-            'data' => $location
+            'data' => $location->load(['country', 'state', 'cityRecord'])
         ]);
     }
 
@@ -136,6 +149,13 @@ class MerchantLocationController extends Controller
             'latitude' => 'required|numeric',
             'longitude' => 'required|numeric',
             'place_id' => 'nullable|string',
+            'country_id' => 'nullable|exists:countries,id',
+            'country_iso2' => 'nullable|string|size:2',
+            'country_name' => 'nullable|string|max:120',
+            'state_id' => 'nullable|exists:country_states,id',
+            'state_name' => 'nullable|string|max:120',
+            'city_id' => 'nullable|exists:country_cities,id',
+            'city_name' => 'nullable|string|max:120',
             'city' => 'nullable|string',
             'region' => 'nullable|string',
             'is_primary' => 'boolean',
@@ -157,11 +177,12 @@ class MerchantLocationController extends Controller
                 ->update(['is_primary' => false]);
         }
 
+        $validated = $this->applyGeography($validated);
         $merchantLocation->update($validated);
 
         return response()->json([
             'message' => 'Shop location updated.',
-            'data' => $merchantLocation
+            'data' => $merchantLocation->load(['country', 'state', 'cityRecord'])
         ]);
     }
 
@@ -177,5 +198,28 @@ class MerchantLocationController extends Controller
         return response()->json([
             'message' => 'Shop location deleted.'
         ]);
+    }
+
+    private function applyGeography(array $validated): array
+    {
+        $geo = $this->geography->resolve(
+            countryId: $validated['country_id'] ?? null,
+            countryIso2: $validated['country_iso2'] ?? null,
+            countryName: $validated['country_name'] ?? null,
+            stateId: $validated['state_id'] ?? null,
+            stateName: $validated['state_name'] ?? $validated['region'] ?? null,
+            cityId: $validated['city_id'] ?? null,
+            cityName: $validated['city_name'] ?? $validated['city'] ?? null,
+        );
+
+        $validated['country_id'] = $validated['country_id'] ?? $geo['country_id'];
+        $validated['state_id'] = $validated['state_id'] ?? $geo['state_id'];
+        $validated['city_id'] = $validated['city_id'] ?? $geo['city_id'];
+        $validated['region'] = $validated['region'] ?? $geo['state_name'];
+        $validated['city'] = $validated['city'] ?? $geo['city_name'];
+
+        unset($validated['country_iso2'], $validated['country_name'], $validated['state_name'], $validated['city_name']);
+
+        return $validated;
     }
 }

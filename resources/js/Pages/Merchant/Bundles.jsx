@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/Com
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Textarea } from '@/Components/ui/Textarea';
-import { AlertTriangle, Boxes, FileUp, Filter, Image, Info, Loader2, Plus, Save, Trash2, Pencil, Package, CalendarClock, BookOpenText } from 'lucide-react';
+import { AlertTriangle, Boxes, FileUp, Filter, Image, Info, Loader2, Plus, Save, Trash2, Pencil, Package, CalendarClock, BookOpenText, Clock3 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import AutoPostTargetsPanel, { defaultAutoPostTargets } from '@/Components/Merchant/AutoPostTargetsPanel';
@@ -15,6 +15,17 @@ const initialBundleForm = {
     title: '',
     description: '',
     price: '',
+    shipping_profile_id: '',
+    delivery_promise_override_enabled: false,
+    delivery_handling_min_days: '',
+    delivery_handling_max_days: '',
+    delivery_transit_min_days: '',
+    delivery_transit_max_days: '',
+    delivery_cutoff_time: '',
+    delivery_business_days_only: true,
+    delivery_promise_label: '',
+    delivery_promise_note: '',
+    delivery_requires_confirmation: false,
     is_individual_sale: true,
     is_course: false,
     course_format: 'self_paced',
@@ -26,6 +37,13 @@ const initialBundleForm = {
     publish_targets: defaultAutoPostTargets,
     items: [],
 };
+const DELIVERY_PROMISE_PRESETS = [
+    { key: 'same_day', label: 'Leo leo', hint: 'Bundle inaweza kufika siku hiyo hiyo.', handling: [0, 0], transit: [0, 0], buyerLabel: 'Same day delivery' },
+    { key: 'one_two', label: 'Siku 1-2', hint: 'Kwa bundle rahisi ndani ya mji.', handling: [0, 1], transit: [1, 2], buyerLabel: 'Delivery in 1-2 days' },
+    { key: 'two_five', label: 'Siku 2-5', hint: 'Kwa bundle yenye vitu vingi.', handling: [1, 2], transit: [2, 5], buyerLabel: 'Bundle delivery in 2-5 days' },
+    { key: 'made_order', label: 'Kuandaliwa', hint: 'Bundle inahitaji kukusanywa au kutengenezwa.', handling: [2, 5], transit: [1, 2], buyerLabel: 'Prepared bundle: delivery in 3-7 days' },
+    { key: 'confirm', label: 'Tutathibitisha', hint: 'Kwa bundles nzito au inter-city.', handling: ['', ''], transit: ['', ''], buyerLabel: 'Delivery time will be confirmed in chat', confirm: true },
+];
 
 const initialFormForScope = (moduleScope = null) => ({
     ...initialBundleForm,
@@ -41,6 +59,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     const [contentItems, setContentItems] = useState([]);
     const [posts, setPosts] = useState([]);
     const [bundles, setBundles] = useState([]);
+    const [shippingProfiles, setShippingProfiles] = useState([]);
     const [bundleForm, setBundleForm] = useState(() => initialFormForScope(moduleScope));
     const [bundleItemSearch, setBundleItemSearch] = useState('');
     const [bundleItemTypeFilter, setBundleItemTypeFilter] = useState('all');
@@ -296,11 +315,12 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
     async function loadPage() {
         setLoading(true);
         try {
-            const [productsRes, contentRes, postsRes, bundleRes, summaryRes] = await Promise.all([
+            const [productsRes, contentRes, postsRes, bundleRes, shippingProfilesRes, summaryRes] = await Promise.all([
                 axios.get(`/merchant/${merchantUsername}/products/api`),
                 axios.get(`/merchant/${merchantUsername}/content-items/api`),
                 axios.get(`/merchant/${merchantUsername}/posts/api`, { params: { source: 'authored' } }),
                 axios.get(`/merchant/${merchantUsername}/bundles/api`),
+                axios.get('/api/merchant/shipping-profiles').catch(() => ({ data: { data: [] } })),
                 axios.get(`/merchant/${merchantUsername}/orders/api/commerce-summary`).catch(() => ({ data: null })),
             ]);
 
@@ -308,6 +328,7 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
             setContentItems(contentRes.data?.data || []);
             setPosts(postsRes.data?.data || []);
             setBundles(bundleRes.data?.data || bundleRes.data?.bundles || []);
+            setShippingProfiles(shippingProfilesRes.data?.data || []);
             setCommerceSummary(summaryRes.data || null);
         } catch (error) {
             toast.error('Imeshindwa kupakia bundles page.');
@@ -337,6 +358,17 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
             title: item.title || '',
             description: item.description || '',
             price: item.price ?? '',
+            shipping_profile_id: item.shipping_profile_id ? String(item.shipping_profile_id) : '',
+            delivery_promise_override_enabled: Boolean(item.delivery_promise_override_enabled),
+            delivery_handling_min_days: item.delivery_handling_min_days ?? '',
+            delivery_handling_max_days: item.delivery_handling_max_days ?? '',
+            delivery_transit_min_days: item.delivery_transit_min_days ?? '',
+            delivery_transit_max_days: item.delivery_transit_max_days ?? '',
+            delivery_cutoff_time: item.delivery_cutoff_time ? String(item.delivery_cutoff_time).slice(0, 5) : '',
+            delivery_business_days_only: item.delivery_business_days_only ?? true,
+            delivery_promise_label: item.delivery_promise_label || '',
+            delivery_promise_note: item.delivery_promise_note || '',
+            delivery_requires_confirmation: item.delivery_requires_confirmation ?? false,
             is_individual_sale: item.is_individual_sale ?? true,
             is_course: item.is_course ?? false,
             course_format: item.course_format || 'self_paced',
@@ -367,6 +399,40 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
         setCourseCoverUpload({ uploading: false, progress: 0, name: '' });
         setCourseOutcomeDraft('');
         setCourseRequirementDraft('');
+    }
+
+    function hasBundlePromiseDayValue(value) {
+        return value !== null && value !== undefined && value !== '';
+    }
+
+    function isSameDayBundlePromise(form) {
+        const label = String(form.delivery_promise_label || '').toLowerCase();
+        const hasExplicitDays = [
+            form.delivery_handling_min_days,
+            form.delivery_handling_max_days,
+            form.delivery_transit_min_days,
+            form.delivery_transit_max_days,
+        ].some(hasBundlePromiseDayValue);
+
+        return label.includes('same day')
+            || label.includes('leo leo')
+            || (hasExplicitDays && Number(form.delivery_handling_max_days || 0) <= 0 && Number(form.delivery_transit_max_days || 0) <= 0);
+    }
+
+    const showBundleDeliveryDays = !bundleForm.delivery_requires_confirmation;
+    const showBundleDeliveryCutoff = showBundleDeliveryDays && isSameDayBundlePromise(bundleForm);
+
+    function applyBundleDeliveryPreset(preset) {
+        setBundleForm((current) => ({
+            ...current,
+            delivery_handling_min_days: preset.handling[0],
+            delivery_handling_max_days: preset.handling[1],
+            delivery_transit_min_days: preset.transit[0],
+            delivery_transit_max_days: preset.transit[1],
+            delivery_promise_label: preset.buyerLabel,
+            delivery_requires_confirmation: Boolean(preset.confirm),
+            delivery_cutoff_time: preset.key === 'same_day' ? current.delivery_cutoff_time : '',
+        }));
     }
 
     function splitCourseList(value) {
@@ -526,6 +592,14 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
             const payload = {
                 ...bundleForm,
                 price: bundleForm.price === '' ? null : Number(bundleForm.price),
+                shipping_profile_id: bundleForm.shipping_profile_id ? Number(bundleForm.shipping_profile_id) : null,
+                delivery_handling_min_days: bundleForm.delivery_promise_override_enabled ? (bundleForm.delivery_handling_min_days || null) : null,
+                delivery_handling_max_days: bundleForm.delivery_promise_override_enabled ? (bundleForm.delivery_handling_max_days || null) : null,
+                delivery_transit_min_days: bundleForm.delivery_promise_override_enabled ? (bundleForm.delivery_transit_min_days || null) : null,
+                delivery_transit_max_days: bundleForm.delivery_promise_override_enabled ? (bundleForm.delivery_transit_max_days || null) : null,
+                delivery_cutoff_time: bundleForm.delivery_promise_override_enabled && showBundleDeliveryCutoff ? (bundleForm.delivery_cutoff_time || null) : null,
+                delivery_promise_label: bundleForm.delivery_promise_override_enabled ? (bundleForm.delivery_promise_label || null) : null,
+                delivery_promise_note: bundleForm.delivery_promise_override_enabled ? (bundleForm.delivery_promise_note || null) : null,
                 course_outcomes: splitCourseList(bundleForm.course_outcomes_text),
                 course_requirements: splitCourseList(bundleForm.course_requirements_text),
                 course_modules: bundleForm.is_course ? courseModules.map((module, moduleIndex) => ({
@@ -1082,6 +1156,68 @@ export default function MerchantBundles({ merchantUsername = '', itemPickerDefau
                             <div className="space-y-2">
                                 <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Description</label>
                                 <Textarea rows={4} value={bundleForm.description} onChange={(e) => setBundleForm({ ...bundleForm, description: e.target.value })} placeholder={pageCopy.descriptionPlaceholder} />
+                            </div>
+
+                            <div className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-start gap-2">
+                                        <Clock3 className="mt-0.5 h-4 w-4 text-emerald-700" />
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-widest text-emerald-900">Muda wa bundle kufika</p>
+                                            <p className="text-xs text-emerald-800/80">Kwa bundle yenye bidhaa za kushikika, chagua template au weka muda maalum.</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" onClick={() => setBundleForm({ ...bundleForm, delivery_promise_override_enabled: !bundleForm.delivery_promise_override_enabled })} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${bundleForm.delivery_promise_override_enabled ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
+                                        {bundleForm.delivery_promise_override_enabled ? 'Muda maalum' : 'Tumia template'}
+                                    </button>
+                                </div>
+                                <select className="h-11 w-full rounded-xl border border-emerald-100 bg-white px-3 text-sm font-bold text-emerald-800" value={bundleForm.shipping_profile_id} onChange={(e) => setBundleForm({ ...bundleForm, shipping_profile_id: e.target.value })}>
+                                    <option value="">Use first physical item/default profile</option>
+                                    {shippingProfiles.map(profile => (
+                                        <option key={profile.id} value={profile.id}>{profile.name}{profile.is_default ? ' (Default)' : ''}</option>
+                                    ))}
+                                </select>
+                                {bundleForm.delivery_promise_override_enabled && (
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                            {DELIVERY_PROMISE_PRESETS.map((preset) => (
+                                                <button key={preset.key} type="button" onClick={() => applyBundleDeliveryPreset(preset)} className={`rounded-2xl border bg-white px-3 py-2 text-left transition hover:border-emerald-300 ${bundleForm.delivery_promise_label === preset.buyerLabel ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-emerald-100'}`}>
+                                                    <span className="block text-xs font-black text-emerald-900">{preset.label}</span>
+                                                    <span className="mt-0.5 block text-[10px] font-semibold leading-4 text-emerald-700/75">{preset.hint}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {showBundleDeliveryDays ? (
+                                            <div className="space-y-2">
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                    <Input type="number" min="0" placeholder="Kuandaa kuanzia" value={bundleForm.delivery_handling_min_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_handling_min_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                    <Input type="number" min="0" placeholder="Kuandaa mpaka" value={bundleForm.delivery_handling_max_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_handling_max_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                    <Input type="number" min="0" placeholder="Safari kuanzia" value={bundleForm.delivery_transit_min_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_transit_min_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                    <Input type="number" min="0" placeholder="Safari mpaka" value={bundleForm.delivery_transit_max_days} onChange={(e) => setBundleForm({ ...bundleForm, delivery_transit_max_days: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                </div>
+                                                {showBundleDeliveryCutoff && (
+                                                    <Input type="time" value={bundleForm.delivery_cutoff_time} onChange={(e) => setBundleForm({ ...bundleForm, delivery_cutoff_time: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
+                                                Siku na deadline zimefichwa kwa sababu muda utathibitishwa kwenye chat.
+                                            </div>
+                                        )}
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <Input placeholder="Maneno ya mteja, mf. Bundle delivery: siku 2-5" value={bundleForm.delivery_promise_label} onChange={(e) => setBundleForm({ ...bundleForm, delivery_promise_label: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button type="button" onClick={() => setBundleForm({ ...bundleForm, delivery_business_days_only: !bundleForm.delivery_business_days_only })} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${bundleForm.delivery_business_days_only ? 'border-emerald-200 bg-white text-emerald-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
+                                                {bundleForm.delivery_business_days_only ? 'Siku za kazi' : 'Kila siku'}
+                                            </button>
+                                            <button type="button" onClick={() => setBundleForm({ ...bundleForm, delivery_requires_confirmation: !bundleForm.delivery_requires_confirmation, delivery_cutoff_time: bundleForm.delivery_requires_confirmation ? bundleForm.delivery_cutoff_time : '' })} className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${bundleForm.delivery_requires_confirmation ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white/70 text-slate-500'}`}>
+                                                {bundleForm.delivery_requires_confirmation ? 'Tuta-confirm kwa chat' : 'Mteja aone estimate'}
+                                            </button>
+                                        </div>
+                                        <Input placeholder="Ujumbe wa ziada, mf. Bundle nzito inaweza kuhitaji cargo" value={bundleForm.delivery_promise_note} onChange={(e) => setBundleForm({ ...bundleForm, delivery_promise_note: e.target.value })} className="h-10 bg-white text-xs font-bold" />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="grid gap-3 md:grid-cols-2">

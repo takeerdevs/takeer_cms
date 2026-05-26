@@ -211,6 +211,22 @@ class User extends Authenticatable
         return $this->hasMany(Merchant::class);
     }
 
+    public function hasVerifiedPersonalProfile(): bool
+    {
+        return $this->merchantProfiles()
+            ->where('type', 'personal')
+            ->where(function ($query) {
+                $query->where('is_verified', true)
+                    ->orWhereIn('kyc_status', ['approved', 'verified'])
+                    ->orWhereHas('kyc', function ($kycQuery) {
+                        $kycQuery
+                            ->whereIn('status', ['approved', 'verified'])
+                            ->whereIn('business_type', ['personal', 'individual']);
+                    });
+            })
+            ->exists();
+    }
+
     public function products(): HasManyThrough
     {
         return $this->hasManyThrough(Product::class, Merchant::class, 'user_id', 'merchant_id');

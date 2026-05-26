@@ -3,7 +3,7 @@ import { Head, Link } from '@inertiajs/react';
 import {
     ChevronLeft, ChevronRight, Store, ShieldCheck, Zap, Info, BadgeCheck,
     AlertTriangle, DownloadCloud, CalendarClock, MapPin, Link as LinkIcon,
-    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle, Loader2
+    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle, Loader2, Clock3
 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
@@ -169,6 +169,26 @@ export default function ProductDetail({ product }) {
         if (number >= 1000) return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}K`;
         return number.toLocaleString();
     };
+    const formatPromiseDayRange = (min, max) => {
+        const a = min !== null && min !== undefined && min !== '' ? Number(min) : null;
+        const b = max !== null && max !== undefined && max !== '' ? Number(max) : null;
+        if (a === null && b === null) return '';
+        if (a !== null && b !== null && a !== b) return `${a}-${b} days`;
+        const value = b ?? a;
+        if (value === 0) return 'same day';
+        if (value === 1) return '1 day';
+        return `${value} days`;
+    };
+    const productDeliveryPromise = product?.delivery_promise || {};
+    const productDeliveryPromiseText = (() => {
+        if (product?.type !== 'physical' || !productDeliveryPromise.override_enabled) return '';
+        if (productDeliveryPromise.label) return productDeliveryPromise.label;
+        if (productDeliveryPromise.requires_confirmation) return 'Delivery time will be confirmed in order chat';
+        const handling = formatPromiseDayRange(productDeliveryPromise.handling_min_days, productDeliveryPromise.handling_max_days);
+        const transit = formatPromiseDayRange(productDeliveryPromise.transit_min_days, productDeliveryPromise.transit_max_days);
+        if (handling && transit) return `${handling} preparation + ${transit} delivery`;
+        return transit || handling || '';
+    })();
     const whatsappUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}` : null;
     const servicePricingModel = product?.service_pricing_model || 'fixed_price';
     const serviceIsShowcase = Boolean(product?.service_is_showcase);
@@ -2338,6 +2358,22 @@ export default function ProductDetail({ product }) {
                     )}
 
                     {/* Trust Badges / Warnings */}
+                    {product.type === 'physical' && productDeliveryPromiseText && (
+                        <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-4 flex items-start gap-3 border border-emerald-100 dark:border-emerald-900/20">
+                            <Clock3 className="h-6 w-6 text-emerald-600 shrink-0 mt-0.5" />
+                            <div>
+                                <h4 className="font-bold text-sm text-emerald-900 dark:text-emerald-500">Delivery estimate</h4>
+                                <p className="text-xs text-emerald-800/80 dark:text-emerald-400/80 mt-1">
+                                    {productDeliveryPromiseText}
+                                    {productDeliveryPromise.cutoff_time ? ` if ordered before ${String(productDeliveryPromise.cutoff_time).slice(0, 5)}` : ''}
+                                    {productDeliveryPromise.business_days_only ? ' · business days' : ''}
+                                </p>
+                                {productDeliveryPromise.note && (
+                                    <p className="mt-1 text-[11px] font-semibold text-emerald-800/70 dark:text-emerald-400/70">{productDeliveryPromise.note}</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
                     {product.type !== 'service' && (
                         merchantCanTransactInApp ? (
                             <div className="bg-green-50 dark:bg-green-900/10 rounded-2xl p-4 flex items-start gap-3 border border-green-100 dark:border-green-900/20">

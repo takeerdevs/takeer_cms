@@ -12,6 +12,9 @@ return new class extends Migration {
             $table->foreignId('merchant_id')->constrained('merchants')->cascadeOnDelete();
             $table->string('name');
             $table->boolean('is_default')->default(false);
+            $table->boolean('in_city_enabled')->default(true);
+            $table->boolean('intercity_enabled')->default(true);
+            $table->boolean('international_enabled')->default(false);
             $table->timestamps();
 
             $table->index('merchant_id');

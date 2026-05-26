@@ -111,7 +111,7 @@ class MerchantBusinessOverviewController extends Controller
                 'menu' => $menuProducts->count(),
                 'digital' => $products->where('type', 'digital')->count(),
                 'services' => $serviceProducts
-                    ->reject(fn (Product $product) => in_array($product->module_key, ['rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops'], true))
+                    ->reject(fn (Product $product) => in_array($product->module_key, ['rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops', 'forwarders'], true))
                     ->count(),
                 'rooms' => $serviceProducts->where('module_key', 'rooms')->count(),
                 'tour_departures' => $serviceProducts->where('module_key', 'tour_departures')->count(),
@@ -120,6 +120,7 @@ class MerchantBusinessOverviewController extends Controller
                 'reservations' => $serviceProducts->where('module_key', 'reservations')->count(),
                 'rentals' => $serviceProducts->where('module_key', 'rentals')->count(),
                 'workshops' => $serviceProducts->where('module_key', 'workshops')->count(),
+                'forwarders' => $serviceProducts->where('module_key', 'forwarders')->count(),
                 'posts' => Post::query()->where('merchant_id', $merchant->id)->count(),
                 'bundles' => Bundle::query()->where('merchant_id', $merchant->id)->count(),
                 'offerings' => OfferingGroup::query()->where('merchant_id', $merchant->id)->count(),

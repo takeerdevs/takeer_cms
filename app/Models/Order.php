@@ -15,6 +15,7 @@ class Order extends Model
         'public_id',
         'pickup_code',
         'buyer_id',
+        'user_address_id',
         'merchant_id',
         'product_id',
         'variant_id',
@@ -145,6 +146,11 @@ class Order extends Model
     public function buyer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'buyer_id');
+    }
+
+    public function userAddress(): BelongsTo
+    {
+        return $this->belongsTo(UserAddress::class);
     }
 
     public function customDeliveryDueAtFrom($start = null)

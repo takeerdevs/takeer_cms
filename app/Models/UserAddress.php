@@ -13,10 +13,16 @@ class UserAddress extends Model
         'type',
         'address_line',
         'extra_details',
+        'country_id',
+        'state_id',
+        'city_id',
         'latitude',
         'longitude',
         'is_default',
         'forwarder_id',
+        'forwarder_route_id',
+        'forwarder_location_id',
+        'forwarder_transport_mode',
         'forwarder_customer_id',
     ];
 
@@ -34,5 +40,30 @@ class UserAddress extends Model
     public function forwarder(): BelongsTo
     {
         return $this->belongsTo(Forwarder::class);
+    }
+
+    public function forwarderRoute(): BelongsTo
+    {
+        return $this->belongsTo(ForwarderRoute::class);
+    }
+
+    public function forwarderLocation(): BelongsTo
+    {
+        return $this->belongsTo(ForwarderLocation::class);
+    }
+
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class);
+    }
+
+    public function state(): BelongsTo
+    {
+        return $this->belongsTo(CountryState::class, 'state_id');
+    }
+
+    public function cityRecord(): BelongsTo
+    {
+        return $this->belongsTo(CountryCity::class, 'city_id');
     }
 }

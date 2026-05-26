@@ -8,6 +8,7 @@ use App\Jobs\ProcessPostMediaVideo;
 use App\Http\Resources\CommentResource;
 use App\Http\Resources\PostResource;
 use App\Models\Bundle;
+use App\Models\Forwarder;
 use App\Models\Merchant;
 use App\Models\Post;
 use App\Models\PostProductTag;
@@ -190,6 +191,7 @@ class PostController extends Controller
             'restricted_price' => 'nullable|numeric|min:0',
             'comments_enabled_override' => 'nullable|boolean',
             'reactions_enabled_override' => 'nullable|boolean',
+            'forwarder_route_id' => 'nullable|string|max:120',
         ]);
 
         $merchantProfile = $this->merchantFromRequest($request);
@@ -197,6 +199,8 @@ class PostController extends Controller
         if (!$merchantProfile) {
             return response()->json(['message' => 'Tafadhali tengeneza biashara kwanza.'], 403);
         }
+
+        $forwarderRoute = $this->resolveForwarderRoute($merchantProfile, $validated['forwarder_route_id'] ?? null);
 
         $attachedProduct = null;
         if (!empty($validated['product_id'])) {
@@ -254,6 +258,10 @@ class PostController extends Controller
 
         $post = Post::create([
             'merchant_id' => $merchantProfile->id,
+            'forwarder_id' => $forwarderRoute['forwarder_id'] ?? null,
+            'forwarder_route_id' => $forwarderRoute['route_id'] ?? null,
+            'forwarder_route_label' => $forwarderRoute['label'] ?? null,
+            'forwarder_route_snapshot' => $forwarderRoute['snapshot'] ?? null,
             'created_by_user_id' => $request->user()?->id,
             'created_by_staff_id' => $actingStaff?->id,
             'link_preview_id' => $linkPreview?->id,
@@ -904,5 +912,155 @@ class PostController extends Controller
                 MerchantPermissions::can($user, $merchant, 'posts.create')
                 || MerchantPermissions::can($user, $merchant, 'posts.publish')
             ));
+    }
+
+    private function resolveForwarderRoute(Merchant $merchant, ?string $routeId): ?array
+    {
+        if (!$routeId) {
+            return null;
+        }
+
+        $forwarder = Forwarder::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('verification_status', 'verified')
+            ->where('is_verified', true)
+            ->with([
+                'locations.country',
+                'locations.state',
+                'locations.cityRecord',
+                'routes.originLocations.country',
+                'routes.originLocations.state',
+                'routes.originLocations.cityRecord',
+                'routes.destinationLocations.country',
+                'routes.destinationLocations.state',
+                'routes.destinationLocations.cityRecord',
+                'routes.transportModes',
+            ])
+            ->latest()
+            ->first();
+
+        if (!$forwarder) {
+            abort(422, 'Forwarder route is not available for this profile.');
+        }
+
+        $routeModel = $forwarder->routes
+            ->first(fn ($item) => (string) $item->route_uid === (string) $routeId || (string) $item->id === (string) $routeId);
+
+        if (!$routeModel) {
+            abort(422, 'Selected forwarder route was not found.');
+        }
+
+        $locations = $forwarder->locations->keyBy('id');
+        $route = [
+            'id' => $routeModel->route_uid,
+            'origin_location_ids' => $routeModel->originLocations->pluck('id')->values()->all(),
+            'destination_location_ids' => $routeModel->destinationLocations->pluck('id')->values()->all(),
+            'transport_modes' => $routeModel->transportModes->pluck('mode')->values()->all(),
+            'transport_details' => $routeModel->transportModes->mapWithKeys(fn ($mode) => [$mode->mode => [
+                'estimate' => $mode->estimate,
+                'pricing_model' => $mode->pricing_model,
+                'price_amount' => $mode->price_amount,
+                'currency' => $mode->currency,
+                'minimum_charge' => $mode->minimum_charge,
+                'notes' => $mode->notes,
+                'allowed_items' => $mode->allowed_items,
+                'disallowed_items' => $mode->disallowed_items,
+                'details' => $mode->details ?: [],
+            ]])->all(),
+            'estimate' => $routeModel->estimate,
+            'rates_info' => $routeModel->rates_info,
+        ];
+        $label = $this->forwarderRouteLabel($route, $locations);
+        $originLocations = collect($route['origin_location_ids'] ?? [])
+            ->map(fn ($id) => $locations->get((int) $id))
+            ->filter()
+            ->values();
+        $destinationLocations = collect($route['destination_location_ids'] ?? [])
+            ->map(fn ($id) => $locations->get((int) $id))
+            ->filter()
+            ->values();
+
+        return [
+            'forwarder_id' => $forwarder->id,
+            'route_id' => (string) $routeModel->route_uid,
+            'label' => $label,
+            'snapshot' => [
+                'id' => (string) $routeModel->route_uid,
+                'forwarder_route_id' => $routeModel->id,
+                'label' => $label,
+                'origin_location_ids' => array_values($route['origin_location_ids'] ?? []),
+                'destination_location_ids' => array_values($route['destination_location_ids'] ?? []),
+                'origin_locations' => $originLocations->map(fn ($location) => $this->forwarderRouteLocationPayload($location))->all(),
+                'destination_locations' => $destinationLocations->map(fn ($location) => $this->forwarderRouteLocationPayload($location))->all(),
+                'transport_modes' => array_values($route['transport_modes'] ?? []),
+                'transport_details' => $route['transport_details'] ?? [],
+                'estimate' => $route['estimate'] ?? null,
+                'rates_info' => $route['rates_info'] ?? null,
+                'customer_instructions' => $routeModel->customer_instructions,
+            ],
+        ];
+    }
+
+    private function forwarderRouteLabel(array $route, \Illuminate\Support\Collection $locations): string
+    {
+        $originLocations = collect($route['origin_location_ids'] ?? [])
+            ->map(fn ($id) => $locations->get((int) $id))
+            ->filter()
+            ->values();
+        $destinationLocations = collect($route['destination_location_ids'] ?? [])
+            ->map(fn ($id) => $locations->get((int) $id))
+            ->filter()
+            ->values();
+
+        return ($this->forwarderRoutePlaceName($originLocations) ?: 'Origin')
+            . ' to '
+            . ($this->forwarderRoutePlaceName($destinationLocations) ?: 'Destination');
+    }
+
+    private function forwarderRoutePlaceName(\Illuminate\Support\Collection $locations): string
+    {
+        if ($locations->isEmpty()) {
+            return '';
+        }
+
+        $countryNames = $locations->map(fn ($location) => $location->country?->name)->filter()->unique()->values();
+        if ($countryNames->count() > 1) {
+            return $countryNames->join(', ');
+        }
+
+        $stateNames = $locations->map(fn ($location) => $location->state?->name)->filter()->unique()->values();
+        if ($stateNames->count() > 1) {
+            return $stateNames->join(', ');
+        }
+
+        $cityNames = $locations->map(fn ($location) => $location->cityRecord?->name)->filter()->unique()->values();
+        if ($cityNames->count() > 1) {
+            return $cityNames->join(', ');
+        }
+
+        return $countryNames->first()
+            ?: $stateNames->first()
+            ?: $cityNames->first()
+            ?: $locations->pluck('name')->filter()->unique()->join(', ');
+    }
+
+    private function forwarderRouteLocationPayload($location): array
+    {
+        return [
+            'id' => $location?->id,
+            'name' => $location?->name,
+            'address_line' => $location?->address_line,
+            'address_template' => $location?->address_template,
+            'latitude' => $location?->latitude,
+            'longitude' => $location?->longitude,
+            'country_id' => $location?->country_id,
+            'state_id' => $location?->state_id,
+            'city_id' => $location?->city_id,
+            'city' => $location?->cityRecord?->name ?: $location?->city_name,
+            'state' => $location?->state?->name ?: $location?->state_name,
+            'country' => $location?->country?->name ?: $location?->country_name,
+            'contact_phone' => $location?->contact_phone,
+            'required_fields' => $location?->required_fields ?: [],
+        ];
     }
 }

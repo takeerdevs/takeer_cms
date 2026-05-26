@@ -20,7 +20,7 @@ const DEFAULT_CENTER = {
 
 const libraries = ['places'];
 
-export default function ShopLocationsManager({ locations = [], onRefresh, loading: propLoading, profiles = [], onRefreshZones, merchantId = null, personalMode = false }) {
+export default function ShopLocationsManager({ locations = [], onRefresh, loading: propLoading, profiles = [], onRefreshZones, merchantId = null, personalMode = false, countries = [] }) {
     const [loading, setLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -33,6 +33,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         latitude: DEFAULT_CENTER.lat,
         longitude: DEFAULT_CENTER.lng,
         place_id: '',
+        country_name: '',
+        country_iso2: '',
+        state_name: '',
+        city_name: '',
         city: '',
         region: '',
         is_primary: false,
@@ -91,10 +95,16 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                 // Extract city/region if possible
                 let city = '';
                 let region = '';
+                let countryName = '';
+                let countryCode = '';
                 if (place.address_components) {
                     for (const component of place.address_components) {
                         if (component.types.includes('locality')) city = component.long_name;
                         if (component.types.includes('administrative_area_level_1')) region = component.long_name;
+                        if (component.types.includes('country')) {
+                            countryName = component.long_name;
+                            countryCode = component.short_name;
+                        }
                     }
                 }
 
@@ -104,6 +114,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                     latitude: lat,
                     longitude: lng,
                     place_id: place.place_id || '',
+                    country_name: countryName,
+                    country_iso2: countryCode,
+                    state_name: region,
+                    city_name: city,
                     city: city,
                     region: region,
                 }));
@@ -121,6 +135,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             latitude: DEFAULT_CENTER.lat,
             longitude: DEFAULT_CENTER.lng,
             place_id: '',
+            country_name: '',
+            country_iso2: '',
+            state_name: '',
+            city_name: '',
             city: '',
             region: '',
             is_primary: false,
@@ -139,6 +157,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             latitude: Number(loc.latitude),
             longitude: Number(loc.longitude),
             place_id: loc.place_id || '',
+            country_name: loc.country?.name || '',
+            country_iso2: loc.country?.iso_alpha2 || '',
+            state_name: loc.state?.name || loc.region || '',
+            city_name: loc.city_record?.name || loc.city || '',
             city: loc.city || '',
             region: loc.region || '',
             is_primary: !!loc.is_primary,
@@ -163,6 +185,10 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             latitude: DEFAULT_CENTER.lat,
             longitude: DEFAULT_CENTER.lng,
             place_id: '',
+            country_name: '',
+            country_iso2: '',
+            state_name: '',
+            city_name: '',
             city: '',
             region: '',
             is_primary: locations.length === 0,
@@ -401,6 +427,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                                 locations={locations}
                                                 merchantId={merchantId}
                                                 onRefresh={onRefreshZones}
+                                                countries={countries}
                                             />
                                         </div>
                                     )}
@@ -543,7 +570,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                 )}
                             </div>
                             <div className="space-y-1 md:col-span-2">
-                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Namba ya Simu (Si lazima)</label>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">Namba ya Simu ya Ofisi/Stoo hii</label>
                                 <Input
                                     placeholder="Mfano: 07........"
                                     value={formData.contact_phone}
@@ -643,7 +670,7 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
     );
 }
 
-function LocationShippingManager({ location, profiles = [], locations = [], merchantId = null, onRefresh }) {
+function LocationShippingManager({ location, profiles = [], locations = [], merchantId = null, onRefresh, countries = [] }) {
     const [activeProfileId, setActiveProfileId] = useState(null);
     const [isAddingTemplate, setIsAddingTemplate] = useState(false);
     const [newTemplateName, setNewTemplateName] = useState('');
@@ -720,6 +747,9 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                 name: activeProfile.name,
                 is_default: Boolean(activeProfile.is_default),
                 outside_area_policy: policy,
+                in_city_enabled: Boolean(activeProfile.in_city_enabled),
+                intercity_enabled: Boolean(activeProfile.intercity_enabled),
+                international_enabled: Boolean(activeProfile.international_enabled),
             });
             toast.success('Kanuni ya maeneo imesasishwa.');
             if (onRefresh) onRefresh();
@@ -730,11 +760,35 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
         }
     };
 
+    const handleSectionToggle = async (key) => {
+        if (!activeProfile) return;
+
+        setIsSavingPolicy(true);
+        try {
+            await window.axios.put(`/api/merchant/shipping-profiles/${activeProfile.id}`, {
+                merchant_id: merchantId,
+                name: activeProfile.name,
+                is_default: Boolean(activeProfile.is_default),
+                outside_area_policy: activeProfile.outside_area_policy || 'inquiry',
+                in_city_enabled: key === 'in_city_enabled' ? !activeProfile.in_city_enabled : Boolean(activeProfile.in_city_enabled),
+                intercity_enabled: key === 'intercity_enabled' ? !activeProfile.intercity_enabled : Boolean(activeProfile.intercity_enabled),
+                international_enabled: key === 'international_enabled' ? !activeProfile.international_enabled : Boolean(activeProfile.international_enabled),
+            });
+            toast.success('Sehemu ya template imesasishwa.');
+            if (onRefresh) onRefresh();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Imeshindikana kusasisha sehemu ya template.');
+        } finally {
+            setIsSavingPolicy(false);
+        }
+    };
+
     if (profiles.length === 0 && !isAddingTemplate) {
         return (
             <div className="text-center py-6 bg-muted/20 rounded-xl border border-dashed border-input">
                 <Truck className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-20" />
-                <p className="text-xs text-muted-foreground font-bold mb-3">Bado huna template yoyote ya usafirishaji.</p>
+                <p className="text-md text-muted-foreground font-bold mb-3">Bado hujaweka mipangilio ya usafirishaji.</p>
+                <p className="text-xs text-muted-foreground font-bold mb-3">Mipangilio ya usafirishaji ni namna ya kujumuisha bidhaa zinazoweza safirishwa kwa bei ya usafirishaji sawa mfano bidhaa ndogo ndogo zinazotumia nauli moja zinaweza kua na mpangilio wake maalumu wa usafirishaji, na kama una bidhaa ambazo zinatumia nauli tofauti pengine sababu ya uzito au ukubwa, inashauriwa kuweka mpangilio mwingine wa usafirishaji nawe kwenye bidhaa husika unaweza kuchagua inatumia mpangilio upi wa usafirishaji. Unaweza pia katika bidhaa husika ukaweza mpangilio maalumu kwa hiyo bidhaa tu.</p>
                 <Button size="sm" onClick={() => setIsAddingTemplate(true)} className="bg-brand-600 font-bold">
                     <Plus className="h-4 w-4 mr-1" /> Tengeneza mpangilio wa kwanza
                 </Button>
@@ -807,29 +861,53 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
             </div>
 
             <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
-                Hizi ni taratibu zako za usafirishaji, kwa mfano unaweza kuweka utaratibu wa usafirishaji kwa mkoa au wilaya. Weka jina lolote la mpangilio upendalo lenye maana kwako, halitaonekana kwa watumiaji.
+                Weka jina lolote la mpangilio upendalo lenye maana kwako, halitaonekana kwa watumiaji.
             </div>
 
             <div className="bg-white/50 p-4 rounded-2xl border border-brand-100 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200 min-h-[100px]">
                 {activeProfileId ? (
                     <div className="space-y-4">
                         {activeProfile && (
-                            <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
-                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div className="space-y-3 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">Sehemu za delivery kwenye template hii</p>
+                                    <p className="mt-1 text-xs font-semibold text-sky-900/70">
+                                        Washa sehemu ambazo bidhaa za template hii zinaweza kufikishwa. Kila njia utakayoongeza chini itaangukia kwenye sehemu moja.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                                    {[
+                                        { key: 'in_city_enabled', title: 'Ndani ya mji', hint: 'Ruhusu rules za local/distance kwenye template hii.' },
+                                        { key: 'intercity_enabled', title: 'Mikoani', hint: 'Ruhusu miji, mikoa, au country-wide ndani ya nchi.' },
+                                        { key: 'international_enabled', title: 'Nje ya nchi', hint: 'Ruhusu nchi za kimataifa kwa template hii.' },
+                                    ].map((section) => (
+                                        <button
+                                            key={section.key}
+                                            type="button"
+                                            disabled={isSavingPolicy}
+                                            onClick={() => handleSectionToggle(section.key)}
+                                            className={`rounded-2xl border p-3 text-left transition ${activeProfile[section.key] ? 'border-sky-300 bg-white text-sky-900' : 'border-slate-200 bg-white/60 text-slate-400'}`}
+                                        >
+                                            <span className="block text-xs font-black uppercase tracking-wide">{activeProfile[section.key] ? 'ON' : 'OFF'} · {section.title}</span>
+                                            <span className="mt-1 block text-[10px] font-semibold leading-4">{section.hint}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex flex-col gap-3 rounded-2xl border border-white bg-white/80 p-3 md:flex-row md:items-center md:justify-between">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-sky-800">Kanuni ya nje ya maeneo</p>
-                                        <p className="mt-1 text-xs font-semibold text-sky-900/70">
-                                            Chagua kinachotokea kama eneo la mteja halipo ndani ya maeneo uliyoweka.
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-700">Kama anwani ya Mteja ipo nje ya maeneo uliyoweka</p>
+                                        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                                            Hii hutumika baada ya kuangalia sehemu zote zilizo ON: ndani ya mji, mikoani, na nje ya nchi.
                                         </p>
                                     </div>
                                     <select
                                         value={activeProfile.outside_area_policy || 'inquiry'}
                                         disabled={isSavingPolicy}
                                         onChange={(e) => handleOutsideAreaPolicyChange(e.target.value)}
-                                        className="h-10 rounded-xl border border-sky-200 bg-white px-3 text-xs font-black text-sky-900 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400"
                                     >
-                                        <option value="inquiry">Ruhusu kupokea oda nje ya maeneo uliyoweka</option>
-                                        <option value="block">Zuia wateja walio nje ya maeneo uliyoweka</option>
+                                        <option value="inquiry">Pokea oda, thibitisha delivery kwenye chat</option>
+                                        <option value="block">Zuia checkout kama hakuna njia inayolingana</option>
                                     </select>
                                 </div>
                             </div>
@@ -840,6 +918,8 @@ function LocationShippingManager({ location, profiles = [], locations = [], merc
                             fixedLocationId={location.id}
                             merchantId={merchantId}
                             onRefresh={onRefresh}
+                            activeProfile={activeProfile}
+                            countries={countries}
                         />
                     </div>
                 ) : (

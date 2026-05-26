@@ -140,7 +140,6 @@ export function ServiceModuleCreateFields({
             </SelectField>
         </div>
     );
-
     return (
         <div className="rounded-2xl border border-purple-100 bg-white p-3 sm:p-4 space-y-4">
             <div>

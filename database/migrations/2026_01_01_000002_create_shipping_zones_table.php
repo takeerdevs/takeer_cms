@@ -13,6 +13,10 @@ return new class extends Migration {
             $table->string('zone_name');
             $table->decimal('flat_rate_fee', 10, 2)->comment('Flat delivery rate');
             $table->enum('delivery_type', ['local_boda', 'intercity_bus', 'self_pickup']);
+            $table->string('coverage_scope')->default('city_region');
+            $table->foreignId('destination_country_id')->nullable()->constrained('countries')->nullOnDelete();
+            $table->foreignId('destination_state_id')->nullable()->constrained('country_states')->nullOnDelete();
+            $table->foreignId('destination_city_id')->nullable()->constrained('country_cities')->nullOnDelete();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 

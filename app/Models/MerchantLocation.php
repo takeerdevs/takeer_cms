@@ -15,6 +15,9 @@ class MerchantLocation extends Model
         'latitude',
         'longitude',
         'place_id',
+        'country_id',
+        'state_id',
+        'city_id',
         'city',
         'region',
         'is_primary',
@@ -36,6 +39,21 @@ class MerchantLocation extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class, 'merchant_id');
+    }
+
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class);
+    }
+
+    public function state(): BelongsTo
+    {
+        return $this->belongsTo(CountryState::class, 'state_id');
+    }
+
+    public function cityRecord(): BelongsTo
+    {
+        return $this->belongsTo(CountryCity::class, 'city_id');
     }
 
     public function shippingZones(): HasMany

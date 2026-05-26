@@ -183,6 +183,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [customerLng, setCustomerLng] = useState(null);
     const [customerCity, setCustomerCity] = useState('');
     const [customerRegion, setCustomerRegion] = useState('');
+    const [customerCountry, setCustomerCountry] = useState(country?.name || '');
+    const [customerCountryCode, setCustomerCountryCode] = useState(detectedIso2);
+    const [customerCountryId, setCustomerCountryId] = useState(null);
+    const [customerStateId, setCustomerStateId] = useState(null);
+    const [customerCityId, setCustomerCityId] = useState(null);
     const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
     const [isShopLocationsOpen, setIsShopLocationsOpen] = useState(false);
     const [isCoverageMapOpen, setIsCoverageMapOpen] = useState(false);
@@ -230,8 +235,17 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         setPhysicalAddress(displayAddress);
         setExtraAddressDetails(addr.extra_details || '');
         setCustomerCity('');
+        setCustomerRegion('');
+        setCustomerCountry(addr.country?.name || addr.forwarder?.country?.name || country?.name || '');
+        setCustomerCountryCode(addr.country?.iso_alpha2 || addr.forwarder?.country?.iso_alpha2 || detectedIso2 || '');
+        const addressCountryId = addr.country_id || addr.country?.id || addr.forwarder?.country_id || addr.forwarder?.country?.id || null;
+        const addressStateId = addr.state_id || addr.state?.id || null;
+        const addressCityId = addr.city_id || addr.city_record?.id || null;
+        setCustomerCountryId(addressCountryId);
+        setCustomerStateId(addressStateId);
+        setCustomerCityId(addressCityId);
 
-        findBestShippingZone(parseFloat(addr.latitude), parseFloat(addr.longitude), '');
+        findBestShippingZone(parseFloat(addr.latitude), parseFloat(addr.longitude), '', '', addr.country?.name || addr.forwarder?.country?.name || country?.name || '', addressCountryId, addressStateId, addressCityId);
     };
 
     const handleAddressSaved = async (data) => {
@@ -241,7 +255,12 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         setExtraAddressDetails(data.extraDetails);
         setCustomerCity(data.city || '');
         setCustomerRegion(data.region);
-        findBestShippingZone(data.lat, data.lng, data.region, data.city || '');
+        setCustomerCountry(data.country || country?.name || '');
+        setCustomerCountryCode(data.countryCode || detectedIso2 || '');
+        setCustomerCountryId(null);
+        setCustomerStateId(null);
+        setCustomerCityId(null);
+        findBestShippingZone(data.lat, data.lng, data.region, data.city || '', data.country || country?.name || '');
 
         // Persistent saving for authenticated users
         if (!isGuest) {
@@ -252,11 +271,28 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                     extra_details: data.extraDetails,
                     latitude: data.lat,
                     longitude: data.lng,
+                    country_name: data.country || undefined,
+                    country_iso2: data.countryCode || undefined,
+                    state_name: data.region || undefined,
+                    city_name: data.city || undefined,
                     name: data.address.split(',')[0],
                     is_default: addresses.length === 0,
                 });
                 setAddresses(prev => [...prev, res.data.address]);
                 setSelectedAddressId(res.data.address.id);
+                setCustomerCountryId(res.data.address.country_id || res.data.address.country?.id || null);
+                setCustomerStateId(res.data.address.state_id || res.data.address.state?.id || null);
+                setCustomerCityId(res.data.address.city_id || res.data.address.city_record?.id || null);
+                findBestShippingZone(
+                    data.lat,
+                    data.lng,
+                    data.region,
+                    data.city || '',
+                    data.country || country?.name || '',
+                    res.data.address.country_id || res.data.address.country?.id || null,
+                    res.data.address.state_id || res.data.address.state?.id || null,
+                    res.data.address.city_id || res.data.address.city_record?.id || null,
+                );
             } catch (e) {
                 console.error('Failed to persist address', e);
             }
@@ -264,23 +300,23 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     };
 
     const normalizeLocationName = (value) => String(value || '').trim().toLowerCase();
-    const intercityZoneCoversCustomer = (zone, lat, lng, region, city) => {
-        const normalizedCity = normalizeLocationName(city);
-        const normalizedRegion = normalizeLocationName(region);
-        const zoneCity = normalizeLocationName(zone.destination_city);
-        const zoneRegion = normalizeLocationName(zone.destination_region);
+    const intercityZoneCoversCustomer = (zone, lat, lng, region, city, buyerCountry = customerCountry, buyerCountryId = customerCountryId, buyerStateId = customerStateId, buyerCityId = customerCityId) => {
+        const coverageScope = zone.coverage_scope || 'city_region';
 
-        if (normalizedCity && zoneCity && normalizedCity === zoneCity) return true;
-        if (!zoneCity && normalizedRegion && zoneRegion && normalizedRegion === zoneRegion) return true;
+        if (coverageScope === 'countrywide') {
+            return Boolean(zone.destination_country_id && buyerCountryId && String(zone.destination_country_id) === String(buyerCountryId));
+        }
 
-        const destinationLat = Number(zone.reference_lat);
-        const destinationLng = Number(zone.reference_lng);
-        if (!Number.isFinite(destinationLat) || !Number.isFinite(destinationLng)) return false;
+        if (coverageScope === 'international') {
+            return Boolean(zone.destination_country_id && buyerCountryId && String(zone.destination_country_id) === String(buyerCountryId));
+        }
 
-        return calculateHaversine(lat, lng, destinationLat, destinationLng) <= 30;
+        if (zone.destination_city_id && buyerCityId && String(zone.destination_city_id) === String(buyerCityId)) return true;
+        if (!zone.destination_city_id && zone.destination_state_id && buyerStateId && String(zone.destination_state_id) === String(buyerStateId)) return true;
+        return false;
     };
 
-    const findBestShippingZone = (lat, lng, region, city = customerCity) => {
+    const findBestShippingZone = (lat, lng, region, city = customerCity, buyerCountry = customerCountry, buyerCountryId = customerCountryId, buyerStateId = customerStateId, buyerCityId = customerCityId) => {
         if (!shippingZones.length) return;
 
         setSelectedHotspot(null);
@@ -293,17 +329,22 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             || eligibleLocationIds.includes(String(zone.merchant_location_id))
         );
 
-        const normalizedCity = normalizeLocationName(city);
+        const profileAllowsZone = (zone) => {
+            if (!shippingProfile) return true;
+            if (zone.delivery_type === 'local_boda') return shippingProfile.in_city_enabled !== false;
+            if (zone.coverage_scope === 'international') return shippingProfile.international_enabled === true;
+            return shippingProfile.intercity_enabled !== false;
+        };
 
         // 1. Try local delivery first. Same-city shop locations are preferred, with radius as a fallback.
-        const localZones = shippingZones.filter(z => z.delivery_type === 'local_boda' && z.location && eligibleLocalZone(z));
+        const localZones = shippingZones.filter(z => z.delivery_type === 'local_boda' && z.location && eligibleLocalZone(z) && profileAllowsZone(z));
 
         let bestLocalMatch = null;
 
         localZones.forEach(zone => {
             const dist = calculateHaversine(lat, lng, Number(zone.location.latitude), Number(zone.location.longitude));
             const radius = Number(zone.max_distance_km);
-            const sameCity = normalizedCity && normalizeLocationName(zone.location.city) === normalizedCity;
+            const sameCity = buyerCityId && zone.location.city_id && String(zone.location.city_id) === String(buyerCityId);
             if (sameCity || dist <= radius) {
                 const match = {
                     zone,
@@ -331,22 +372,17 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
         // 2. Inter-city: match the merchant's priced destination/region.
         let bestIntercityMatch = null;
-        const canUseNearestOutsideArea = (shippingProfile?.outside_area_policy || 'inquiry') !== 'block';
         shippingZones
             .filter(z => z.delivery_type === 'intercity_bus')
-            .filter(z => canUseNearestOutsideArea || intercityZoneCoversCustomer(z, lat, lng, region, city))
+            .filter(profileAllowsZone)
+            .filter(z => intercityZoneCoversCustomer(z, lat, lng, region, city, buyerCountry, buyerCountryId, buyerStateId, buyerCityId))
             .forEach((zone) => {
-                const directMatch = intercityZoneCoversCustomer(zone, lat, lng, region, city);
-                const destinationLat = Number(zone.reference_lat);
-                const destinationLng = Number(zone.reference_lng);
-                const distance = directMatch
-                    ? 0
-                    : (Number.isFinite(destinationLat) && Number.isFinite(destinationLng)
-                        ? calculateHaversine(lat, lng, destinationLat, destinationLng)
-                        : Infinity);
+                const directMatch = intercityZoneCoversCustomer(zone, lat, lng, region, city, buyerCountry, buyerCountryId, buyerStateId, buyerCityId);
+                const coverageRank = zone.coverage_scope === 'city_region' ? 0 : (zone.coverage_scope === 'countrywide' ? 1 : (zone.coverage_scope === 'international' ? 2 : 3));
+                const distance = coverageRank;
                 const fee = Number(zone.flat_rate_fee || 0);
 
-                if (!directMatch && (!canUseNearestOutsideArea || !Number.isFinite(distance))) return;
+                if (!directMatch) return;
 
                 const match = { zone, distance, fee };
                 if (
@@ -368,25 +404,6 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
             return;
         }
 
-        // 3. Region fallback for older inter-city zones that do not yet have coordinates.
-        if (region && canUseNearestOutsideArea) {
-            const normalizedRegion = normalizeLocationName(region);
-            const busZone = shippingZones.find(z => (
-                z.delivery_type === 'intercity_bus'
-                && normalizeLocationName(z.destination_region).includes(normalizedRegion)
-            ));
-            if (busZone) {
-                setSelectedShippingZoneId(String(busZone.id));
-                setSelectedHotspot(null);
-                toast.info(Number(busZone.flat_rate_fee || 0) > 0
-                    ? `Tumekupatia gharama ya inter-city: ${busZone.zone_name}`
-                    : `Destination ya inter-city imepatikana: ${busZone.zone_name}. Gharama itathibitishwa kwenye chat.`
-                );
-                return;
-            }
-        }
-
-        // 4. Fallback to inquiry
         setSelectedShippingZoneId('');
     };
 
@@ -486,8 +503,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
     useEffect(() => {
         if (!isOpen || isSelfPickupChoice || !shippingZones.length || !customerLat || !customerLng) return;
-        findBestShippingZone(customerLat, customerLng, customerRegion, customerCity);
-    }, [isOpen, isSelfPickupChoice, shippingZones.length, customerLat, customerLng, customerRegion, customerCity, shippingProfile?.outside_area_policy]);
+        findBestShippingZone(customerLat, customerLng, customerRegion, customerCity, customerCountry, customerCountryId);
+    }, [isOpen, isSelfPickupChoice, shippingZones.length, customerLat, customerLng, customerRegion, customerCity, customerCountry, customerCountryId, shippingProfile?.outside_area_policy]);
 
     const itemTitle = activeProduct?.title || activeProduct?.name || 'Inapatikana kwa malipo';
     const requiresOwnedStock = activeProduct?.type === 'physical' && (activeProduct?.fulfillment_mode || 'own_stock') === 'own_stock';
@@ -568,6 +585,41 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         || filteredVariants[0]
         || variants[0]
         || null;
+    const productOriginCountryIds = useMemo(() => {
+        const merchantLocations = Array.isArray(activeProduct?.merchant?.locations)
+            ? activeProduct.merchant.locations
+            : [];
+        const explicitLocationIds = new Set(
+            (Array.isArray(activeProduct?.availability_location_ids) ? activeProduct.availability_location_ids : [])
+                .map((id) => String(id))
+                .filter(Boolean)
+        );
+        const inventoryRows = activeProduct?.has_variants
+            ? (selectedVariant?.location_inventories || [])
+            : (activeProduct?.location_inventories || []);
+
+        inventoryRows.forEach((row) => {
+            const quantity = Number(row?.quantity_decimal ?? row?.quantity ?? row?.available_quantity ?? row?.inventory_quantity ?? 0);
+            if (row?.merchant_location_id && quantity > 0) {
+                explicitLocationIds.add(String(row.merchant_location_id));
+            }
+        });
+
+        const relevantLocations = explicitLocationIds.size > 0
+            ? merchantLocations.filter((location) => explicitLocationIds.has(String(location.id)))
+            : merchantLocations;
+
+        return [...new Set(relevantLocations
+            .map((location) => location.country_id || location.country?.id)
+            .filter(Boolean)
+            .map(String))];
+    }, [
+        activeProduct?.availability_location_ids,
+        activeProduct?.has_variants,
+        activeProduct?.location_inventories,
+        activeProduct?.merchant?.locations,
+        selectedVariant?.location_inventories,
+    ]);
     const hasExplicitCheckoutPrice = activeProduct?.checkout_price !== undefined && activeProduct?.checkout_price !== null;
     const selectedServiceOption = activeProduct?.selected_service_option || null;
     const isVariantSelectionComplete = !activeProduct?.has_variants
@@ -699,6 +751,31 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const isPickup = isSelfPickupChoice || activeShippingZone?.delivery_type === 'self_pickup';
     const shippingFee = (activeShippingZone && isPhysicalProduct && !isSelfPickupChoice) ? parseFloat(activeShippingZone.flat_rate_fee || 0) : 0;
     const price = basePrice + shippingFee;
+    const formatPromiseDayRange = (min, max) => {
+        const a = min !== null && min !== undefined && min !== '' ? Number(min) : null;
+        const b = max !== null && max !== undefined && max !== '' ? Number(max) : null;
+        if (a === null && b === null) return '';
+        if (a !== null && b !== null && a !== b) return `${a}-${b} days`;
+        const value = b ?? a;
+        if (value === 0) return 'same day';
+        if (value === 1) return '1 day';
+        return `${value} days`;
+    };
+    const deliveryPromiseSource = activeProduct?.delivery_promise?.override_enabled
+        ? activeProduct.delivery_promise
+        : activeShippingZone;
+    const deliveryPromiseText = (() => {
+        const promise = deliveryPromiseSource || {};
+        const label = promise.label || promise.delivery_promise_label;
+        if (label) return label;
+        if (promise.requires_confirmation || promise.requires_delivery_confirmation) return 'Delivery time will be confirmed in order chat';
+        const handling = formatPromiseDayRange(promise.handling_min_days, promise.handling_max_days);
+        const transit = formatPromiseDayRange(promise.transit_min_days, promise.transit_max_days);
+        if (handling && transit) return `${handling} preparation + ${transit} delivery`;
+        return transit || handling || '';
+    })();
+    const deliveryPromiseNote = deliveryPromiseSource?.note || deliveryPromiseSource?.delivery_promise_note || '';
+    const deliveryCutoffTime = deliveryPromiseSource?.cutoff_time;
     const deliveryCoverageAnchors = useMemo(() => {
         const anchors = new Map();
 
@@ -737,13 +814,40 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const isOutsideFulfillmentArea = isPhysicalProduct && !isPickup && hasCustomerDeliveryLocation && !activeShippingZone;
     const isOutsideAreaBlocked = isOutsideFulfillmentArea && blocksOutsideAreas;
     const isCheckoutDisabledByDeliveryArea = isOutsideAreaBlocked;
+    const sortedDeliveryCoverageAnchors = useMemo(() => {
+        const lat = Number(customerLat);
+        const lng = Number(customerLng);
+        const hasCustomerPoint = Number.isFinite(lat) && Number.isFinite(lng);
+
+        return [...deliveryCoverageAnchors].sort((a, b) => {
+            if (!hasCustomerPoint) return 0;
+            const aDistance = Number.isFinite(a.lat) && Number.isFinite(a.lng)
+                ? calculateHaversine(lat, lng, a.lat, a.lng)
+                : Number.POSITIVE_INFINITY;
+            const bDistance = Number.isFinite(b.lat) && Number.isFinite(b.lng)
+                ? calculateHaversine(lat, lng, b.lat, b.lng)
+                : Number.POSITIVE_INFINITY;
+
+            return aDistance - bDistance;
+        });
+    }, [deliveryCoverageAnchors, customerLat, customerLng]);
+    const coveragePreviewLabels = sortedDeliveryCoverageAnchors
+        .slice(0, 2)
+        .map((anchor) => anchor.label)
+        .filter(Boolean);
     const radiusCoverageMessage = deliveryCoverageAnchors.length
-        ? `Tunasafirisha ndani ya ${deliveryCoverageAnchors.map((anchor) => `kilomita ${anchor.radiusLabel} kutoka ${anchor.label}`).join(', ')}.`
+        ? (deliveryCoverageAnchors.length === 1
+            ? `Tunasafirisha ndani ya kilomita ${deliveryCoverageAnchors[0].radiusLabel} kutoka ${deliveryCoverageAnchors[0].label}.`
+            : `Tunasafirisha ndani ya maeneo ${deliveryCoverageAnchors.length} ya biashara${coveragePreviewLabels.length ? `, ikiwemo ${coveragePreviewLabels.join(' na ')}` : ''}.`)
         : 'Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.';
     const intercityDestinations = useMemo(() => (
         shippingZones
             .filter((zone) => zone?.is_active !== false && zone?.delivery_type === 'intercity_bus')
-            .map((zone) => zone.destination_city || zone.zone_name || zone.destination_region)
+            .map((zone) => {
+                if (zone.coverage_scope === 'countrywide') return `nchi nzima${zone.destination_country ? ` (${zone.destination_country})` : ''}`;
+                if (zone.coverage_scope === 'international') return `international: ${zone.destination_country || zone.zone_name}`;
+                return zone.destination_city || zone.zone_name || zone.destination_region;
+            })
             .filter(Boolean)
             .filter((value, index, values) => values.indexOf(value) === index)
     ), [shippingZones]);
@@ -751,39 +855,51 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         ? ` Inter-city inapatikana kwenda: ${intercityDestinations.join(', ')}.`
         : '';
     const outsideAreaMessage = `${radiusCoverageMessage}${intercityCoverageMessage} Chagua anwani iliyo karibu au pickup (Kuchukua mwenyewe)`;
-    const radiusCoverageNode = deliveryCoverageAnchors.length ? (
+    const radiusCoverageNode = deliveryCoverageAnchors.length === 1 ? (
         <span>
-            Tunasafirisha ndani ya{' '}
-            {deliveryCoverageAnchors.map((anchor, index) => (
-                <React.Fragment key={`${anchor.label}-${anchor.radiusLabel}`}>
-                    {index > 0 ? ', ' : ''}
-                    kilomita {anchor.radiusLabel} kutoka{' '}
-                    {anchor.mapUrl ? (
-                        <button
-                            type="button"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                setIsCoverageMapOpen(true);
-                            }}
-                            className="underline decoration-amber-700/40 underline-offset-2 hover:text-amber-700"
-                        >
-                            {anchor.label}
-                        </button>
-                    ) : (
-                        anchor.label
-                    )}
-                </React.Fragment>
-            ))}
+            Tunasafirisha ndani ya kilomita {deliveryCoverageAnchors[0].radiusLabel} kutoka{' '}
+            <button
+                type="button"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    setIsCoverageMapOpen(true);
+                }}
+                className="underline decoration-amber-700/40 underline-offset-2 hover:text-amber-700"
+            >
+                {deliveryCoverageAnchors[0].label}
+            </button>
             .
+        </span>
+    ) : deliveryCoverageAnchors.length > 1 ? (
+        <span>
+            Tunasafirisha ndani ya maeneo {deliveryCoverageAnchors.length} ya biashara
+            {coveragePreviewLabels.length ? `, ikiwemo ${coveragePreviewLabels.join(' na ')}` : ''}.{' '}
+            <button
+                type="button"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    setIsCoverageMapOpen(true);
+                }}
+                className="underline decoration-amber-700/40 underline-offset-2 hover:text-amber-700"
+            >
+                Fungua ramani
+            </button>{' '}
+            kuona yote.
         </span>
     ) : (
         <span>Huduma ya kufikisha haipatikani kwenye eneo ulilochagua.</span>
     );
     const isIntercityDelivery = activeShippingZone?.delivery_type === 'intercity_bus';
+    const isInternationalDelivery = activeShippingZone?.coverage_scope === 'international';
+    const isCountrywideDelivery = activeShippingZone?.coverage_scope === 'countrywide';
     const matchedShippingFeeLabel = Number(activeShippingZone?.flat_rate_fee || 0) > 0
         ? `Fee TZS ${Number(activeShippingZone.flat_rate_fee || 0).toLocaleString()}`
         : (isIntercityDelivery ? 'Shipping fee will be confirmed in order chat' : 'Free shipping');
-    const intercityDestinationLabel = activeShippingZone?.destination_city || activeShippingZone?.zone_name || activeShippingZone?.destination_region;
+    const intercityDestinationLabel = isInternationalDelivery
+        ? (activeShippingZone?.destination_country || activeShippingZone?.zone_name)
+        : (isCountrywideDelivery
+            ? `country-wide${activeShippingZone?.destination_country ? ` (${activeShippingZone.destination_country})` : ''}`
+            : (activeShippingZone?.destination_city || activeShippingZone?.zone_name || activeShippingZone?.destination_region));
 
     // Step management based on product type
     useEffect(() => {
@@ -957,10 +1073,16 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 payment_number: isPhysicalProduct ? normalizedAccountPhone : resolvedPaymentPhone,
                 buyer_name: name || (isGuest ? 'Guest' : undefined),
                 country_iso2: detectedIso2 || undefined,
+                user_address_id: isPhysicalProduct && selectedAddressId ? selectedAddressId : undefined,
                 delivery_type: isPhysicalProduct ? (isSelfPickupChoice ? 'self_pickup' : 'shipping') : undefined,
                 delivery_zone_id: (isPhysicalProduct && !isSelfPickupChoice) ? selectedShippingZoneId : undefined,
                 customer_city: isPhysicalProduct ? (customerCity || undefined) : undefined,
                 customer_region: isPhysicalProduct ? (customerRegion || undefined) : undefined,
+                customer_country: isPhysicalProduct ? (customerCountry || undefined) : undefined,
+                customer_country_iso2: isPhysicalProduct ? (customerCountryCode || detectedIso2 || undefined) : undefined,
+                customer_country_id: isPhysicalProduct ? (customerCountryId || undefined) : undefined,
+                customer_state_id: isPhysicalProduct ? (customerStateId || undefined) : undefined,
+                customer_city_id: isPhysicalProduct ? (customerCityId || undefined) : undefined,
                 quantity: isPhysicalProduct && itemType === 'product' ? requestedPhysicalQuantity : 1,
                 idempotency_key: `q-${itemType}-${activeProduct.id}-${activeProduct.service_request_payment?.id || activeProduct.service_request_id || 'standard'}-${Date.now()}`,
                 buyer_lat: isPhysicalProduct ? customerLat : undefined,
@@ -1291,6 +1413,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                     isGuest={isGuest}
                                                     selectedId={selectedAddressId}
                                                     onSelect={applyAddress}
+                                                    productOriginCountryIds={productOriginCountryIds}
+                                                    destinationCountryId={customerCountryId || country?.id || null}
                                                 />
                                                 {hasCustomerDeliveryLocation && (
                                                     <div className={`rounded-2xl border px-3 py-3 text-xs font-bold ${activeShippingZone
@@ -1298,23 +1422,27 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                         : isOutsideAreaBlocked
                                                             ? 'border-red-200 bg-red-50 text-red-900'
                                                             : 'border-amber-200 bg-amber-50 text-amber-900'
-                                                    }`}>
-                                                        {isIntercityDelivery ? (
+                                                        }`}>
+                                                        {isInternationalDelivery ? (
                                                             <span>
-                                                                Inter-city shipping to {intercityDestinationLabel}. {matchedShippingFeeLabel}. Exact pickup/drop-off office will be confirmed by transporter or waybill.
+                                                                International shipping to {intercityDestinationLabel}. {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}. Customs, courier office, and final handoff can be confirmed in order chat.
+                                                            </span>
+                                                        ) : isIntercityDelivery ? (
+                                                            <span>
+                                                                Inter-city shipping to {intercityDestinationLabel}. {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}. Exact pickup/drop-off office will be confirmed by transporter or waybill.
                                                             </span>
                                                         ) : activeShippingZone ? (
                                                             deliveryCoverageAnchors.length ? (
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => setIsCoverageMapOpen(true)}
-                                                                    className="text-left underline decoration-emerald-700/30 underline-offset-2 hover:text-emerald-700"
+                                                                    className="text-right underline decoration-emerald-700/30 underline-offset-2 hover:text-emerald-700"
                                                                 >
-                                                                    Delivery area matched: {activeShippingZone.zone_name}. {matchedShippingFeeLabel}.
+                                                                    Delivery {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}.
                                                                 </button>
                                                             ) : (
                                                                 <span>
-                                                                    Delivery area matched: {activeShippingZone.zone_name}. {matchedShippingFeeLabel}.
+                                                                    Delivery {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}.
                                                                 </span>
                                                             )
                                                         ) : isOutsideAreaBlocked ? (
@@ -1327,6 +1455,12 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                                     Anwani hii iko nje ya eneo la kawaida la kufikisha. Muuzaji bado anaweza kuikagua oda na kuthibitisha kwenye chat. {radiusCoverageNode}
                                                                 </span>
                                                             </>
+                                                        )}
+                                                        {(deliveryCutoffTime || deliveryPromiseNote) && (
+                                                            <div className="mt-2 text-[11px] font-semibold leading-4 opacity-80">
+                                                                {deliveryCutoffTime && <span>Order before {String(deliveryCutoffTime).slice(0, 5)} for this estimate. </span>}
+                                                                {deliveryPromiseNote && <span>{deliveryPromiseNote}</span>}
+                                                            </div>
                                                         )}
                                                     </div>
                                                 )}

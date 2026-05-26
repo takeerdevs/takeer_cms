@@ -21,6 +21,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
     const currentUrl = page.url;
     const [composerOpen, setComposerOpen] = useState(false);
     const [composerInitialMode, setComposerInitialMode] = useState('short');
+    const [composerOptions, setComposerOptions] = useState({});
     const [creatingProfile, setCreatingProfile] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
 
@@ -58,8 +59,10 @@ export default function AppLayout({ children, hideTabBar = false }) {
 
     // Expose global openers
     useEffect(() => {
-        window.__openComposer = (mode = 'short') => {
-            setComposerInitialMode(mode === 'long' ? 'long' : 'short');
+        window.__openComposer = (options = 'short') => {
+            const nextOptions = typeof options === 'object' && options !== null ? options : { mode: options };
+            setComposerInitialMode(nextOptions.mode === 'long' ? 'long' : 'short');
+            setComposerOptions(nextOptions);
             setComposerOpen(true);
         };
         window.__openSearch = () => setSearchOpen(true);
@@ -200,8 +203,14 @@ export default function AppLayout({ children, hideTabBar = false }) {
             {/* ── Global Overlays ────────────────────────────────── */}
             <PostComposer
                 isOpen={composerOpen}
-                onClose={() => setComposerOpen(false)}
+                onClose={() => {
+                    setComposerOpen(false);
+                    setComposerOptions({});
+                }}
                 initialMode={composerInitialMode}
+                initialMerchantUsername={composerOptions.merchantUsername}
+                prefillText={composerOptions.text}
+                forwarderRoutes={composerOptions.forwarderRoutes || []}
             />
 
             <SearchOverlay

@@ -59,6 +59,9 @@ class MerchantShippingProfileController extends Controller
             'name' => 'required|string|max:255',
             'is_default' => 'boolean',
             'outside_area_policy' => 'nullable|in:inquiry,block',
+            'in_city_enabled' => 'boolean',
+            'intercity_enabled' => 'boolean',
+            'international_enabled' => 'boolean',
         ]);
 
         if ($validated['is_default'] ?? false) {
@@ -76,6 +79,9 @@ class MerchantShippingProfileController extends Controller
             'name' => $validated['name'],
             'is_default' => $validated['is_default'] ?? false,
             'outside_area_policy' => $validated['outside_area_policy'] ?? 'inquiry',
+            'in_city_enabled' => $validated['in_city_enabled'] ?? true,
+            'intercity_enabled' => $validated['intercity_enabled'] ?? true,
+            'international_enabled' => $validated['international_enabled'] ?? false,
         ]);
 
         $profile->rates_count = 0;
@@ -97,6 +103,9 @@ class MerchantShippingProfileController extends Controller
             'name' => 'required|string|max:255',
             'is_default' => 'boolean',
             'outside_area_policy' => 'nullable|in:inquiry,block',
+            'in_city_enabled' => 'boolean',
+            'intercity_enabled' => 'boolean',
+            'international_enabled' => 'boolean',
         ]);
 
         if ($validated['is_default'] ?? false) {

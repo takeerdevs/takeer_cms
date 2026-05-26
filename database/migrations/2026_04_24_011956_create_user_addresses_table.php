@@ -18,6 +18,9 @@ return new class extends Migration
             $table->enum('type', ['local', 'forwarder'])->default('local');
             $table->string('address_line');
             $table->text('extra_details')->nullable();
+            $table->foreignId('country_id')->nullable()->constrained('countries')->nullOnDelete();
+            $table->foreignId('state_id')->nullable()->constrained('country_states')->nullOnDelete();
+            $table->foreignId('city_id')->nullable()->constrained('country_cities')->nullOnDelete();
             $table->decimal('latitude', 11, 8)->nullable();
             $table->decimal('longitude', 11, 8)->nullable();
             $table->boolean('is_default')->default(false);

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\MerchantBundleController;
 use App\Http\Controllers\Api\MerchantCommunicationController;
 use App\Http\Controllers\Api\MerchantCourseController;
 use App\Http\Controllers\Api\MerchantCustomerController;
+use App\Http\Controllers\Api\MerchantForwarderController;
 use App\Http\Controllers\Api\MerchantContentController;
 use App\Http\Controllers\Api\EntitlementController;
 use App\Http\Controllers\Api\ContentReportModerationController;
@@ -27,6 +28,8 @@ use App\Http\Controllers\Api\ServiceRequestController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminCatalogController;
+use App\Http\Controllers\Api\AdminForwarderController;
+use App\Http\Controllers\Api\ForwarderController;
 use App\Http\Controllers\Api\AdminFeePolicyController;
 use App\Http\Controllers\Api\AdminSettingsController;
 use App\Http\Controllers\Api\AdminTrackedLinkController;
@@ -126,6 +129,14 @@ Route::get('/go/{code}', [TrackedLinkController::class, 'follow'])
 Route::post('/go/{code}/report', [TrackedLinkController::class, 'report'])
     ->middleware('throttle:12,10')
     ->name('tracked-links.report');
+Route::get('/forwarders/enroll', function (Request $request) {
+    if (! $request->user()) {
+        return redirect('/login');
+    }
+
+    return redirect('/profile');
+})->name('forwarders.enroll');
+Route::get('/freight/routes/{routeRef}', [ForwarderController::class, 'showRoute'])->name('forwarder-routes.show');
 Route::get('/offerings/{offeringGroup:id}', [OfferingGroupController::class, 'show'])
     ->name('offering-groups.show');
 Route::get('/r/{code}', [MerchantMarketingController::class, 'followReferral'])->name('referral.follow');
@@ -440,6 +451,18 @@ Route::get('/bundle/{bundle}', function (Bundle $bundle) {
         ->keyBy('id');
 
     $bundlePayload = $bundle->toArray();
+    $bundlePayload['delivery_promise'] = [
+        'override_enabled' => (bool) ($bundle->delivery_promise_override_enabled ?? false),
+        'handling_min_days' => $bundle->delivery_handling_min_days !== null ? (int) $bundle->delivery_handling_min_days : null,
+        'handling_max_days' => $bundle->delivery_handling_max_days !== null ? (int) $bundle->delivery_handling_max_days : null,
+        'transit_min_days' => $bundle->delivery_transit_min_days !== null ? (int) $bundle->delivery_transit_min_days : null,
+        'transit_max_days' => $bundle->delivery_transit_max_days !== null ? (int) $bundle->delivery_transit_max_days : null,
+        'cutoff_time' => $bundle->delivery_cutoff_time,
+        'business_days_only' => (bool) ($bundle->delivery_business_days_only ?? true),
+        'label' => $bundle->delivery_promise_label,
+        'note' => $bundle->delivery_promise_note,
+        'requires_confirmation' => (bool) ($bundle->delivery_requires_confirmation ?? false),
+    ];
     $bundlePayload['course_modules'] = $bundle->courseModules->map(fn ($module) => [
         'id' => $module->id,
         'title' => $module->title,
@@ -1182,6 +1205,21 @@ Route::middleware('auth')->group(function () {
             ];
         }
 
+        $forwarderApplication = $activeMerchant
+            ? \App\Models\Forwarder::query()
+                ->where('merchant_id', $activeMerchant->id)
+                ->latest()
+                ->first([
+                    'id',
+                    'name',
+                    'verification_status',
+                    'is_verified',
+                    'admin_notes',
+                    'application_submitted_at',
+                    'verified_at',
+                ])
+            : null;
+
         return Inertia::render('Profile', [
             'activeMerchant' => $activeMerchant,
             'activeMerchantAccess' => $activeMerchantAccess,
@@ -1226,6 +1264,8 @@ Route::middleware('auth')->group(function () {
             'commerceModes' => \App\Support\CommerceModeRegistry::all(),
             'merchantKyc' => $activeMerchant ? $activeMerchant->kyc : null,
             'merchantKycStatus' => $activeMerchant ? ($activeMerchant->kyc_status ?? 'unverified') : 'unverified',
+            'forwarderApplication' => $forwarderApplication,
+            'hasVerifiedPersonalProfile' => $user->hasVerifiedPersonalProfile(),
         ]);
     });
 
@@ -1648,6 +1688,28 @@ Route::middleware('auth')->group(function () {
                 'merchantTimezone' => $merchant->defaultTimezone(),
             ]);
         })->middleware('merchant_permission:services.view');
+
+        Route::get('/forwarders/setup', function (Merchant $merchant) {
+            $merchant->loadMissing('country');
+            $forwarderApplication = \App\Models\Forwarder::query()
+                ->where('merchant_id', $merchant->id)
+                ->latest()
+                ->first();
+            $hasVerifiedPersonalProfile = request()->user()?->hasVerifiedPersonalProfile() ?? false;
+
+            return Inertia::render('Forwarders/Enroll', [
+                'countries' => Country::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'iso_alpha2']),
+                'merchantUsername' => $merchant->username,
+                'merchantName' => $merchant->display_name,
+                'mode' => 'merchant_setup',
+                'application' => $forwarderApplication,
+                'hasVerifiedPersonalProfile' => $hasVerifiedPersonalProfile,
+            ]);
+        })->middleware('merchant_permission:services.create');
+
+        Route::get('/forwarders/{section}', [MerchantForwarderController::class, 'page'])
+            ->whereIn('section', ['locations', 'routes', 'schedules', 'shipments'])
+            ->middleware('merchant_permission:services.view');
 
         Route::get('/bookings', function (Merchant $merchant) {
             abort_unless($merchant->supportsBusinessArea([
@@ -2206,6 +2268,14 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::get('/merchants/{merchant:id}/posts', [AdminController::class, 'merchantPosts']);
         Route::get('/merchants/{merchant:id}/orders', [AdminController::class, 'merchantOrders']);
         Route::get('/merchants/{merchant:id}/catalog/{type}', [AdminController::class, 'merchantCatalogByType']);
+        Route::get('/forwarders', [AdminForwarderController::class, 'index']);
+        Route::post('/forwarders', [AdminForwarderController::class, 'store']);
+        Route::put('/forwarders/{forwarder:id}', [AdminForwarderController::class, 'update']);
+        Route::patch('/forwarders/{forwarder:id}/status', [AdminForwarderController::class, 'updateStatus']);
+        Route::delete('/forwarders/{forwarder:id}', [AdminForwarderController::class, 'destroy']);
+        Route::post('/forwarders/{forwarder:id}/locations', [AdminForwarderController::class, 'storeLocation']);
+        Route::put('/forwarder-locations/{location:id}', [AdminForwarderController::class, 'updateLocation']);
+        Route::delete('/forwarder-locations/{location:id}', [AdminForwarderController::class, 'destroyLocation']);
         Route::put('/merchants/{merchant:id}', [AdminController::class, 'updateMerchant']);
         Route::post('/merchants/{merchant:id}/approve-kyc', [AdminController::class, 'approveKyc']);
         Route::post('/merchants/{merchant:id}/reject-kyc', [AdminController::class, 'rejectKyc']);
@@ -2289,6 +2359,11 @@ Route::middleware(['auth', 'admin'])->group(function () {
     });
     Route::get('/admin/merchants/{merchant}/catalog/{type}', function (string $merchant, string $type) {
         return Inertia::render('Admin/MerchantCatalogType', ['merchantId' => (int) $merchant, 'type' => $type]);
+    });
+    Route::get('/admin/forwarders', function () {
+        return Inertia::render('Admin/Forwarders', [
+            'countries' => Country::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'iso_alpha2']),
+        ]);
     });
     Route::get('/admin/feed', function () {
         return Inertia::render('Admin/FeedMonitor');
