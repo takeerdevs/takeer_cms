@@ -16,6 +16,7 @@ use App\Models\Product;
 use App\Models\ReturnRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\UserSubscription;
+use App\Services\ForwarderShipmentService;
 use App\Services\SmsService;
 use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
@@ -257,6 +258,9 @@ class MerchantOrderController extends Controller
         abort_unless($order->merchant_id === $merchant->id, 404);
 
         $order->load(['buyer', 'product.unitType', 'variant', 'delivery.shippingZone', 'delivery.events.actor', 'merchant.locations', 'dispute', 'review', 'returnRequest']);
+        $forwarderShipment = $order->delivery?->delivery_type === 'forwarder'
+            ? app(ForwarderShipmentService::class)->createForTakeerOrder($order, $order->user_address_id)
+            : null;
         $display = $this->resolveDisplay($order);
 
         return response()->json([
@@ -358,6 +362,7 @@ class MerchantOrderController extends Controller
                 'waybill_tracking_number' => $order->delivery->waybill_tracking_number,
                 'waybill_photo_url' => $order->delivery->waybill_photo_url,
                 'physical_address' => $order->delivery->physical_address,
+                'forwarder_shipment_public_id' => $forwarderShipment?->public_id,
                 'latitude' => $order->delivery->latitude,
                 'longitude' => $order->delivery->longitude,
                 'buyer_release_pin' => $order->delivery->buyer_release_pin,
@@ -806,6 +811,13 @@ class MerchantOrderController extends Controller
             'status' => ['required', 'string', 'in:' . implode(',', self::DELIVERY_STATUSES)],
             'note' => ['nullable', 'string', 'max:1000'],
             'proof' => ['nullable', 'file', 'mimetypes:image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-matroska', 'max:51200'],
+            'proofs' => ['nullable', 'array', 'max:10'],
+            'proofs.*' => ['file', 'mimetypes:image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-matroska', 'max:51200'],
+            'courier_receipt' => ['nullable', 'file', 'mimetypes:image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf', 'max:51200'],
+            'bus_company' => ['nullable', 'string', 'max:120'],
+            'waybill_tracking_number' => ['nullable', 'string', 'max:100'],
+            'tracking_link' => ['nullable', 'url', 'max:500'],
+            'forwarder_evidence_type' => ['nullable', 'string', 'in:tracked_courier,manual_forwarder,takeer_verified_forwarder'],
             'boda_phone' => ['nullable', 'string', 'max:80'],
             'delivery_person_name' => ['nullable', 'string', 'max:120'],
         ]);
@@ -824,22 +836,72 @@ class MerchantOrderController extends Controller
         $proofUrl = null;
         $proofMime = null;
         $proofType = null;
+        $proofMedia = [];
+        $proofFiles = [];
         if ($request->hasFile('proof')) {
-            $file = $request->file('proof');
-            $path = $file->store('delivery-events', 'public');
-            $proofUrl = Storage::disk('public')->url($path);
-            $proofMime = $file->getClientMimeType();
-            $proofType = str_starts_with((string) $proofMime, 'image/') ? 'photo' : 'video';
+            $proofFiles[] = $request->file('proof');
+        }
+        foreach ($request->file('proofs', []) as $file) {
+            if ($file) {
+                $proofFiles[] = $file;
+            }
         }
 
-        $delivery = DB::transaction(function () use ($order, $request, $validated, $proofUrl, $proofMime, $proofType) {
+        foreach ($proofFiles as $index => $file) {
+            $path = $file->store('delivery-events', 'public');
+            $mime = $file->getClientMimeType();
+            $type = str_starts_with((string) $mime, 'image/') ? 'photo' : 'video';
+            $url = Storage::disk('public')->url($path);
+            $proofMedia[] = [
+                'url' => $url,
+                'mime' => $mime,
+                'type' => $type,
+                'name' => $file->getClientOriginalName(),
+                'size' => $file->getSize(),
+            ];
+
+            if ($index === 0) {
+                $proofUrl = $url;
+                $proofMime = $mime;
+                $proofType = $type;
+            }
+        }
+        $courierReceiptUrl = null;
+        $courierReceiptMime = null;
+        if ($request->hasFile('courier_receipt')) {
+            $file = $request->file('courier_receipt');
+            $path = $file->store('delivery-events', 'public');
+            $courierReceiptUrl = Storage::disk('public')->url($path);
+            $courierReceiptMime = $file->getClientMimeType();
+            $proofMedia[] = [
+                'url' => $courierReceiptUrl,
+                'mime' => $courierReceiptMime,
+                'type' => str_starts_with((string) $courierReceiptMime, 'image/') ? 'photo' : 'document',
+                'name' => $file->getClientOriginalName(),
+                'size' => $file->getSize(),
+                'role' => 'courier_receipt',
+            ];
+
+            if (! $proofUrl) {
+                $proofUrl = $courierReceiptUrl;
+                $proofMime = $courierReceiptMime;
+                $proofType = str_starts_with((string) $courierReceiptMime, 'image/') ? 'photo' : 'document';
+            }
+        }
+
+        $delivery = DB::transaction(function () use ($order, $request, $validated, $proofUrl, $proofMime, $proofType, $proofMedia, $courierReceiptUrl) {
             $delivery = $order->delivery()->firstOrNew(['order_id' => $order->id]);
             $delivery->fill([
                 'delivery_status' => $validated['status'],
                 'delivery_type' => $delivery->delivery_type ?: 'local_boda',
                 'boda_phone' => $validated['boda_phone'] ?? $delivery->boda_phone,
                 'delivery_person_name' => $validated['delivery_person_name'] ?? $delivery->delivery_person_name,
-                'buyer_release_pin' => $delivery->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+                'bus_company' => $validated['bus_company'] ?? $delivery->bus_company,
+                'waybill_tracking_number' => $validated['waybill_tracking_number'] ?? $delivery->waybill_tracking_number,
+                'waybill_photo_url' => $courierReceiptUrl ?? $delivery->waybill_photo_url,
+                'buyer_release_pin' => $delivery->delivery_type === 'forwarder'
+                    ? null
+                    : ($delivery->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT)),
             ])->save();
 
             $delivery->events()->create([
@@ -854,19 +916,40 @@ class MerchantOrderController extends Controller
                 'metadata' => array_filter([
                     'boda_phone' => $validated['boda_phone'] ?? null,
                     'delivery_person_name' => $validated['delivery_person_name'] ?? null,
+                    'courier_company' => $validated['bus_company'] ?? null,
+                    'bus_company' => $validated['bus_company'] ?? null,
+                    'waybill_tracking_number' => $validated['waybill_tracking_number'] ?? null,
+                    'tracking_link' => $validated['tracking_link'] ?? null,
+                    'forwarder_evidence_type' => $validated['forwarder_evidence_type'] ?? null,
+                    'courier_receipt_url' => $courierReceiptUrl,
+                    'proofs' => $proofMedia ?: null,
                 ]),
             ]);
 
-            if ($validated['status'] === 'dispatched' && $order->payment_status === 'awaiting_merchant_confirmation') {
+            if (
+                in_array($validated['status'], ['dispatched', 'with_boda', 'in_transit', 'arrived', 'ready_at_terminal'], true)
+                && $order->payment_status === 'awaiting_merchant_confirmation'
+            ) {
                 $order->update([
                     'payment_status' => 'escrow_locked',
                     'merchant_confirmed_at' => $order->merchant_confirmed_at ?: now(),
                 ]);
             }
 
+            if ($delivery->delivery_type === 'forwarder') {
+                app(ForwarderShipmentService::class)->syncFromOrderDelivery($order->fresh('delivery'), $request->user()->id);
+            }
+
             return $delivery->fresh(['events.actor']);
         });
-        $this->appendDeliveryChatUpdate($order->fresh(['merchant.user', 'buyer', 'delivery']), $validated['status'], $validated['note'] ?? null, $proofUrl);
+        $this->appendDeliveryChatUpdate($order->fresh(['merchant.user', 'buyer', 'delivery']), $validated['status'], $validated['note'] ?? null, $proofUrl, $proofMedia, [
+            'courier_company' => $validated['bus_company'] ?? null,
+            'bus_company' => $validated['bus_company'] ?? null,
+            'waybill_tracking_number' => $validated['waybill_tracking_number'] ?? null,
+            'tracking_link' => $validated['tracking_link'] ?? null,
+            'forwarder_evidence_type' => $validated['forwarder_evidence_type'] ?? null,
+            'courier_receipt_url' => $courierReceiptUrl,
+        ]);
 
         return response()->json([
             'message' => 'Delivery status imehifadhiwa.',
@@ -896,16 +979,18 @@ class MerchantOrderController extends Controller
 
     private function deliveryStepIndex(?string $status, ?string $type): int
     {
-        $steps = $type === 'intercity_bus'
-            ? ['with_boda', 'in_transit', 'ready_at_terminal', 'delivered']
-            : ['with_boda', 'in_transit', 'arrived', 'delivered'];
+        $steps = match ($type) {
+            'forwarder' => ['packing', 'with_boda', 'ready_at_terminal'],
+            'intercity_bus' => ['with_boda', 'in_transit', 'ready_at_terminal', 'delivered'],
+            default => ['with_boda', 'in_transit', 'arrived', 'delivered'],
+        };
 
         $index = array_search($status, $steps, true);
 
         return $index === false ? -1 : (int) $index;
     }
 
-    private function appendDeliveryChatUpdate(Order $order, string $status, ?string $note = null, ?string $proofUrl = null): void
+    private function appendDeliveryChatUpdate(Order $order, string $status, ?string $note = null, ?string $proofUrl = null, array $proofMedia = [], array $metadata = []): void
     {
         $senderId = $order->merchant?->user_id;
         if (! $senderId || ! $order->buyer_id) {
@@ -924,6 +1009,8 @@ class MerchantOrderController extends Controller
                 'status' => $status,
                 'note' => $note,
                 'proof_url' => $proofUrl,
+                'proofs' => $proofMedia,
+                ...array_filter($metadata),
                 'actor_type' => 'merchant',
                 'boda_phone' => $order->delivery?->boda_phone,
                 'delivery_person_name' => $order->delivery?->delivery_person_name,

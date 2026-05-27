@@ -2008,54 +2008,12 @@ export default function ProductDetail({ product }) {
                         </p>
                     </div>
 
-                    {physicalProductDetails.length > 0 && (
-                        <div className="mb-8 border-t border-border/40 pt-5">
-                            <div className="space-y-3">
-                                {physicalProductDetails.map(([label, value]) => (
-                                    <div key={label}>
-                                        <p className="text-sm font-black text-foreground">{label}</p>
-                                        {Array.isArray(value) ? (
-                                            <ul className="mt-1 space-y-1 text-sm leading-relaxed text-muted-foreground">
-                                                {value.map((item) => (
-                                                    <li key={item} className="flex gap-2">
-                                                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-brand-500/70 shrink-0" />
-                                                        <span>{item}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : (
-                                            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{value}</p>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {productFaqs.length > 0 && (
-                        <div className="mb-8 border-t border-border/40 pt-5">
-                            <h2 className="mb-3 text-lg font-black text-foreground">Questions & Answers</h2>
-                            <div className="space-y-3">
-                                {productFaqs.map((faq, index) => (
-                                    <details key={faq.id || `${faq.question}-${index}`} className="rounded-2xl border border-border bg-card px-4 py-3" open={index === 0}>
-                                        <summary className="cursor-pointer text-sm font-black text-foreground">
-                                            {faq.question}
-                                        </summary>
-                                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
-                                            {faq.answer}
-                                        </p>
-                                    </details>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {/* Specifications Grid */}
                     {hasProductSpecifications && (
                         <div className="space-y-6 mb-8 pt-5 border-t border-border/40">
                             <div className="grid grid-cols-2 gap-3">
                                 {attributes.category && (
-                                    <div className="bg-accent/20 p-3.5 rounded-2xl border border-border/10">
+                                    <div className="bg-accent/20 rounded-2xl border border-border/10">
                                         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Kategoria</span>
                                         <span className="font-bold text-sm text-foreground">{attributes.category}</span>
                                     </div>
@@ -2202,6 +2160,48 @@ export default function ProductDetail({ product }) {
                                     </p>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {physicalProductDetails.length > 0 && (
+                        <div className="mb-8 border-t border-border/40 pt-5">
+                            <div className="space-y-3">
+                                {physicalProductDetails.map(([label, value]) => (
+                                    <div key={label}>
+                                        <p className="text-sm font-black text-foreground">{label}</p>
+                                        {Array.isArray(value) ? (
+                                            <ul className="mt-1 space-y-1 text-sm leading-relaxed text-muted-foreground">
+                                                {value.map((item) => (
+                                                    <li key={item} className="flex gap-2">
+                                                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-brand-500/70 shrink-0" />
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{value}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {productFaqs.length > 0 && (
+                        <div className="mb-8 border-t border-border/40 pt-5">
+                            <h2 className="mb-3 text-lg font-black text-foreground">Questions & Answers</h2>
+                            <div className="space-y-3">
+                                {productFaqs.map((faq, index) => (
+                                    <details key={faq.id || `${faq.question}-${index}`} className="rounded-2xl border border-border bg-card px-4 py-3" open={index === 0}>
+                                        <summary className="cursor-pointer text-sm font-black text-foreground">
+                                            {faq.question}
+                                        </summary>
+                                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
+                                            {faq.answer}
+                                        </p>
+                                    </details>
+                                ))}
+                            </div>
                         </div>
                     )}
 

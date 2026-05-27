@@ -188,6 +188,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [customerCountryId, setCustomerCountryId] = useState(null);
     const [customerStateId, setCustomerStateId] = useState(null);
     const [customerCityId, setCustomerCityId] = useState(null);
+    const [forwarderDestinationCountryId, setForwarderDestinationCountryId] = useState(null);
     const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
     const [isShopLocationsOpen, setIsShopLocationsOpen] = useState(false);
     const [isCoverageMapOpen, setIsCoverageMapOpen] = useState(false);
@@ -227,6 +228,14 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         setCustomerLat(parseFloat(addr.latitude));
         setCustomerLng(parseFloat(addr.longitude));
 
+        const forwarderRoute = addr.forwarder_route || addr.forwarderRoute || null;
+        const forwarderDestinationLocation = forwarderRoute?.destination_locations?.[0] || forwarderRoute?.destinationLocations?.[0] || null;
+        const forwarderDestinationCountry = forwarderRoute?.destination_country || forwarderRoute?.destinationCountry || forwarderDestinationLocation?.country || null;
+        const isForwarderAddress = addr.type === 'forwarder' && forwarderRoute;
+        setForwarderDestinationCountryId(isForwarderAddress
+            ? (forwarderRoute.destination_country_id || forwarderDestinationCountry?.id || forwarderDestinationLocation?.country_id || null)
+            : null);
+
         let displayAddress = addr.address_line;
         if (addr.type === 'forwarder' && addr.forwarder_customer_id) {
             displayAddress = `${addr.address_line} [ID: ${addr.forwarder_customer_id}]`;
@@ -236,19 +245,21 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         setExtraAddressDetails(addr.extra_details || '');
         setCustomerCity('');
         setCustomerRegion('');
-        setCustomerCountry(addr.country?.name || addr.forwarder?.country?.name || country?.name || '');
-        setCustomerCountryCode(addr.country?.iso_alpha2 || addr.forwarder?.country?.iso_alpha2 || detectedIso2 || '');
+        const addressCountry = addr.country || addr.forwarder?.country;
         const addressCountryId = addr.country_id || addr.country?.id || addr.forwarder?.country_id || addr.forwarder?.country?.id || null;
         const addressStateId = addr.state_id || addr.state?.id || null;
         const addressCityId = addr.city_id || addr.city_record?.id || null;
+        setCustomerCountry(addressCountry?.name || country?.name || '');
+        setCustomerCountryCode(addressCountry?.iso_alpha2 || detectedIso2 || '');
         setCustomerCountryId(addressCountryId);
         setCustomerStateId(addressStateId);
         setCustomerCityId(addressCityId);
 
-        findBestShippingZone(parseFloat(addr.latitude), parseFloat(addr.longitude), '', '', addr.country?.name || addr.forwarder?.country?.name || country?.name || '', addressCountryId, addressStateId, addressCityId);
+        findBestShippingZone(parseFloat(addr.latitude), parseFloat(addr.longitude), '', '', addressCountry?.name || country?.name || '', addressCountryId, addressStateId, addressCityId);
     };
 
     const handleAddressSaved = async (data) => {
+        setForwarderDestinationCountryId(null);
         setCustomerLat(data.lat);
         setCustomerLng(data.lng);
         setPhysicalAddress(data.address);
@@ -748,6 +759,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         },
     }[fulfillmentMode] || null) : null;
     const activeShippingZone = shippingZones.find(z => String(z.id) === String(selectedShippingZoneId));
+    const selectedAddress = addresses.find((addr) => String(addr.id) === String(selectedAddressId));
+    const isForwarderAddressSelected = selectedAddress?.type === 'forwarder';
     const isPickup = isSelfPickupChoice || activeShippingZone?.delivery_type === 'self_pickup';
     const shippingFee = (activeShippingZone && isPhysicalProduct && !isSelfPickupChoice) ? parseFloat(activeShippingZone.flat_rate_fee || 0) : 0;
     const price = basePrice + shippingFee;
@@ -1414,7 +1427,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                     selectedId={selectedAddressId}
                                                     onSelect={applyAddress}
                                                     productOriginCountryIds={productOriginCountryIds}
-                                                    destinationCountryId={customerCountryId || country?.id || null}
+                                                    destinationCountryId={forwarderDestinationCountryId || customerCountryId || country?.id || null}
                                                 />
                                                 {hasCustomerDeliveryLocation && (
                                                     <div className={`rounded-2xl border px-3 py-3 text-xs font-bold ${activeShippingZone
@@ -1423,7 +1436,11 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                             ? 'border-red-200 bg-red-50 text-red-900'
                                                             : 'border-amber-200 bg-amber-50 text-amber-900'
                                                         }`}>
-                                                        {isInternationalDelivery ? (
+                                                        {isForwarderAddressSelected ? (
+                                                            <span>
+                                                                Seller will send this order to your forwarder warehouse. {matchedShippingFeeLabel} covers seller-to-forwarder only; pay the forwarder separately for freight to your collection area.
+                                                            </span>
+                                                        ) : isInternationalDelivery ? (
                                                             <span>
                                                                 International shipping to {intercityDestinationLabel}. {matchedShippingFeeLabel}{deliveryPromiseText ? ` · ${deliveryPromiseText}` : ''}. Customs, courier office, and final handoff can be confirmed in order chat.
                                                             </span>

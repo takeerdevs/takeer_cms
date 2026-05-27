@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Dispute;
 use App\Models\ReturnRequest;
+use App\Services\ForwarderShipmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +27,13 @@ class BuyerEscrowController extends Controller
             ->where('payment_order_id', $order->id)
             ->first();
 
-        if (!in_array($order->payment_status, ['escrow_locked', 'shipped'])) {
+        $isForwarderHandoff = $order->delivery?->delivery_type === 'forwarder'
+            && in_array($order->delivery?->delivery_status, ['ready_at_terminal', 'customer_confirmed'], true);
+        $allowedPaymentStatuses = $isForwarderHandoff
+            ? ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped']
+            : ['escrow_locked', 'shipped'];
+
+        if (!in_array($order->payment_status, $allowedPaymentStatuses, true)) {
             return response()->json(['message' => 'Huwezi kudhibitisha oda hii kwa sasa.'], 400);
         }
 
@@ -38,7 +45,19 @@ class BuyerEscrowController extends Controller
                 ])->save();
             }
             if ($order->delivery) {
-                $order->delivery->update(['delivery_status' => 'delivered', 'delivered_at' => now()]);
+                $isForwarder = $order->delivery->delivery_type === 'forwarder';
+                $order->delivery->update([
+                    'delivery_status' => $isForwarder ? 'customer_confirmed' : 'delivered',
+                    'delivered_at' => now(),
+                    'confirmed_at' => $isForwarder ? now() : $order->delivery->confirmed_at,
+                ]);
+                $order->delivery->events()->create([
+                    'order_id' => $order->id,
+                    'status' => $isForwarder ? 'customer_confirmed' : 'delivered',
+                    'actor_type' => 'buyer',
+                    'actor_user_id' => $order->buyer_id,
+                    'note' => $isForwarder ? 'Buyer confirmed forwarder handoff evidence.' : 'Buyer confirmed receipt.',
+                ]);
             }
             if ($serviceRequest) {
                 $serviceRequest->update([
@@ -50,6 +69,7 @@ class BuyerEscrowController extends Controller
             }
 
             app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
+            app(ForwarderShipmentService::class)->syncFromOrderDelivery($order->fresh('delivery'), $order->buyer_id);
         });
 
         return response()->json(['message' => $serviceRequest ? 'Asante! Umethibitisha huduma.' : 'Asante! Malipo yametumwa kwa muuzaji.']);

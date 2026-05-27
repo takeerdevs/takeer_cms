@@ -32,6 +32,7 @@ export default function AdminDashboard() {
     }, []);
 
     const quickLinks = [
+        { name: 'Attention Center', href: '/admin/attention', icon: Bell, desc: 'Review admin work that needs action' },
         { name: 'Disputes', href: '/admin/disputes', icon: ShieldAlert, desc: 'Review and resolve order disputes' },
         { name: 'Service Risk', href: '/admin/service-risk', icon: ShieldCheck, desc: 'Monitor service credentials, disputes, and regulated listings' },
         { name: 'Notifications', href: '/admin/notifications', icon: Bell, desc: 'Monitor SMS, WhatsApp, and email outbox logs' },

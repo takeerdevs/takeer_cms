@@ -25,6 +25,7 @@ use App\Models\ServiceRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\WithdrawalRequest;
 use App\Services\PlatformNotificationService;
+use App\Services\AdminAttentionService;
 use App\Services\PayoutPolicyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,6 +39,21 @@ use Inertia\Response as InertiaResponse;
 
 class AdminController extends Controller
 {
+    public function attention(Request $request, AdminAttentionService $attention): JsonResponse
+    {
+        $category = (string) $request->input('category', 'all');
+
+        return response()->json([
+            'summary' => $attention->summary(),
+            'items' => $attention->items($category),
+        ]);
+    }
+
+    public function attentionSummary(AdminAttentionService $attention): JsonResponse
+    {
+        return response()->json($attention->summary());
+    }
+
     /**
      * Admin list of disputes with real order/evidence context.
      */

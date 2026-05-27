@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
 import { Toaster } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,7 @@ import {
 
 const adminNav = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    { name: 'Attention', href: '/admin/attention', icon: Bell },
     { name: 'Disputes', href: '/admin/disputes', icon: ShieldAlert },
     { name: 'Safety Reviews', href: '/admin/trust-safety-reviews', icon: ShieldCheck },
     { name: 'Notifications', href: '/admin/notifications', icon: Bell },
@@ -40,6 +41,7 @@ const adminNav = [
 export default function AdminLayout({ children, title = 'Admin', hideTopBar = false }) {
     const current = typeof window !== 'undefined' ? window.location.pathname : '';
     const previousHadDarkClass = useRef(false);
+    const [attentionSummary, setAttentionSummary] = useState({ total: 0 });
 
     useEffect(() => {
         if (typeof document === 'undefined') return;
@@ -52,6 +54,23 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
             if (previousHadDarkClass.current) {
                 document.documentElement.classList.add('dark');
             }
+        };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        fetch('/admin/api/attention/summary', { headers: { Accept: 'application/json' } })
+            .then((response) => response.ok ? response.json() : null)
+            .then((summary) => {
+                if (!cancelled && summary) {
+                    setAttentionSummary(summary);
+                }
+            })
+            .catch(() => {});
+
+        return () => {
+            cancelled = true;
         };
     }, []);
 
@@ -89,7 +108,12 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
                                 )}
                             >
                                 <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-brand-700')} />
-                                {item.name}
+                                <span className="flex-1">{item.name}</span>
+                                {item.href === '/admin/attention' && attentionSummary.total > 0 && (
+                                    <span className="min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">
+                                        {attentionSummary.total > 99 ? '99+' : attentionSummary.total}
+                                    </span>
+                                )}
                             </Link>
                         );
                     })}
@@ -109,8 +133,20 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
             {/* Content */}
             <main className="flex-1 overflow-y-auto">
                 {!hideTopBar && (
-                    <div className="h-14 border-b border-slate-200 bg-white flex items-center px-8">
+                    <div className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-8">
                         <h1 className="text-sm font-semibold text-slate-700">{title}</h1>
+                        <Link
+                            href="/admin/attention"
+                            aria-label="Open admin attention center"
+                            className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                        >
+                            <Bell className="h-4 w-4" />
+                            {attentionSummary.total > 0 && (
+                                <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white">
+                                    {attentionSummary.total > 99 ? '99+' : attentionSummary.total}
+                                </span>
+                            )}
+                        </Link>
                     </div>
                 )}
                 <div className="p-6 md:p-8 max-w-5xl animate-in fade-in duration-300">

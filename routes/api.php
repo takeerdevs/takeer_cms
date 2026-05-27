@@ -244,7 +244,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/forwarders/updates', [MerchantForwarderController::class, 'updateUpdates'])->middleware('merchant_permission:posts.create,services.update');
         Route::get('/forwarders/shipments', [ForwarderShipmentController::class, 'merchantShipments'])->middleware('merchant_permission:services.view');
         Route::patch('/forwarders/shipments/lookup/{identifier}', [ForwarderShipmentController::class, 'updateStatusByIdentifier'])->middleware('merchant_permission:services.update');
-        Route::patch('/forwarders/shipments/{shipment:id}', [ForwarderShipmentController::class, 'updateStatus'])->middleware('merchant_permission:services.update');
+        Route::patch('/forwarders/shipments/{shipmentId}', [ForwarderShipmentController::class, 'updateStatus'])->middleware('merchant_permission:services.update');
     });
 
     // Phase 11 Safe-Chat

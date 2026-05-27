@@ -558,7 +558,7 @@ export default function Orders() {
                         ) : (
                             <div className="grid gap-4">
                                 {cargoShipments.map((shipment) => (
-                                    <CargoShipmentCard key={shipment.id} shipment={shipment} />
+                                    <CargoShipmentCard key={shipment.id} shipment={shipment} onChanged={loadCargoShipments} />
                                 ))}
                             </div>
                         )}
@@ -696,9 +696,20 @@ const cargoStatusLabels = {
     arrived_country: 'Arrived in country',
     customs_handling: 'Customs / handling',
     ready_for_pickup: 'Ready for pickup',
+    handoff_confirmed: 'Handoff confirmed',
     completed: 'Completed',
     on_hold: 'On hold',
 };
+
+function cargoEventLabel(event, isTakeerOrder, orderSummary = {}) {
+    if (!event) return '';
+    if (event.metadata?.buyer_confirmed_handoff) return 'Handoff confirmed';
+    if (isTakeerOrder && event.status === 'completed' && orderSummary.delivery_status === 'customer_confirmed') {
+        return 'Handoff confirmed';
+    }
+
+    return cargoStatusLabels[event.status] || event.status;
+}
 
 function cargoPaymentTermLabel(term) {
     return {
@@ -721,15 +732,41 @@ function cargoPaymentTermText(shipment) {
     return [label, detail.payment_notes].filter(Boolean).join(' · ');
 }
 
-function CargoShipmentCard({ shipment }) {
+function CargoShipmentCard({ shipment, onChanged }) {
+    const [confirming, setConfirming] = useState(false);
     const events = [...(shipment.events || [])].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
     const latestEvent = events[events.length - 1];
     const isTakeerOrder = shipment.source_type === 'takeer_order';
+    const orderSummary = shipment.order_summary || {};
+    const buyerConfirmedHandoff = events.some((event) => event.metadata?.buyer_confirmed_handoff)
+        || (isTakeerOrder && shipment.status === 'completed' && orderSummary.delivery_status === 'customer_confirmed');
+    const visibleStatus = buyerConfirmedHandoff && shipment.status === 'completed' ? 'handoff_confirmed' : shipment.status;
+    const freightTracking = shipment.metadata?.freight_tracking || {};
+    const canConfirmHandoff = isTakeerOrder
+        && orderSummary.id
+        && shipment.status === 'received_at_origin'
+        && !['resolved_merchant_paid', 'released'].includes(orderSummary.payment_status);
     const paymentText = cargoPaymentTermText(shipment);
     const routeName = shipment.route_snapshot?.label || [
         shipment.route?.origin_country?.name || shipment.route?.originCountry?.name,
         shipment.route?.destination_country?.name || shipment.route?.destinationCountry?.name,
     ].filter(Boolean).join(' to ');
+
+    const confirmForwarderHandoff = async () => {
+        const ok = window.confirm('Confirm that your forwarder warehouse has received this package? Takeer will release the seller-side payment.');
+        if (!ok) return;
+
+        setConfirming(true);
+        try {
+            await axios.post(`/api/buyer/orders/${orderSummary.id}/confirm-receipt`);
+            toast.success('Forwarder handoff confirmed. Seller payment released.');
+            await onChanged?.();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Could not confirm handoff.');
+        } finally {
+            setConfirming(false);
+        }
+    };
 
     return (
         <Card className="overflow-hidden rounded-[24px] border-border/70 bg-card shadow-sm">
@@ -746,14 +783,50 @@ function CargoShipmentCard({ shipment }) {
                 </div>
 
                 <div className="mt-4 grid gap-2 text-xs font-bold text-slate-500 md:grid-cols-3">
-                    <span className="rounded-xl bg-slate-50 px-3 py-2">Status: {cargoStatusLabels[shipment.status] || shipment.status}</span>
+                    <span className="rounded-xl bg-slate-50 px-3 py-2">Status: {cargoStatusLabels[visibleStatus] || visibleStatus}</span>
                     <span className="rounded-xl bg-slate-50 px-3 py-2">Tracking: {shipment.tracking_number || 'Not added yet'}</span>
                     <span className="rounded-xl bg-slate-50 px-3 py-2">Seller: {shipment.seller_name || shipment.seller_platform || 'Not provided'}</span>
                 </div>
 
+                {(shipment.tracking_number || freightTracking.tracking_url || freightTracking.carrier_name || freightTracking.transport_reference || freightTracking.eta_text) && (
+                    <CargoTrackingSummary
+                        className="mt-3"
+                        trackingNumber={shipment.tracking_number}
+                        metadata={freightTracking}
+                    />
+                )}
+
                 {paymentText && (
                     <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">
                         Forwarder payment: {paymentText}
+                    </div>
+                )}
+
+                {canConfirmHandoff && (
+                    <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Forwarder handoff review</p>
+                        <p className="mt-1 text-sm font-bold leading-6 text-emerald-950">
+                            The forwarder marked this package received at origin. Confirm only after you verify the receipt/tracking or forwarder contact.
+                        </p>
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <Button
+                                type="button"
+                                onClick={confirmForwarderHandoff}
+                                disabled={confirming}
+                                className="h-11 rounded-xl bg-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-700"
+                            >
+                                {confirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                                Confirm Handoff
+                            </Button>
+                            <ContentReportButton
+                                itemType="order"
+                                itemId={orderSummary.id}
+                                context="order"
+                                label="Report Issue"
+                                compact
+                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-red-700 hover:bg-red-50"
+                            />
+                        </div>
                     </div>
                 )}
 
@@ -792,8 +865,9 @@ function CargoShipmentCard({ shipment }) {
                 {latestEvent && (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Latest update</p>
-                        <p className="mt-1 text-sm font-black text-slate-900">{cargoStatusLabels[latestEvent.status] || latestEvent.status}{latestEvent.location?.name ? ` · ${latestEvent.location.name}` : ''}</p>
+                        <p className="mt-1 text-sm font-black text-slate-900">{cargoEventLabel(latestEvent, isTakeerOrder, orderSummary)}{latestEvent.location?.name ? ` · ${latestEvent.location.name}` : ''}</p>
                         <p className="mt-1 text-sm font-semibold text-slate-500">{latestEvent.note || 'Status updated.'}</p>
+                        <CargoTrackingSummary className="mt-2" trackingNumber={latestEvent.metadata?.tracking_number} metadata={latestEvent.metadata} compact />
                     </div>
                 )}
 
@@ -804,8 +878,9 @@ function CargoShipmentCard({ shipment }) {
                             <div key={event.id} className="flex gap-3 text-xs">
                                 <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-500" />
                                 <div>
-                                    <p className="font-black text-slate-800">{cargoStatusLabels[event.status] || event.status}{event.location?.name ? ` · ${event.location.name}` : ''}</p>
+                                    <p className="font-black text-slate-800">{cargoEventLabel(event, isTakeerOrder, orderSummary)}{event.location?.name ? ` · ${event.location.name}` : ''}</p>
                                     <p className="font-semibold text-slate-500">{event.note || 'Status updated.'}</p>
+                                    <CargoTrackingSummary className="mt-2" trackingNumber={event.metadata?.tracking_number} metadata={event.metadata} compact />
                                 </div>
                             </div>
                         ))}
@@ -813,6 +888,41 @@ function CargoShipmentCard({ shipment }) {
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+function CargoTrackingSummary({ metadata = {}, trackingNumber = '', compact = false, className = '' }) {
+    const rows = [
+        ['Carrier/cargo', metadata?.carrier_name],
+        ['Tracking', trackingNumber || metadata?.tracking_number],
+        ['Reference', metadata?.transport_reference],
+        ['ETA / next movement', metadata?.eta_text],
+    ].filter(([, value]) => value);
+
+    if (rows.length === 0 && !metadata?.tracking_url) return null;
+
+    return (
+        <div className={`${compact ? 'grid gap-1 rounded-xl border border-slate-100 bg-white px-2 py-2' : 'rounded-2xl border border-sky-100 bg-sky-50 p-3'} ${className}`}>
+            <div className={`grid gap-2 ${compact ? 'md:grid-cols-2' : 'md:grid-cols-4'}`}>
+                {rows.map(([label, value]) => (
+                    <span key={label} className={`${compact ? 'text-[11px]' : 'rounded-xl bg-white px-3 py-2 text-xs'} font-bold text-slate-700`}>
+                        <span className="block text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</span>
+                        {value}
+                    </span>
+                ))}
+                {metadata?.tracking_url && (
+                    <a
+                        href={metadata.tracking_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`${compact ? 'text-[11px]' : 'rounded-xl bg-white px-3 py-2 text-xs'} inline-flex items-center gap-1 font-black text-brand-700 underline decoration-brand-200 underline-offset-4`}
+                    >
+                        <ExternalLink className="h-3 w-3" />
+                        Tracking link
+                    </a>
+                )}
+            </div>
+        </div>
     );
 }
 
@@ -892,6 +1002,12 @@ function compactDeliveryStatus(orderDetails) {
 
     if (!delivery) return null;
     if (type === 'self_pickup') return 'Kuchukua dukani';
+    if (type === 'forwarder') {
+        if (status === 'ready_at_terminal' || status === 'customer_confirmed' || status === 'delivered') return 'Forwarder amepokea';
+        if (status === 'with_boda' || status === 'dispatched' || status === 'in_transit') return 'Inaenda kwa forwarder';
+        if (status === 'packing') return 'Inaandaliwa';
+        if (status === 'inquiry') return 'Inasubiri taarifa';
+    }
     if (status === 'delivered' || orderDetails?.payment_status === 'resolved_merchant_paid') return 'Imekabidhiwa';
     if (status === 'ready_at_terminal') return 'Ipo terminal';
     if (status === 'arrived') return 'Imefika eneo la mteja';
@@ -903,6 +1019,16 @@ function compactDeliveryStatus(orderDetails) {
     if (status) return deliveryStatusText(status);
 
     return null;
+}
+
+function deliveryEventStatusLabel(status, type) {
+    if (type === 'forwarder') {
+        if (status === 'ready_at_terminal' || status === 'customer_confirmed' || status === 'delivered') return 'Forwarder amepokea';
+        if (status === 'with_boda' || status === 'dispatched' || status === 'in_transit') return 'Inaenda kwa forwarder';
+        if (status === 'packing') return 'Inaandaliwa';
+    }
+
+    return deliveryStatusText(status);
 }
 
 function serviceStatusLabel(orderDetails) {
@@ -952,6 +1078,17 @@ function OwnedCard({ entry }) {
     const deliveryEvents = Array.isArray(orderDetails?.delivery?.events) ? orderDetails.delivery.events : [];
     const latestDeliveryEvent = deliveryEvents.length ? deliveryEvents[deliveryEvents.length - 1] : null;
     const activeDeliveryLabel = compactDeliveryStatus(orderDetails);
+    const deliveryType = orderDetails?.delivery?.delivery_type || orderDetails?.delivery?.type || '';
+    const isSelfPickupOrder = deliveryType === 'self_pickup';
+    const isLocalDeliveryOrder = deliveryType === 'local_boda';
+    const isIntercityOrder = deliveryType === 'intercity_bus';
+    const isForwarderOrder = deliveryType === 'forwarder';
+    const forwarderHandoffReady = isForwarderOrder
+        && ['ready_at_terminal', 'customer_confirmed'].includes(orderDetails?.delivery?.delivery_status || orderDetails?.delivery?.status);
+    const showEscrowReceiptActions = (isForwarderOrder
+        ? ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status)
+        : ['escrow_locked', 'shipped'].includes(orderDetails.payment_status))
+        && (!isForwarderOrder || forwarderHandoffReady);
     const isDeliveryActive = isActiveDeliveryStatus(orderDetails?.delivery?.status || orderDetails?.delivery?.delivery_status);
     const hasReview = Boolean(orderDetails?.review?.id);
     const refundPolicy = orderDetails?.refund_policy || null;
@@ -1023,6 +1160,22 @@ function OwnedCard({ entry }) {
                 body: 'Confirm only if the service was delivered as agreed. Takeer will release the held payment to the provider.',
                 cancel: 'Not Yet',
                 confirm: 'Release Payment',
+            };
+        }
+        if (isIntercityOrder) {
+            return {
+                title: 'Confirm Terminal Pickup?',
+                body: 'Confirm only after you have collected the package from the terminal or cargo office and checked that it is okay. Takeer will release the held payment to the seller.',
+                cancel: 'Not Yet',
+                confirm: 'Nimepokea Mzigo',
+            };
+        }
+        if (isForwarderOrder) {
+            return {
+                title: 'Confirm Forwarder Handoff?',
+                body: 'Confirm only after you verify the receipt, tracking, or forwarder contact and agree the package has reached your forwarder warehouse. Takeer will release the seller-side payment.',
+                cancel: 'Keep Verifying',
+                confirm: 'Confirm Handoff',
             };
         }
 
@@ -1510,7 +1663,7 @@ function OwnedCard({ entry }) {
                                         <div className="min-w-0 flex-1">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Taarifa ya delivery</p>
                                             <p className="mt-0.5 truncate text-xs font-black text-slate-950">
-                                                {deliveryStatusText(latestDeliveryEvent.status)}
+                                                {deliveryEventStatusLabel(latestDeliveryEvent.status, deliveryType)}
                                             </p>
                                             {latestDeliveryEvent.note && (
                                                 <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-muted-foreground">{latestDeliveryEvent.note}</p>
@@ -1585,7 +1738,29 @@ function OwnedCard({ entry }) {
                             )}
 
                             {/* PIN Display for Escrow */}
-                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(orderDetails.payment_status) && orderDetails.delivery?.type === 'self_pickup' && orderDetails.delivery?.pickup_pin && (
+                            {isForwarderOrder && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && (
+                                <div className="p-3 rounded-2xl bg-violet-50 border border-violet-100">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-violet-700">
+                                        {forwarderHandoffReady ? 'Forwarder Handoff Review' : 'Forwarder Drop-off'}
+                                    </p>
+                                    <p className="mt-1 text-[10px] text-violet-900 leading-tight">
+                                        {forwarderHandoffReady
+                                            ? 'Muuzaji ameweka ushahidi kuwa mzigo umefika kwa forwarder. Hakiki risiti, tracking, au wasiliana na forwarder. Ukiridhika, thibitisha handoff; ukiona tatizo, ripoti kabla escrow haijaachiliwa.'
+                                            : 'Muuzaji anatuma mzigo kwenda warehouse ya forwarder. Baada ya handoff proof kuwasilishwa, hakiki tracking/risiti au ripoti tatizo kabla escrow haijaachiliwa.'}
+                                    </p>
+                                </div>
+                            )}
+
+                            {isIntercityOrder && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && (
+                                <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-100">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Intercity / Cargo Pickup</p>
+                                    <p className="mt-1 text-[10px] text-indigo-900 leading-tight">
+                                        Tumia taarifa za waybill, simu, au utambulisho unaohitajika na transporter kuchukua mzigo. Ukishapokea na kukagua, thibitisha receipt.
+                                    </p>
+                                </div>
+                            )}
+
+                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(orderDetails.payment_status) && isSelfPickupOrder && orderDetails.delivery?.pickup_pin && (
                                 <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-brand-700 mb-1">Your Pickup PIN</p>
                                     <p className="text-xl font-mono font-black tracking-widest text-brand-600">
@@ -1598,11 +1773,11 @@ function OwnedCard({ entry }) {
                                     >
                                         {showPin ? 'Hide PIN' : 'Reveal PIN'}
                                     </button>
-                                    <p className="mt-2 text-[10px] text-brand-800 leading-tight">Mpe hii PIN boda wako. Atampa muuzaji mzigo unapochukuliwa.</p>
+                                    <p className="mt-2 text-[10px] text-brand-800 leading-tight">Onyesha PIN hii dukani au mpe mtu uliyemtuma kuchukua mzigo.</p>
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && orderDetails.delivery?.type !== 'self_pickup' && orderDetails.delivery?.buyer_release_pin && (
+                            {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && isLocalDeliveryOrder && orderDetails.delivery?.buyer_release_pin && (
                                 <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-indigo-700 mb-1">Your Release PIN</p>
                                     <p className="text-xl font-mono font-black tracking-widest text-indigo-600">
@@ -1620,22 +1795,22 @@ function OwnedCard({ entry }) {
                             )}
 
                             {/* Escrow Actions */}
-                            {['escrow_locked', 'shipped'].includes(orderDetails.payment_status) && (
+                            {showEscrowReceiptActions && (
                                 <div className="flex gap-2">
                                     <Button
                                         variant="outline"
                                         className="flex-1 rounded-xl h-10 text-xs font-bold border-red-200 text-red-600 hover:bg-red-50"
                                         onClick={() => setShowDisputeModal(true)}
-                                        disabled={claimButtonDisabled}
+                                        disabled={isForwarderOrder ? false : claimButtonDisabled}
                                     >
-                                        {isPhysicalProduct ? 'Return Request' : 'File Claim'}
+                                        {isForwarderOrder ? 'Report Issue' : (isPhysicalProduct ? 'Return Request' : 'File Claim')}
                                     </Button>
                                     <Button
                                         className="flex-1 rounded-xl h-10 text-xs font-bold bg-green-600 hover:bg-green-700 text-white"
                                         onClick={handleConfirmReceipt}
                                         disabled={confirmingReceipt}
                                     >
-                                        {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : 'Confirm Receipt'}
+                                        {confirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : (isForwarderOrder ? 'Confirm Handoff' : 'Confirm Receipt')}
                                     </Button>
                                 </div>
                             )}
@@ -1706,7 +1881,7 @@ function OwnedCard({ entry }) {
                     </div>
                 )}
 
-                {reportTarget.itemId && (
+                {reportTarget.itemId && !showEscrowReceiptActions && (
                     <div className="mt-3">
                         <ContentReportButton
                             itemType={reportTarget.itemType}

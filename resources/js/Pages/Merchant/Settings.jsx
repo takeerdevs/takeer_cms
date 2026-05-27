@@ -11,7 +11,7 @@ import ShopLocationsManager from '@/Components/Merchant/ShopLocationsManager';
 import ReturnPoliciesManager from '@/Components/Merchant/ReturnPoliciesManager';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
 
-export default function Settings({ merchant, merchantUsername, countries = [], currencies = [], storefrontSettings = {}, retailEligible = false, businessCategories = {}, businessOperations = {}, businessModules = {}, commerceModes = {}, businessContext = null }) {
+export default function Settings({ merchant, merchantUsername, countries = [], currencies = [], storefrontSettings = {}, retailEligible = false }) {
     const [locations, setLocations] = useState([]);
     const [loadingLocations, setLoadingLocations] = useState(true);
     const [profiles, setProfiles] = useState([]);
@@ -77,23 +77,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
     const currentCountryTimezones = currentCountry?.settings?.timezones || (currentCountry?.timezone ? [currentCountry.timezone] : []);
     const showTimezoneSelect = currentCountryTimezones.length > 1;
     const isPersonal = merchant?.type === 'personal';
-    const operationProfile = data.business_profile || {};
-    const selectedOperationKeys = Array.from(new Set([
-        operationProfile.primary_operation,
-        ...(operationProfile.operations || []),
-    ].filter(Boolean)));
-    const selectedOperations = selectedOperationKeys.map((key) => businessOperations?.[key]).filter(Boolean);
-    const selectedBusinessContext = selectedOperations.length > 0
-        ? {
-            label: selectedOperations[0]?.label || 'Business operations',
-            operation_labels: selectedOperations.map((operation) => operation.label),
-            recommended_modules: Array.from(new Set(selectedOperations.flatMap((operation) => operation.modules || []))),
-            recommended_commerce_modes: Array.from(new Set(selectedOperations.flatMap((operation) => operation.commerce_modes || []))),
-            offer_types: selectedOperationKeys,
-        }
-        : null;
-    const selectedCommerceModes = data.business_profile?.commerce_modes || [];
-    const recommendedCommerceModes = selectedBusinessContext?.recommended_commerce_modes || [];
     const [bioBuilder, setBioBuilder] = useState({
         roleOrCategory: '',
         certifications: '',
@@ -210,56 +193,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
         }
     };
 
-    const setPrimaryOperation = (operationKey) => {
-        if (!canUpdateSettings) return;
-        setData('business_profile', {
-            ...(data.business_profile || {}),
-            primary_operation: operationKey,
-            operations: Array.from(new Set([operationKey, ...((data.business_profile || {}).operations || [])])),
-        });
-    };
-
-    const toggleBusinessOperation = (operationKey) => {
-        if (!canUpdateSettings) return;
-        const primary = data.business_profile?.primary_operation || operationKey;
-        const current = new Set(data.business_profile?.operations || []);
-        if (current.has(operationKey) && operationKey !== primary) {
-            current.delete(operationKey);
-        } else {
-            current.add(operationKey);
-        }
-        current.add(primary);
-
-        setData('business_profile', {
-            ...(data.business_profile || {}),
-            primary_operation: primary,
-            operations: Array.from(current),
-        });
-    };
-
-    const toggleCommerceMode = (modeKey) => {
-        if (!canUpdateSettings) return;
-        const nextModes = selectedCommerceModes.includes(modeKey)
-            ? selectedCommerceModes.filter((key) => key !== modeKey)
-            : [...selectedCommerceModes, modeKey];
-
-        setData({
-            ...data,
-            business_profile: {
-                ...(data.business_profile || {}),
-                commerce_modes: nextModes,
-            },
-        });
-    };
-
-    const applyRecommendedCommerceModes = () => {
-        if (!canUpdateSettings) return;
-        setData('business_profile', {
-            ...(data.business_profile || {}),
-            commerce_modes: Array.from(new Set([...selectedCommerceModes, ...recommendedCommerceModes])),
-        });
-    };
-
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!canUpdateSettings) return;
@@ -355,160 +288,6 @@ export default function Settings({ merchant, merchantUsername, countries = [], c
                             </div>
                         </CardContent>
                     </Card>
-
-                    {!isPersonal && (
-                        <Card className="glass-card shadow-sm border-blue-100">
-                            <CardHeader className="p-5 pb-2">
-                                <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-blue-700 uppercase tracking-wider">
-                                    <LayoutDashboard className="h-4 w-4" /> Operations & Selling Modes
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-5 space-y-4">
-                                <div className="space-y-3">
-                                    {selectedOperationKeys.length === 0 && (
-                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                                            <p className="text-sm font-black text-amber-900">Choose this business setup when you are ready.</p>
-                                            <p className="mt-1 text-xs font-semibold text-amber-800">
-                                                Pick the main operation here so reporting, discovery, and setup suggestions understand what this business does.
-                                            </p>
-                                        </div>
-                                    )}
-                                    <label className="space-y-1 block">
-                                        <span className="text-sm font-bold text-muted-foreground">Primary operation</span>
-                                        <select
-                                            className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                            value={data.business_profile?.primary_operation || ''}
-                                            onChange={(e) => setPrimaryOperation(e.target.value)}
-                                            disabled={!canUpdateSettings}
-                                        >
-                                            <option value="">Choose what this business mainly does</option>
-                                            {Object.entries(businessOperations || {}).map(([key, operation]) => (
-                                                <option key={key} value={key}>{operation.label}</option>
-                                            ))}
-                                        </select>
-                                    </label>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                        {Object.entries(businessOperations || {}).map(([key, operation]) => {
-                                            const selected = selectedOperationKeys.includes(key);
-                                            const isPrimary = data.business_profile?.primary_operation === key;
-
-                                            return (
-                                                <button
-                                                    key={key}
-                                                    type="button"
-                                                    onClick={() => toggleBusinessOperation(key)}
-                                                    disabled={!canUpdateSettings}
-                                                    className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${selected
-                                                        ? 'border-blue-300 bg-blue-50 text-blue-900'
-                                                        : 'border-border bg-background text-muted-foreground hover:border-blue-200'
-                                                        }`}
-                                                >
-                                                    <span className="font-black">{operation.label}</span>
-                                                    <span className="block mt-1 leading-snug">{operation.description}</span>
-                                                    {isPrimary && <span className="mt-1 inline-flex rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-black text-white">Primary</span>}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                <Textarea
-                                    value={data.business_profile?.description || ''}
-                                    onChange={(e) => setData('business_profile', { ...(data.business_profile || {}), description: e.target.value })}
-                                    placeholder="What does this business actually do day to day?"
-                                    className="rounded-xl min-h-[86px]"
-                                    disabled={!canUpdateSettings}
-                                />
-
-                                {selectedBusinessContext && (
-                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 space-y-3">
-                                        <div>
-                                            <p className="text-xs font-black uppercase tracking-wider text-blue-700">Business operating preset</p>
-                                            <p className="text-sm font-black text-blue-950 mt-1">
-                                                {(selectedBusinessContext.operation_labels || []).join(' · ') || selectedBusinessContext.label}
-                                            </p>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div>
-                                                <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Recommended commerce modes</p>
-                                                <div className="flex flex-wrap gap-1.5 mt-2">
-                                                    {recommendedCommerceModes.map((mode) => (
-                                                        <span key={mode} className="rounded-full bg-white border border-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-800">
-                                                            {commerceModes?.[mode]?.label || mode.replace(/_/g, ' ')}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Offerings this business can create</p>
-                                                <div className="flex flex-wrap gap-1.5 mt-2">
-                                                    {(selectedBusinessContext.offer_types || []).map((offerType) => (
-                                                        <span key={offerType} className="rounded-full bg-white border border-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-800">
-                                                            {offerType.replace(/_/g, ' ')}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <p className="text-xs text-blue-800/80">
-                                            Aina za mauzo zinaeleza biashara inauza nini. Aina maalum za huduma utazichagua baadaye wakati wa kuweka huduma mpya.
-                                        </p>
-                                    </div>
-                                )}
-
-                                <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                                        <div>
-                                            <p className="text-sm font-black text-slate-900">Biashara hii inauza nini?</p>
-                                            <p className="text-xs text-slate-500 mt-1">
-                                                Chagua zote zinazohusika. Bidhaa za kushikika zitaendelea kutumia categories, variants, stock, na delivery flow.
-                                            </p>
-                                        </div>
-                                        {recommendedCommerceModes.length > 0 && (
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="rounded-lg text-xs font-bold"
-                                                onClick={applyRecommendedCommerceModes}
-                                                disabled={!canUpdateSettings}
-                                            >
-                                                Apply recommended
-                                            </Button>
-                                        )}
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        {Object.entries(commerceModes || {}).map(([key, mode]) => {
-                                            const isSelected = selectedCommerceModes.includes(key);
-                                            const isRecommended = recommendedCommerceModes.includes(key);
-
-                                            return (
-                                                <button
-                                                    key={key}
-                                                    type="button"
-                                                    onClick={() => toggleCommerceMode(key)}
-                                                    disabled={!canUpdateSettings}
-                                                    className={`rounded-xl border p-3 text-left transition-all ${isSelected ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-slate-50 hover:bg-white'} ${!canUpdateSettings ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                >
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div>
-                                                            <p className="text-sm font-black text-slate-900">{mode.label}</p>
-                                                            <p className="text-xs text-slate-500 mt-1 leading-relaxed">{mode.description}</p>
-                                                        </div>
-                                                        <input type="checkbox" className="mt-1 h-4 w-4" checked={isSelected} readOnly />
-                                                    </div>
-                                                    {isRecommended && (
-                                                        <span className="mt-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-black text-blue-700">Recommended</span>
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
 
                     <Card className="glass-card shadow-sm">
                         <CardHeader className="p-5 pb-2">

@@ -9,6 +9,7 @@ import {
     ArrowLeft,
     Building2,
     CalendarClock,
+    ExternalLink,
     Globe,
     MapPin,
     Megaphone,
@@ -27,7 +28,7 @@ const sectionMeta = {
     locations: { title: 'Locations', icon: MapPin, description: 'Origin warehouses, drop-off points, and destination collection offices.' },
     routes: { title: 'Routes', icon: Globe, description: 'Build import routes from real origin locations to real collection offices.' },
     schedules: { title: 'Schedules', icon: CalendarClock, description: 'Attach shipping windows to the routes customers follow.' },
-    shipments: { title: 'Shipments', icon: Truck, description: 'Track incoming customer cargo requests without turning Takeer into an ERP.' },
+    shipments: { title: 'Shipments', icon: Truck, description: 'Track incoming customer cargo requests.' },
 };
 
 const blankLocation = {
@@ -179,6 +180,10 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
     const [schedules, setSchedules] = useState(forwarder.shipping_schedules || []);
     const [updates, setUpdates] = useState(forwarder.logistics_updates || []);
     const [shipments, setShipments] = useState([]);
+    const [shipmentsMeta, setShipmentsMeta] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 12, status_counts: {} });
+    const [shipmentQuery, setShipmentQuery] = useState('');
+    const [shipmentPage, setShipmentPage] = useState(1);
+    const [shipmentsLoading, setShipmentsLoading] = useState(false);
 
     const locations = data.locations || [];
     const originLocations = locations.filter((location) => (location.roles || []).includes('origin'));
@@ -208,10 +213,21 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
     useEffect(() => {
         if (section !== 'shipments') return;
 
-        axios.get(`${apiBase}/shipments`)
-            .then(({ data: res }) => setShipments(res.shipments || []))
-            .catch(() => toast.error('Could not load shipments.'));
-    }, [section, apiBase]);
+        setShipmentsLoading(true);
+        axios.get(`${apiBase}/shipments`, {
+            params: { page: shipmentPage, per_page: shipmentsMeta.per_page || 12, q: shipmentQuery || undefined },
+        })
+            .then(({ data: res }) => {
+                setShipments(res.shipments || []);
+                setShipmentsMeta(res.meta || { current_page: 1, last_page: 1, total: res.shipments?.length || 0, per_page: 12, status_counts: {} });
+            })
+            .catch(() => toast.error('Could not load shipments.'))
+            .finally(() => setShipmentsLoading(false));
+    }, [section, apiBase, shipmentPage, shipmentQuery, shipmentsMeta.per_page]);
+
+    useEffect(() => {
+        setShipmentPage(1);
+    }, [shipmentQuery]);
 
     const refreshForwarder = (nextForwarder) => {
         if (nextForwarder) setData(nextForwarder);
@@ -388,7 +404,7 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
     return (
         <AppLayout>
             <Head title={`${activeMeta.title} | Freight Hub`} />
-            <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24 md:p-8">
+            <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <Link href="/profile" className="mb-3 inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-brand-700">
@@ -586,6 +602,11 @@ export default function FreightManager({ merchantUsername, section = 'profile', 
                 {section === 'shipments' && (
                     <ShipmentsPanel
                         shipments={shipments}
+                        meta={shipmentsMeta}
+                        loading={shipmentsLoading}
+                        query={shipmentQuery}
+                        onQueryChange={setShipmentQuery}
+                        onPageChange={setShipmentPage}
                         locations={locations}
                         onStatusChange={updateShipmentStatus}
                     />
@@ -626,26 +647,10 @@ const shipmentStatuses = [
     ['on_hold', 'On hold'],
 ];
 
-function ShipmentsPanel({ shipments, locations, onStatusChange }) {
-    const [query, setQuery] = useState('');
-    const normalizedQuery = query.trim().toLowerCase();
-    const filteredShipments = useMemo(() => {
-        if (!normalizedQuery) return shipments;
-
-        return shipments.filter((shipment) => [
-            shipment.public_id,
-            shipment.tracking_number,
-            shipment.external_order_ref,
-            shipment.package_description,
-            shipment.user?.name,
-            shipment.seller_name,
-            shipment.seller_platform,
-        ].some((value) => String(value || '').toLowerCase().includes(normalizedQuery)));
-    }, [shipments, normalizedQuery]);
-    const statusCounts = useMemo(() => shipments.reduce((counts, shipment) => ({
-        ...counts,
-        [shipment.status]: (counts[shipment.status] || 0) + 1,
-    }), {}), [shipments]);
+function ShipmentsPanel({ shipments, meta, loading, query, onQueryChange, onPageChange, locations, onStatusChange }) {
+    const statusCounts = meta?.status_counts || {};
+    const currentPage = Number(meta?.current_page || 1);
+    const lastPage = Number(meta?.last_page || 1);
 
     return (
         <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
@@ -659,13 +664,13 @@ function ShipmentsPanel({ shipments, locations, onStatusChange }) {
                     <Input
                         className={`${inputClass} lg:max-w-xs`}
                         value={query}
-                        onChange={(event) => setQuery(event.target.value)}
+                        onChange={(event) => onQueryChange(event.target.value)}
                         placeholder="Search shipment, tracking, customer..."
                     />
                 </div>
 
                 {shipments.length > 0 && (
-                    <div className="grid gap-2 md:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                         {shipmentStatuses.slice(0, 4).map(([key, label]) => (
                             <div key={key} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
@@ -675,15 +680,25 @@ function ShipmentsPanel({ shipments, locations, onStatusChange }) {
                     </div>
                 )}
 
-                {shipments.length === 0 ? (
+                {loading ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">Loading shipments...</div>
+                ) : shipments.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">No shipment requests yet.</div>
-                ) : filteredShipments.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-500">No shipments match that search.</div>
                 ) : (
                     <div className="space-y-3">
-                        {filteredShipments.map((shipment) => (
+                        {shipments.map((shipment) => (
                             <ShipmentCard key={shipment.id} shipment={shipment} locations={locations} onStatusChange={onStatusChange} />
                         ))}
+                    </div>
+                )}
+
+                {lastPage > 1 && (
+                    <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 text-xs font-black text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                        <span>Page {currentPage} of {lastPage} · {meta?.total || 0} shipments</span>
+                        <div className="flex gap-2">
+                            <Button type="button" variant="outline" disabled={currentPage <= 1 || loading} onClick={() => onPageChange(currentPage - 1)}>Previous</Button>
+                            <Button type="button" variant="outline" disabled={currentPage >= lastPage || loading} onClick={() => onPageChange(currentPage + 1)}>Next</Button>
+                        </div>
                     </div>
                 )}
             </CardContent>
@@ -699,28 +714,120 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
     const [note, setNote] = useState('');
     const [locationId, setLocationId] = useState('');
     const [trackingNumber, setTrackingNumber] = useState(shipment.tracking_number || '');
+    const [trackingUrl, setTrackingUrl] = useState(shipment.metadata?.freight_tracking?.tracking_url || '');
+    const [carrierName, setCarrierName] = useState(shipment.metadata?.freight_tracking?.carrier_name || '');
+    const [transportReference, setTransportReference] = useState(shipment.metadata?.freight_tracking?.transport_reference || '');
+    const [etaText, setEtaText] = useState(shipment.metadata?.freight_tracking?.eta_text || '');
+    const [expanded, setExpanded] = useState(false);
+    const selectedAddress = shipment.selected_address || {};
+    const destinationAddress = shipment.destination_address || {};
+    const customerContact = shipment.customer_contact || {};
+    const packageItems = Array.isArray(shipment.package_items) ? shipment.package_items : [];
+    const orderSummary = shipment.order_summary || null;
+    const paymentLabel = shipmentPaymentStatusLabel(orderSummary?.payment_status || shipment.metadata?.payment_status, shipment.source_type);
+    const deliveryLabel = shipmentDeliveryStatusLabel(orderSummary?.delivery_status, shipment.source_type);
+    const dropOffPlace = selectedAddress.place || placeLabel(selectedAddress.location) || selectedAddress.name || 'Not linked';
+    const destinationPlace = destinationAddress?.place || placeLabel(destinationAddress) || destinationAddress?.name || routeDisplayName(shipment) || 'Not linked';
+    const customerMapUrl = customerContact.default_delivery_map_url || googleMapsUrl(customerContact.default_delivery_address);
+    const freightTracking = shipment.metadata?.freight_tracking || {};
 
     useEffect(() => {
         setStatus(shipment.status || 'incoming');
         setTrackingNumber(shipment.tracking_number || '');
-    }, [shipment.status, shipment.tracking_number]);
+        setTrackingUrl(shipment.metadata?.freight_tracking?.tracking_url || '');
+        setCarrierName(shipment.metadata?.freight_tracking?.carrier_name || '');
+        setTransportReference(shipment.metadata?.freight_tracking?.transport_reference || '');
+        setEtaText(shipment.metadata?.freight_tracking?.eta_text || '');
+    }, [shipment.status, shipment.tracking_number, shipment.metadata?.freight_tracking]);
 
     return (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{shipment.public_id} · {shipment.source_type === 'takeer_order' ? 'Takeer order' : 'External purchase'}</p>
-                    <h3 className="mt-1 text-lg font-black text-slate-950">{shipment.user?.name || 'Customer shipment'}</h3>
-                    <p className="mt-1 text-sm font-semibold text-slate-500">{shipment.package_description || shipment.external_order_ref || 'No package description yet.'}</p>
                 </div>
                 <span className="w-fit rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700">{statusLabel(shipment.status)}</span>
             </div>
-
-            <div className="mt-4 grid gap-2 text-xs font-bold text-slate-500 md:grid-cols-3">
-                <span className="rounded-xl bg-white px-3 py-2">Route: {shipment.route_snapshot?.label || routeDisplayName(shipment) || 'Not linked'}</span>
-                <span className="rounded-xl bg-white px-3 py-2">Tracking: {shipment.tracking_number || 'Not provided'}</span>
-                <span className="rounded-xl bg-white px-3 py-2">Seller: {shipment.seller_name || shipment.seller_platform || 'Not provided'}</span>
+            <div className="mt-4 grid gap-2 text-xs font-bold text-slate-500 md:grid-cols-2">
+                <span className="rounded-xl bg-white px-3 py-2">Drop-off: {dropOffPlace}</span>
+                <span className="rounded-xl bg-white px-3 py-2">Route landing: {destinationPlace}</span>
+                <span className="rounded-xl bg-white px-3 py-2">
+                    Drop-off address:
+                    <span className="mt-1 block whitespace-pre-line text-slate-700">
+                        {selectedAddress.address_line || selectedAddress.location?.address_line || 'No address snapshot'}
+                    </span>
+                </span>
+                <span className="rounded-xl bg-white px-3 py-2">
+                    Landing address:
+                    <span className="mt-1 block whitespace-pre-line text-slate-700">
+                        {destinationAddress?.address_line || destinationAddress?.name || 'No destination office linked'}
+                    </span>
+                </span>
             </div>
+
+            <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600 md:grid-cols-3">
+                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">Customer phone: {customerContact.phone || 'Not provided'}</span>
+                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">Email: {customerContact.email || 'Not provided'}</span>
+                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">Name: {customerContact.name || shipment.user?.name || 'Customer'}</span>
+                {customerContact.default_delivery_address && (
+                    <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950 md:col-span-3">
+                        Default delivery address:
+                        {customerMapUrl ? (
+                            <a
+                                href={customerMapUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 flex items-start gap-2 whitespace-pre-line text-emerald-900 underline decoration-emerald-300 underline-offset-4 hover:text-emerald-700"
+                            >
+                                <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                                <span>
+                                    {customerContact.default_delivery_address}
+                                    {customerContact.default_delivery_place && (
+                                        <span className="block text-[10px] uppercase tracking-widest text-emerald-700">{customerContact.default_delivery_place}</span>
+                                    )}
+                                </span>
+                            </a>
+                        ) : (
+                            <span className="mt-1 block whitespace-pre-line text-emerald-900">{customerContact.default_delivery_address}</span>
+                        )}
+                    </span>
+                )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+                <Button type="button" variant="outline" className="h-9 rounded-xl text-xs font-black" onClick={() => setExpanded((value) => !value)}>
+                    {expanded ? 'Hide package' : 'Check package'}
+                </Button>
+            </div>
+
+            {expanded && (
+                <div className="mt-3 grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 lg:grid-cols-[1.2fr_0.8fr]">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Package contents</p>
+                        <div className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-100">
+                            {packageItems.map((item, index) => (
+                                <div key={`${item.title}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-black text-slate-900">{item.title || 'Package item'}</p>
+                                        <p className="text-xs font-bold text-slate-400">Qty {item.quantity || 1}</p>
+                                    </div>
+                                    {item.amount !== null && item.amount !== undefined && (
+                                        <span className="text-xs font-black text-slate-700">TZS {Number(item.amount || 0).toLocaleString()}</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="space-y-2 text-xs font-bold text-slate-600">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Order details</p>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2">Order: {orderSummary?.public_id || shipment.external_order_ref || shipment.public_id}</div>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2">Payment: {paymentLabel}</div>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2">Seller handoff: {deliveryLabel}</div>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2">Total: {orderSummary?.total_paid ? `TZS ${Number(orderSummary.total_paid).toLocaleString()}` : 'Not in Takeer escrow'}</div>
+                        {destinationAddress.name && <div className="rounded-xl bg-slate-50 px-3 py-2">Destination: {destinationAddress.name}</div>}
+                    </div>
+                </div>
+            )}
 
             {shipment.source_type === 'external_purchase' && (
                 <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600 md:grid-cols-4">
@@ -735,6 +842,14 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
                 <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">
                     Payment terms: {paymentText}
                 </div>
+            )}
+
+            {(shipment.tracking_number || freightTracking.tracking_url || freightTracking.carrier_name || freightTracking.transport_reference || freightTracking.eta_text) && (
+                <FreightTrackingSummary
+                    className="mt-3"
+                    trackingNumber={shipment.tracking_number}
+                    metadata={freightTracking}
+                />
             )}
 
             {shipment.metadata?.customer_notes && (
@@ -783,10 +898,31 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
                 <Field label="Note">
                     <Input className={inputClass} value={note} onChange={(event) => setNote(event.target.value)} placeholder="E.g. Received at Foshan warehouse" />
                 </Field>
+                <Field label="Carrier / cargo company">
+                    <Input className={inputClass} value={carrierName} onChange={(event) => setCarrierName(event.target.value)} placeholder="DHL, Silent Ocean, SF Express" />
+                </Field>
+                <Field label="Tracking link">
+                    <Input className={inputClass} value={trackingUrl} onChange={(event) => setTrackingUrl(event.target.value)} placeholder="https://..." />
+                </Field>
+                <Field label="Flight / ship / container / batch">
+                    <Input className={inputClass} value={transportReference} onChange={(event) => setTransportReference(event.target.value)} placeholder="Flight, vessel, container, batch" />
+                </Field>
+                <Field label="ETA / next movement">
+                    <Input className={inputClass} value={etaText} onChange={(event) => setEtaText(event.target.value)} placeholder="E.g. Departs Friday, ETA 14 days" />
+                </Field>
             </div>
             <div className="mt-3 flex justify-end">
                 <Button type="button" onClick={() => {
-                    onStatusChange(shipment, { status, note, tracking_number: trackingNumber || null, forwarder_location_id: locationId || null });
+                    onStatusChange(shipment, {
+                        status,
+                        note,
+                        tracking_number: trackingNumber || null,
+                        tracking_url: trackingUrl || null,
+                        carrier_name: carrierName || null,
+                        transport_reference: transportReference || null,
+                        eta_text: etaText || null,
+                        forwarder_location_id: locationId || null,
+                    });
                     setNote('');
                 }}>Update status</Button>
             </div>
@@ -803,12 +939,48 @@ function ShipmentCard({ shipment, locations, onStatusChange }) {
                                 <div>
                                     <p className="font-black text-slate-800">{statusLabel(event.status)} {event.location?.name ? `· ${event.location.name}` : ''}</p>
                                     <p className="font-semibold text-slate-500">{event.note || 'Status updated.'}</p>
+                                    <FreightTrackingSummary className="mt-2" trackingNumber={event.metadata?.tracking_number} metadata={event.metadata} compact />
                                 </div>
                             </div>
                         ))}
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+function FreightTrackingSummary({ metadata = {}, trackingNumber = '', compact = false, className = '' }) {
+    const rows = [
+        ['Carrier/cargo', metadata.carrier_name],
+        ['Tracking', trackingNumber || metadata.tracking_number],
+        ['Reference', metadata.transport_reference],
+        ['ETA / next movement', metadata.eta_text],
+    ].filter(([, value]) => value);
+
+    if (rows.length === 0 && !metadata.tracking_url) return null;
+
+    return (
+        <div className={`${compact ? 'grid gap-1 rounded-xl border border-slate-100 bg-white px-2 py-2' : 'rounded-2xl border border-sky-100 bg-sky-50 p-3'} ${className}`}>
+            <div className={`grid gap-2 ${compact ? 'md:grid-cols-2' : 'md:grid-cols-4'}`}>
+                {rows.map(([label, value]) => (
+                    <span key={label} className={`${compact ? 'text-[11px]' : 'rounded-xl bg-white px-3 py-2 text-xs'} font-bold text-slate-700`}>
+                        <span className="block text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</span>
+                        {value}
+                    </span>
+                ))}
+                {metadata.tracking_url && (
+                    <a
+                        href={metadata.tracking_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`${compact ? 'text-[11px]' : 'rounded-xl bg-white px-3 py-2 text-xs'} inline-flex items-center gap-1 font-black text-brand-700 underline decoration-brand-200 underline-offset-4`}
+                    >
+                        <ExternalLink className="h-3 w-3" />
+                        Tracking link
+                    </a>
+                )}
+            </div>
         </div>
     );
 }
@@ -1573,6 +1745,33 @@ function statusLabel(status) {
     return shipmentStatuses.find(([key]) => key === status)?.[1] || String(status || '').replace(/_/g, ' ');
 }
 
+function shipmentPaymentStatusLabel(status, sourceType) {
+    if (sourceType === 'external_purchase') return 'Tracking only';
+
+    return {
+        pending: 'Payment not completed',
+        awaiting_merchant_confirmation: 'Paid, waiting for seller to accept',
+        escrow_locked: 'SafePay held',
+        shipped: 'SafePay held, shipment active',
+        resolved_merchant_paid: 'Released to seller',
+        disputed: 'Held for review',
+    }[status] || String(status || 'Not available').replace(/_/g, ' ');
+}
+
+function shipmentDeliveryStatusLabel(status, sourceType) {
+    if (sourceType === 'external_purchase') return 'External seller';
+
+    return {
+        inquiry: 'Waiting for seller',
+        packing: 'Seller packing',
+        with_boda: 'Sent toward forwarder',
+        ready_at_terminal: 'Received by forwarder',
+        customer_confirmed: 'Buyer confirmed handoff',
+        issue_reported: 'Issue reported',
+        disputed: 'Issue under review',
+    }[status] || String(status || 'Not synced').replace(/_/g, ' ');
+}
+
 function routeDisplayName(shipment) {
     const route = shipment.route;
     if (!route) return '';
@@ -1581,6 +1780,18 @@ function routeDisplayName(shipment) {
     const destination = route.destination_country?.name || route.destinationCountry?.name || 'Destination';
 
     return `${origin} to ${destination}`;
+}
+
+function placeLabel(location) {
+    if (!location) return '';
+
+    return [location.city?.name, location.state?.name, location.country?.name].filter(Boolean).join(', ');
+}
+
+function googleMapsUrl(address) {
+    if (!address) return '';
+
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
 function LocationChecklist({ locations, value = [], onChange, emptyText }) {

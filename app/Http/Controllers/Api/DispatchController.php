@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Delivery;
 use App\Models\Merchant;
 use App\Models\Order;
+use App\Services\ForwarderShipmentService;
 use App\Services\SmsService;
 use App\Services\WaybillOcrService;
 use Illuminate\Http\JsonResponse;
@@ -65,8 +66,9 @@ class DispatchController extends Controller
             }
         }
 
-        $trackingNumber = $trackingNumber !== '' ? $trackingNumber : ('BUS-' . strtoupper((string) str()->random(8)));
-        $busCompany = $busCompany !== '' ? $busCompany : 'Intercity Bus';
+        $isForwarderDropOff = ($order->delivery?->delivery_type ?? null) === 'forwarder';
+        $trackingNumber = $trackingNumber !== '' ? $trackingNumber : (($isForwarderDropOff ? 'FW-' : 'BUS-') . strtoupper((string) str()->random(8)));
+        $busCompany = $busCompany !== '' ? $busCompany : ($isForwarderDropOff ? 'Domestic courier / cargo' : 'Intercity Bus');
 
         $order->update([
             'payment_status' => 'escrow_locked',
@@ -79,7 +81,7 @@ class DispatchController extends Controller
         $delivery = Delivery::updateOrCreate([
             'order_id' => $order->id,
         ], [
-            'delivery_type' => 'intercity_bus',
+            'delivery_type' => $isForwarderDropOff ? 'forwarder' : 'intercity_bus',
             'shipping_zone_id' => $order->delivery?->shipping_zone_id,
             'shipping_hotspot_id' => $order->delivery?->shipping_hotspot_id,
             'physical_address' => $order->delivery?->physical_address,
@@ -88,29 +90,34 @@ class DispatchController extends Controller
             'bus_company' => $busCompany,
             'waybill_photo_url' => $photoUrl,
             'waybill_tracking_number' => $trackingNumber,
-            'delivery_status' => 'in_transit',
-            'buyer_release_pin' => $pin,
+            'delivery_status' => $isForwarderDropOff ? 'with_boda' : 'in_transit',
+            'buyer_release_pin' => $isForwarderDropOff ? null : $pin,
+            'pickup_pin' => $isForwarderDropOff ? ($order->delivery?->pickup_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT)) : $order->delivery?->pickup_pin,
         ]);
 
         $delivery->events()->create([
             'order_id' => $order->id,
-            'status' => 'in_transit',
+            'status' => $isForwarderDropOff ? 'with_boda' : 'in_transit',
             'actor_type' => 'merchant',
             'actor_user_id' => $request->user()?->id,
             'proof_url' => $videoUrl,
             'proof_mime' => $request->file('dispatch_video')->getClientMimeType(),
             'proof_type' => str_starts_with((string) $request->file('dispatch_video')->getClientMimeType(), 'image/') ? 'photo' : 'video',
-            'note' => 'Intercity dispatch confirmed.',
+            'note' => $isForwarderDropOff ? 'Forwarder drop-off dispatched.' : 'Intercity dispatch confirmed.',
             'metadata' => [
-                'mode' => 'intercity',
+                'mode' => $isForwarderDropOff ? 'forwarder' : 'intercity',
                 'bus_company' => $busCompany,
                 'waybill_tracking_number' => $trackingNumber,
                 'waybill_photo_url' => $photoUrl,
             ],
         ]);
 
+        if ($isForwarderDropOff) {
+            app(ForwarderShipmentService::class)->syncFromOrderDelivery($order->fresh('delivery'), $request->user()?->id);
+        }
+
         // Trigger buyer SMS
-        if (!empty($order->buyer?->phone_number)) {
+        if (!$isForwarderDropOff && !empty($order->buyer?->phone_number)) {
             $this->smsService->sendIntercityDispatchNotification(
                 $order->buyer->phone_number,
                 (string) ($order->public_id ?: $order->id),
@@ -122,7 +129,9 @@ class DispatchController extends Controller
         }
 
         return response()->json([
-            'message' => 'Dispatch imehifadhiwa. Packing proof na risiti ya usafirishaji zimepakiwa.',
+            'message' => $isForwarderDropOff
+                ? 'Forwarder drop-off dispatch imehifadhiwa. Courier/waybill evidence imepakiwa.'
+                : 'Dispatch imehifadhiwa. Packing proof na risiti ya usafirishaji zimepakiwa.',
             'delivery' => $order->fresh('delivery')->delivery,
             'ocr' => $ocr,
         ]);

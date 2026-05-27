@@ -18,7 +18,18 @@ class UserAddressController extends Controller
     public function index()
     {
         return response()->json([
-            'addresses' => Auth::user()->addresses()->with(['forwarder.country', 'forwarderRoute', 'forwarderLocation', 'country', 'state', 'cityRecord'])->get()
+            'addresses' => Auth::user()->addresses()->with([
+                'forwarder.country',
+                'forwarderRoute.originCountry',
+                'forwarderRoute.destinationCountry',
+                'forwarderRoute.destinationLocations.country',
+                'forwarderRoute.destinationLocations.state',
+                'forwarderRoute.destinationLocations.cityRecord',
+                'forwarderLocation',
+                'country',
+                'state',
+                'cityRecord',
+            ])->get()
         ]);
     }
 
@@ -78,7 +89,18 @@ class UserAddressController extends Controller
 
         return response()->json([
             'message' => 'Anuani imehifadhiwa!',
-            'address' => $address->load(['forwarder.country', 'forwarderRoute', 'forwarderLocation', 'country', 'state', 'cityRecord'])
+            'address' => $address->load([
+                'forwarder.country',
+                'forwarderRoute.originCountry',
+                'forwarderRoute.destinationCountry',
+                'forwarderRoute.destinationLocations.country',
+                'forwarderRoute.destinationLocations.state',
+                'forwarderRoute.destinationLocations.cityRecord',
+                'forwarderLocation',
+                'country',
+                'state',
+                'cityRecord',
+            ])
         ]);
     }
 
@@ -129,7 +151,18 @@ class UserAddressController extends Controller
 
         return response()->json([
             'message' => 'Anuani imesasishwa!',
-            'address' => $address->load(['forwarder.country', 'forwarderRoute', 'forwarderLocation', 'country', 'state', 'cityRecord'])
+            'address' => $address->load([
+                'forwarder.country',
+                'forwarderRoute.originCountry',
+                'forwarderRoute.destinationCountry',
+                'forwarderRoute.destinationLocations.country',
+                'forwarderRoute.destinationLocations.state',
+                'forwarderRoute.destinationLocations.cityRecord',
+                'forwarderLocation',
+                'country',
+                'state',
+                'cityRecord',
+            ])
         ]);
     }
 

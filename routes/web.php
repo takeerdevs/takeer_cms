@@ -2235,6 +2235,8 @@ Route::get('/sitemap.xml', function () {
 // ─── ADMIN PANEL ────────────────────────────────────────────────────────────
 Route::middleware(['auth', 'admin'])->group(function () {
     Route::prefix('/admin/api')->group(function () {
+        Route::get('/attention', [AdminController::class, 'attention']);
+        Route::get('/attention/summary', [AdminController::class, 'attentionSummary']);
         Route::get('/disputes', [AdminController::class, 'indexDisputes']);
         Route::post('/disputes/{dispute}/resolve', [AdminController::class, 'resolveDispute']);
         Route::get('/custom-delivery-events/{event}/download', [AdminController::class, 'downloadCustomDeliveryEvent']);
@@ -2325,6 +2327,10 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     Route::get('/admin', function () {
         return Inertia::render('Admin/Dashboard');
+    });
+
+    Route::get('/admin/attention', function () {
+        return Inertia::render('Admin/Attention');
     });
 
     Route::get('/admin/disputes', function () {

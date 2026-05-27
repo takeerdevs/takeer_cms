@@ -452,6 +452,7 @@ const statusCopy = (order) => {
 const deliveryCopy = (order) => {
     const type = order?.delivery?.delivery_type || order?.delivery?.type;
     if (type === 'self_pickup') return 'Self pickup';
+    if (type === 'forwarder') return 'Forwarder drop-off';
     if (type === 'local_boda') return 'Local delivery';
     if (type === 'intercity_bus') return 'Intercity bus';
     if (type === 'shipping') return 'Shipping';
@@ -505,6 +506,31 @@ const formatTimeLeft = (expiresAt, nowMs = Date.now()) => {
     return `Time left ${minutes}m`;
 };
 
+const formatChatNoticeTimestamp = (value) => {
+    if (!value) return '';
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return date.toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+};
+
+const ChatNoticeTimestamp = ({ value, className }) => {
+    const label = formatChatNoticeTimestamp(value);
+    if (!label) return null;
+
+    return (
+        <span className={cn("mt-1 block text-[9px] font-black uppercase tracking-[0.18em] text-slate-400", className)}>
+            {label}
+        </span>
+    );
+};
+
 const systemBodyForOrder = (body, order) => {
     if (!isDigitalOrder(order) || !body) return body;
     if (!body.includes('anza mchakato wa kusafirisha') && !body.includes('usafirishaji')) return body;
@@ -552,8 +578,10 @@ export default function Chat({
     const [selectedHotspot, setSelectedHotspot] = useState(null);
 
     const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    const isRouteForwarderOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'forwarder';
 
     const closestLocation = React.useMemo(() => {
+        if (isRouteForwarderOrder) return null;
         const locations = order?.merchant?.locations || [];
         const customerLat = order?.delivery?.latitude;
         const customerLng = order?.delivery?.longitude;
@@ -577,8 +605,8 @@ export default function Chat({
         });
 
         return closest;
-    }, [order?.merchant?.locations, order?.delivery?.latitude, order?.delivery?.longitude]);
-    const deliveryRouteUrl = closestLocation && order?.delivery?.latitude && order?.delivery?.longitude
+    }, [isRouteForwarderOrder, order?.merchant?.locations, order?.delivery?.latitude, order?.delivery?.longitude]);
+    const deliveryRouteUrl = !isRouteForwarderOrder && closestLocation && order?.delivery?.latitude && order?.delivery?.longitude
         ? `https://www.google.com/maps/dir/?api=1&origin=${closestLocation.latitude},${closestLocation.longitude}&destination=${order.delivery.latitude},${order.delivery.longitude}&travelmode=driving`
         : null;
 
@@ -697,6 +725,8 @@ export default function Chat({
         if (order?.delivery?.delivery_type) {
             if (order.delivery.delivery_type === 'local_boda') {
                 setDispatchMode('local');
+            } else if (order.delivery.delivery_type === 'forwarder') {
+                setDispatchMode('local');
             } else if (order.delivery.delivery_type === 'intercity_bus') {
                 setDispatchMode('intercity');
             }
@@ -732,7 +762,7 @@ export default function Chat({
                 id: Date.now(),
                 sender_id: auth.user.id,
                 type: 'text',
-                body: `${order?.product?.type === 'service' ? 'Offer ya huduma' : 'Gharama ya usafiri'} imewekwa: TZS ${Number(shippingFeeInput).toLocaleString()}`,
+                body: `${order?.product?.type === 'service' ? 'Offer ya huduma' : (isForwarderOrder ? 'Gharama ya kupeleka kwa forwarder' : 'Gharama ya usafiri')} imewekwa: TZS ${Number(shippingFeeInput).toLocaleString()}`,
                 payload: { acting_as: actingAs },
                 sender: { role: auth.user.role, name: auth.user.name },
                 created_at: new Date().toISOString()
@@ -1374,6 +1404,9 @@ export default function Chat({
         && order?.payment_status === 'pending'
         && order?.inquiry_status === 'pending'
         && order?.delivery?.delivery_type !== 'self_pickup';
+    const isWaitingForShippingFee = canMerchantQuote
+        && !isServiceOrder
+        && order?.shipping_fee === null;
     const canMerchantConfirm = actingAs === 'merchant'
         && order?.is_inquiry
         && order?.payment_status === 'pending'
@@ -1431,10 +1464,47 @@ export default function Chat({
     ].filter(Boolean);
     const hasPhysicalOrderItems = orderItems.some((item) => isPhysicalDealItem(item, order));
     const isSelfPickupOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'self_pickup';
+    const isForwarderOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'forwarder';
+    const isIntercityOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'intercity_bus';
+    const isLocalDeliveryOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'local_boda';
     const deliveryStatus = order?.delivery?.delivery_status || order?.delivery?.status;
     const isDeliveryCompleted = order?.payment_status === 'resolved_merchant_paid'
         || ['delivered', 'customer_confirmed'].includes(deliveryStatus);
     const deliveryStageStatuses = ['dispatched', 'with_boda', 'in_transit', 'arrived', 'ready_at_terminal', 'delivered'];
+    const canBuyerConfirmReceipt = Boolean(
+        actingAs === 'buyer'
+        && order?.delivery
+        && !isDeliveryCompleted
+        && (isForwarderOrder
+            ? ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status)
+            : ['escrow_locked', 'shipped'].includes(order?.payment_status))
+        && (isLocalDeliveryOrder || isIntercityOrder || isForwarderOrder)
+        && (
+            order?.payment_status === 'shipped'
+            || deliveryStageStatuses.includes(deliveryStatus)
+        )
+        && (!isForwarderOrder || deliveryStatus === 'ready_at_terminal')
+    );
+    const buyerReceiptCopy = isForwarderOrder
+        ? {
+            title: 'Thibitisha Handoff',
+            body: 'Muuzaji amesema mzigo umepokelewa na forwarder. Hakiki tracking/risiti au wasiliana na forwarder. Ukiridhika, thibitisha ili escrow iachiliwe kwa muuzaji.',
+            confirm: 'NIMETHIBITISHA HANDOFF',
+            report: 'RIPOTI TATIZO',
+        }
+        : isIntercityOrder
+        ? {
+            title: 'Thibitisha Pickup',
+            body: 'Ukishachukua mzigo kwenye terminal au ofisi ya cargo na umeukagua uko salama, thibitisha ili muuzaji alipwe. Kama kuna tatizo, fungua ripoti.',
+            confirm: 'NIMEPOKEA MZIGO',
+            report: 'RIPOTI TATIZO',
+        }
+        : {
+            title: 'Thibitisha Mzigo',
+            body: 'Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.',
+            confirm: 'NDIO, NIMEPOKEA',
+            report: 'SIJAPATA / TATIZO',
+        };
     const isDeliveryStageOrder = Boolean(
         order?.delivery
         && !isSelfPickupOrder
@@ -1661,7 +1731,8 @@ export default function Chat({
                                         return (
                                             <div key={msg.id} className="flex justify-center my-2">
                                                 <div className="text-[11px] font-bold text-center text-brand-700/80 dark:text-brand-300/80 bg-brand-50/80 dark:bg-brand-900/40 px-4 py-2 rounded-2xl max-w-[85%] leading-relaxed border border-brand-100/50 shadow-sm">
-                                                    {displayedBody}
+                                                    <div className="whitespace-pre-wrap">{displayedBody}</div>
+                                                    <ChatNoticeTimestamp value={msg.created_at} className="text-brand-500/60 dark:text-brand-200/50" />
                                                 </div>
                                             </div>
                                         );
@@ -1787,12 +1858,15 @@ export default function Chat({
 
                                             return (
                                                 <div key={msg.id} className="flex justify-center my-2">
-                                                    <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl border border-brand-100/60 bg-brand-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-700/90 shadow-sm dark:border-brand-900/40 dark:bg-brand-900/40 dark:text-brand-200">
-                                                        <ActorIcon className="h-3.5 w-3.5 shrink-0" />
-                                                        <span>
-                                                            {label}
-                                                            {quantity ? ` ${Number(quantity).toLocaleString()}` : ''}
-                                                        </span>
+                                                    <div className="max-w-[85%] rounded-2xl border border-brand-100/60 bg-brand-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-700/90 shadow-sm dark:border-brand-900/40 dark:bg-brand-900/40 dark:text-brand-200">
+                                                        <div className="inline-flex items-center gap-2">
+                                                            <ActorIcon className="h-3.5 w-3.5 shrink-0" />
+                                                            <span>
+                                                                {label}
+                                                                {quantity ? ` ${Number(quantity).toLocaleString()}` : ''}
+                                                            </span>
+                                                        </div>
+                                                        <ChatNoticeTimestamp value={msg.created_at} className="text-brand-500/60 dark:text-brand-200/50" />
                                                     </div>
                                                 </div>
                                             );
@@ -1804,9 +1878,12 @@ export default function Chat({
 
                                             return (
                                                 <div key={msg.id} className="flex justify-center my-2">
-                                                    <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl border border-emerald-100/70 bg-emerald-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-emerald-800 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-900/30 dark:text-emerald-100">
-                                                        <Store className="h-3.5 w-3.5 shrink-0" />
-                                                        <span>{actorName} confirmed pickup for {merchantName} and released this order.</span>
+                                                    <div className="max-w-[85%] rounded-2xl border border-emerald-100/70 bg-emerald-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-emerald-800 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-900/30 dark:text-emerald-100">
+                                                        <div className="inline-flex items-center gap-2">
+                                                            <Store className="h-3.5 w-3.5 shrink-0" />
+                                                            <span>{actorName} confirmed pickup for {merchantName} and released this order.</span>
+                                                        </div>
+                                                        <ChatNoticeTimestamp value={msg.created_at} className="text-emerald-600/60 dark:text-emerald-100/50" />
                                                     </div>
                                                 </div>
                                             );
@@ -1835,9 +1912,12 @@ export default function Chat({
                                             if (showPickupCard) {
                                                 return (
                                                     <div key={msg.id} className="flex justify-center my-2">
-                                                        <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl border border-brand-100/60 bg-brand-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-700/90 shadow-sm dark:border-brand-900/40 dark:bg-brand-900/40 dark:text-brand-200">
-                                                            <Store className="h-3.5 w-3.5 shrink-0" />
-                                                            <span>Pickup PIN imetumwa kwa mteja kwa ajili ya kuchukua bidhaa.</span>
+                                                        <div className="max-w-[85%] rounded-2xl border border-brand-100/60 bg-brand-50/80 px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-700/90 shadow-sm dark:border-brand-900/40 dark:bg-brand-900/40 dark:text-brand-200">
+                                                            <div className="inline-flex items-center gap-2">
+                                                                <Store className="h-3.5 w-3.5 shrink-0" />
+                                                                <span>Pickup PIN imetumwa kwa mteja kwa ajili ya kuchukua bidhaa.</span>
+                                                            </div>
+                                                            <ChatNoticeTimestamp value={msg.created_at} className="text-brand-500/60 dark:text-brand-200/50" />
                                                         </div>
                                                     </div>
                                                 );
@@ -1845,10 +1925,13 @@ export default function Chat({
 
                                             return (
                                                 <div key={msg.id} className="flex justify-center my-2">
-                                                    <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl border border-brand-100/70 bg-white px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-800 shadow-sm dark:border-brand-900/40 dark:bg-slate-900 dark:text-brand-100">
-                                                        <CreditCard className="h-3.5 w-3.5 shrink-0 text-brand-600" />
-                                                        <span>Malipo yameanzishwa · TZS {paymentAmount.toLocaleString()}</span>
-                                                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                                                    <div className="max-w-[85%] rounded-2xl border border-brand-100/70 bg-white px-4 py-2 text-center text-[11px] font-bold leading-relaxed text-brand-800 shadow-sm dark:border-brand-900/40 dark:bg-slate-900 dark:text-brand-100">
+                                                        <div className="inline-flex items-center gap-2">
+                                                            <CreditCard className="h-3.5 w-3.5 shrink-0 text-brand-600" />
+                                                            <span>Malipo yameanzishwa · TZS {paymentAmount.toLocaleString()}</span>
+                                                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                                                        </div>
+                                                        <ChatNoticeTimestamp value={msg.created_at} />
                                                     </div>
                                                 </div>
                                             );
@@ -2101,18 +2184,53 @@ export default function Chat({
                                                                                     </div>
                                                                                     <div>
                                                                                         <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Delivery update</p>
-                                                                                        <h4 className="text-base font-black text-sky-950">{deliveryStatusText(msg.payload?.status)}</h4>
+                                                                                        <h4 className="text-base font-black text-sky-950">
+                                                                                            {isForwarderOrder && msg.payload?.status === 'ready_at_terminal'
+                                                                                                ? 'Received by forwarder'
+                                                                                                : deliveryStatusText(msg.payload?.status)}
+                                                                                        </h4>
                                                                                     </div>
                                                                                 </div>
                                                                                 {msg.payload?.note && (
                                                                                     <p className="mt-3 rounded-2xl bg-white/80 p-3 text-sm font-semibold text-slate-700">{msg.payload.note}</p>
                                                                                 )}
+                                                                                {(msg.payload?.courier_company || msg.payload?.bus_company || msg.payload?.waybill_tracking_number || msg.payload?.tracking_link || msg.payload?.forwarder_evidence_type) && (
+                                                                                    <div className="mt-3 grid gap-2 rounded-2xl border border-sky-100 bg-white/80 p-3 sm:grid-cols-2">
+                                                                                        {msg.payload?.forwarder_evidence_type && (
+                                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
+                                                                                                Evidence
+                                                                                                <span className="mt-1 block text-sm font-bold normal-case tracking-normal text-slate-800">{String(msg.payload.forwarder_evidence_type).replaceAll('_', ' ')}</span>
+                                                                                            </p>
+                                                                                        )}
+                                                                                        {(msg.payload?.courier_company || msg.payload?.bus_company) && (
+                                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
+                                                                                                Carrier/Forwarder
+                                                                                                <span className="mt-1 block text-sm font-bold normal-case tracking-normal text-slate-800">{msg.payload.courier_company || msg.payload.bus_company}</span>
+                                                                                            </p>
+                                                                                        )}
+                                                                                        {msg.payload?.waybill_tracking_number && (
+                                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
+                                                                                                Receipt/Tracking
+                                                                                                <span className="mt-1 block text-sm font-bold normal-case tracking-normal text-slate-800">{msg.payload.waybill_tracking_number}</span>
+                                                                                            </p>
+                                                                                        )}
+                                                                                        {msg.payload?.tracking_link && (
+                                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
+                                                                                                Tracking link
+                                                                                                <a href={msg.payload.tracking_link} target="_blank" rel="noreferrer" className="mt-1 block text-sm font-bold normal-case tracking-normal text-sky-700 underline">Open tracking</a>
+                                                                                            </p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                )}
                                                                                 <div className="mt-3 flex flex-wrap gap-2">
-                                                                                    {(msg.payload?.proof_url || msg.media_url) && (
-                                                                                        <a href={msg.payload?.proof_url || msg.media_url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-[10px] font-black uppercase tracking-widest text-sky-700 underline">
-                                                                                            Proof added
+                                                                                    {(Array.isArray(msg.payload?.proofs) && msg.payload.proofs.length > 0
+                                                                                        ? msg.payload.proofs
+                                                                                        : ((msg.payload?.proof_url || msg.media_url) ? [{ url: msg.payload?.proof_url || msg.media_url }] : [])
+                                                                                    ).map((proof, proofIndex, proofs) => (
+                                                                                        <a key={`${proof.url}-${proofIndex}`} href={proof.url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-[10px] font-black uppercase tracking-widest text-sky-700 underline">
+                                                                                            {proofs.length > 1 ? `Proof ${proofIndex + 1}` : 'Proof added'}
                                                                                         </a>
-                                                                                    )}
+                                                                                    ))}
                                                                                     {msg.payload?.route_url && (
                                                                                         <a href={msg.payload.route_url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-xl bg-sky-700 px-3 text-[10px] font-black uppercase tracking-widest text-white">
                                                                                             Directions
@@ -2211,7 +2329,9 @@ export default function Chat({
                                 <p className="text-[10px] font-bold text-amber-900 uppercase leading-relaxed">
                                     {order?.is_inquiry && order?.inquiry_status === 'quoted' && !merchantConfirmed
                                         ? 'Subiri muuzaji athibitishe oda kabla ya kulipia.'
-                                        : 'Subiri muuzaji aweke gharama ya usafiri au chagua pickup ili uweze kulipia.'}
+                                        : (isForwarderOrder
+                                            ? 'Subiri muuzaji athibitishe gharama ya kupeleka mzigo kwa forwarder ili uweze kulipia. Malipo ya forwarder kwenda eneo lako yatafuata kwenye freight.'
+                                            : 'Subiri muuzaji aweke gharama ya usafiri au chagua pickup ili uweze kulipia.')}
                                 </p>
                             </div>
                         </div>
@@ -2233,32 +2353,32 @@ export default function Chat({
                                             {order.delivery.delivery_person_name}
                                         </span>
                                     )}
-                                    {order.delivery.boda_phone && (
+                                    {!isForwarderOrder && order.delivery.boda_phone && (
                                         <a href={`tel:${order.delivery.boda_phone}`} className="inline-flex h-11 items-center justify-center rounded-2xl border border-sky-100 bg-white px-4 text-xs font-black uppercase tracking-widest text-sky-700">
                                             Delivery phone
                                         </a>
                                     )}
                                 </div>
                             </div>
-                            {['escrow_locked', 'shipped'].includes(order?.payment_status) && (
+                            {canBuyerConfirmReceipt && (
                                 <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
                                     <div className="flex items-center gap-2 mb-3">
                                         <ShieldCheck className="h-5 w-5 text-indigo-600" />
-                                        <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Thibitisha Mzigo</h4>
+                                        <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">{buyerReceiptCopy.title}</h4>
                                     </div>
-                                    <p className="text-xs text-indigo-800/80 mb-3 font-medium">Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.</p>
+                                    <p className="text-xs text-indigo-800/80 mb-3 font-medium">{buyerReceiptCopy.body}</p>
                                     <div className="flex gap-2">
                                         <Button onClick={confirmReceipt} disabled={isConfirmingReceipt} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
-                                            {isConfirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'NDIO, NIMEPOKEA'}
+                                            {isConfirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : buyerReceiptCopy.confirm}
                                         </Button>
                                         <Button variant="outline" onClick={() => setIsDisputeDrawerOpen(true)} className="flex-1 h-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
-                                            SIJAPATA / TATIZO
+                                            {buyerReceiptCopy.report}
                                         </Button>
                                     </div>
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) && order?.delivery?.delivery_type !== 'self_pickup' && order?.delivery?.buyer_release_pin && (
+                            {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'local_boda' && order?.delivery?.buyer_release_pin && (
                                 <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
                                     <div className="flex items-center gap-2 mb-3">
                                         <ShieldCheck className="h-5 w-5 text-brand-600" />
@@ -2407,19 +2527,24 @@ export default function Chat({
                                 </div>
                             )}
                             {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.payment_status === 'pending' && order?.delivery?.delivery_type !== 'self_pickup' && (isServiceOrder || order?.shipping_fee === null) && (
-                                <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
+                                <div className={cn(
+                                    "p-4 rounded-[2rem] bg-brand-50/80 border shadow-sm transition-colors",
+                                    isWaitingForShippingFee ? "border-red-300 ring-2 ring-red-100" : "border-brand-200"
+                                )}>
                                     <div className="flex items-center gap-2 mb-3">
                                         <Truck className="h-5 w-5 text-brand-600" />
                                         <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">
-                                            {isServiceOrder ? 'Service Offer Enquiry' : 'Shipping Quote Inquiry'}
+                                            {isServiceOrder ? 'Service Offer Enquiry' : (isForwarderOrder ? 'Forwarder Drop-off Quote' : 'Shipping Quote Inquiry')}
                                         </h4>
                                     </div>
                                     {!isServiceOrder && (
                                         <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">Customer Address:</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
+                                                {isForwarderOrder ? 'Forwarder warehouse:' : 'Customer Address:'}
+                                            </p>
                                             <p className="font-bold text-sm text-brand-900">{order?.delivery?.physical_address || 'Anwani haikuwekwa'}</p>
 
-                                            {closestLocation && (
+                                            {!isForwarderOrder && closestLocation && (
                                                 <div className="mt-3 p-2 rounded-xl bg-brand-50/50 border border-brand-100 flex items-center justify-between">
                                                     <div className="flex items-center gap-2">
                                                         <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center text-brand-600 shadow-sm">
@@ -2433,7 +2558,13 @@ export default function Chat({
                                                 </div>
                                             )}
 
-                                            {order?.delivery?.latitude && (
+                                            {isForwarderOrder && (
+                                                <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
+                                                    Use domestic courier, cargo, or warehouse drop-off details. After payment, update status to Dispatched to forwarder and attach courier/waybill details there.
+                                                </div>
+                                            )}
+
+                                            {!isForwarderOrder && order?.delivery?.latitude && (
                                                 <a
                                                     href={`https://www.google.com/maps/dir/${closestLocation?.latitude || ''},${closestLocation?.longitude || ''}/${order.delivery.latitude},${order.delivery.longitude}`}
                                                     target="_blank"
@@ -2446,7 +2577,17 @@ export default function Chat({
                                         </div>
                                     )}
                                     <form onSubmit={submitQuote} className="flex gap-2">
-                                        <Input type="number" placeholder={isServiceOrder ? 'Weka Offer ya Huduma (TZS)' : 'Weka Gharama (TZS)'} value={shippingFeeInput} onChange={e => setShippingFeeInput(e.target.value)} className="flex-1 font-bold h-12 rounded-xl" required />
+                                        <Input
+                                            type="number"
+                                            placeholder={isServiceOrder ? 'Weka Offer ya Huduma (TZS)' : (isForwarderOrder ? 'Gharama ya kupeleka kwa forwarder (TZS)' : 'Weka Gharama (TZS)')}
+                                            value={shippingFeeInput}
+                                            onChange={e => setShippingFeeInput(e.target.value)}
+                                            className={cn(
+                                                "flex-1 font-bold h-12 rounded-xl",
+                                                isWaitingForShippingFee && "border-red-400 bg-red-50/40 focus-visible:ring-red-200"
+                                            )}
+                                            required
+                                        />
                                         <Button type="submit" disabled={quoteSubmitting || !shippingFeeInput} className="h-12 rounded-xl px-6 bg-brand-600 font-bold uppercase text-[10px] tracking-widest">
                                             {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} TUMA
                                         </Button>
@@ -2454,15 +2595,15 @@ export default function Chat({
                                 </div>
                             )}
 
-                            {order?.product?.type === 'physical' && order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type !== 'self_pickup' && (
+                            {order?.product?.type === 'physical' && order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type !== 'self_pickup' && !isForwarderOrder && (
                                 <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
                                     <div className="flex items-center gap-2 mb-3">
                                         <Truck className="h-5 w-5 text-brand-600" />
                                         <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Dispatch Evidence</h4>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 mb-3">
-                                        <button type="button" onClick={() => setDispatchMode('intercity')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'intercity' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>Intercity Bus</button>
-                                        <button type="button" onClick={() => setDispatchMode('local')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'local' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>Local</button>
+                                        <button type="button" onClick={() => setDispatchMode('intercity')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'intercity' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>{isForwarderOrder ? 'Courier to forwarder' : 'Intercity Bus'}</button>
+                                        <button type="button" onClick={() => setDispatchMode('local')} className={cn("h-10 rounded-xl border text-xs font-bold transition-all", dispatchMode === 'local' ? "bg-brand-600 text-white border-brand-600" : "bg-white text-slate-500 border-slate-200")}>{isForwarderOrder ? 'Drop-off' : 'Local'}</button>
                                     </div>
                                     <form onSubmit={submitDispatch} className="space-y-3">
                                         <div className="grid grid-cols-2 gap-2">
@@ -2586,7 +2727,7 @@ export default function Chat({
                                                 </DrawerHeader>
                                                 <div className="p-4 grid grid-cols-2 gap-3 pb-12 overflow-y-auto">
                                                     {(actingAs === 'merchant' ? [
-                                                        { id: 'shipping_cost', label: 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PICKUP ONLY' },
+                                                        { id: 'shipping_cost', label: isForwarderOrder ? 'Forwarder Drop-off' : 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: isForwarderOrder ? 'Gharama hadi forwarder' : 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PICKUP ONLY' },
                                                         { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
                                                         { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
                                                         { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
@@ -2802,7 +2943,7 @@ export default function Chat({
                                                             <p className="text-[10px] font-black uppercase text-brand-600 tracking-widest flex items-center gap-2"><MapPin className="h-3 w-3" /> Taarifa za Usafirishaji</p>
                                                             <div className="space-y-1">
                                                                 <p className="text-xs font-black text-brand-900">{order?.delivery?.physical_address || (order?.delivery?.latitude ? `${order.delivery.latitude}, ${order.delivery.longitude}` : 'Address Haijawekwa')}</p>
-                                                                {(() => {
+                                                                {!isForwarderOrder && (() => {
                                                                     const closest = findClosestLocation();
                                                                     return closest ? (
                                                                         <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
@@ -2812,7 +2953,12 @@ export default function Chat({
                                                                     ) : null;
                                                                 })()}
                                                             </div>
-                                                            {order?.delivery?.latitude && (
+                                                            {isForwarderOrder && (
+                                                                <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
+                                                                    Forwarder drop-off uses courier/waybill evidence, not a Takeer driver route.
+                                                                </div>
+                                                            )}
+                                                            {!isForwarderOrder && order?.delivery?.latitude && (
                                                                 <a href={`https://www.google.com/maps/search/?api=1&query=${order.delivery.latitude},${order.delivery.longitude}`} target="_blank" className="block text-center py-2 bg-white rounded-xl border border-brand-200 text-[10px] font-black text-brand-700 hover:bg-brand-50 transition-colors">FUNGUA RAMANI (MAPS)</a>
                                                             )}
                                                         </div>

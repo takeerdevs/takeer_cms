@@ -9,7 +9,6 @@ use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\MarketingEvent;
 use App\Models\Order;
-use App\Models\ForwarderRoute;
 use App\Models\ForwarderShipment;
 use App\Models\MerchantCoupon;
 use App\Models\MerchantReferralLink;
@@ -25,6 +24,7 @@ use App\Models\SubscriptionPlan;
 use App\Models\UserAddress;
 use App\Payments\GatewayRegistry;
 use App\Services\EntitlementService;
+use App\Services\ForwarderShipmentService;
 use App\Services\OfferingGroupCheckoutResolver;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
@@ -107,6 +107,9 @@ class CheckoutController extends Controller
 
             $validated = $this->applyCheckoutAddressGeo($validated, $selectedCheckoutAddress);
         }
+        $isForwarderCheckout = ($validated['delivery_type'] ?? 'shipping') !== 'self_pickup'
+            && $selectedCheckoutAddress?->type === 'forwarder'
+            && !empty($selectedCheckoutAddress->forwarder_route_id);
 
         // ── Idempotency guard ─────────────────────────────────────────────────
         if (Order::where('idempotency_key', $validated['idempotency_key'])->exists()) {
@@ -323,7 +326,7 @@ class CheckoutController extends Controller
         $transactionRef = 'TXN-' . Str::upper(Str::random(10));
 
         try {
-            $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $purchasable, $totalPaid, $validated, $requestedQuantity, $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $selectedOfferingGroup, $zone, $deliveryType, $isInquiry, $serviceRequest, $servicePricingInputs, $coupon, $discountAmount, $referralLink, $referralCommissionAmount, $groupSaleCampaign) {
+            $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $purchasable, $totalPaid, $validated, $requestedQuantity, $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $selectedOfferingGroup, $zone, $deliveryType, $isForwarderCheckout, $isInquiry, $serviceRequest, $servicePricingInputs, $coupon, $discountAmount, $referralLink, $referralCommissionAmount, $groupSaleCampaign) {
                 $productInventoryReserved = false;
 
                 if ($product?->isPhysical()) {
@@ -530,21 +533,22 @@ class CheckoutController extends Controller
                     ]);
                 }
 
-                if (($product?->isPhysical() || ($purchasable instanceof Bundle && $purchasable->items()->where('item_type', 'product')->exists()) || ($selectedOfferingGroup['has_physical_items'] ?? false)) && isset($zone)) {
-                    $isPickup = $zone->delivery_type === 'self_pickup';
-                    $isIntercity = $zone->delivery_type === 'intercity_bus';
+                if (($product?->isPhysical() || ($purchasable instanceof Bundle && $purchasable->items()->where('item_type', 'product')->exists()) || ($selectedOfferingGroup['has_physical_items'] ?? false)) && (isset($zone) || $isForwarderCheckout)) {
+                    $isPickup = ($zone?->delivery_type ?? $deliveryType) === 'self_pickup';
+                    $isIntercity = ($zone?->delivery_type ?? $deliveryType) === 'intercity_bus';
+                    $deliveryTypeForOrder = $isForwarderCheckout ? 'forwarder' : ($zone?->delivery_type ?? $deliveryType);
 
                     \App\Models\Delivery::create([
                         'order_id' => $newOrder->id,
-                        'shipping_zone_id' => $zone->id,
-                        'delivery_type' => $zone->delivery_type, // Explicitly set type
+                        'shipping_zone_id' => $zone?->id,
+                        'delivery_type' => $deliveryTypeForOrder,
                         'shipping_hotspot_id' => $resolvedHotspotId ?? $validated['shipping_hotspot_id'] ?? null,
                         'physical_address' => $isPickup ? null : ($validated['physical_address'] ?? null),
                         'latitude' => $validated['buyer_lat'] ?? $validated['latitude'] ?? null,
                         'longitude' => $validated['buyer_lng'] ?? $validated['longitude'] ?? null,
                         'delivery_status' => $isPickup ? 'awaiting_pickup' : ($isIntercity ? 'inquiry' : 'awaiting_boda'),
-                        'buyer_release_pin' => ($isPickup || $isIntercity) ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
-                        'pickup_pin' => ($isPickup || $isIntercity) ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
+                        'buyer_release_pin' => ($isPickup || $isIntercity || $isForwarderCheckout) ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+                        'pickup_pin' => ($isPickup || $isIntercity || $isForwarderCheckout) ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
                     ]);
                 }
                 $this->initializeOrderChat($newOrder);
@@ -1787,6 +1791,7 @@ class CheckoutController extends Controller
 
             $validated = $this->applyCheckoutAddressGeo($validated, $selectedCheckoutAddress);
         }
+        $isForwarderCheckout = !$isSelfPickup && $selectedCheckoutAddress?->type === 'forwarder' && !empty($selectedCheckoutAddress->forwarder_route_id);
 
         $isServiceInquiry = false;
         $product = null;
@@ -1942,11 +1947,11 @@ class CheckoutController extends Controller
         $quotedTotalPrice = round($totalPrice + $resolvedShippingFee, 2);
         $resolvedDeliveryType = $isSelfPickup
             ? 'self_pickup'
-            : ($resolvedShippingZone?->delivery_type ?: $deliveryType);
+            : ($isForwarderCheckout ? 'forwarder' : ($resolvedShippingZone?->delivery_type ?: $deliveryType));
         $inquiryStatus = ($isSelfPickup || $resolvedShippingZone) ? 'quoted' : 'pending';
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
 
-        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId) {
+        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $isForwarderCheckout, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId) {
             $merchantId = $product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id;
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
@@ -2012,8 +2017,8 @@ class CheckoutController extends Controller
                     'latitude' => $validated['buyer_lat'] ?? null,
                     'longitude' => $validated['buyer_lng'] ?? null,
                     'delivery_status' => $isSelfPickup ? 'awaiting_pickup' : 'inquiry',
-                    'pickup_pin' => ($isSelfPickup || $isIntercity) ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
-                    'buyer_release_pin' => ($isSelfPickup || $isIntercity) ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+                    'pickup_pin' => ($isSelfPickup || $isIntercity || $isForwarderCheckout) ? str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT) : null,
+                    'buyer_release_pin' => ($isSelfPickup || $isIntercity || $isForwarderCheckout) ? null : str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT),
                 ]);
             }
 
@@ -2172,89 +2177,7 @@ class CheckoutController extends Controller
 
     private function createTakeerOrderForwarderShipment(Order $order, ?int $userAddressId): ?ForwarderShipment
     {
-        if (!$userAddressId || !$order->buyer_id) {
-            return null;
-        }
-
-        $address = UserAddress::query()
-            ->whereKey($userAddressId)
-            ->where('user_id', $order->buyer_id)
-            ->with(['forwarder', 'forwarderRoute', 'forwarderLocation', 'country', 'state', 'cityRecord'])
-            ->first();
-
-        if (!$address || $address->type !== 'forwarder' || !$address->forwarder_id) {
-            return null;
-        }
-
-        $route = null;
-        if ($address->forwarder_route_id) {
-            $route = ForwarderRoute::query()
-                ->where('forwarder_id', $address->forwarder_id)
-                ->with([
-                    'originLocations.country',
-                    'originLocations.state',
-                    'originLocations.cityRecord',
-                    'destinationLocations.country',
-                    'destinationLocations.state',
-                    'destinationLocations.cityRecord',
-                    'transportModes',
-                ])
-                ->find($address->forwarder_route_id);
-        }
-
-        if ($route && !$route->is_active) {
-            return null;
-        }
-
-        $shipment = ForwarderShipment::query()->firstOrCreate(
-            ['order_id' => $order->id, 'source_type' => 'takeer_order'],
-            [
-                'user_id' => $order->buyer_id,
-                'forwarder_id' => $address->forwarder_id,
-                'forwarder_route_id' => $route?->id,
-                'transport_mode' => $address->forwarder_transport_mode,
-                'origin_location_id' => $address->forwarder_location_id,
-                'destination_location_id' => $route?->destinationLocations->first()?->id,
-                'user_address_id' => $address->id,
-                'status' => ForwarderShipment::STATUS_INCOMING,
-                'seller_name' => $order->merchant?->display_name,
-                'seller_platform' => 'Takeer',
-                'external_order_ref' => $order->public_id ?: (string) $order->id,
-                'package_description' => $this->forwarderShipmentPackageDescription($order),
-                'package_count' => max(1, (int) ceil((float) ($order->requested_quantity ?: $order->quantity ?: 1))),
-                'address_snapshot' => $address->toArray(),
-                'route_snapshot' => $route ? [
-                    'id' => $route->id,
-                    'route_uid' => $route->route_uid,
-                    'origin_country_id' => $route->origin_country_id,
-                    'destination_country_id' => $route->destination_country_id,
-                    'origin_locations' => $route->originLocations->values()->all(),
-                    'destination_locations' => $route->destinationLocations->values()->all(),
-                    'transport_modes' => $route->transportModes->values()->all(),
-                    'estimate' => $route->estimate,
-                    'rates_info' => $route->rates_info,
-                ] : null,
-                'metadata' => [
-                    'takeer_protection' => true,
-                    'payment_status' => $order->payment_status,
-                    'transport_mode' => $address->forwarder_transport_mode,
-                ],
-            ],
-        );
-
-        if ($shipment->wasRecentlyCreated) {
-            $shipment->events()->create([
-                'actor_user_id' => $order->buyer_id,
-                'status' => ForwarderShipment::STATUS_INCOMING,
-                'note' => 'Takeer order paid/confirmed using an imported forwarder address.',
-                'metadata' => [
-                    'order_id' => $order->id,
-                    'source' => 'takeer_checkout',
-                ],
-            ]);
-        }
-
-        return $shipment;
+        return app(ForwarderShipmentService::class)->createForTakeerOrder($order, $userAddressId);
     }
 
     private function forwarderShipmentPackageDescription(Order $order): string

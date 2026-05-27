@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (Schedule $schedule) {
         $schedule->command('orders:release-expired')->everyMinute();
+        $schedule->command('orders:auto-release-delivery-escrow')->hourly()->withoutOverlapping();
         $schedule->command('currency:update-rates')->dailyAt('03:15')->withoutOverlapping();
         $schedule->command('service-credentials:monitor-expiry')->dailyAt('04:15')->withoutOverlapping();
         $schedule->command('bundle-courses:log-reminders')->everyFifteenMinutes()->withoutOverlapping();

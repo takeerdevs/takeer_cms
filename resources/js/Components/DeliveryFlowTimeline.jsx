@@ -16,7 +16,14 @@ export const INTERCITY_DELIVERY_STEPS = [
     { value: 'delivered', label: 'Delivered', riderLabel: 'Imekabidhiwa' },
 ];
 
+export const FORWARDER_DELIVERY_STEPS = [
+    { value: 'packing', label: 'Packing order', riderLabel: 'Mzigo unaandaliwa' },
+    { value: 'with_boda', label: 'Dispatched to forwarder', riderLabel: 'Nimetuma kwa forwarder' },
+    { value: 'ready_at_terminal', label: 'Received by forwarder', riderLabel: 'Forwarder amepokea' },
+];
+
 export function deliveryStepsFor(deliveryType) {
+    if (deliveryType === 'forwarder') return FORWARDER_DELIVERY_STEPS;
     return deliveryType === 'intercity_bus' ? INTERCITY_DELIVERY_STEPS : LOCAL_DELIVERY_STEPS;
 }
 
@@ -32,6 +39,7 @@ export function deliveryStatusText(status) {
         in_transit: 'On the way',
         arrived: 'Arrived at customer area',
         ready_at_terminal: 'At terminal (Bus Terminal)',
+        ready_at_forwarder: 'Received by forwarder',
         delivered: 'Delivered',
         issue_reported: 'Issue reported',
         disputed: 'Disputed',
@@ -53,6 +61,7 @@ export function deliveryStatusTextSw(status) {
         in_transit: 'Uko njiani',
         arrived: 'Umefika kwa mteja',
         ready_at_terminal: 'Uko terminal (Bus Terminal)',
+        ready_at_forwarder: 'Forwarder amepokea',
         delivered: 'Imekabidhiwa',
         issue_reported: 'Kuna tatizo',
         disputed: 'Kuna malalamiko',
@@ -71,6 +80,22 @@ export function deliveryCurrentIndex(delivery = {}) {
         .filter((index) => index >= 0);
 
     return indexes.length ? Math.max(...indexes) : -1;
+}
+
+function proofLinksFor(event) {
+    const metadataProofs = Array.isArray(event.metadata?.proofs) ? event.metadata.proofs : [];
+    const proofs = metadataProofs
+        .map((proof, index) => ({
+            url: proof?.url,
+            label: proof?.name || `Proof ${index + 1}`,
+        }))
+        .filter((proof) => proof.url);
+
+    if (event.proof_url && !proofs.some((proof) => proof.url === event.proof_url)) {
+        proofs.unshift({ url: event.proof_url, label: 'Proof' });
+    }
+
+    return proofs;
 }
 
 export function DeliveryFlowTimeline({
@@ -173,17 +198,45 @@ export function DeliveryFlowTimeline({
                                                         </p>
                                                     )}
                                                     {event.note && <p className="font-semibold text-slate-700">{event.note}</p>}
+                                                    {(event.metadata?.courier_company || event.metadata?.bus_company || event.metadata?.waybill_tracking_number || event.metadata?.tracking_link || event.metadata?.forwarder_evidence_type) && (
+                                                        <div className="mt-2 grid gap-2 rounded-xl border border-slate-100 bg-white/80 p-2 sm:grid-cols-2">
+                                                            {event.metadata?.forwarder_evidence_type && (
+                                                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                                    Evidence
+                                                                    <span className="mt-0.5 block normal-case tracking-normal text-slate-800">{String(event.metadata.forwarder_evidence_type).replaceAll('_', ' ')}</span>
+                                                                </p>
+                                                            )}
+                                                            {(event.metadata?.courier_company || event.metadata?.bus_company) && (
+                                                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                                    Courier/Cargo
+                                                                    <span className="mt-0.5 block normal-case tracking-normal text-slate-800">{event.metadata.courier_company || event.metadata.bus_company}</span>
+                                                                </p>
+                                                            )}
+                                                            {event.metadata?.waybill_tracking_number && (
+                                                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                                    Waybill/Tracking
+                                                                    <span className="mt-0.5 block normal-case tracking-normal text-slate-800">{event.metadata.waybill_tracking_number}</span>
+                                                                </p>
+                                                            )}
+                                                            {event.metadata?.tracking_link && (
+                                                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                                    Tracking link
+                                                                    <a href={event.metadata.tracking_link} target="_blank" rel="noreferrer" className="mt-0.5 block normal-case tracking-normal text-sky-700 underline">Open tracking</a>
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     <p className={cn('mt-1 font-bold uppercase tracking-wider', event.status === 'issue_reported' ? 'text-amber-500' : 'text-slate-400')}>
                                                         {event.created_at ? new Date(event.created_at).toLocaleString(swahili ? 'sw-TZ' : [], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
                                                         {event.actor_type ? ` · ${swahili && event.actor_type === 'rider' ? 'dereva' : event.actor_type}` : ''}
                                                     </p>
                                                     <div className="mt-1 flex flex-wrap gap-2">
-                                                        {event.proof_url && (
-                                                            <a href={event.proof_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-sky-700 underline">
+                                                        {proofLinksFor(event).map((proof, proofIndex, proofs) => (
+                                                            <a key={`${proof.url}-${proofIndex}`} href={proof.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-sky-700 underline">
                                                                 <Camera className="h-3 w-3" />
-                                                                {swahili ? 'Ushahidi' : 'Proof'}
+                                                                {proofs.length > 1 ? `${swahili ? 'Ushahidi' : 'Proof'} ${proofIndex + 1}` : (swahili ? 'Ushahidi' : 'Proof')}
                                                             </a>
-                                                        )}
+                                                        ))}
                                                         {event.metadata?.latitude && event.metadata?.longitude && (
                                                             <a href={`https://www.google.com/maps/search/?api=1&query=${event.metadata.latitude},${event.metadata.longitude}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 underline">
                                                                 <MapPin className="h-3 w-3" />
@@ -211,17 +264,45 @@ export function DeliveryFlowTimeline({
                             <div key={event.id} className="rounded-xl bg-white/70 px-3 py-2 text-xs font-semibold text-amber-900">
                                 <p className="font-black">{swahili ? deliveryStatusTextSw(event.status) : deliveryStatusText(event.status)}</p>
                                 {event.note && <p className="mt-1 text-slate-700">{event.note}</p>}
+                                {(event.metadata?.courier_company || event.metadata?.bus_company || event.metadata?.waybill_tracking_number || event.metadata?.tracking_link || event.metadata?.forwarder_evidence_type) && (
+                                    <div className="mt-2 grid gap-2 rounded-xl border border-amber-100 bg-white/80 p-2 sm:grid-cols-2">
+                                        {event.metadata?.forwarder_evidence_type && (
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                                                Evidence
+                                                <span className="mt-0.5 block normal-case tracking-normal text-amber-950">{String(event.metadata.forwarder_evidence_type).replaceAll('_', ' ')}</span>
+                                            </p>
+                                        )}
+                                        {(event.metadata?.courier_company || event.metadata?.bus_company) && (
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                                                Courier/Cargo
+                                                <span className="mt-0.5 block normal-case tracking-normal text-amber-950">{event.metadata.courier_company || event.metadata.bus_company}</span>
+                                            </p>
+                                        )}
+                                        {event.metadata?.waybill_tracking_number && (
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                                                Waybill/Tracking
+                                                <span className="mt-0.5 block normal-case tracking-normal text-amber-950">{event.metadata.waybill_tracking_number}</span>
+                                            </p>
+                                        )}
+                                        {event.metadata?.tracking_link && (
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                                                Tracking link
+                                                <a href={event.metadata.tracking_link} target="_blank" rel="noreferrer" className="mt-0.5 block normal-case tracking-normal text-sky-700 underline">Open tracking</a>
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                                 <p className="mt-1 font-bold uppercase tracking-wider text-amber-500">
                                     {event.created_at ? new Date(event.created_at).toLocaleString(swahili ? 'sw-TZ' : [], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
                                     {event.actor_type ? ` · ${swahili && event.actor_type === 'rider' ? 'dereva' : event.actor_type}` : ''}
                                 </p>
                                 <div className="mt-1 flex flex-wrap gap-2">
-                                    {event.proof_url && (
-                                        <a href={event.proof_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-sky-700 underline">
+                                    {proofLinksFor(event).map((proof, proofIndex, proofs) => (
+                                        <a key={`${proof.url}-${proofIndex}`} href={proof.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-sky-700 underline">
                                             <Camera className="h-3 w-3" />
-                                            {swahili ? 'Ushahidi' : 'Proof'}
+                                            {proofs.length > 1 ? `${swahili ? 'Ushahidi' : 'Proof'} ${proofIndex + 1}` : (swahili ? 'Ushahidi' : 'Proof')}
                                         </a>
-                                    )}
+                                    ))}
                                     {event.metadata?.latitude && event.metadata?.longitude && (
                                         <a href={`https://www.google.com/maps/search/?api=1&query=${event.metadata.latitude},${event.metadata.longitude}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 underline">
                                             <MapPin className="h-3 w-3" />

@@ -8,6 +8,7 @@ use App\Models\ForwarderRoute;
 use App\Models\ForwarderShipment;
 use App\Models\Merchant;
 use App\Models\UserAddress;
+use App\Services\ForwarderShipmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -27,12 +28,14 @@ class ForwarderShipmentController extends Controller
 
     public function myShipments(Request $request): JsonResponse
     {
+        $shipments = ForwarderShipment::query()
+            ->where('user_id', $request->user()->id)
+            ->with($this->relations())
+            ->latest()
+            ->get();
+
         return response()->json([
-            'shipments' => ForwarderShipment::query()
-                ->where('user_id', $request->user()->id)
-                ->with($this->relations())
-                ->latest()
-                ->get(),
+            'shipments' => $shipments->map(fn (ForwarderShipment $shipment) => $this->shipmentPayload($shipment))->values(),
         ]);
     }
 
@@ -125,20 +128,58 @@ class ForwarderShipmentController extends Controller
         $forwarder = $this->verifiedForwarder($merchant);
         abort_unless($forwarder, 403, 'Forwarder tools are available after admin approval.');
 
+        app(ForwarderShipmentService::class)->backfillForForwarder($forwarder);
+
+        $perPage = min(max((int) $request->input('per_page', 12), 1), 50);
+        $search = trim((string) $request->input('q', ''));
+
+        $query = ForwarderShipment::query()
+            ->where('forwarder_id', $forwarder->id)
+            ->with($this->relations())
+            ->when($search !== '', function ($query) use ($search): void {
+                $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+                $query->where(function ($query) use ($like): void {
+                    $query->where('public_id', 'like', $like)
+                        ->orWhere('tracking_number', 'like', $like)
+                        ->orWhere('external_order_ref', 'like', $like)
+                        ->orWhere('package_description', 'like', $like)
+                        ->orWhere('seller_name', 'like', $like)
+                        ->orWhere('seller_platform', 'like', $like)
+                        ->orWhereHas('user', fn ($userQuery) => $userQuery->where('name', 'like', $like))
+                        ->orWhereHas('order.product', fn ($productQuery) => $productQuery->where('title', 'like', $like));
+                });
+            });
+
+        $statusCounts = (clone $query)
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        $paginated = $query
+            ->latest('last_status_at')
+            ->paginate($perPage);
+
         return response()->json([
-            'shipments' => ForwarderShipment::query()
-                ->where('forwarder_id', $forwarder->id)
-                ->with($this->relations())
-                ->latest('last_status_at')
-                ->get(),
+            'shipments' => collect($paginated->items())->map(fn (ForwarderShipment $shipment) => $this->shipmentPayload($shipment))->values(),
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+                'status_counts' => $statusCounts,
+            ],
         ]);
     }
 
-    public function updateStatus(Request $request, Merchant $merchant, ForwarderShipment $shipment): JsonResponse
+    public function updateStatus(Request $request, Merchant $merchant, int|string $shipmentId): JsonResponse
     {
         abort_unless($request->user()?->merchantProfiles()->whereKey($merchant->id)->exists(), 403);
         $forwarder = $this->verifiedForwarder($merchant);
-        abort_unless($forwarder && (int) $shipment->forwarder_id === (int) $forwarder->id, 404);
+        abort_unless($forwarder, 403, 'Forwarder tools are available after admin approval.');
+
+        $shipment = ForwarderShipment::query()
+            ->where('forwarder_id', $forwarder->id)
+            ->findOrFail($shipmentId);
 
         return $this->applyShipmentUpdate($request, $shipment, $forwarder);
     }
@@ -168,15 +209,36 @@ class ForwarderShipmentController extends Controller
             'note' => 'nullable|string|max:3000',
             'forwarder_location_id' => 'nullable|exists:forwarder_locations,id',
             'tracking_number' => 'nullable|string|max:255',
+            'tracking_url' => 'nullable|url|max:1000',
+            'carrier_name' => 'nullable|string|max:255',
+            'transport_reference' => 'nullable|string|max:255',
+            'eta_text' => 'nullable|string|max:255',
             'attachments' => 'nullable|array',
             'metadata' => 'nullable|array',
         ]);
 
         $locationId = $this->validatedForwarderLocationId($forwarder, $validated['forwarder_location_id'] ?? null);
+        $eventMetadata = array_filter([
+            'tracking_number' => $validated['tracking_number'] ?? $shipment->tracking_number,
+            'tracking_url' => $validated['tracking_url'] ?? null,
+            'carrier_name' => $validated['carrier_name'] ?? null,
+            'transport_reference' => $validated['transport_reference'] ?? null,
+            'eta_text' => $validated['eta_text'] ?? null,
+        ], fn ($value) => filled($value));
+
+        $eventMetadata = array_merge($validated['metadata'] ?? [], $eventMetadata);
+        $latestFreightUpdate = array_filter([
+            'tracking_number' => $validated['tracking_number'] ?? $shipment->tracking_number,
+            'tracking_url' => $validated['tracking_url'] ?? null,
+            'carrier_name' => $validated['carrier_name'] ?? null,
+            'transport_reference' => $validated['transport_reference'] ?? null,
+            'eta_text' => $validated['eta_text'] ?? null,
+        ], fn ($value) => filled($value));
 
         $shipment->update([
             'status' => $validated['status'],
             'tracking_number' => $validated['tracking_number'] ?? $shipment->tracking_number,
+            'metadata' => array_replace($shipment->metadata ?: [], $latestFreightUpdate ? ['freight_tracking' => $latestFreightUpdate] : []),
             'last_status_at' => now(),
         ]);
 
@@ -186,12 +248,59 @@ class ForwarderShipmentController extends Controller
             'status' => $validated['status'],
             'note' => $validated['note'] ?? null,
             'attachments' => $validated['attachments'] ?? null,
-            'metadata' => $validated['metadata'] ?? null,
+            'metadata' => $eventMetadata ?: null,
         ]);
+
+        $this->syncTakeerOrderFromShipment($shipment->fresh(['order.delivery', 'events']));
 
         return response()->json([
             'message' => 'Shipment status updated.',
-            'shipment' => $shipment->fresh($this->relations()),
+            'shipment' => $this->shipmentPayload($shipment->fresh($this->relations())),
+        ]);
+    }
+
+    private function syncTakeerOrderFromShipment(ForwarderShipment $shipment): void
+    {
+        if ($shipment->source_type !== 'takeer_order' || !$shipment->order?->delivery) {
+            return;
+        }
+
+        $nextDeliveryStatus = match ($shipment->status) {
+            ForwarderShipment::STATUS_INCOMING => null,
+            'received_at_origin' => 'ready_at_terminal',
+            'on_hold' => 'issue_reported',
+            default => null,
+        };
+
+        if (!$nextDeliveryStatus) {
+            return;
+        }
+
+        if (
+            $nextDeliveryStatus === 'ready_at_terminal'
+            && $shipment->order->payment_status === 'awaiting_merchant_confirmation'
+        ) {
+            $shipment->order->forceFill([
+                'payment_status' => 'escrow_locked',
+                'merchant_confirmed_at' => $shipment->order->merchant_confirmed_at ?: now(),
+            ])->save();
+        }
+
+        if ($shipment->order->delivery->delivery_status === $nextDeliveryStatus) {
+            return;
+        }
+
+        $shipment->order->delivery->update(['delivery_status' => $nextDeliveryStatus]);
+        $shipment->order->delivery->events()->create([
+            'order_id' => $shipment->order_id,
+            'status' => $nextDeliveryStatus,
+            'actor_type' => 'forwarder',
+            'actor_user_id' => request()->user()?->id,
+            'note' => 'Forwarder shipment status synced from freight inbox.',
+            'metadata' => [
+                'forwarder_shipment_id' => $shipment->id,
+                'forwarder_status' => $shipment->status,
+            ],
         ]);
     }
 
@@ -261,6 +370,149 @@ class ForwarderShipmentController extends Controller
             'events.actor',
             'userAddress',
             'user',
+            'order.product',
+            'order.merchant',
+            'order.delivery.events',
         ];
+    }
+
+    private function shipmentPayload(ForwarderShipment $shipment): array
+    {
+        $order = $shipment->order;
+        $address = $shipment->address_snapshot ?: $shipment->userAddress?->toArray();
+        $defaultAddress = UserAddress::query()
+            ->with(['country', 'state', 'cityRecord'])
+            ->where('user_id', $shipment->user_id)
+            ->where('type', '!=', 'forwarder')
+            ->orderByDesc('is_default')
+            ->latest()
+            ->first();
+
+        return [
+            ...$shipment->toArray(),
+            'customer_contact' => [
+                'name' => $shipment->user?->name,
+                'phone' => $shipment->user?->phone_number,
+                'email' => $shipment->user?->email,
+                'default_delivery_address' => $defaultAddress?->address_line,
+                'default_delivery_place' => $this->addressPlaceLabel($defaultAddress),
+                'default_delivery_map_url' => $this->mapUrl($defaultAddress?->address_line, $defaultAddress?->latitude, $defaultAddress?->longitude),
+            ],
+            'selected_address' => [
+                'name' => $address['name'] ?? $shipment->originLocation?->name,
+                'address_line' => $address['address_line'] ?? $shipment->originLocation?->address_line,
+                'place' => $this->locationPlaceLabel($shipment->originLocation),
+                'map_url' => $this->mapUrl(
+                    $address['address_line'] ?? $shipment->originLocation?->address_line,
+                    $shipment->originLocation?->latitude,
+                    $shipment->originLocation?->longitude,
+                ),
+                'location' => $this->locationPayload($shipment->originLocation),
+            ],
+            'destination_address' => $this->locationPayload($shipment->destinationLocation),
+            'package_items' => $this->packageItems($order, $shipment),
+            'order_summary' => $order ? [
+                'id' => $order->id,
+                'public_id' => $order->public_id,
+                'quantity' => $order->quantity,
+                'total_paid' => $order->total_paid,
+                'shipping_fee' => $order->shipping_fee,
+                'payment_status' => $order->payment_status,
+                'delivery_status' => $order->delivery?->delivery_status,
+                'chat_url' => $order->public_id ? "/chat/{$order->public_id}?acting_as=merchant" : null,
+            ] : null,
+        ];
+    }
+
+    private function locationPayload(?\App\Models\ForwarderLocation $location): ?array
+    {
+        if (!$location) {
+            return null;
+        }
+
+        return [
+            'id' => $location->id,
+            'name' => $location->name,
+            'address_line' => $location->address_line,
+            'contact_phone' => $location->contact_phone,
+            'business_hours' => $location->business_hours,
+            'place' => $this->locationPlaceLabel($location),
+            'map_url' => $this->mapUrl($location->address_line, $location->latitude, $location->longitude),
+            'country' => $location->country?->only(['id', 'name']),
+            'state' => $location->state?->only(['id', 'name']),
+            'city' => $location->cityRecord?->only(['id', 'name']),
+        ];
+    }
+
+    private function locationPlaceLabel(?\App\Models\ForwarderLocation $location): ?string
+    {
+        if (!$location) {
+            return null;
+        }
+
+        return collect([
+            $location->cityRecord?->name,
+            $location->state?->name,
+            $location->country?->name,
+        ])->filter()->implode(', ') ?: null;
+    }
+
+    private function addressPlaceLabel(?UserAddress $address): ?string
+    {
+        if (!$address) {
+            return null;
+        }
+
+        return collect([
+            $address->cityRecord?->name,
+            $address->state?->name,
+            $address->country?->name,
+        ])->filter()->implode(', ') ?: null;
+    }
+
+    private function mapUrl(?string $address, mixed $latitude = null, mixed $longitude = null): ?string
+    {
+        if ($latitude && $longitude) {
+            return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode("{$latitude},{$longitude}");
+        }
+
+        if (!$address) {
+            return null;
+        }
+
+        return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($address);
+    }
+
+    private function packageItems(?\App\Models\Order $order, ForwarderShipment $shipment): array
+    {
+        if (!$order) {
+            return [[
+                'title' => $shipment->package_description ?: 'External package',
+                'quantity' => $shipment->package_count,
+                'amount' => null,
+            ]];
+        }
+
+        if (!empty($order->bundle_item_selection)) {
+            return collect($order->bundle_item_selection)->map(fn ($item) => [
+                'title' => $item['title'] ?? 'Bundle item',
+                'quantity' => $item['quantity'] ?? 1,
+                'amount' => $item['price'] ?? null,
+            ])->values()->all();
+        }
+
+        if (!empty($order->offering_group_selection['lines'])) {
+            return collect($order->offering_group_selection['lines'])->map(fn ($item) => [
+                'title' => $item['title'] ?? 'Package item',
+                'quantity' => $item['quantity'] ?? 1,
+                'amount' => $item['price'] ?? null,
+            ])->values()->all();
+        }
+
+        return [[
+            'title' => $order->product?->title ?: $shipment->package_description ?: 'Takeer order',
+            'quantity' => $order->quantity,
+            'amount' => $order->unit_price,
+        ]];
     }
 }
