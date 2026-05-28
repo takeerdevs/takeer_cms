@@ -151,6 +151,44 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  .app-wave-background {
+    color: rgb(196, 76, 11);
+    height: 100vh;
+    inset: 0;
+    opacity: 0.46;
+    overflow: hidden;
+    pointer-events: none;
+    position: fixed;
+    width: 100vw;
+    z-index: 0;
+  }
+
+  .app-wave-background svg {
+    height: 100vh;
+    left: 50%;
+    min-height: 620px;
+    min-width: 1440px;
+    position: absolute;
+    top: 7vh;
+    transform: translateX(-50%);
+    width: 124vw;
+  }
+
+  .app-wave-line {
+    fill: none;
+    stroke: url("#ambient-wave-gradient");
+    stroke-linecap: round;
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .app-wave-background {
+      color: rgb(196, 76, 11);
+      opacity: 0.28;
+    }
+  }
+
   /* iOS safe-area bottom padding for bottom nav */
   .env-safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
@@ -168,6 +206,7 @@
   }
 
   @keyframes hotspot-ping {
+
     75%,
     100% {
       transform: scale(2);

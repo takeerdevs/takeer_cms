@@ -133,11 +133,12 @@ export default function AppLayout({ children, hideTabBar = false }) {
     ];
 
     return (
-        <div className="min-h-screen bg-background text-foreground font-sans antialiased">
+        <div className="relative isolate min-h-screen overflow-x-hidden bg-background text-foreground font-sans antialiased">
+            <AmbientWaveBackground />
             <Toaster position="top-center" richColors />
 
             {/* ── Full-width content, no sidebar ── */}
-            <main className={cn('min-h-screen', hideTabBar ? 'pb-0' : 'pb-20')}>
+            <main className={cn('relative z-10 min-h-screen', hideTabBar ? 'pb-0' : 'pb-20')}>
                 {children}
             </main>
             <SeoHead />
@@ -233,6 +234,47 @@ export default function AppLayout({ children, hideTabBar = false }) {
                 productId={downloadModalData?.itemId}
                 accessProduct={downloadModalData?.accessProduct}
             />
+        </div>
+    );
+}
+
+function AmbientWaveBackground() {
+    const lines = Array.from({ length: 16 }, (_, index) => {
+        const yOffset = index * 9;
+        return {
+            id: index,
+            opacity: 0.12 + index * 0.024,
+            d: [
+                `M -160 ${675 - yOffset}`,
+                `C 120 ${785 - index * 14} 315 ${625 - index * 19} 520 ${560 - index * 13}`,
+                `S 850 ${235 + index * 9} 1060 ${230 + index * 4}`,
+                `S 1315 ${270 - index * 6} 1600 ${145 - index * 2}`,
+            ].join(' '),
+        };
+    });
+
+    return (
+        <div className="app-wave-background" aria-hidden="true">
+            <svg viewBox="0 0 1440 900" preserveAspectRatio="none" focusable="false">
+                <defs>
+                    <linearGradient id="ambient-wave-gradient" x1="0%" y1="82%" x2="100%" y2="18%">
+                        <stop offset="0%" stopColor="currentColor" stopOpacity="0.03" />
+                        <stop offset="30%" stopColor="currentColor" stopOpacity="0.46" />
+                        <stop offset="64%" stopColor="currentColor" stopOpacity="0.1" />
+                        <stop offset="100%" stopColor="currentColor" stopOpacity="0.58" />
+                    </linearGradient>
+                </defs>
+                <g>
+                    {lines.map((line) => (
+                        <path
+                            key={line.id}
+                            className="app-wave-line"
+                            d={line.d}
+                            opacity={line.opacity}
+                        />
+                    ))}
+                </g>
+            </svg>
         </div>
     );
 }
