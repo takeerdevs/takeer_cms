@@ -12,6 +12,7 @@ use App\Models\Post;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Services\EntitlementService;
+use App\Services\PulseNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -633,6 +634,7 @@ class MerchantBundleController extends Controller
             ->where('merchant_id', $bundle->merchant_id)
             ->whereHas('promotableBundles', fn ($query) => $query->where('bundles.id', $bundle->id))
             ->first();
+        $wasNewlyPublished = ! $existingFeedPost;
 
         $itemsCount = (int) ($bundle->items?->count() ?? 0);
         $excerpt = trim((string) ($bundle->description ?? ''));
@@ -662,6 +664,16 @@ class MerchantBundleController extends Controller
             $post->media()->updateOrCreate(
                 ['post_id' => $post->id, 'media_type' => 'image'],
                 ['media_url' => $bundle->course_cover_image_url]
+            );
+        }
+
+        if ($wasNewlyPublished && $bundle->merchant) {
+            app(PulseNotificationService::class)->merchantOfferPublishedToFollowers(
+                $bundle->merchant,
+                $bundle,
+                'bundle',
+                $bundle->title,
+                '/bundle/' . ($bundle->slug ?: $bundle->id)
             );
         }
     }

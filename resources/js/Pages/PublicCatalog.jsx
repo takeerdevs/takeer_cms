@@ -4,17 +4,16 @@ import { Head, Link } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import {
     ArrowLeft,
+    BadgeCheck,
     BookOpenText,
     CalendarClock,
     DownloadCloud,
     ExternalLink,
-    Filter,
     Image as ImageIcon,
     Loader2,
     Search,
     ShoppingBag,
     Sparkles,
-    Store,
     Wrench,
 } from 'lucide-react';
 import { productPriceLabel } from '@/lib/productUnits';
@@ -25,11 +24,11 @@ const fetcher = async (url) => {
     return response.json();
 };
 
-const FILTERS = [
-    { key: 'all', label: 'All' },
-    { key: 'physical', label: 'Products' },
-    { key: 'digital', label: 'Digital' },
-    { key: 'service', label: 'Services' },
+const CATALOG_FILTERS = [
+    { key: 'all', label: 'All', statKey: 'catalog_total' },
+    { key: 'physical', label: 'Products', statKey: 'physical' },
+    { key: 'digital', label: 'Digital', statKey: 'digital' },
+    { key: 'service', label: 'Services', statKey: 'services' },
 ];
 
 export default function PublicCatalog({ merchantSlug, initialData }) {
@@ -47,6 +46,9 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
     const [query, setQuery] = useState('');
 
     const merchant = data?.[0]?.merchant || null;
+    const catalogStats = data?.[0]?.catalog_stats ?? null;
+    const slug = merchant?.slug || merchantSlug;
+    const isHeaderLoading = !data && !error;
     const products = data ? data.flatMap((page) => page.products?.data || []) : [];
     const productDiscovery = data ? data.reduce((acc, page) => ({ ...acc, ...(page.product_discovery || {}) }), {}) : {};
     const isReachingEnd = data && data[data.length - 1]?.products?.links?.next === null;
@@ -91,63 +93,101 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
         <AppLayout>
             <Head title={`${merchant?.name || 'Catalog'} | Catalog`} />
 
-            <main className="mx-auto max-w-5xl px-4 py-5 pb-24 sm:px-6 lg:px-8">
-                <header className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <div className="flex items-start gap-3">
-                        <Link
-                            href={`/u/${merchant?.slug || merchantSlug}`}
-                            className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 text-slate-700 transition hover:bg-slate-50"
-                            aria-label="Back to profile"
-                        >
-                            <ArrowLeft className="h-5 w-5" />
-                        </Link>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-xs font-black uppercase tracking-widest text-brand-600">Catalog</p>
-                            <h1 className="mt-1 text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
-                                {merchant?.name || 'Biashara'}
-                            </h1>
-                            <p className="mt-1 text-sm font-semibold text-slate-500">
-                                Sellable and bookable offers from @{merchant?.slug || merchantSlug}
-                            </p>
-                        </div>
-                        <Link
-                            href={`/m/${merchant?.slug || merchantSlug}`}
-                            className="hidden h-10 items-center gap-2 rounded-2xl bg-brand-600 px-4 text-sm font-black text-white transition hover:bg-brand-700 sm:inline-flex"
-                        >
-                            <Store className="h-4 w-4" />
-                            Mini-store
-                        </Link>
-                    </div>
-
-                    <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto]">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                            <input
-                                value={query}
-                                onChange={(event) => setQuery(event.target.value)}
-                                className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold outline-none transition focus:border-brand-300 focus:bg-white"
-                                placeholder="Search offers..."
-                            />
-                        </div>
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                            {FILTERS.map((item) => (
-                                <button
-                                    key={item.key}
-                                    type="button"
-                                    onClick={() => setFilter(item.key)}
-                                    className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl border px-4 text-sm font-black transition ${filter === item.key
-                                        ? 'border-brand-200 bg-brand-50 text-brand-700'
-                                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                                    }`}
+            <main className="mx-auto max-w-5xl pb-24">
+                <header className="border-b border-neutral-200/80 bg-background">
+                    {isHeaderLoading ? (
+                        <CatalogHeaderSkeleton />
+                    ) : (
+                        <>
+                            <div className="flex items-center gap-2.5 px-4 py-3">
+                                <Link
+                                    href={`/u/${slug}`}
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-neutral-100"
+                                    aria-label="Back to profile"
                                 >
-                                    <Filter className="h-3.5 w-3.5" />
-                                    {item.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                                    <ArrowLeft className="h-5 w-5" />
+                                </Link>
+                                <Link href={`/u/${slug}`} className="flex min-w-0 flex-1 items-center gap-2.5">
+                                    <CatalogAvatar name={merchant?.name} avatarUrl={merchant?.avatar_url} />
+                                    <div className="min-w-0">
+                                        <div className="flex min-w-0 items-center gap-1">
+                                            <p className="truncate text-sm font-semibold text-foreground">
+                                                {merchant?.name || 'Biashara'}
+                                            </p>
+                                            {merchant?.is_verified && (
+                                                <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-sky-500" aria-hidden />
+                                            )}
+                                        </div>
+                                        <p className="truncate text-xs text-muted-foreground">
+                                            Catalog · @{slug}
+                                        </p>
+                                    </div>
+                                </Link>
+                                <Link
+                                    href={`/u/${slug}/shop/all`}
+                                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 px-3 text-[13px] font-semibold text-white transition-colors hover:bg-brand-700"
+                                >
+                                    Shop
+                                </Link>
+                            </div>
+
+                            {catalogStats && (
+                                <div className="grid grid-cols-3 gap-1 border-t border-neutral-100 px-4 py-2.5">
+                                    <CatalogStatPill label="Products" value={catalogStats.physical} />
+                                    <CatalogStatPill label="Digital" value={catalogStats.digital} />
+                                    <CatalogStatPill label="Services" value={catalogStats.services} />
+                                </div>
+                            )}
+
+                            <p className="border-t border-neutral-100 px-4 py-2 text-xs text-muted-foreground">
+                                Products tagged on posts. For content, bundles & memberships see{' '}
+                                <Link href={`/u/${slug}/shop/all`} className="font-semibold text-brand-700">
+                                    Shop
+                                </Link>
+                                .
+                            </p>
+
+                            <div className="space-y-2.5 border-t border-neutral-100 px-4 py-3">
+                                <div className="relative">
+                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <input
+                                        value={query}
+                                        onChange={(event) => setQuery(event.target.value)}
+                                        className="h-9 w-full rounded-lg bg-neutral-100 pl-9 pr-3 text-sm text-foreground outline-none ring-brand-500/30 transition placeholder:text-muted-foreground focus:bg-white focus:ring-2"
+                                        placeholder="Search catalog..."
+                                    />
+                                </div>
+                                <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                                    {CATALOG_FILTERS.map((item) => {
+                                        const count = catalogStats?.[item.statKey];
+                                        const isActive = filter === item.key;
+
+                                        return (
+                                            <button
+                                                key={item.key}
+                                                type="button"
+                                                onClick={() => setFilter(item.key)}
+                                                className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs font-semibold transition-colors ${isActive
+                                                    ? 'bg-foreground text-background'
+                                                    : 'bg-neutral-100 text-foreground hover:bg-neutral-200'
+                                                }`}
+                                            >
+                                                {item.label}
+                                                {count !== null && count !== undefined && (
+                                                    <span className={isActive ? 'text-background/80' : 'text-muted-foreground'}>
+                                                        {formatCatalogCount(count)}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </header>
 
+                <div className="px-4 pt-4 sm:px-6 lg:px-8">
                 {!data && !error ? (
                     <div className="flex min-h-[40vh] items-center justify-center">
                         <Loader2 className="h-7 w-7 animate-spin text-brand-500" />
@@ -162,7 +202,7 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                     </div>
                 ) : (
                     <>
-                        <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {visibleProducts.map((product) => (
                                 <CatalogCard
                                     key={product.id}
@@ -182,9 +222,69 @@ export default function PublicCatalog({ merchantSlug, initialData }) {
                         )}
                     </>
                 )}
+                </div>
             </main>
         </AppLayout>
     );
+}
+
+function CatalogAvatar({ name, avatarUrl }) {
+    const initial = (name || 'B').charAt(0).toUpperCase();
+
+    return (
+        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-neutral-200/90 bg-neutral-100">
+            {avatarUrl ? (
+                <img src={avatarUrl} alt={name || 'Profile'} className="h-full w-full object-cover" />
+            ) : (
+                <div className="flex h-full w-full items-center justify-center text-sm font-normal text-neutral-500">
+                    {initial}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function CatalogHeaderSkeleton() {
+    return (
+        <>
+            <div className="flex items-center gap-2.5 px-4 py-3">
+                <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-neutral-100" />
+                <div className="flex flex-1 items-center gap-2.5">
+                    <div className="h-9 w-9 animate-pulse rounded-full bg-neutral-100" />
+                    <div className="space-y-1.5">
+                        <div className="h-3.5 w-28 animate-pulse rounded bg-neutral-100" />
+                        <div className="h-3 w-20 animate-pulse rounded bg-neutral-100" />
+                    </div>
+                </div>
+                <div className="h-8 w-20 animate-pulse rounded-lg bg-neutral-100" />
+            </div>
+            <div className="space-y-2.5 border-t border-neutral-100 px-4 py-3">
+                <div className="h-9 animate-pulse rounded-lg bg-neutral-100" />
+                <div className="flex gap-1.5">
+                    <div className="h-7 w-16 animate-pulse rounded-md bg-neutral-100" />
+                    <div className="h-7 w-20 animate-pulse rounded-md bg-neutral-100" />
+                    <div className="h-7 w-16 animate-pulse rounded-md bg-neutral-100" />
+                </div>
+            </div>
+        </>
+    );
+}
+
+function CatalogStatPill({ label, value }) {
+    return (
+        <div className="text-center">
+            <p className="text-sm font-semibold tabular-nums text-foreground">{formatCatalogCount(value)}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">{label}</p>
+        </div>
+    );
+}
+
+function formatCatalogCount(value) {
+    if (value === null || value === undefined) return '—';
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    if (n >= 10_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+    return String(n);
 }
 
 function CatalogCard({ product, badges = [] }) {

@@ -38,8 +38,6 @@ export default function DiscoveryRails() {
     return (
         <div className="bg-slate-50 border-b border-border">
             <div className="px-3 py-4 space-y-5">
-                <DiscoveryHeader />
-
                 {rails.slice(0, 4).map((rail) => (
                     <DiscoveryRailSection key={rail.key} rail={rail} />
                 ))}
@@ -48,50 +46,32 @@ export default function DiscoveryRails() {
     );
 }
 
-export function DiscoveryHeader() {
-    return (
-        <div className="flex items-center justify-between">
-            <div>
-                <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-brand-600" />
-                    <p className="text-sm font-black uppercase tracking-widest text-foreground">Discover</p>
-                </div>
-                <p className="text-xs font-semibold text-muted-foreground mt-0.5">Trending offers, nearby finds, and creator drops</p>
-            </div>
-            <Link href="/search?q=creator&type=creator" className="text-xs font-black text-brand-600 inline-flex items-center gap-1">
-                Explore
-                <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
-        </div>
-    );
-}
-
-export function DiscoveryRailSection({ rail, compact = false }) {
+export function DiscoveryRailSection({ rail, compact = false, featured = false }) {
     if (!rail || (rail.items || []).length === 0) return null;
 
     return (
-        <section className={compact ? 'bg-slate-50 border-y border-border px-3 py-4 space-y-2' : 'space-y-2'}>
+        <section className={compact ? 'bg-white/80 border-y border-border/70 px-4 py-4 space-y-3' : featured ? 'space-y-3' : 'space-y-2'}>
             <div className="flex items-end justify-between gap-3">
                 <div className="min-w-0">
-                    <h2 className="text-sm font-black text-foreground truncate">{rail.title}</h2>
-                    <p className="text-xs text-muted-foreground line-clamp-1">{rail.subtitle}</p>
+                    {/*<h2 className={'text-sm font-bold text-foreground truncate'}>{localizedRailTitle(rail)}</h2>*/}
+                    <p className="text-xs font-semibold text-muted-foreground line-clamp-1">{localizedRailSubtitle(rail)}</p>
                 </div>
-                <Link href={railSearchHref(rail)} className="text-[11px] font-black text-brand-600 shrink-0">
-                    See all
+                <Link href={railSearchHref(rail)} className="text-[11px] font-bold text-brand-600 shrink-0">
+                    Ona zaidi
                 </Link>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-1 -mx-3 px-3">
-                {(rail.items || []).slice(0, compact ? 6 : 8).map((item) => (
+            <div className={`${featured ? 'gap-3.5' : 'gap-3'} flex overflow-x-auto pb-1 -mx-3`}>
+                {(rail.items || []).slice(0, compact ? 6 : featured ? 5 : 8).map((item) => (
                     rail.type === 'subscriptions'
-                        ? <SubscriptionRailCard key={`plan-${item.id}`} plan={item} compact={compact} />
-                        : <ProductRailCard key={`product-${item.id}`} product={item} compact={compact} />
+                        ? <SubscriptionRailCard key={`plan-${item.id}`} plan={item} compact={compact} featured={featured} />
+                        : <ProductRailCard key={`product-${item.id}`} product={item} compact={compact} featured={featured} />
                 ))}
             </div>
         </section>
     );
 }
 
-function ProductRailCard({ product, compact = false }) {
+function ProductRailCard({ product, compact = false, featured = false }) {
     const Icon = productIcon(product);
     const label = productLabel(product);
     const isPhysicalProduct = product.type === 'physical';
@@ -125,7 +105,7 @@ function ProductRailCard({ product, compact = false }) {
                         product_type: product.type,
                     },
                 })}
-                className="w-40 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
+                className={`${featured ? 'w-44' : 'w-40'} shrink-0 overflow-hidden rounded-lg bg-white ring-1 ring-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-sm`}
             >
                 <div className="relative aspect-square bg-white">
                     {discountPercent > 0 && (
@@ -141,8 +121,8 @@ function ProductRailCard({ product, compact = false }) {
                         </div>
                     )}
                 </div>
-                <div className="space-y-1 px-2.5 py-2">
-                    <p className="min-h-[36px] text-[12px] font-black leading-tight text-foreground line-clamp-2 mb-0">
+                <div className="space-y-1 px-3 py-2.5">
+                    <p className="min-h-[36px] text-[12px] font-bold leading-tight text-foreground line-clamp-2 mb-0">
                         {product.title}
                     </p>
                     {unitLabel && (
@@ -150,7 +130,7 @@ function ProductRailCard({ product, compact = false }) {
                             {unitLabel}
                         </p>
                     )}
-                    <p className="text-[12px] font-black leading-none text-slate-950">
+                    <p className="text-sm font-bold leading-none text-slate-950">
                         {productRailPriceLabel(product, price, compact)}
                     </p>
                     {hasDiscount && (
@@ -175,7 +155,7 @@ function ProductRailCard({ product, compact = false }) {
                     product_type: product.type,
                 },
             })}
-            className={`${compact ? 'w-36' : 'w-40'} shrink-0 rounded-2xl border border-border bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow`}
+            className={`${compact ? 'w-36' : featured ? 'w-44' : 'w-40'} shrink-0 rounded-lg bg-white overflow-hidden ring-1 ring-border/80 hover:-translate-y-0.5 hover:shadow-sm transition-all`}
         >
             <div className="aspect-[4/3] bg-muted">
                 {product.image_url ? (
@@ -191,24 +171,24 @@ function ProductRailCard({ product, compact = false }) {
                     <Icon className="h-3 w-3" />
                     {label}
                 </span>
-                <p className={`${compact ? 'mt-1 text-[12px] min-h-[32px]' : 'mt-1.5 text-sm min-h-[34px]'} font-black leading-tight text-foreground line-clamp-2`}>{product.title}</p>
-                <p className="mt-2 text-sm font-black text-brand-600">{productRailPriceLabel(product, null, compact)}</p>
+                <p className={`${compact ? 'mt-1 text-[12px] min-h-[32px]' : 'mt-1.5 text-sm min-h-[34px]'} font-bold leading-tight text-foreground line-clamp-2`}>{product.title}</p>
+                <p className="mt-2 text-sm font-bold text-brand-600">{productRailPriceLabel(product, null, compact)}</p>
             </div>
         </Link>
     );
 }
 
-function SubscriptionRailCard({ plan, compact = false }) {
+function SubscriptionRailCard({ plan, compact = false, featured = false }) {
     return (
         <Link
             href={`/plan/${plan.slug || plan.id}`}
-            className={`${compact ? 'w-36' : 'w-40'} shrink-0 rounded-2xl border border-border bg-white p-3 shadow-sm hover:shadow-md transition-shadow`}
+            className={`${compact ? 'w-36' : featured ? 'w-44' : 'w-40'} shrink-0 rounded-lg bg-white p-3 ring-1 ring-border/80 hover:-translate-y-0.5 hover:shadow-sm transition-all`}
         >
             <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
                 <Crown className="h-5 w-5" />
             </div>
             <p className="mt-3 text-sm font-black leading-tight text-foreground line-clamp-2 min-h-[34px]">{plan.name}</p>
-            <p className="mt-1 text-xs text-muted-foreground line-clamp-2 min-h-[32px]">{plan.description || plan.merchant?.name || 'Creator membership'}</p>
+            <p className="mt-1 text-xs text-muted-foreground line-clamp-2 min-h-[32px]">{plan.description || plan.merchant?.name || 'Uanachama wa creator'}</p>
             <p className="mt-3 text-sm font-black text-brand-600">TZS {Number(plan.price || 0).toLocaleString()}</p>
         </Link>
     );
@@ -227,21 +207,47 @@ function railSearchHref(rail) {
     return map[rail.key] || '/search';
 }
 
+function localizedRailTitle(rail = {}) {
+    const map = {
+        nearby: 'Vilivyo karibu',
+        premium_media: 'Maudhui premium',
+        downloads: 'Downloads',
+        events: 'Matukio',
+        services: 'Huduma',
+        memberships: 'Uanachama',
+    };
+
+    return map[rail.key] || rail.title || 'Gundua';
+}
+
+function localizedRailSubtitle(rail = {}) {
+    const map = {
+        nearby: 'Bidhaa halisi kutoka kwa wauzaji walio karibu nawe',
+        premium_media: 'Video, picha na maudhui ya kulipia',
+        downloads: 'Faili na bidhaa za kidigitali unazoweza kupakua',
+        events: 'Matukio na nafasi za kuhudhuria',
+        services: 'Huduma unazoweza kuomba au kubook',
+        memberships: 'Mipango ya kujiunga na creators',
+    };
+
+    return map[rail.key] || rail.subtitle || '';
+}
+
 function productLabel(product) {
-    if (product.type === 'service') return 'Service';
-    if (product.type !== 'digital') return 'Product';
+    if (product.type === 'service') return 'Huduma';
+    if (product.type !== 'digital') return 'Bidhaa';
 
     return {
         video_stream: 'Video',
         audio_stream: 'Audio',
-        gallery_pack: 'Gallery',
-        live_event: 'Event',
-        custom_delivery: 'Custom',
-        external_link: 'Access',
+        gallery_pack: 'Picha',
+        live_event: 'Tukio',
+        custom_delivery: 'Maalum',
+        external_link: 'Ufikiaji',
         file: product.digital_content_type === 'software'
             ? 'Software'
             : product.digital_content_type === 'document'
-                ? 'Document'
+                ? 'Documenti'
                 : product.digital_content_type === 'ebook'
                     ? 'E-book'
                     : 'Download',

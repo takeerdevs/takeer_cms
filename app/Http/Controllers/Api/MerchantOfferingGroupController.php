@@ -9,6 +9,7 @@ use App\Models\OfferingGroup;
 use App\Models\OfferingGroupItem;
 use App\Models\Post;
 use App\Models\Product;
+use App\Services\PulseNotificationService;
 use App\Support\MerchantPermissions;
 use App\Support\OfferingGroupTemplateRegistry;
 use Illuminate\Http\JsonResponse;
@@ -289,6 +290,7 @@ class MerchantOfferingGroupController extends Controller
             ->where('merchant_id', $group->merchant_id)
             ->whereHas('promotableOfferingGroups', fn ($query) => $query->where('offering_groups.id', $group->id))
             ->first();
+        $wasNewlyPublished = ! $existingFeedPost;
 
         $captionLines = array_filter([
             $group->title,
@@ -316,6 +318,16 @@ class MerchantOfferingGroupController extends Controller
             $post->media()->updateOrCreate(
                 ['post_id' => $post->id, 'media_type' => 'image'],
                 ['media_url' => $group->cover_image_url]
+            );
+        }
+
+        if ($wasNewlyPublished && $group->merchant) {
+            app(PulseNotificationService::class)->merchantOfferPublishedToFollowers(
+                $group->merchant,
+                $group,
+                'offering',
+                $group->title,
+                '/offerings/' . $group->id
             );
         }
     }

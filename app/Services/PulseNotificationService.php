@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Delivery;
 use App\Models\Entitlement;
 use App\Models\Comment;
+use App\Models\MerchantFollower;
 use App\Models\Order;
 use App\Models\Post;
 use App\Models\PostReaction;
@@ -12,6 +13,7 @@ use App\Models\ProductReview;
 use App\Models\PulseNotification;
 use App\Models\SubscriptionPlan;
 use App\Models\ContentReport;
+use App\Models\Merchant;
 use App\Models\TrackedLink;
 use App\Models\UserSubscription;
 use Illuminate\Database\Eloquent\Model;
@@ -429,6 +431,188 @@ class PulseNotificationService
             ],
             'occurred_at' => now(),
         ]);
+    }
+
+    public function postPublishedToFollowers(Post $post): void
+    {
+        $post->loadMissing(['merchant', 'linkedProduct', 'linkedContentItem']);
+        $merchant = $post->merchant;
+
+        if (! $merchant) {
+            return;
+        }
+
+        $title = $post->title
+            ?: $post->linkedProduct?->title
+            ?: $post->linkedContentItem?->title
+            ?: 'New update';
+
+        MerchantFollower::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('user_id', '!=', $merchant->user_id)
+            ->where(function ($query) {
+                $query->whereNull('notification_preferences')
+                    ->orWhere('notification_preferences->posts', true);
+            })
+            ->where(function ($query) {
+                $query->whereNull('notification_preferences->muted')
+                    ->orWhere('notification_preferences->muted', false);
+            })
+            ->select(['id', 'user_id', 'merchant_id'])
+            ->chunkById(200, function ($followers) use ($post, $merchant, $title): void {
+                foreach ($followers as $follower) {
+                    $this->record([
+                        'user_id' => $follower->user_id,
+                        'merchant_id' => $merchant->id,
+                        'subject' => $post,
+                        'event_type' => 'followed_merchant_post_published',
+                        'dedupe_key' => "followed-merchant-post:{$post->id}:{$follower->user_id}",
+                        'icon' => 'store',
+                        'tone' => 'sky',
+                        'eyebrow' => 'Store update',
+                        'title' => $title,
+                        'body' => "{$merchant->display_name} shared a new update.",
+                        'meta' => $merchant->display_name,
+                        'href' => $this->postHref($post),
+                        'status' => 'published',
+                        'payload' => [
+                            'post_id' => $post->id,
+                            'public_id' => $post->public_id,
+                            'merchant_username' => $merchant->username,
+                        ],
+                        'occurred_at' => $post->created_at ?: now(),
+                    ]);
+                }
+            });
+    }
+
+    public function merchantOfferPublishedToFollowers(
+        Merchant $merchant,
+        Model $subject,
+        string $offerType,
+        string $title,
+        string $href,
+        ?string $body = null
+    ): void {
+        $title = trim($title) !== '' ? $title : 'New offer';
+        $label = ucfirst(str_replace('_', ' ', $offerType));
+
+        MerchantFollower::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('user_id', '!=', $merchant->user_id)
+            ->where(function ($query) {
+                $query->whereNull('notification_preferences')
+                    ->orWhere('notification_preferences->offers', true);
+            })
+            ->where(function ($query) {
+                $query->whereNull('notification_preferences->muted')
+                    ->orWhere('notification_preferences->muted', false);
+            })
+            ->select(['id', 'user_id', 'merchant_id'])
+            ->chunkById(200, function ($followers) use ($merchant, $subject, $offerType, $title, $href, $body, $label): void {
+                foreach ($followers as $follower) {
+                    $this->record([
+                        'user_id' => $follower->user_id,
+                        'merchant_id' => $merchant->id,
+                        'subject' => $subject,
+                        'event_type' => 'followed_merchant_offer_published',
+                        'dedupe_key' => "followed-merchant-offer:{$offerType}:{$subject->getKey()}:{$follower->user_id}",
+                        'icon' => match ($offerType) {
+                            'freight_route' => 'truck',
+                            'bundle' => 'boxes',
+                            'content' => 'book_open',
+                            'service' => 'calendar',
+                            default => 'store',
+                        },
+                        'tone' => match ($offerType) {
+                            'freight_route' => 'indigo',
+                            'bundle' => 'amber',
+                            'content' => 'violet',
+                            'service' => 'emerald',
+                            default => 'sky',
+                        },
+                        'eyebrow' => "New {$label}",
+                        'title' => $title,
+                        'body' => $body ?: "{$merchant->display_name} published a new {$label}.",
+                        'meta' => $merchant->display_name,
+                        'href' => $href,
+                        'status' => 'published',
+                        'payload' => [
+                            'offer_type' => $offerType,
+                            'offer_id' => $subject->getKey(),
+                            'merchant_username' => $merchant->username,
+                        ],
+                        'occurred_at' => $subject->created_at ?: now(),
+                    ]);
+                }
+            });
+    }
+
+    public function merchantProductSignalToFollowers(
+        Merchant $merchant,
+        Model $product,
+        string $signal,
+        string $title,
+        string $body,
+        array $payload = []
+    ): void {
+        $title = trim($title) !== '' ? $title : 'Product update';
+        $href = '/product/'.$product->getKey();
+        $label = match ($signal) {
+            'back_in_stock' => 'Back in stock',
+            'discount' => 'New discount',
+            'price_drop' => 'Price drop',
+            default => 'Product update',
+        };
+
+        MerchantFollower::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('user_id', '!=', $merchant->user_id)
+            ->where(function ($query) {
+                $query->whereNull('notification_preferences')
+                    ->orWhere('notification_preferences->offers', true);
+            })
+            ->where(function ($query) {
+                $query->whereNull('notification_preferences->muted')
+                    ->orWhere('notification_preferences->muted', false);
+            })
+            ->select(['id', 'user_id', 'merchant_id'])
+            ->chunkById(200, function ($followers) use ($merchant, $product, $signal, $title, $body, $href, $payload, $label): void {
+                foreach ($followers as $follower) {
+                    $this->record([
+                        'user_id' => $follower->user_id,
+                        'merchant_id' => $merchant->id,
+                        'subject' => $product,
+                        'event_type' => 'followed_merchant_product_signal',
+                        'dedupe_key' => "followed-merchant-product-signal:{$signal}:{$product->getKey()}:{$follower->user_id}:".now()->toDateString(),
+                        'icon' => match ($signal) {
+                            'back_in_stock' => 'package_check',
+                            'discount' => 'tag',
+                            'price_drop' => 'trending_down',
+                            default => 'store',
+                        },
+                        'tone' => match ($signal) {
+                            'back_in_stock' => 'emerald',
+                            'discount' => 'amber',
+                            'price_drop' => 'sky',
+                            default => 'slate',
+                        },
+                        'eyebrow' => $label,
+                        'title' => $title,
+                        'body' => $body,
+                        'meta' => $merchant->display_name,
+                        'href' => $href,
+                        'status' => 'published',
+                        'payload' => [
+                            ...$payload,
+                            'signal' => $signal,
+                            'product_id' => $product->getKey(),
+                            'merchant_username' => $merchant->username,
+                        ],
+                        'occurred_at' => now(),
+                    ]);
+                }
+            });
     }
 
     private function paymentStatusChanged(Order $order): void

@@ -231,6 +231,11 @@ class Merchant extends Model
         return $this->hasMany(UserSubscription::class, 'merchant_id');
     }
 
+    public function followers(): HasMany
+    {
+        return $this->hasMany(MerchantFollower::class, 'merchant_id');
+    }
+
     public function platformSubscriptions(): HasMany
     {
         return $this->hasMany(MerchantPlatformSubscription::class);

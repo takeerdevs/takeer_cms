@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\MerchantBundleController;
 use App\Http\Controllers\Api\MerchantContentController;
 use App\Http\Controllers\Api\MerchantForwarderController;
 use App\Http\Controllers\Api\MarketingEventController;
+use App\Http\Controllers\Api\MerchantFollowController;
 use App\Http\Controllers\Api\MerchantOrderController;
 use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
 use App\Http\Controllers\Api\MiniStoreController;
@@ -446,8 +447,30 @@ $reservedMerchantSlugs = 'locations|shipping-profiles|shipping-zones|bundles|con
 Route::get('/merchant/{slug}/catalog', [MiniStoreController::class, 'catalog'])
     ->where('slug', "^(?!($reservedMerchantSlugs)$).+");
 
+Route::get('/merchant/{slug}/offers', [MiniStoreController::class, 'offers'])
+    ->where('slug', "^(?!($reservedMerchantSlugs)$).+");
+
 Route::get('/merchant/{slug}/shipping-zones', [MiniStoreController::class, 'shippingZones'])
     ->where('slug', "^(?!($reservedMerchantSlugs)$).+");
+
+Route::middleware('auth:sanctum')->group(function () use ($reservedMerchantSlugs) {
+    Route::get('/me/followed-stores', [MerchantFollowController::class, 'index']);
+
+    Route::get('/merchant/{slug}/follow', [MerchantFollowController::class, 'show'])
+        ->where('slug', "^(?!($reservedMerchantSlugs)$).+");
+
+    Route::post('/merchant/{slug}/follow', [MerchantFollowController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->where('slug', "^(?!($reservedMerchantSlugs)$).+");
+
+    Route::delete('/merchant/{slug}/follow', [MerchantFollowController::class, 'destroy'])
+        ->middleware('throttle:30,1')
+        ->where('slug', "^(?!($reservedMerchantSlugs)$).+");
+
+    Route::patch('/merchant/{slug}/follow', [MerchantFollowController::class, 'update'])
+        ->middleware('throttle:30,1')
+        ->where('slug', "^(?!($reservedMerchantSlugs)$).+");
+});
 
 Route::post('/merchant/{slug}/storefront', [MiniStoreController::class, 'updateStorefront'])
     ->middleware('auth:sanctum');

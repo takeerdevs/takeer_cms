@@ -12,6 +12,7 @@ use App\Models\MarketingEvent;
 use App\Models\MerchantCustomer;
 use App\Models\MerchantGroupSaleCampaign;
 use App\Models\MerchantGroupSaleParticipant;
+use App\Models\MerchantFollower;
 use App\Models\MerchantReferralLink;
 use App\Models\MerchantSocialAccount;
 use App\Models\MerchantSocialDmCampaign;
@@ -1012,6 +1013,81 @@ class MerchantMarketingController extends Controller
         ]);
     }
 
+    public function broadcastWhatsappToFollowers(Request $request, Merchant $merchant): JsonResponse
+    {
+        $data = $request->validate([
+            'message' => ['required', 'string', 'min:3', 'max:1000'],
+            'destination_type' => ['nullable', Rule::in(['storefront', 'product', 'bundle', 'subscription_plan', 'post', 'content_item', 'custom_url'])],
+            'destination_id' => ['nullable', 'integer', 'min:1'],
+            'destination_url' => ['nullable', 'string', 'max:2048'],
+        ]);
+
+        $destinationType = $data['destination_type'] ?? 'storefront';
+        $destinationUrl = $this->resolveCampaignDestinationUrl($merchant, $destinationType, $data['destination_id'] ?? null, $data['destination_url'] ?? null);
+
+        $followers = MerchantFollower::query()
+            ->where('merchant_id', $merchant->id)
+            ->where(function ($query) {
+                $query->whereNull('notification_preferences->whatsapp')
+                    ->orWhere('notification_preferences->whatsapp', true);
+            })
+            ->where(function ($query) {
+                $query->whereNull('notification_preferences->muted')
+                    ->orWhere('notification_preferences->muted', false);
+            })
+            ->with('user:id,name,phone_number')
+            ->get()
+            ->map(fn (MerchantFollower $follower) => [
+                'user_id' => $follower->user_id,
+                'name' => $follower->user?->name,
+                'phone' => $follower->user?->phone_number,
+            ])
+            ->filter(fn ($entry) => ! empty($entry['phone']))
+            ->unique(fn ($entry) => preg_replace('/\D+/', '', (string) $entry['phone']))
+            ->values();
+
+        if ($followers->isEmpty()) {
+            return response()->json(['message' => 'No WhatsApp-capable followers found for this broadcast.'], 422);
+        }
+
+        $sent = 0;
+        $followers->each(function (array $recipient) use ($merchant, $data, $destinationType, $destinationUrl, &$sent): void {
+            $event = $this->createWhatsappBroadcastEvent($merchant, $recipient, $data['message'], $destinationUrl);
+            $trackingUrl = url('/wa/t/'.$event->id);
+            $message = str_contains($data['message'], '{{link}}')
+                ? str_replace('{{link}}', $trackingUrl, $data['message'])
+                : trim($data['message'])."\n".$trackingUrl;
+
+            NotificationLog::query()->create([
+                'user_id' => $recipient['user_id'] ?? null,
+                'channel' => 'whatsapp',
+                'recipient' => $recipient['phone'],
+                'phone' => $recipient['phone'],
+                'whatsapp' => $recipient['phone'],
+                'message' => $message,
+                'status' => 'sent',
+                'gateway' => 'simulated',
+                'metadata' => [
+                    'kind' => 'merchant_follower_whatsapp_broadcast',
+                    'merchant_id' => $merchant->id,
+                    'merchant_username' => $merchant->username,
+                    'destination_type' => $destinationType,
+                    'destination_url' => $destinationUrl,
+                    'whatsapp_event_id' => $event->id,
+                    'tracking_url' => $trackingUrl,
+                ],
+            ]);
+
+            $sent++;
+        });
+
+        return response()->json([
+            'message' => "WhatsApp follower broadcast queued for {$sent} follower(s).",
+            'sent_count' => $sent,
+            'destination_url' => $destinationUrl,
+        ], 201);
+    }
+
     public function storeGroupSale(Request $request, Merchant $merchant): JsonResponse
     {
         $data = $this->validatedGroupSaleData($request, $merchant);
@@ -1626,6 +1702,7 @@ class MerchantMarketingController extends Controller
             'all_customers',
             'repeat_buyers',
             'inactive_customers',
+            'store_followers',
             'active_subscribers',
             'product_buyers',
             'subscription_members',
@@ -1640,6 +1717,7 @@ class MerchantMarketingController extends Controller
             ['type' => 'all_customers', 'label' => 'All customers', 'count' => $this->resolveSmsRecipients($merchant, 'all_customers')->count()],
             ['type' => 'repeat_buyers', 'label' => 'Repeat buyers', 'count' => $this->resolveSmsRecipients($merchant, 'repeat_buyers')->count()],
             ['type' => 'inactive_customers', 'label' => 'Inactive customers', 'count' => $this->resolveSmsRecipients($merchant, 'inactive_customers')->count()],
+            ['type' => 'store_followers', 'label' => 'Store followers', 'count' => $this->resolveSmsRecipients($merchant, 'store_followers')->count()],
             ['type' => 'active_subscribers', 'label' => 'Active subscribers', 'count' => $this->resolveSmsRecipients($merchant, 'active_subscribers')->count()],
             ['type' => 'product_buyers', 'label' => 'Product buyers', 'requires_ref' => true, 'count' => null],
             ['type' => 'subscription_members', 'label' => 'Subscription members', 'requires_ref' => true, 'count' => null],
@@ -1764,6 +1842,23 @@ class MerchantMarketingController extends Controller
                     $query->whereNull('last_purchase_at')->orWhere('last_purchase_at', '<', now()->subDays(60));
                 })
                 ->get(),
+            'store_followers' => MerchantFollower::query()
+                ->where('merchant_id', $merchant->id)
+                ->where(function ($query) {
+                    $query->whereNull('notification_preferences->sms')
+                        ->orWhere('notification_preferences->sms', true);
+                })
+                ->where(function ($query) {
+                    $query->whereNull('notification_preferences->muted')
+                        ->orWhere('notification_preferences->muted', false);
+                })
+                ->with('user:id,name,phone_number')
+                ->get()
+                ->map(fn (MerchantFollower $follower) => [
+                    'user_id' => $follower->user_id,
+                    'name' => $follower->user?->name,
+                    'phone' => $follower->user?->phone_number,
+                ]),
             'active_subscribers' => UserSubscription::query()
                 ->where('merchant_id', $merchant->id)
                 ->where('status', 'active')
@@ -1877,8 +1972,42 @@ class MerchantMarketingController extends Controller
         return match ($campaign->audience_type) {
             'product_buyers' => $campaign->audience_ref_id ? '/product/'.$campaign->audience_ref_id : $merchantPath,
             'subscription_members' => $campaign->audience_ref_id ? '/plan/'.$campaign->audience_ref_id : $merchantPath,
+            'store_followers' => '/u/'.$campaign->merchant?->username.'/shop/all',
             default => $merchantPath,
         };
+    }
+
+    private function resolveCampaignDestinationUrl(Merchant $merchant, string $type, ?int $id = null, ?string $customUrl = null): string
+    {
+        if ($type === 'custom_url' && $customUrl) {
+            return $customUrl;
+        }
+
+        if ($type === 'storefront') {
+            return '/u/'.$merchant->username.'/shop/all';
+        }
+
+        return $this->campaignTargetPath($merchant, $type, $id) ?: '/u/'.$merchant->username.'/shop/all';
+    }
+
+    private function createWhatsappBroadcastEvent(Merchant $merchant, array $recipient, string $message, string $destinationUrl): MerchantWhatsappEvent
+    {
+        return MerchantWhatsappEvent::query()->create([
+            'merchant_id' => $merchant->id,
+            'provider_message_id' => 'wa_broadcast_'.Str::lower(Str::random(24)),
+            'from_phone' => $recipient['phone'] ?? null,
+            'profile_name' => $recipient['name'] ?? null,
+            'message_text' => 'merchant follower broadcast',
+            'matched_keyword' => 'broadcast',
+            'status' => 'sent',
+            'response_message' => $message,
+            'destination_url' => $destinationUrl,
+            'sent_at' => now(),
+            'payload' => [
+                'kind' => 'merchant_follower_whatsapp_broadcast',
+                'recipient_user_id' => $recipient['user_id'] ?? null,
+            ],
+        ]);
     }
 
     private function simulateSmsDispatch(Merchant $merchant, MerchantSmsCampaign $campaign): void

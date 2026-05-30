@@ -149,7 +149,7 @@ function MediaGrid({ files, onRemove }) {
     );
 }
 
-export default function PostComposer({ isOpen, onClose, prefillProduct = null, prefillMedia = [], initialMode = 'short', initialMerchantUsername = null, prefillText = '', forwarderRoutes = [] }) {
+export default function PostComposer({ isOpen, onClose, prefillProduct = null, prefillMedia = [], prefillFiles = [], initialMode = 'short', initialMerchantUsername = null, prefillText = '', forwarderRoutes = [] }) {
     const { auth } = usePage().props;
     const merchantProfiles = auth.user?.merchant_profiles || [];
     const postableProfiles = useMemo(() => (
@@ -276,9 +276,17 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                     url, preview: url, type: 'image/jpeg', name: 'product_image'
                 })));
             }
+            if (prefillFiles.length) {
+                setMediaFiles(prefillFiles.map(file => ({
+                    file,
+                    type: file.type,
+                    name: file.name,
+                    preview: URL.createObjectURL(file),
+                })).slice(0, 10));
+            }
             setTimeout(() => textRef.current?.focus(), 350);
         }
-    }, [initialMode, isOpen]);
+    }, [initialMode, isOpen, prefillFiles.length, prefillMedia.length]);
 
     useEffect(() => {
         if (!isOpen) return;

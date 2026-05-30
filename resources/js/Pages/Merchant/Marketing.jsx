@@ -157,6 +157,13 @@ const emptyWhatsappTest = {
     profile_name: 'Preview Buyer',
 };
 
+const emptyWhatsappBroadcast = {
+    message: 'Habari! Tuna update mpya dukani:\n\n{{link}}',
+    destination_type: 'storefront',
+    destination_id: '',
+    destination_url: '',
+};
+
 const toolCards = [
     {
         key: 'coupons',
@@ -288,6 +295,7 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
     const [whatsappForm, setWhatsappForm] = useState(emptyWhatsappForm);
     const [whatsappTest, setWhatsappTest] = useState(emptyWhatsappTest);
     const [whatsappTestResult, setWhatsappTestResult] = useState(null);
+    const [whatsappBroadcast, setWhatsappBroadcast] = useState(emptyWhatsappBroadcast);
     const [manualWhatsappSetupOpen, setManualWhatsappSetupOpen] = useState(false);
     const [smsForm, setSmsForm] = useState(emptySmsForm);
     const [smsEstimate, setSmsEstimate] = useState(null);
@@ -965,6 +973,27 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
         }
     }
 
+    async function sendWhatsappFollowerBroadcast() {
+        if (!canCreateMarketing) return;
+        setSaving(true);
+        try {
+            const payload = {
+                ...whatsappBroadcast,
+                destination_id: ['storefront', 'custom_url'].includes(whatsappBroadcast.destination_type) || whatsappBroadcast.destination_id === ''
+                    ? null
+                    : Number(whatsappBroadcast.destination_id),
+                destination_url: whatsappBroadcast.destination_type === 'custom_url' ? whatsappBroadcast.destination_url : null,
+            };
+
+            const res = await axios.post(`/merchant/${merchantUsername}/marketing/whatsapp/follower-broadcasts/api`, payload);
+            toast.success(res.data?.message || 'WhatsApp follower broadcast queued.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to queue WhatsApp follower broadcast.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
     async function deleteWhatsappAutomation(automationId) {
         if (!canDeleteMarketing) return;
         if (!window.confirm('Delete this WhatsApp automation?')) return;
@@ -1024,6 +1053,13 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
         post: marketingTargets.posts || [],
         content_item: marketingTargets.content_items || [],
     }[whatsappForm.destination_type] || [];
+    const whatsappBroadcastTargetOptions = {
+        product: marketingTargets.products || [],
+        bundle: marketingTargets.bundles || [],
+        subscription_plan: marketingTargets.subscription_plans || [],
+        post: marketingTargets.posts || [],
+        content_item: marketingTargets.content_items || [],
+    }[whatsappBroadcast.destination_type] || [];
     const visibleSectionTabs = sectionTabs.filter(([key]) => {
         if (key === 'overview' || key === 'analytics') return true;
         if (key === 'sms') return canSendSms || canManageMarketing;
@@ -2127,6 +2163,52 @@ export default function MerchantMarketing({ merchantUsername = '', merchantName 
                                         </div>
                                     </div>
                                 ))}
+                            </CardContent>
+                        </Card>}
+
+                        {activeSection === 'whatsapp' && <Card className="rounded-[28px] border-brand-100/70">
+                            <CardHeader>
+                                <CardTitle className="text-base font-black uppercase tracking-wider">Follower WhatsApp broadcast</CardTitle>
+                                <CardDescription>Send a simulated WhatsApp update to followers who allow WhatsApp notifications.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    <Field label="Destination">
+                                        <select value={whatsappBroadcast.destination_type} onChange={(e) => setWhatsappBroadcast((prev) => ({ ...prev, destination_type: e.target.value, destination_id: '', destination_url: '' }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                            <option value="storefront">Storefront</option>
+                                            <option value="product">Product/service/download</option>
+                                            <option value="bundle">Bundle/course</option>
+                                            <option value="subscription_plan">Membership</option>
+                                            <option value="post">Premium post</option>
+                                            <option value="content_item">Content item</option>
+                                            <option value="custom_url">Custom URL</option>
+                                        </select>
+                                    </Field>
+                                    <Field label="Target offer">
+                                        {['storefront', 'custom_url'].includes(whatsappBroadcast.destination_type) ? (
+                                            <Input disabled value={whatsappBroadcast.destination_type === 'storefront' ? 'Storefront' : 'Custom URL'} className="h-12 rounded-xl text-muted-foreground" />
+                                        ) : (
+                                            <select value={whatsappBroadcast.destination_id || ''} onChange={(e) => setWhatsappBroadcast((prev) => ({ ...prev, destination_id: e.target.value }))} className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold text-foreground">
+                                                <option value="">Choose target...</option>
+                                                {whatsappBroadcastTargetOptions.map((target) => (
+                                                    <option key={target.id} value={target.id}>{target.label} · {target.meta}</option>
+                                                ))}
+                                            </select>
+                                        )}
+                                    </Field>
+                                    <Field label="Custom URL">
+                                        <Input disabled={whatsappBroadcast.destination_type !== 'custom_url'} value={whatsappBroadcast.destination_url || ''} onChange={(e) => setWhatsappBroadcast((prev) => ({ ...prev, destination_url: e.target.value }))} placeholder="https://..." className="h-12 rounded-xl" />
+                                    </Field>
+                                </div>
+
+                                <Field label="Broadcast message" hint="Use {{link}} where the tracked Takeer link should appear.">
+                                    <Textarea value={whatsappBroadcast.message} onChange={(e) => setWhatsappBroadcast((prev) => ({ ...prev, message: e.target.value }))} className="min-h-28 rounded-xl" maxLength={1000} />
+                                </Field>
+
+                                <Button onClick={sendWhatsappFollowerBroadcast} disabled={saving || !whatsappBroadcast.message.trim()} className="h-12 rounded-2xl font-black">
+                                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                                    Send to WhatsApp followers
+                                </Button>
                             </CardContent>
                         </Card>}
 

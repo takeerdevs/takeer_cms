@@ -12,6 +12,7 @@ use App\Models\ForwarderShipment;
 use App\Models\Merchant;
 use App\Models\Post;
 use App\Models\UserAddress;
+use App\Services\PulseNotificationService;
 use App\Support\GeographyResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -766,6 +767,7 @@ class MerchantForwarderController extends Controller
             }
 
             $post = Post::create($postPayload);
+            app(PulseNotificationService::class)->postPublishedToFollowers($post);
 
             return [
                 ...$route,

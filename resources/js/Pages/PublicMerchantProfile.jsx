@@ -3,7 +3,8 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import PostCard from '@/Components/PostCard';
-import { ExternalLink, Globe2, Instagram, Loader2, Mail, MessageCircle, Music2, Send, ShoppingBag, Store, Youtube } from 'lucide-react';
+import FollowStoreButton from '@/Components/FollowStoreButton';
+import { BadgeCheck, Globe2, Instagram, Link2, Loader2, Mail, MessageCircle, Music2, Send, Youtube } from 'lucide-react';
 
 const fetcher = (url) => fetch(url, { headers: { Accept: 'application/json' } }).then(res => res.json());
 
@@ -11,7 +12,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
     const sentinelRef = useRef(null);
     const getKey = (pageIndex, previousPageData) => {
         if (previousPageData && !previousPageData.posts.links.next) return null;
-        return `/api/merchant/${merchantSlug}?page=${pageIndex + 1}`;
+        return `/api/merchant/${merchantSlug}?page=${pageIndex + 1}&profile=1`;
     };
 
     const { data, size, setSize, isValidating, error } = useSWRInfinite(getKey, fetcher, {
@@ -26,6 +27,7 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
     const isReachingEnd = data && data[data.length - 1]?.posts.links.next === null;
     const isLoadingMore = isValidating && size > 0;
     const isInitialLoading = !data && !error;
+    const slug = merchant?.slug || merchantSlug;
 
     useEffect(() => {
         const sentinel = sentinelRef.current;
@@ -55,42 +57,71 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
             <Head title={`${merchant?.name || 'Biashara'} | Profile`} />
 
             <div className="mx-auto max-w-[640px]">
-                <header className="border-b border-border bg-card px-5 py-6">
-                    <div className="flex items-start gap-4">
-                        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-brand-100 text-brand-700">
-                            {merchant?.avatar_url ? (
-                                <img src={merchant.avatar_url} alt={merchant.name} className="h-full w-full object-cover" />
-                            ) : (
-                                <div className="flex h-full w-full items-center justify-center text-2xl font-black">
-                                    {(merchant?.name || 'T').charAt(0).toUpperCase()}
+                <header className="border-b border-neutral-200/80 bg-background px-5 pb-5 pt-6">
+                    {isInitialLoading ? (
+                        <ProfileHeaderSkeleton />
+                    ) : (
+                        <div className="mx-auto max-w-[560px] text-center">
+                            <ProfileAvatar
+                                name={merchant?.name}
+                                avatarUrl={merchant?.avatar_url}
+                            />
+
+                            <div className="mt-3 flex min-w-0 items-center justify-center gap-1.5">
+                                <p className="truncate text-xl font-bold leading-tight text-foreground">
+                                    {merchant?.name || 'Biashara'}
+                                </p>
+                                {merchant?.is_verified && (
+                                    <BadgeCheck
+                                        className="h-5 w-5 shrink-0 text-sky-500"
+                                        aria-label="Verified profile"
+                                    />
+                                )}
+                            </div>
+                            <p className="mt-0.5 text-sm font-medium text-muted-foreground">@{slug}</p>
+
+                            {(merchant?.business_category || merchant?.bio) && (
+                                <div className="mt-3 space-y-1">
+                                    {merchant?.business_category && (
+                                        <p className="text-sm font-medium text-muted-foreground">
+                                            {merchant.business_category}
+                                        </p>
+                                    )}
+                                    {merchant?.bio && (
+                                        <p className="mx-auto max-w-[460px] whitespace-pre-line text-sm leading-5 text-foreground">
+                                            {merchant.bio}
+                                        </p>
+                                    )}
                                 </div>
                             )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                            <h1 className="text-2xl font-black leading-tight text-foreground">{merchant?.name || 'Biashara'}</h1>
-                            <p className="mt-1 text-sm font-semibold text-muted-foreground">@{merchant?.slug || merchantSlug}</p>
-                            <ProfileSocialLinks links={socialLinks} />
-                            {merchant?.bio && (
-                                <p className="mt-3 whitespace-pre-line text-sm leading-6 text-foreground">{merchant.bio}</p>
-                            )}
-                            <div className="mt-4 flex flex-wrap gap-2">
+
+                            <ProfileLinkRow links={socialLinks} />
+
+                            <div className="mt-5">
                                 <Link
-                                    href={`/m/${merchant?.slug || merchantSlug}`}
-                                    className="inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand-700 hover:shadow-md"
+                                    href={`/u/${slug}/shop/all`}
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
                                 >
-                                    <ShoppingBag className="h-4 w-4" />
-                                    Mini-store
-                                </Link>
-                                <Link
-                                    href={`/u/${merchant?.slug || merchantSlug}/catalog`}
-                                    className="inline-flex h-11 items-center gap-2 rounded-2xl border border-brand-200 px-4 text-sm font-black text-brand-700 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:bg-white hover:shadow-md"
-                                >
-                                    <Store className="h-4 w-4" />
-                                    Catalog
+                                    Shop
                                 </Link>
                             </div>
+                            <div className="mt-2">
+                                <FollowStoreButton
+                                    merchantSlug={slug}
+                                    initialFollowing={merchant?.is_following}
+                                    initialCount={merchant?.followers_count}
+                                    isOwner={merchant?.is_owner}
+                                />
+                            </div>
+                            <Link
+                                href={`/m/${slug}`}
+                                className="mt-2.5 flex items-center justify-center gap-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-brand-700"
+                            >
+                                <Link2 className="h-3 w-3" />
+                                Link page · share on social
+                            </Link>
                         </div>
-                    </div>
+                    )}
                 </header>
 
                 <section className="divide-y divide-border">
@@ -123,44 +154,91 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
     );
 }
 
-function ProfileSocialLinks({ links }) {
-    if (!Array.isArray(links) || links.length === 0) return null;
+function ProfileAvatar({ name, avatarUrl }) {
+    const initial = (name || 'T').charAt(0).toUpperCase();
 
     return (
-        <div className="mt-3 flex flex-wrap gap-2">
-            {links.slice(0, 4).map((link, index) => {
-                const meta = socialLinkMeta(link.url);
-                const Icon = meta?.icon || Globe2;
-                const title = link.title || meta?.label || linkDomain(link.url) || 'Link';
-                const href = link.tracked_url || normalizeLinkUrl(link.url);
-                const unavailable = Boolean(link.link_unavailable || link.tracked_link_status === 'disabled');
-
-                return (
-                    <button
-                        type="button"
-                        key={`${link.url}-${index}`}
-                        onClick={() => {
-                            if (!unavailable) window.open(href, '_blank', 'noopener,noreferrer');
-                        }}
-                        disabled={unavailable}
-                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:cursor-not-allowed disabled:border-amber-200 disabled:bg-amber-50 disabled:text-amber-800"
-                        title={unavailable ? 'Link unavailable while Takeer reviews a safety issue.' : title}
-                    >
-                        {meta?.text ? <span className="text-xs font-black">{meta.text}</span> : <Icon className="h-3.5 w-3.5 shrink-0" />}
-                        <span className="truncate">{title}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0 text-slate-400" />
-                    </button>
-                );
-            })}
+        <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-neutral-200/90 bg-neutral-100 shadow-sm">
+            {avatarUrl ? (
+                <img src={avatarUrl} alt={name || 'Profile'} className="h-full w-full object-cover" />
+            ) : (
+                <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-[34px] font-normal text-neutral-500">
+                    {initial}
+                </div>
+            )}
         </div>
     );
 }
 
-function ProfileStat({ label, value }) {
+function ProfileHeaderSkeleton() {
     return (
-        <div className="rounded-xl border border-border bg-background px-3 py-2 text-center">
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{label}</p>
-            <div className="mt-1 text-base font-black text-foreground">{value}</div>
+        <>
+            <div className="mx-auto h-24 w-24 animate-pulse rounded-full bg-neutral-100" />
+            <div className="mt-4 flex flex-col items-center space-y-2">
+                <div className="h-5 w-40 animate-pulse rounded bg-neutral-100" />
+                <div className="h-3.5 w-24 animate-pulse rounded bg-neutral-100" />
+                <div className="h-3 w-52 animate-pulse rounded bg-neutral-100" />
+            </div>
+            <div className="mt-5">
+                <div className="h-9 w-full animate-pulse rounded-full bg-neutral-100" />
+            </div>
+        </>
+    );
+}
+
+function ProfileLinkRow({ links }) {
+    if (!Array.isArray(links) || links.length === 0) return null;
+
+    const available = links.filter((link) => !link.link_unavailable && link.tracked_link_status !== 'disabled');
+    if (available.length === 0) return null;
+
+    const primary = available[0];
+    const primaryLabel = linkDomain(primary.url) || primary.title || 'Link';
+    const moreCount = available.length - 1;
+
+    const openLink = (link) => {
+        const href = link.tracked_url || normalizeLinkUrl(link.url);
+        window.open(href, '_blank', 'noopener,noreferrer');
+    };
+
+    return (
+        <div className="pt-3">
+            <button
+                type="button"
+                onClick={() => openLink(primary)}
+                className="inline-flex max-w-full items-center justify-center gap-1 text-sm font-semibold text-brand-700 transition-colors hover:text-brand-800"
+            >
+                <Link2 className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                    {primaryLabel}
+                    {moreCount > 0 && ` na ${moreCount} zaidi`}
+                </span>
+            </button>
+            {moreCount > 0 && (
+                <div className="mt-1.5 flex flex-col items-center gap-1">
+                    {available.slice(1, 4).map((link, index) => {
+                        const meta = socialLinkMeta(link.url);
+                        const Icon = meta?.icon || Globe2;
+                        const label = link.title || meta?.label || linkDomain(link.url);
+
+                        return (
+                            <button
+                                type="button"
+                                key={`${link.url}-${index}`}
+                                onClick={() => openLink(link)}
+                                className="inline-flex max-w-full items-center gap-1.5 text-sm font-semibold text-foreground transition-colors hover:text-brand-700"
+                            >
+                                {meta?.text ? (
+                                    <span className="text-xs font-semibold">{meta.text}</span>
+                                ) : (
+                                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                )}
+                                <span className="truncate">{label}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }

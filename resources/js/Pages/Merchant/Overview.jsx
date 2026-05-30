@@ -66,7 +66,7 @@ export default function Overview({ merchantUsername }) {
                             <Metric icon={BarChart3} label="Revenue" value={money(summary.revenue)} />
                             <Metric icon={ShoppingBag} label="Paid orders" value={summary.paid_orders ?? 0} />
                             <Metric icon={Users} label="Customers" value={summary.customers ?? 0} />
-                            <Metric icon={CalendarClock} label="Upcoming bookings" value={(summary.upcoming_bookings ?? 0) + (summary.upcoming_sessions ?? 0)} />
+                            <Metric icon={Users} label="Followers" value={summary.followers ?? 0} hint={`+${summary.new_followers ?? 0} in period`} />
                         </div>
 
                         <div className="grid gap-4 lg:grid-cols-3">
@@ -143,8 +143,8 @@ export default function Overview({ merchantUsername }) {
     );
 }
 
-function Metric({ icon: Icon, label, value }) {
-    return <Card><CardContent className="p-4"><Icon className="h-5 w-5 text-muted-foreground" /><p className="mt-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p><p className="text-2xl font-black">{value}</p></CardContent></Card>;
+function Metric({ icon: Icon, label, value, hint }) {
+    return <Card><CardContent className="p-4"><Icon className="h-5 w-5 text-muted-foreground" /><p className="mt-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p><p className="text-2xl font-black">{value}</p>{hint && <p className="mt-1 text-xs font-semibold text-muted-foreground">{hint}</p>}</CardContent></Card>;
 }
 
 function ReportCard({ title, icon: Icon, rows }) {

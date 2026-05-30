@@ -94,7 +94,9 @@ export default function AppLayout({ children, hideTabBar = false }) {
     )));
     const canOpenComposer = Boolean(auth?.user?.phone_number) && (!hasMerchantProfile || hasPostableMerchantProfile);
 
-    const openComposerForCurrentUser = async () => {
+    const openComposerForCurrentUser = async (options = {}) => {
+        const nextOptions = typeof options === 'object' && options !== null ? options : {};
+
         if (!auth?.user) {
             router.visit('/merchant/register');
             return;
@@ -105,6 +107,8 @@ export default function AppLayout({ children, hideTabBar = false }) {
                 toast.error('You do not have permission to create posts for any business account.');
                 return;
             }
+            setComposerInitialMode(nextOptions.mode === 'long' ? 'long' : 'short');
+            setComposerOptions(nextOptions);
             setComposerOpen(true);
             return;
         }
@@ -114,7 +118,11 @@ export default function AppLayout({ children, hideTabBar = false }) {
             await axios.post('/auth/merchant/ensure-personal');
             router.reload({
                 only: ['auth'],
-                onSuccess: () => setComposerOpen(true),
+                onSuccess: () => {
+                    setComposerInitialMode(nextOptions.mode === 'long' ? 'long' : 'short');
+                    setComposerOptions(nextOptions);
+                    setComposerOpen(true);
+                },
             });
         } catch (error) {
             toast.error(error.response?.data?.message || 'Tafadhali thibitisha nambari ya simu kwanza.');
@@ -123,6 +131,14 @@ export default function AppLayout({ children, hideTabBar = false }) {
             setCreatingProfile(false);
         }
     };
+
+    useEffect(() => {
+        window.__openComposerForCurrentUser = openComposerForCurrentUser;
+
+        return () => {
+            delete window.__openComposerForCurrentUser;
+        };
+    }, [auth?.user, hasMerchantProfile, hasPostableMerchantProfile]);
 
     const navItems = [
         { name: 'Feed', href: '/', icon: Home },
@@ -133,7 +149,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
     ];
 
     return (
-        <div className="relative isolate min-h-screen overflow-x-hidden bg-background text-foreground font-sans antialiased">
+        <div className="relative isolate min-h-screen overflow-x-clip bg-background text-foreground font-sans antialiased">
             <AmbientWaveBackground />
             <Toaster position="top-center" richColors />
 
@@ -211,6 +227,7 @@ export default function AppLayout({ children, hideTabBar = false }) {
                 initialMode={composerInitialMode}
                 initialMerchantUsername={composerOptions.merchantUsername}
                 prefillText={composerOptions.text}
+                prefillFiles={composerOptions.mediaFiles || []}
                 forwarderRoutes={composerOptions.forwarderRoutes || []}
             />
 

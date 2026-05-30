@@ -272,6 +272,11 @@ class User extends Authenticatable
         return $this->hasMany(NotificationLog::class);
     }
 
+    public function followedMerchants(): HasMany
+    {
+        return $this->hasMany(MerchantFollower::class);
+    }
+
     public function subscriptions(): HasMany
     {
         return $this->hasMany(UserSubscription::class);

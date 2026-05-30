@@ -943,6 +943,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/orders/data/pulse', [EntitlementController::class, 'myPulse']);
     Route::get('/orders/data/entitlements', [EntitlementController::class, 'myLibrary']);
     Route::get('/orders/data/subscriptions', [SubscriptionController::class, 'mySubscriptions']);
+    Route::get('/orders/data/followed-stores', [\App\Http\Controllers\Api\MerchantFollowController::class, 'index']);
+    Route::patch('/orders/data/followed-stores/{slug}', [\App\Http\Controllers\Api\MerchantFollowController::class, 'update']);
+    Route::delete('/orders/data/followed-stores/{slug}', [\App\Http\Controllers\Api\MerchantFollowController::class, 'destroy']);
     Route::get('/orders/data/entitlements/{entitlement}/access', [\App\Http\Controllers\Api\DownloadController::class, 'entitlementAccess']);
     Route::get('/orders/data/entitlements/{entitlement}/download/local', [\App\Http\Controllers\Api\DownloadController::class, 'downloadEntitlementLocal'])->name('web.download.entitlement-local');
     Route::get('/orders/{order}/download', [\App\Http\Controllers\Api\DownloadController::class, 'download']);
@@ -1890,6 +1893,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/marketing/whatsapp/automations/{whatsappAutomation:id}/api', [MerchantMarketingController::class, 'updateWhatsappAutomation'])->middleware('merchant_permission:marketing.update');
         Route::delete('/marketing/whatsapp/automations/{whatsappAutomation:id}/api', [MerchantMarketingController::class, 'destroyWhatsappAutomation'])->middleware('merchant_permission:marketing.delete');
         Route::post('/marketing/whatsapp/simulate-message/api', [MerchantMarketingController::class, 'simulateWhatsappMessage'])->middleware('merchant_permission:marketing.view');
+        Route::post('/marketing/whatsapp/follower-broadcasts/api', [MerchantMarketingController::class, 'broadcastWhatsappToFollowers'])->middleware('merchant_permission:marketing.send_sms,marketing.create');
         Route::post('/marketing/group-sales/api', [MerchantMarketingController::class, 'storeGroupSale'])->middleware('merchant_permission:marketing.create');
         Route::put('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'updateGroupSale'])->middleware('merchant_permission:marketing.update');
         Route::delete('/marketing/group-sales/{groupSale:id}/api', [MerchantMarketingController::class, 'destroyGroupSale'])->middleware('merchant_permission:marketing.delete');
@@ -2092,11 +2096,20 @@ Route::get('/m/{slug}', function (string $slug) {
     ])->withViewData('seo', $seo);
 });
 Route::get('/u/{slug}/catalog', function (string $slug) {
-    $merchant = Merchant::where('username', $slug)->firstOrFail();
-    $seo = SeoMeta::merchant($merchant, 'catalog');
+    return redirect()->to("/u/{$slug}/shop/products", 301);
+});
+Route::get('/u/{slug}/shop', function (string $slug) {
+    return redirect()->to("/u/{$slug}/shop/all", 302);
+});
+Route::get('/u/{slug}/shop/{section}', function (string $slug, string $section) {
+    abort_unless(in_array($section, ['all', 'products', 'digital', 'services', 'content', 'offerings', 'freight', 'bundles', 'memberships'], true), 404);
 
-    return Inertia::render('PublicCatalog', [
+    $merchant = Merchant::where('username', $slug)->firstOrFail();
+    $seo = SeoMeta::merchant($merchant, $section === 'all' ? 'shop' : $section);
+
+    return Inertia::render('PublicShop', [
         'merchantSlug' => $slug,
+        'shopSection' => $section,
         'seo' => $seo,
     ])->withViewData('seo', $seo);
 });
@@ -2180,14 +2193,15 @@ Route::get('/sitemap.xml', function () {
                 foreach ([
                     "/m/{$merchant->username}",
                     "/u/{$merchant->username}",
-                    "/u/{$merchant->username}/catalog",
-                    "/m/{$merchant->username}/products",
-                    "/m/{$merchant->username}/downloads",
-                    "/m/{$merchant->username}/services",
-                    "/m/{$merchant->username}/content",
-                    "/m/{$merchant->username}/bundles",
-                    "/m/{$merchant->username}/courses",
-                    "/m/{$merchant->username}/memberships",
+                    "/u/{$merchant->username}/shop/all",
+                    "/u/{$merchant->username}/shop/products",
+                    "/u/{$merchant->username}/shop/digital",
+                    "/u/{$merchant->username}/shop/services",
+                    "/u/{$merchant->username}/shop/content",
+                    "/u/{$merchant->username}/shop/offerings",
+                    "/u/{$merchant->username}/shop/freight",
+                    "/u/{$merchant->username}/shop/bundles",
+                    "/u/{$merchant->username}/shop/memberships",
                 ] as $path) {
                     $urls->push(url($path));
                 }

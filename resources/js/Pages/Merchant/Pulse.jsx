@@ -13,6 +13,7 @@ import {
     Library,
     Loader2,
     MessageCircle,
+    PackageCheck,
     ReceiptText,
     RefreshCcw,
     ShieldCheck,
@@ -20,6 +21,8 @@ import {
     ShoppingBag,
     Sparkles,
     Star,
+    Tag,
+    TrendingDown,
     Truck,
 } from 'lucide-react';
 import axios from 'axios';
@@ -133,6 +136,7 @@ function PulseRow({ event }) {
         key: KeyRound,
         library: Library,
         message_circle: MessageCircle,
+        package_check: PackageCheck,
         receipt: ReceiptText,
         refresh: RefreshCcw,
         shield_check: ShieldCheck,
@@ -140,6 +144,8 @@ function PulseRow({ event }) {
         shopping_bag: ShoppingBag,
         sparkles: Sparkles,
         star: Star,
+        tag: Tag,
+        trending_down: TrendingDown,
         truck: Truck,
     };
     const Icon = iconMap[event.icon] || Clock;

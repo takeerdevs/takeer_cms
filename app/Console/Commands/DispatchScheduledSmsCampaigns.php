@@ -140,6 +140,7 @@ class DispatchScheduledSmsCampaigns extends Command
         return match ($campaign->audience_type) {
             'product_buyers' => $campaign->audience_ref_id ? '/product/'.$campaign->audience_ref_id : $merchantPath,
             'subscription_members' => $campaign->audience_ref_id ? '/plan/'.$campaign->audience_ref_id : $merchantPath,
+            'store_followers' => '/u/'.$campaign->merchant?->username.'/shop/all',
             default => $merchantPath,
         };
     }

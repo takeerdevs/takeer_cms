@@ -810,7 +810,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
     };
 
     return (
-        <article className={`relative bg-card border-b overflow-hidden ${adminMode && isDeleted ? 'border-rose-300 bg-rose-50/35' : 'border-border'}`}>
+        <article className={`relative bg-card border-b overflow-hidden ${adminMode && isDeleted ? 'border-rose-300 bg-rose-50/35' : 'border-border/70'}`}>
             {adminMode && (
                 <div className={`px-4 py-2 border-b ${isDeleted ? 'border-rose-200 bg-rose-100/80 text-rose-900' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
                     <div className="flex items-center justify-between gap-3">
@@ -900,7 +900,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
 
             <div className="px-4 pb-3 space-y-3 cursor-pointer" onClick={goToPostDetails}>
                 {isLongForm && postData.title && !isForwarderRoutePost && (
-                    <h2 className={`text-[1.85rem] font-[900] leading-[1.15] tracking-[-0.02em] text-foreground ${isOfferingGroupPromotable ? 'sr-only' : ''}`}>
+                    <h2 className={`text-2xl font-[850] leading-[1.12] text-foreground sm:text-[1.55rem] ${isOfferingGroupPromotable ? 'sr-only' : ''}`}>
                         {postData.title}
                     </h2>
                 )}
@@ -1014,19 +1014,29 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
             )}
 
             {attachedProduct && (
-                <div className="my-1 rounded-2xl border border-brand-200/70 bg-gradient-to-br from-white to-brand-50/40 dark:border-brand-900/50 dark:from-slate-900 dark:to-brand-950/40 overflow-hidden">
+                <div className="my-1 rounded-2xl bg-gradient-to-br from-white to-brand-50/35 ring-1 ring-brand-200/70 dark:ring-brand-900/50 dark:from-slate-900 dark:to-brand-950/40 overflow-hidden">
                     <Link
                         href={route('product.show', productRouteKey)}
                         onClick={() => trackPostCardClick('product', attachedProduct)}
                         className="flex items-center gap-3 px-3.5 pt-3 pb-2 flex-1 min-w-0"
                     >
                         {attachedProduct.image_url && (
-                            <div className="h-14 w-14 overflow-hidden border border-border/70 dark:border-border/90 bg-background shrink-0">
+                            <div className="h-14 w-14 overflow-hidden rounded-xl border border-border/70 dark:border-border/90 bg-background shrink-0">
                                 <img src={attachedProduct.image_url} alt={attachedProduct.title} className="h-full w-full object-cover" />
                             </div>
                         )}
                         <div className="flex-1 min-w-0">
-                            <p className="font-bold text-[22px] leading-tight text-foreground truncate">{attachedProduct.title}</p>
+                            <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-brand-700 ring-1 ring-brand-100">
+                                    <ShoppingBag className="h-3 w-3" />
+                                    Available
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-100">
+                                    <ShieldCheck className="h-3 w-3" />
+                                    SafePay
+                                </span>
+                            </div>
+                            <p className="font-bold text-lg leading-tight text-foreground truncate">{attachedProduct.title}</p>
                             {attachedProductUnitLabel && (
                                 <p className="mb-1 text-[12px] font-bold text-slate-500 truncate">
                                     {attachedProductUnitLabel}
@@ -1034,7 +1044,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                             )}
                             {hasVariantPricing ? (
                                 <div className="space-y-0.5">
-                                    <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">
+                                    <p className="text-brand-600 dark:text-brand-400 font-bold text-xl leading-none">
                                         {variantPriceLabel}
                                     </p>
                                     <p className="text-[11px] text-slate-600 leading-tight truncate">
@@ -1043,7 +1053,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-2">
-                                    <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">
+                                    <p className="text-brand-600 dark:text-brand-400 font-bold text-xl leading-none">
                                         {attachedProductPriceLabel}
                                     </p>
                                     {attachedProduct.discounted_price > 0 && Number(attachedProduct.discounted_price) < Number(attachedProduct.price) && (

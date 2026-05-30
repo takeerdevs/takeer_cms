@@ -373,6 +373,8 @@ class PostController extends Controller
             'promotableOfferingGroups',
         ]);
 
+        app(PulseNotificationService::class)->postPublishedToFollowers($post);
+
         return response()->json([
             'message' => 'Post imechapishwa!',
             'post' => PostResource::make($post)->resolve(),

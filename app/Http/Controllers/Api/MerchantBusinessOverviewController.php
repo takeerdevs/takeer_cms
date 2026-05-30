@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Bundle;
 use App\Models\BundleCohortEnrollment;
 use App\Models\Merchant;
+use App\Models\MerchantFollower;
 use App\Models\MerchantStaff;
 use App\Models\OfferingGroup;
 use App\Models\Order;
@@ -86,6 +87,13 @@ class MerchantBusinessOverviewController extends Controller
             ])
             ->sortByDesc('revenue')
             ->values();
+        $followersTotal = MerchantFollower::query()
+            ->where('merchant_id', $merchant->id)
+            ->count();
+        $newFollowers = MerchantFollower::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('followed_at', '>=', $from)
+            ->count();
 
         return response()->json([
             'window' => [
@@ -105,6 +113,8 @@ class MerchantBusinessOverviewController extends Controller
                 'upcoming_bookings' => $upcomingBookings,
                 'upcoming_sessions' => $upcomingSessions,
                 'bookkeeping_profit' => (float) $income - (float) $expenses,
+                'followers' => $followersTotal,
+                'new_followers' => $newFollowers,
             ],
             'catalog' => [
                 'physical' => $products->where('type', 'physical')->reject(fn (Product $product) => $product->module_key === 'menu')->count(),

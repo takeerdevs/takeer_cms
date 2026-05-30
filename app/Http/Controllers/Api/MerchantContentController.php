@@ -7,6 +7,7 @@ use App\Models\ContentItem;
 use App\Models\Merchant;
 use App\Models\Post;
 use App\Services\ContentPolicyService;
+use App\Services\PulseNotificationService;
 use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -323,7 +324,8 @@ class MerchantContentController extends Controller
             $previewText,
         ]);
 
-        Post::updateOrCreate(
+        $wasNewlyPublished = ! $existingFeedPost;
+        $post = Post::updateOrCreate(
             ['content_item_id' => $contentItem->id],
             [
                 'merchant_id' => $contentItem->merchant_id,
@@ -334,5 +336,16 @@ class MerchantContentController extends Controller
                 'bg_style' => $resolvedBgStyle,
             ]
         );
+
+        if ($wasNewlyPublished && $contentItem->merchant) {
+            app(PulseNotificationService::class)->merchantOfferPublishedToFollowers(
+                $contentItem->merchant,
+                $contentItem,
+                'content',
+                $displayTitle ?: 'Premium content',
+                '/p/' . ($post->public_id ?: $post->id),
+                "{$contentItem->merchant->display_name} published new premium content."
+            );
+        }
     }
 }

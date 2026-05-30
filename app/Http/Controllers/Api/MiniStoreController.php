@@ -10,7 +10,9 @@ use App\Http\Resources\ProductResource;
 use App\Http\Resources\SubscriptionPlanResource;
 use App\Models\Bundle;
 use App\Models\ContentItem;
+use App\Models\ForwarderRoute;
 use App\Models\Merchant;
+use App\Models\OfferingGroup;
 use App\Models\Post;
 use App\Models\MerchantStorefrontSetting;
 use App\Models\Product;
@@ -30,6 +32,7 @@ class MiniStoreController extends Controller
     {
         // Find merchant by username slug
         $merchant = Merchant::where('username', $merchantSlug)->firstOrFail();
+        $profileOnly = $request->boolean('profile');
 
         // Get their posts (shoppable feed) from THIS profile
         $posts = Post::where('merchant_id', $merchant->id)
@@ -54,6 +57,45 @@ class MiniStoreController extends Controller
             ])
             ->latest()
             ->paginate(15);
+
+        $storefrontSetting = $merchant->storefrontSetting;
+        $businessCategory = $merchant->businessCategory();
+
+        $payload = [
+            'merchant' => [
+                'id' => $merchant->id,
+                'name' => $merchant->display_name,
+                'slug' => $merchant->username,
+                'avatar_url' => $merchant->avatar_url,
+                'bio' => $merchant->bio,
+                'is_verified' => (bool) $merchant->is_verified,
+                'business_category' => $businessCategory['subcategory_label'] ?? $businessCategory['label'] ?? null,
+                'followers_count' => $merchant->followers()->count(),
+                'is_following' => false,
+                'is_owner' => (bool) ($request->user() && (int) $request->user()->id === (int) $merchant->user_id),
+            ],
+            'storefront_settings' => $storefrontSetting ? [
+                'section_order' => $storefrontSetting->section_order,
+                'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService, $merchant->id),
+                'custom_sections' => $this->enrichCustomSections($storefrontSetting->custom_sections, $linkPreviewService, $merchant->id),
+                'hidden_sections' => $storefrontSetting->hidden_sections,
+                'featured_product_id' => $storefrontSetting->featured_product_id,
+                'item_layouts' => $storefrontSetting->item_layouts ?? [],
+                'section_items' => $storefrontSetting->section_items ?? [],
+                'hidden_item_keys' => $storefrontSetting->hidden_item_keys ?? [],
+                'allow_post_comments' => (bool) ($storefrontSetting->allow_post_comments ?? true),
+                'allow_post_reactions' => (bool) ($storefrontSetting->allow_post_reactions ?? true),
+                'service_hours' => $storefrontSetting->service_hours ?? [],
+                'service_timezone' => $storefrontSetting->service_timezone,
+                'service_area_type' => $storefrontSetting->service_area_type,
+                'service_locations' => $storefrontSetting->service_locations ?? [],
+            ] : null,
+            'posts' => PostResource::collection($posts)->response()->getData(true),
+        ];
+
+        if ($profileOnly) {
+            return response()->json($payload);
+        }
 
         $products = Product::where('merchant_id', $merchant->id)
             ->whereHas('postTags.post', function ($post): void {
@@ -114,57 +156,177 @@ class MiniStoreController extends Controller
         $productDiscovery = $products->mapWithKeys(function (Product $product) {
             return [$product->id => $this->productDiscoverySignals($product)];
         });
-
-        $storefrontSetting = $merchant->storefrontSetting;
+        $offerCounts = $this->publicOfferCounts($merchant);
 
         return response()->json([
-            'merchant' => [
-                'id' => $merchant->id,
-                'name' => $merchant->display_name,
-                'slug' => $merchant->username,
-                'avatar_url' => $merchant->avatar_url,
-                'bio' => $merchant->bio,
-                'is_owner' => (bool) ($request->user() && (int) $request->user()->id === (int) $merchant->user_id),
-            ],
-            'storefront_settings' => $storefrontSetting ? [
-                'section_order' => $storefrontSetting->section_order,
-                'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService, $merchant->id),
-                'custom_sections' => $this->enrichCustomSections($storefrontSetting->custom_sections, $linkPreviewService, $merchant->id),
-                'hidden_sections' => $storefrontSetting->hidden_sections,
-                'featured_product_id' => $storefrontSetting->featured_product_id,
-                'item_layouts' => $storefrontSetting->item_layouts ?? [],
-                'section_items' => $storefrontSetting->section_items ?? [],
-                'hidden_item_keys' => $storefrontSetting->hidden_item_keys ?? [],
-                'allow_post_comments' => (bool) ($storefrontSetting->allow_post_comments ?? true),
-                'allow_post_reactions' => (bool) ($storefrontSetting->allow_post_reactions ?? true),
-                'service_hours' => $storefrontSetting->service_hours ?? [],
-                'service_timezone' => $storefrontSetting->service_timezone,
-                'service_area_type' => $storefrontSetting->service_area_type,
-                'service_locations' => $storefrontSetting->service_locations ?? [],
-            ] : null,
+            ...$payload,
+            'commerce_stats' => array_merge(['posts' => $posts->total()], $offerCounts),
             'products' => ProductResource::collection($products),
             'product_discovery' => $productDiscovery,
             'content_items' => ContentItemResource::collection($contentItems),
             'bundles' => BundleResource::collection($bundles),
             'subscription_plans' => SubscriptionPlanResource::collection($subscriptionPlans),
             'monetization_summary' => $monetizationSummary,
-            'posts' => PostResource::collection($posts)->response()->getData(true),
+            'offer_counts' => $offerCounts,
         ]);
     }
 
     /**
+     * GET /api/merchant/{slug}/offers
+     * In-app shop: all public sellable types and merchant offer surfaces.
+     */
+    public function offers(Request $request, string $merchantSlug): JsonResponse
+    {
+        $merchant = Merchant::where('username', $merchantSlug)->firstOrFail();
+        $type = (string) $request->query('type', 'all');
+        $businessCategory = $merchant->businessCategory();
+
+        $payload = [
+            'merchant' => [
+                'id' => $merchant->id,
+                'name' => $merchant->display_name,
+                'slug' => $merchant->username,
+                'avatar_url' => $merchant->avatar_url,
+                'bio' => $merchant->bio,
+                'is_verified' => (bool) $merchant->is_verified,
+                'business_category' => $businessCategory['subcategory_label'] ?? $businessCategory['label'] ?? null,
+                'followers_count' => $merchant->followers()->count(),
+                'is_following' => false,
+            ],
+            'offer_counts' => $this->publicOfferCounts($merchant),
+        ];
+
+        if ($type === 'content') {
+            $contentItems = ContentItem::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('visibility', 'published')
+                ->where('moderation_status', 'approved')
+                ->latest()
+                ->paginate(24);
+            $payload['content_items'] = ContentItemResource::collection($contentItems)->response()->getData(true);
+
+            return response()->json($payload);
+        }
+
+        if ($type === 'bundle') {
+            $bundles = Bundle::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('status', 'published')
+                ->with('items')
+                ->latest()
+                ->paginate(24);
+            $payload['bundles'] = BundleResource::collection($bundles)->response()->getData(true);
+
+            return response()->json($payload);
+        }
+
+        if ($type === 'membership') {
+            $plans = SubscriptionPlan::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('status', 'active')
+                ->with('items')
+                ->orderBy('tier')
+                ->paginate(24);
+            $payload['subscription_plans'] = SubscriptionPlanResource::collection($plans)->response()->getData(true);
+
+            return response()->json($payload);
+        }
+
+        if ($type === 'offering_group') {
+            $groups = OfferingGroup::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('status', 'published')
+                ->with(['items.product.images', 'items.childGroup'])
+                ->latest()
+                ->paginate(24);
+            $payload['offering_groups'] = $this->offeringGroupCollectionPayload($groups);
+
+            return response()->json($payload);
+        }
+
+        if ($type === 'freight_route') {
+            $routes = $this->publicFreightRouteQuery($merchant)
+                ->latest()
+                ->paginate(24);
+            $payload['freight_routes'] = $this->freightRouteCollectionPayload($routes);
+
+            return response()->json($payload);
+        }
+
+        if (in_array($type, ['physical', 'digital', 'service'], true)) {
+            $products = $this->publicCatalogProductQuery($merchant)
+                ->where('type', $type)
+                ->with(['attributes', 'images', 'merchant', 'unitType'])
+                ->latest()
+                ->paginate(24);
+            $payload['products'] = ProductResource::collection($products)->response()->getData(true);
+
+            return response()->json($payload);
+        }
+
+        $payload['content_items'] = ContentItemResource::collection(
+            ContentItem::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('visibility', 'published')
+                ->where('moderation_status', 'approved')
+                ->latest()
+                ->take(24)
+                ->get()
+        );
+        $payload['bundles'] = BundleResource::collection(
+            Bundle::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('status', 'published')
+                ->with('items')
+                ->latest()
+                ->take(24)
+                ->get()
+        );
+        $payload['subscription_plans'] = SubscriptionPlanResource::collection(
+            SubscriptionPlan::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('status', 'active')
+                ->with('items')
+                ->orderBy('tier')
+                ->take(24)
+                ->get()
+        );
+        $payload['offering_groups'] = $this->offeringGroupCollectionPayload(
+            OfferingGroup::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('status', 'published')
+                ->with(['items.product.images', 'items.childGroup'])
+                ->latest()
+                ->take(24)
+                ->get()
+        );
+        $payload['freight_routes'] = $this->freightRouteCollectionPayload(
+            $this->publicFreightRouteQuery($merchant)
+                ->latest()
+                ->take(24)
+                ->get()
+        );
+        $payload['products'] = ProductResource::collection(
+            $this->publicCatalogProductQuery($merchant)
+                ->with(['attributes', 'images', 'merchant', 'unitType'])
+                ->latest()
+                ->take(48)
+                ->get()
+        );
+
+        return response()->json($payload);
+    }
+
+    /**
      * GET /api/merchant/{slug}/catalog
-     * Returns public product offers without feed posts.
+     * Returns buyable Product offers (physical, digital, service) that appear on live feed posts.
+     * Does not include feed posts, paid ContentItems, bundles, or membership plans — those live on the profile feed and mini-store.
      */
     public function catalog(Request $request, string $merchantSlug, LinkPreviewService $linkPreviewService): JsonResponse
     {
         $merchant = Merchant::where('username', $merchantSlug)->firstOrFail();
 
-        $products = Product::query()
-            ->where('merchant_id', $merchant->id)
-            ->whereHas('postTags.post', function ($post): void {
-                $post->whereNull('posts.deleted_at');
-            })
+        $products = $this->publicCatalogProductQuery($merchant)
             ->with(['attributes.brand', 'attributes.model', 'images', 'merchant', 'unitType', 'variants', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
@@ -179,6 +341,8 @@ class MiniStoreController extends Controller
         });
 
         $storefrontSetting = $merchant->storefrontSetting;
+        $businessCategory = $merchant->businessCategory();
+        $catalogStats = $this->publicCatalogStats($merchant);
 
         return response()->json([
             'merchant' => [
@@ -187,13 +351,253 @@ class MiniStoreController extends Controller
                 'slug' => $merchant->username,
                 'avatar_url' => $merchant->avatar_url,
                 'bio' => $merchant->bio,
+                'is_verified' => (bool) $merchant->is_verified,
+                'business_category' => $businessCategory['subcategory_label'] ?? $businessCategory['label'] ?? null,
             ],
+            'catalog_stats' => $catalogStats,
             'storefront_settings' => $storefrontSetting ? [
                 'links' => $this->enrichStorefrontLinks($storefrontSetting->links, $linkPreviewService, $merchant->id),
             ] : null,
             'products' => ProductResource::collection($products)->response()->getData(true),
             'product_discovery' => $productDiscovery,
         ]);
+    }
+
+    /**
+     * @return array{posts: int, physical: int, digital: int, services: int, catalog_total: int}
+     */
+    private function publicCommerceStats(Merchant $merchant, ?int $postsTotal = null): array
+    {
+        if ($postsTotal === null) {
+            $postsTotal = Post::query()
+                ->where('merchant_id', $merchant->id)
+                ->whereNull('deleted_at')
+                ->count();
+        }
+
+        return [
+            'posts' => $postsTotal,
+            ...$this->publicOfferCounts($merchant),
+        ];
+    }
+
+    /**
+     * @return array{physical: int, digital: int, services: int, catalog_total: int, content: int, bundles: int, memberships: int, offerings: int, freight_routes: int, shop_total: int}
+     */
+    private function publicOfferCounts(Merchant $merchant): array
+    {
+        $catalogStats = $this->publicCatalogStats($merchant);
+
+        $content = ContentItem::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('visibility', 'published')
+            ->where('moderation_status', 'approved')
+            ->count();
+
+        $bundles = Bundle::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('status', 'published')
+            ->count();
+
+        $memberships = SubscriptionPlan::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('status', 'active')
+            ->count();
+
+        $offerings = OfferingGroup::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('status', 'published')
+            ->count();
+
+        $freightRoutes = $this->publicFreightRouteQuery($merchant)->count();
+
+        return [
+            ...$catalogStats,
+            'content' => $content,
+            'bundles' => $bundles,
+            'memberships' => $memberships,
+            'offerings' => $offerings,
+            'freight_routes' => $freightRoutes,
+            'shop_total' => $catalogStats['catalog_total'] + $content + $bundles + $memberships + $offerings + $freightRoutes,
+        ];
+    }
+
+    /**
+     * Counts for public catalog: sellable products tagged on live posts, by type.
+     *
+     * @return array{physical: int, digital: int, services: int, catalog_total: int}
+     */
+    private function publicCatalogStats(Merchant $merchant): array
+    {
+        $productBase = $this->publicCatalogProductQuery($merchant);
+
+        $physical = (clone $productBase)->where('type', 'physical')->count();
+        $digital = (clone $productBase)->where('type', 'digital')->count();
+        $services = (clone $productBase)->where('type', 'service')->count();
+
+        return [
+            'physical' => $physical,
+            'digital' => $digital,
+            'services' => $services,
+            'catalog_total' => $physical + $digital + $services,
+        ];
+    }
+
+    private function publicCatalogProductQuery(Merchant $merchant)
+    {
+        return Product::query()
+            ->where('merchant_id', $merchant->id)
+            ->whereHas('postTags.post', function ($post): void {
+                $post->whereNull('posts.deleted_at');
+            });
+    }
+
+    private function publicFreightRouteQuery(Merchant $merchant)
+    {
+        return ForwarderRoute::query()
+            ->where('is_active', true)
+            ->whereHas('forwarder', fn ($query) => $query
+                ->where('merchant_id', $merchant->id)
+                ->where('is_verified', true)
+                ->where('verification_status', 'verified'))
+            ->with([
+                'forwarder:id,merchant_id,name,logo_url',
+                'originLocations.country',
+                'originLocations.state',
+                'originLocations.cityRecord',
+                'destinationLocations.country',
+                'destinationLocations.state',
+                'destinationLocations.cityRecord',
+                'transportModes',
+            ]);
+    }
+
+    private function offeringGroupCollectionPayload($groups): array
+    {
+        $collection = method_exists($groups, 'getCollection') ? $groups->getCollection() : collect($groups);
+        $payload = $collection->map(fn (OfferingGroup $group) => $this->offeringGroupPayload($group))->values()->all();
+
+        if (! $groups instanceof \Illuminate\Pagination\AbstractPaginator) {
+            return $payload;
+        }
+
+        $pagination = $groups->toArray();
+
+        return [
+            ...$pagination,
+            'data' => $payload,
+        ];
+    }
+
+    private function offeringGroupPayload(OfferingGroup $group): array
+    {
+        $items = $group->relationLoaded('items') ? $group->items : collect();
+        $firstImage = $items
+            ->map(fn ($item) => $item->product?->image_url ?? $item->childGroup?->cover_image_url)
+            ->filter()
+            ->first();
+
+        return [
+            'id' => $group->id,
+            'slug' => $group->slug,
+            'title' => $group->title,
+            'description' => $group->description,
+            'cover_image_url' => $group->cover_image_url ?: $firstImage,
+            'group_type' => $group->group_type,
+            'template_key' => $group->template_key,
+            'base_price' => $group->base_price !== null ? (float) $group->base_price : null,
+            'items_count' => $items->count(),
+            'href' => url('/offerings/' . $group->id),
+        ];
+    }
+
+    private function freightRouteCollectionPayload($routes): array
+    {
+        $collection = method_exists($routes, 'getCollection') ? $routes->getCollection() : collect($routes);
+        $payload = $collection->map(fn (ForwarderRoute $route) => $this->freightRoutePayload($route))->values()->all();
+
+        if (! $routes instanceof \Illuminate\Pagination\AbstractPaginator) {
+            return $payload;
+        }
+
+        $pagination = $routes->toArray();
+
+        return [
+            ...$pagination,
+            'data' => $payload,
+        ];
+    }
+
+    private function freightRoutePayload(ForwarderRoute $route): array
+    {
+        $routeRef = $route->route_uid ?: (string) $route->id;
+        $origin = $this->routePlaceName($route->originLocations);
+        $destination = $this->routePlaceName($route->destinationLocations);
+
+        return [
+            'id' => $route->id,
+            'route_uid' => $route->route_uid,
+            'label' => trim(($origin ?: 'Origin') . ' to ' . ($destination ?: 'Destination')),
+            'title' => trim(($origin ?: 'Origin') . ' to ' . ($destination ?: 'Destination')),
+            'origin' => $origin,
+            'destination' => $destination,
+            'origin_locations' => $route->originLocations->map(fn ($location) => $this->routeLocationPayload($location))->values()->all(),
+            'destination_locations' => $route->destinationLocations->map(fn ($location) => $this->routeLocationPayload($location))->values()->all(),
+            'estimate' => $route->estimate,
+            'rates_info' => $route->rates_info,
+            'customer_instructions' => $route->customer_instructions,
+            'transport_modes' => $route->transportModes->pluck('mode')->filter()->values()->all(),
+            'transport_details' => $route->transportModes
+                ->mapWithKeys(fn ($mode) => [
+                    $mode->mode => [
+                        'estimate' => $mode->estimate,
+                        'currency' => $mode->currency,
+                        'price_amount' => $mode->price_amount !== null ? (float) $mode->price_amount : null,
+                        'pricing_model' => $mode->pricing_model,
+                    ],
+                ])
+                ->all(),
+            'forwarder_name' => $route->forwarder?->name,
+            'logo_url' => $route->forwarder?->logo_url,
+            'href' => route('forwarder-routes.show', $routeRef),
+        ];
+    }
+
+    private function routeLocationPayload($location): array
+    {
+        return [
+            'id' => $location?->id,
+            'name' => $location?->name,
+            'address_line' => $location?->address_line,
+            'latitude' => $location?->latitude,
+            'longitude' => $location?->longitude,
+            'country_id' => $location?->country_id,
+            'state_id' => $location?->state_id,
+            'city_id' => $location?->city_id,
+            'city' => $location?->cityRecord?->name ?: $location?->city_name,
+            'state' => $location?->state?->name ?: $location?->state_name,
+            'country' => $location?->country?->name ?: $location?->country_name,
+            'contact_phone' => $location?->contact_phone,
+            'required_fields' => $location?->required_fields ?: [],
+        ];
+    }
+
+    private function routePlaceName($locations): string
+    {
+        $countryNames = $locations->map(fn ($location) => $location->country?->name)->filter()->unique()->values();
+        if ($countryNames->count() === 1) {
+            return $countryNames->first();
+        }
+        if ($countryNames->count() > 1) {
+            return $countryNames->join(', ');
+        }
+
+        $stateNames = $locations->map(fn ($location) => $location->state?->name)->filter()->unique()->values();
+        if ($stateNames->count() > 0) {
+            return $stateNames->join(', ');
+        }
+
+        return $locations->map(fn ($location) => $location->name)->filter()->unique()->join(', ');
     }
 
     private function enrichStorefrontLinks(?array $links, LinkPreviewService $linkPreviewService, ?int $merchantId = null): array

@@ -32,6 +32,7 @@ use App\Services\EntitlementService;
 use App\Services\GalleryImageService;
 use App\Services\MediaUploadService;
 use App\Services\ProductIntelligenceService;
+use App\Services\PulseNotificationService;
 use App\Support\MerchantPermissions;
 use App\Support\ServiceTemplateRegistry;
 use App\Support\GeographyResolver;
@@ -1732,10 +1733,17 @@ class UploadController extends Controller
             $productData['service_subcategory_id'] = $serviceSubcategoryId;
         }
 
+        $previousProductSnapshot = null;
+
         if ($request->filled('product_id')) {
             $product = Product::query()
                 ->where('merchant_id', $merchantProfile->id)
                 ->findOrFail($request->input('product_id'));
+            $previousProductSnapshot = [
+                'available_stock' => (float) $product->available_stock,
+                'effective_price' => $this->productEffectivePrice($product),
+                'has_discount' => $this->productHasDiscount($product),
+            ];
             if (! $product->slug) {
                 $productData['slug'] = Str::slug($request->input('title')) . '-' . time();
             }
@@ -1832,6 +1840,10 @@ class UploadController extends Controller
             $product->locationInventories()->delete();
         }
 
+        if ($previousProductSnapshot) {
+            $this->notifyFollowerProductSignals($merchantProfile, $product->fresh(), $previousProductSnapshot);
+        }
+
         $product->faqs()->where('source', 'merchant')->delete();
         foreach ($productFaqs as $faq) {
             $product->faqs()->create([
@@ -1883,6 +1895,10 @@ class UploadController extends Controller
 
         // 4. Optionally create a Takeer feed post for this product.
         $post = null;
+        $wasAlreadyPostedToFeed = PostProductTag::query()
+            ->where('product_id', $product->id)
+            ->whereHas('post', fn ($query) => $query->where('merchant_id', $merchantProfile->id))
+            ->exists();
         if ($publishToTakeer) {
             $post = Post::create([
                 'merchant_id' => $merchantProfile->id,
@@ -1955,6 +1971,16 @@ class UploadController extends Controller
                 'x_coordinate' => 50, // default center position
                 'y_coordinate' => 50,
             ]);
+
+            if (! $wasAlreadyPostedToFeed) {
+                app(PulseNotificationService::class)->merchantOfferPublishedToFollowers(
+                    $merchantProfile,
+                    $product,
+                    $request->input('type') === 'service' ? 'service' : 'product',
+                    $product->title,
+                    '/product/' . $product->id
+                );
+            }
         }
 
         // Optional: assign digital product to bundle/subscription group for gated access flow
@@ -3043,5 +3069,71 @@ class UploadController extends Controller
         return $user->merchantProfiles()->where('is_default', true)->first()
             ?? $user->merchantProfiles()->first()
             ?? \App\Support\MerchantPermissions::accessibleMerchantsFor($user)->first();
+    }
+
+    private function notifyFollowerProductSignals(Merchant $merchant, Product $product, array $previous): void
+    {
+        $currentStock = (float) $product->available_stock;
+        $currentPrice = $this->productEffectivePrice($product);
+        $currentlyDiscounted = $this->productHasDiscount($product);
+        $service = app(PulseNotificationService::class);
+
+        if ($product->type === 'physical' && (float) ($previous['available_stock'] ?? 0) <= 0 && $currentStock > 0) {
+            $service->merchantProductSignalToFollowers(
+                $merchant,
+                $product,
+                'back_in_stock',
+                $product->title,
+                "{$merchant->display_name} has {$product->title} back in stock.",
+                [
+                    'previous_stock' => (float) ($previous['available_stock'] ?? 0),
+                    'current_stock' => $currentStock,
+                ]
+            );
+        }
+
+        if ($currentPrice > 0 && (float) ($previous['effective_price'] ?? 0) > 0 && $currentPrice < (float) $previous['effective_price']) {
+            $service->merchantProductSignalToFollowers(
+                $merchant,
+                $product,
+                'price_drop',
+                $product->title,
+                "{$merchant->display_name} lowered the price of {$product->title}.",
+                [
+                    'previous_price' => (float) $previous['effective_price'],
+                    'current_price' => $currentPrice,
+                ]
+            );
+        }
+
+        if (! (bool) ($previous['has_discount'] ?? false) && $currentlyDiscounted) {
+            $service->merchantProductSignalToFollowers(
+                $merchant,
+                $product,
+                'discount',
+                $product->title,
+                "{$merchant->display_name} added a discount on {$product->title}.",
+                [
+                    'price' => (float) ($product->price ?? 0),
+                    'discounted_price' => (float) ($product->discounted_price ?? 0),
+                    'compare_at_price' => (float) ($product->compare_at_price ?? 0),
+                ]
+            );
+        }
+    }
+
+    private function productEffectivePrice(Product $product): float
+    {
+        return (float) ($product->discounted_price ?: $product->price ?: 0);
+    }
+
+    private function productHasDiscount(Product $product): bool
+    {
+        $price = (float) ($product->price ?? 0);
+        $discounted = (float) ($product->discounted_price ?? 0);
+        $compareAt = (float) ($product->compare_at_price ?? 0);
+
+        return ($price > 0 && $discounted > 0 && $discounted < $price)
+            || ($compareAt > 0 && $discounted > 0 && $discounted < $compareAt);
     }
 }

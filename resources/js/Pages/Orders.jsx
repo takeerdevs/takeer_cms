@@ -11,9 +11,11 @@ import {
     ExternalLink,
     Library,
     Loader2,
+    PackageCheck,
     ShoppingBag,
     Sparkles,
     Store,
+    Tag,
     CalendarClock,
     CheckCircle2,
     ShieldCheck,
@@ -25,6 +27,9 @@ import {
     RefreshCcw,
     ReceiptText,
     X,
+    Bell,
+    BellOff,
+    TrendingDown,
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -36,6 +41,7 @@ const tabs = [
     { key: 'library', label: 'Library', icon: Library },
     { key: 'cargo', label: 'Cargo', icon: Truck },
     { key: 'memberships', label: 'Memberships', icon: Crown },
+    { key: 'following', label: 'Following', icon: Bell },
     { key: 'pulse', label: 'Pulse', icon: Store },
 ];
 
@@ -67,6 +73,8 @@ export default function Orders() {
     const [pulseLoading, setPulseLoading] = useState(false);
     const [cargoShipments, setCargoShipments] = useState([]);
     const [cargoLoading, setCargoLoading] = useState(false);
+    const [followedStores, setFollowedStores] = useState([]);
+    const [followingLoading, setFollowingLoading] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -105,6 +113,11 @@ export default function Orders() {
     useEffect(() => {
         if (loading || activeTab !== 'cargo') return;
         loadCargoShipments();
+    }, [loading, activeTab]);
+
+    useEffect(() => {
+        if (loading || activeTab !== 'following') return;
+        loadFollowedStores();
     }, [loading, activeTab]);
 
     useEffect(() => {
@@ -264,6 +277,55 @@ export default function Orders() {
             toast.error('Imeshindwa kupakia memberships.');
         } finally {
             setSubscriptionLoading(false);
+        }
+    }
+
+    async function loadFollowedStores() {
+        setFollowingLoading(true);
+        try {
+            const sessionApi = axios.create();
+            delete sessionApi.defaults.headers.common.Authorization;
+            const res = await sessionApi.get('/orders/data/followed-stores');
+            setFollowedStores(res.data?.data || []);
+        } catch (error) {
+            toast.error('Imeshindwa kupakia stores unazofollow.');
+        } finally {
+            setFollowingLoading(false);
+        }
+    }
+
+    async function updateFollowPreferences(slug, preferences) {
+        const current = followedStores;
+        setFollowedStores((rows) => rows.map((row) => (
+            row.merchant?.slug === slug
+                ? { ...row, notification_preferences: { ...row.notification_preferences, ...preferences } }
+                : row
+        )));
+
+        try {
+            const sessionApi = axios.create();
+            delete sessionApi.defaults.headers.common.Authorization;
+            await sessionApi.patch(`/orders/data/followed-stores/${slug}`, {
+                notification_preferences: preferences,
+            });
+        } catch (error) {
+            setFollowedStores(current);
+            toast.error(error.response?.data?.message || 'Could not update preferences.');
+        }
+    }
+
+    async function unfollowStore(slug) {
+        const current = followedStores;
+        setFollowedStores((rows) => rows.filter((row) => row.merchant?.slug !== slug));
+
+        try {
+            const sessionApi = axios.create();
+            delete sessionApi.defaults.headers.common.Authorization;
+            await sessionApi.delete(`/orders/data/followed-stores/${slug}`);
+            toast.success('Store unfollowed.');
+        } catch (error) {
+            setFollowedStores(current);
+            toast.error(error.response?.data?.message || 'Could not unfollow store.');
         }
     }
 
@@ -534,6 +596,39 @@ export default function Orders() {
                     </div>
                 )}
 
+                {activeTab === 'following' && (
+                    <section className="space-y-3">
+                        <div>
+                            <h2 className="text-2xl font-black tracking-tight text-slate-900">Following</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Manage store updates you want to receive from merchants you follow.
+                            </p>
+                        </div>
+
+                        <div className="rounded-[24px] border border-border/70 bg-card overflow-hidden">
+                            {followingLoading ? (
+                                <div className="flex items-center justify-center gap-3 p-8 text-sm font-semibold text-muted-foreground">
+                                    <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+                                    Inapakia stores...
+                                </div>
+                            ) : followedStores.length === 0 ? (
+                                <EmptyPane icon={BellOff} title="No followed stores yet" body="Follow stores from their profile or shop to get posts and offer updates here." compact />
+                            ) : (
+                                <div className="divide-y divide-border/70">
+                                    {followedStores.map((row) => (
+                                        <FollowedStoreRow
+                                            key={row.id}
+                                            row={row}
+                                            onPreferenceChange={updateFollowPreferences}
+                                            onUnfollow={unfollowStore}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                )}
+
                 {activeTab === 'cargo' && (
                     <section className="space-y-4">
                         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -631,6 +726,7 @@ function PulseNotification({ item }) {
         download: Download,
         key: KeyRound,
         message_circle: MessageSquare,
+        package_check: PackageCheck,
         refresh: RefreshCcw,
         receipt: ReceiptText,
         shield_check: ShieldCheck,
@@ -638,6 +734,8 @@ function PulseNotification({ item }) {
         shopping_bag: ShoppingBag,
         sparkles: Sparkles,
         truck: Truck,
+        tag: Tag,
+        trending_down: TrendingDown,
     };
     const Icon = iconMap[item.icon] || Library;
     const toneClass = {
@@ -686,6 +784,93 @@ function PulseNotification({ item }) {
             </div>
 
         </div>
+    );
+}
+
+function FollowedStoreRow({ row, onPreferenceChange, onUnfollow }) {
+    const merchant = row.merchant || {};
+    const preferences = row.notification_preferences || {};
+    const avatarInitial = (merchant.name || merchant.slug || 'S').charAt(0).toUpperCase();
+    const isMuted = preferences.muted === true;
+
+    return (
+        <div className="grid gap-4 p-4 md:grid-cols-[auto_1fr_auto] md:items-center md:p-5">
+            <Link href={`/u/${merchant.slug}`} className="h-14 w-14 overflow-hidden rounded-full border border-border bg-muted">
+                {merchant.avatar_url ? (
+                    <img src={merchant.avatar_url} alt={merchant.name || 'Store'} className="h-full w-full object-cover" />
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center text-lg font-black text-muted-foreground">
+                        {avatarInitial}
+                    </div>
+                )}
+            </Link>
+
+            <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`/u/${merchant.slug}`} className="truncate text-base font-black text-slate-900 hover:text-brand-700">
+                        {merchant.name || merchant.slug}
+                    </Link>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        {Number(merchant.followers_count || 0).toLocaleString()} followers
+                    </span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">@{merchant.slug}</p>
+                {merchant.business_category && (
+                    <p className="mt-1 text-xs font-semibold text-muted-foreground">{merchant.business_category}</p>
+                )}
+                {isMuted && (
+                    <p className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        Muted
+                    </p>
+                )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <PreferenceToggle
+                    label="Posts"
+                    active={!isMuted && preferences.posts !== false}
+                    onClick={() => onPreferenceChange(merchant.slug, { posts: preferences.posts === false })}
+                />
+                <PreferenceToggle
+                    label="Offers"
+                    active={!isMuted && preferences.offers !== false}
+                    onClick={() => onPreferenceChange(merchant.slug, { offers: preferences.offers === false })}
+                />
+                <PreferenceToggle
+                    label="SMS"
+                    active={!isMuted && preferences.sms !== false}
+                    onClick={() => onPreferenceChange(merchant.slug, { sms: preferences.sms === false })}
+                />
+                <PreferenceToggle
+                    label="WhatsApp"
+                    active={!isMuted && preferences.whatsapp !== false}
+                    onClick={() => onPreferenceChange(merchant.slug, { whatsapp: preferences.whatsapp === false })}
+                />
+                <PreferenceToggle
+                    label={isMuted ? 'Unmute' : 'Mute'}
+                    active={isMuted}
+                    onClick={() => onPreferenceChange(merchant.slug, { muted: !isMuted })}
+                />
+                <Button variant="outline" className="rounded-xl" onClick={() => onUnfollow(merchant.slug)}>
+                    Unfollow
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+function PreferenceToggle({ label, active, onClick }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={[
+                'inline-flex h-9 items-center rounded-xl border px-3 text-xs font-black transition-colors',
+                active ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-border bg-background text-muted-foreground',
+            ].join(' ')}
+        >
+            {label}
+        </button>
     );
 }
 

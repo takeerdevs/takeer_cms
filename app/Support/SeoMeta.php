@@ -82,11 +82,15 @@ class SeoMeta
         $surfaceTitle = match ($surface) {
             'profile' => 'Profile',
             'catalog' => 'Catalog',
+            'shop' => 'Shop',
             'feed' => 'Feed',
             'products' => 'Products',
+            'digital' => 'Digital Downloads',
             'downloads' => 'Digital Downloads',
             'services' => 'Services',
             'content' => 'Content',
+            'offerings' => 'Offerings',
+            'freight' => 'Freight Routes',
             'bundles' => 'Bundles',
             'courses' => 'Courses',
             'memberships' => 'Memberships',
@@ -94,9 +98,10 @@ class SeoMeta
         };
         $path = match ($surface) {
             'profile' => "/u/{$merchant->username}",
-            'catalog' => "/u/{$merchant->username}/catalog",
+            'catalog' => "/u/{$merchant->username}/shop/products",
+            'shop' => "/u/{$merchant->username}/shop/all",
             'feed' => "/m/{$merchant->username}/feed",
-            'products', 'downloads', 'services', 'content', 'bundles', 'courses', 'memberships' => "/m/{$merchant->username}/{$surface}",
+            'products', 'digital', 'downloads', 'services', 'content', 'offerings', 'freight', 'bundles', 'courses', 'memberships' => "/u/{$merchant->username}/shop/{$surface}",
             default => "/m/{$merchant->username}",
         };
         $description = $merchant->bio ?: "{$name} sells services, physical products, digital products, and creator offers on Takeer.";

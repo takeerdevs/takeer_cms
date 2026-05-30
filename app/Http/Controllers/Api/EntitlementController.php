@@ -46,6 +46,9 @@ class EntitlementController extends Controller
             'custom_delivery_ready',
             'custom_delivery_revision_requested',
             'custom_delivery_accepted',
+            'followed_merchant_post_published',
+            'followed_merchant_offer_published',
+            'followed_merchant_product_signal',
         ];
 
         $events = PulseNotification::query()
