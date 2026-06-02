@@ -1,5 +1,25 @@
 <?php
 
+$s3Disk = [
+    'driver' => 's3',
+    'key' => env('AWS_ACCESS_KEY_ID'),
+    'secret' => env('AWS_SECRET_ACCESS_KEY'),
+    'region' => env('AWS_DEFAULT_REGION'),
+    'bucket' => env('AWS_PRIVATE_BUCKET', env('AWS_BUCKET')),
+    'url' => env('AWS_PRIVATE_URL', env('AWS_URL')),
+    'endpoint' => env('AWS_ENDPOINT'),
+    'temporary_endpoint' => env('AWS_TEMPORARY_ENDPOINT'),
+    'temporary_url' => env('AWS_TEMPORARY_URL', env('AWS_PRIVATE_URL', env('AWS_URL'))),
+    'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+    'throw' => false,
+    'report' => false,
+];
+
+$publicS3Disk = array_merge($s3Disk, [
+    'bucket' => env('AWS_PUBLIC_BUCKET', env('AWS_BUCKET')),
+    'url' => env('AWS_PUBLIC_URL', env('AWS_URL')),
+]);
+
 return [
 
     /*
@@ -38,7 +58,9 @@ return [
             'report' => false,
         ],
 
-        'public' => [
+        'public' => env('PUBLIC_FILESYSTEM_DISK', 'local') === 's3' ? array_merge($publicS3Disk, [
+            'visibility' => 'public',
+        ]) : [
             'driver' => 'local',
             'root' => storage_path('app/public'),
             'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
@@ -47,18 +69,7 @@ return [
             'report' => false,
         ],
 
-        's3' => [
-            'driver' => 's3',
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_BUCKET'),
-            'url' => env('AWS_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'throw' => false,
-            'report' => false,
-        ],
+        's3' => $s3Disk,
 
     ],
 

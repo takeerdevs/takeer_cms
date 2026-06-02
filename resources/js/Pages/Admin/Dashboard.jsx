@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { Bell, ShieldAlert, Users, ArrowDownToLine, Settings2, TrendingUp, Store, Flag, Shapes, Wallet, ShieldCheck, Tags, Ruler } from 'lucide-react';
+import { Bell, ShieldAlert, Users, ArrowDownToLine, Settings2, TrendingUp, Store, Flag, Shapes, Wallet, ShieldCheck, Tags, Ruler, Activity, Gauge } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
@@ -39,6 +39,8 @@ export default function AdminDashboard() {
         { name: 'Users', href: '/admin/users', icon: Users, desc: 'Manage all platform users' },
         { name: 'Merchants', href: '/admin/merchants', icon: Store, desc: 'Control merchant account access and trust' },
         { name: 'Content Reports', href: '/admin/content-reports', icon: Flag, desc: 'Moderate reported content' },
+        { name: 'System Health', href: '/health', icon: Activity, desc: 'View current platform readiness checks', external: true },
+        { name: 'Horizon', href: '/admin/horizon', icon: Gauge, desc: 'Monitor queues, workers, failed jobs, and throughput', external: true },
         { name: 'Categories', href: '/admin/categories', icon: Shapes, desc: 'Manage category tree and attributes' },
         { name: 'Brands & Models', href: '/admin/brands', icon: Tags, desc: 'Manage reusable brand and model catalog' },
         { name: 'Sellable Units', href: '/admin/sellable-units', icon: Ruler, desc: 'Manage units, conversions, and quick quantities' },
@@ -131,8 +133,8 @@ export default function AdminDashboard() {
                 <div>
                     <h2 className="text-sm font-semibold text-slate-600 uppercase tracking-widest mb-4">Quick Links</h2>
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {quickLinks.map(({ name, href, icon: Icon, desc }) => (
-                            <Link key={href} href={href}>
+                        {quickLinks.map(({ name, href, icon: Icon, desc, external }) => {
+                            const content = (
                                 <Card className="border border-slate-200 bg-white hover:bg-slate-50 transition-colors cursor-pointer shadow-sm">
                                     <CardContent className="p-5 flex items-center gap-4">
                                         <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-200 shrink-0">
@@ -144,8 +146,18 @@ export default function AdminDashboard() {
                                         </div>
                                     </CardContent>
                                 </Card>
-                            </Link>
-                        ))}
+                            );
+
+                            return external ? (
+                                <a key={href} href={href}>
+                                    {content}
+                                </a>
+                            ) : (
+                                <Link key={href} href={href}>
+                                    {content}
+                                </Link>
+                            );
+                        })}
                     </div>
                 </div>
             </div>

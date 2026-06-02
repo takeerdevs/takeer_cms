@@ -6,7 +6,7 @@ import {
     LayoutDashboard, ShieldAlert, Users, ArrowDownToLine,
     Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper,
     ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell, BarChart3, LinkIcon,
-    Tags, Ruler, WalletCards
+    Tags, Ruler, WalletCards, Activity, Gauge
 } from 'lucide-react';
 
 const adminNav = [
@@ -23,6 +23,8 @@ const adminNav = [
     { name: 'Verifications', href: '/admin/verifications', icon: ShieldCheck },
     { name: 'Content Reports', href: '/admin/content-reports', icon: Flag },
     { name: 'Feed Monitor', href: '/admin/feed', icon: Newspaper },
+    { name: 'System Health', href: '/health', icon: Activity, external: true },
+    { name: 'Horizon', href: '/admin/horizon', icon: Gauge, external: true },
     { name: 'Services', href: '/admin/services', icon: Calendar },
     { name: 'Service Categories', href: '/admin/service-categories', icon: Shapes },
     { name: 'Categories', href: '/admin/categories', icon: Shapes },
@@ -96,17 +98,14 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
                     {adminNav.map((item) => {
                         const Icon = item.icon;
                         const isActive = current === item.href;
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={cn(
-                                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                                    isActive
-                                        ? 'bg-brand-50 text-brand-700 border border-brand-200'
-                                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                )}
-                            >
+                        const className = cn(
+                            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                            isActive
+                                ? 'bg-brand-50 text-brand-700 border border-brand-200'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        );
+                        const content = (
+                            <>
                                 <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-brand-700')} />
                                 <span className="flex-1">{item.name}</span>
                                 {item.href === '/admin/attention' && attentionSummary.total > 0 && (
@@ -114,6 +113,24 @@ export default function AdminLayout({ children, title = 'Admin', hideTopBar = fa
                                         {attentionSummary.total > 99 ? '99+' : attentionSummary.total}
                                     </span>
                                 )}
+                            </>
+                        );
+
+                        if (item.external) {
+                            return (
+                                <a key={item.href} href={item.href} className={className}>
+                                    {content}
+                                </a>
+                            );
+                        }
+
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={className}
+                            >
+                                {content}
                             </Link>
                         );
                     })}

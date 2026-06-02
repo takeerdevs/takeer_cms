@@ -1,0 +1,109 @@
+services:
+  app:
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - APP_URL=http://localhost:8000
+      - LOG_LEVEL=debug
+      - APP_OPTIMIZE_ON_BOOT=false
+      - RUN_MIGRATIONS=false
+      - REDIS_CLIENT=phpredis
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/node_modules
+      - ./docker/php/php-dev.ini:/usr/local/etc/php/conf.d/99-dev.ini:ro
+
+  queue:
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - APP_URL=http://localhost:8000
+      - LOG_LEVEL=debug
+      - APP_OPTIMIZE_ON_BOOT=false
+      - REDIS_CLIENT=phpredis
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/node_modules
+      - ./docker/php/php-dev.ini:/usr/local/etc/php/conf.d/99-dev.ini:ro
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan schedule:work
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/node_modules
+      - ./docker/php/php-dev.ini:/usr/local/etc/php/conf.d/99-dev.ini:ro
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - APP_URL=http://localhost:8000
+      - LOG_LEVEL=debug
+      - TRUSTED_PROXIES=*
+      - APP_OPTIMIZE_ON_BOOT=false
+      - HORIZON_PATH=admin/horizon
+      - DB_HOST=pgbouncer
+      - DB_PORT=5432
+      - REDIS_CLIENT=phpredis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SESSION_DRIVER=redis
+      - SESSION_CONNECTION=session
+      - CACHE_STORE=redis
+      - CACHE_PREFIX=takeer_cache
+      - QUEUE_CONNECTION=redis
+      - REDIS_CACHE_CONNECTION=cache
+      - REDIS_CACHE_LOCK_CONNECTION=default
+      - REDIS_QUEUE_CONNECTION=queue
+      - REDIS_QUEUE=default
+      - REDIS_QUEUE_RETRY_AFTER=2100
+      - REDIS_QUEUE_BLOCK_FOR=5
+      - REDIS_DB=0
+      - REDIS_CACHE_DB=1
+      - REDIS_QUEUE_DB=2
+      - REDIS_SESSION_DB=3
+      - "REDIS_PREFIX=takeer:"
+      - FILESYSTEM_DISK=s3
+      - PUBLIC_FILESYSTEM_DISK=s3
+      - AWS_ACCESS_KEY_ID=takeer_minio
+      - AWS_SECRET_ACCESS_KEY=takeer_minio_secret
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_BUCKET=takeer-media
+      - AWS_PRIVATE_BUCKET=takeer-media
+      - AWS_PRIVATE_URL=http://localhost:9000/takeer-media
+      - AWS_PUBLIC_BUCKET=takeer-media
+      - AWS_PUBLIC_URL=http://localhost:9000/takeer-media
+      - AWS_ENDPOINT=http://minio:9000
+      - AWS_TEMPORARY_ENDPOINT=http://localhost:9000
+      - AWS_TEMPORARY_URL=http://localhost:9000/takeer-media
+      - AWS_USE_PATH_STYLE_ENDPOINT=true
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FLARESOLVERR_TIMEOUT=15000
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - takeer_network
+
+  vite:
+    image: node:20-alpine
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_DEV_SERVER_HOST=0.0.0.0
+      - VITE_HMR_HOST=localhost
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/node_modules
+    networks:
+      - takeer_network

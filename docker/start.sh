@@ -28,18 +28,17 @@ if [ "$APP_KEY" = "" ] || [ "$APP_KEY" = "base64:your-production-app-key-here" ]
     php artisan key:generate --force
 fi
 
-# Clear caches
-echo "Clearing caches..."
-php artisan config:clear
-php artisan cache:clear
-php artisan view:clear
-php artisan route:clear
-
-# Cache configurations for better performance
-echo "Caching configurations..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+# Clear and optionally warm framework caches.
+if [ "${APP_OPTIMIZE_ON_BOOT:-true}" = "true" ]; then
+    echo "Warming framework caches..."
+    php artisan optimize:clear
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+else
+    echo "Clearing framework caches..."
+    php artisan optimize:clear
+fi
 
 # Create storage link for Docker environment
 echo "Creating storage link for Docker..."
@@ -49,9 +48,13 @@ rm -f /var/www/html/public/storage
 ln -sf /var/www/html/storage/app/public /var/www/html/public/storage
 echo "Storage link created successfully"
 
-# Run migrations
-echo "Running migrations..."
-php artisan migrate --force
+# Run migrations only from the elected startup container.
+if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+    echo "Running migrations..."
+    php artisan migrate --force
+else
+    echo "Skipping migrations (RUN_MIGRATIONS is not true)"
+fi
 
 # Check if we need to run seeders
 if [ "$RUN_SEEDERS" = "true" ]; then

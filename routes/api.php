@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\UnifiedSearchController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WaitlistController;
+use App\Http\Controllers\HealthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -48,7 +49,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-Route::get('/health', fn() => response()->json(['status' => 'ok']));
+Route::get('/health', [HealthController::class, 'ready']);
 
 
 // ─── PAYMENT GATEWAY CALLBACKS (public — no auth, signature-verified) ─────────

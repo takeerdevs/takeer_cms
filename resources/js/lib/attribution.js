@@ -61,18 +61,14 @@ export function trackAttributionEvent(eventType, extra = {}) {
     });
 
     const json = JSON.stringify(body);
-
-    if (navigator.sendBeacon) {
-        const blob = new Blob([json], { type: 'application/json' });
-        navigator.sendBeacon('/api/analytics/events', blob);
-        return;
-    }
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
     fetch('/api/analytics/events', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
+            ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
         },
         body: json,
         keepalive: true,

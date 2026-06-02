@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Request as HttpRequest;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -23,8 +24,18 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('marketing:sms-dispatch-scheduled')->everyMinute()->withoutOverlapping();
         $schedule->command('marketing:abandoned-checkouts-dispatch')->everyFifteenMinutes()->withoutOverlapping();
         $schedule->command('analytics:prune')->dailyAt('02:40')->withoutOverlapping();
+        $schedule->command('health:check')->everyFiveMinutes()->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(
+            at: env('TRUSTED_PROXIES', '*'),
+            headers: HttpRequest::HEADER_X_FORWARDED_FOR |
+                HttpRequest::HEADER_X_FORWARDED_HOST |
+                HttpRequest::HEADER_X_FORWARDED_PORT |
+                HttpRequest::HEADER_X_FORWARDED_PROTO |
+                HttpRequest::HEADER_X_FORWARDED_PREFIX
+        );
+
         $middleware->web(prepend: [
             \App\Http\Middleware\CheckUserBan::class,
         ]);

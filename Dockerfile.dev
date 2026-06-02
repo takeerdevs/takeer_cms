@@ -57,8 +57,8 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html/storage \
     && chmod -R 755 /var/www/html/bootstrap/cache
 
-# Expose ports
-EXPOSE 8000
+# Expose the internal HTTP port. The compose proxy owns the public port.
+EXPOSE 80
 
 # Copy init script and start
 COPY docker/laravel-init.sh /usr/local/bin/laravel-init.sh

@@ -238,7 +238,7 @@ class RetailDashboardController extends Controller
                 'order' => $dispute->order ? [
                     'id' => $dispute->order->id,
                     'public_id' => $dispute->order->public_id,
-                    'payment_url' => route('retail-credit-payment.show', ['publicId' => $dispute->order->public_id]),
+                    'payment_url' => route('retail-credit-payment.show', ['publicId' => $dispute->order->public_id], false),
                     'customer_name' => $dispute->order->customer_name,
                     'customer_phone' => $dispute->order->customer_phone,
                     'created_at' => $dispute->order->created_at?->toISOString(),
@@ -495,7 +495,7 @@ class RetailDashboardController extends Controller
         }
 
         return response()->json([
-            'url' => route('retail-credit-payment.show', ['publicId' => $order->public_id]),
+            'url' => route('retail-credit-payment.show', ['publicId' => $order->public_id], false),
             'outstanding_balance' => $outstanding,
         ]);
     }

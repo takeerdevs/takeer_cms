@@ -328,6 +328,7 @@ class MerchantOrderController extends Controller
                 'id' => $order->product->id,
                 'title' => $order->product->title,
                 'type' => $order->product->type,
+                'selling_style' => $order->product->selling_style ?: 'retail',
                 'image_url' => $order->product->image_url,
                 'digital_delivery_type' => $order->product->digital_delivery_type,
                 'digital_content_type' => $order->product->digital_content_type,
@@ -1325,16 +1326,24 @@ class MerchantOrderController extends Controller
         $validated = $request->validate([
             'unit_price' => 'nullable|numeric|min:0',
             'shipping_fee' => 'nullable|numeric|min:0',
+            'deposit_percent' => 'nullable|numeric|min:0|max:100',
+            'deposit_amount' => 'nullable|numeric|min:0',
+            'balance_due' => 'nullable|string|in:before_production,before_delivery,on_delivery_confirmation,manual',
+            'production_lead_time_days' => 'nullable|integer|min:0|max:3650',
+            'inspection_required' => 'nullable|boolean',
+            'payment_terms_note' => 'nullable|string|max:2000',
+            'customization_note' => 'nullable|string|max:2000',
             'message' => 'nullable|string|max:500',
         ]);
 
         $previousShippingFee = $order->shipping_fee !== null ? (float) $order->shipping_fee : null;
         $previousTotalPaid = (float) ($order->total_paid ?? 0);
         $isServiceOrder = $order->product?->isService();
+        $isB2BOrder = $order->product?->isPhysical() && in_array($order->product?->selling_style ?: 'retail', ['wholesale', 'both'], true);
         if ($isServiceOrder && !isset($validated['unit_price']) && isset($validated['shipping_fee'])) {
             $validated['unit_price'] = $validated['shipping_fee'];
         }
-        if (!$isServiceOrder && !isset($validated['shipping_fee'])) {
+        if (!$isServiceOrder && !$isB2BOrder && !isset($validated['shipping_fee'])) {
             return response()->json(['message' => 'Shipping fee is required for this order.'], 422);
         }
 
@@ -1344,6 +1353,11 @@ class MerchantOrderController extends Controller
         $sellableQuantity = max(0.001, (float) data_get($order->unit_snapshot, 'sellable_quantity', 1));
         $itemsTotal = $isServiceOrder ? $unitPrice : ($unitPrice * ($requestedQuantity / $sellableQuantity));
         $totalPaid = $itemsTotal + $shippingFee;
+        $depositPercent = isset($validated['deposit_percent']) ? (float) $validated['deposit_percent'] : null;
+        $depositAmount = isset($validated['deposit_amount'])
+            ? (float) $validated['deposit_amount']
+            : ($depositPercent !== null ? round($totalPaid * ($depositPercent / 100), 2) : null);
+        $balanceAmount = $depositAmount !== null ? max(0, round($totalPaid - $depositAmount, 2)) : null;
         
         $order->update([
             'unit_price' => $unitPrice,
@@ -1352,19 +1366,30 @@ class MerchantOrderController extends Controller
             'is_inquiry' => true, // Ensure it's treated as inquiry for the quoting flow
             'inquiry_status' => 'quoted',
             'merchant_confirmed_at' => now(),
-            'agreement_snapshot' => [
+            'agreement_snapshot' => array_filter([
+                ...(is_array($order->agreement_snapshot) ? $order->agreement_snapshot : []),
                 'unit_price' => $unitPrice,
                 'shipping_fee' => $shippingFee,
                 'quantity' => (int) max(1, $order->quantity ?: 1),
                 'requested_quantity' => $requestedQuantity,
                 'unit_snapshot' => $order->unit_snapshot,
                 'total_paid' => $totalPaid,
+                'order_mode' => $isB2BOrder ? 'b2b_quote' : ($isServiceOrder ? 'service_quote' : 'retail_quote'),
+                'deposit_percent' => $depositPercent,
+                'deposit_amount' => $depositAmount,
+                'balance_amount' => $balanceAmount,
+                'balance_due' => $validated['balance_due'] ?? data_get($order->agreement_snapshot, 'balance_due'),
+                'production_lead_time_days' => $validated['production_lead_time_days'] ?? data_get($order->agreement_snapshot, 'production_lead_time_days'),
+                'inspection_required' => array_key_exists('inspection_required', $validated) ? (bool) $validated['inspection_required'] : data_get($order->agreement_snapshot, 'inspection_required'),
+                'payment_terms_note' => $validated['payment_terms_note'] ?? data_get($order->agreement_snapshot, 'payment_terms_note'),
+                'customization_note' => $validated['customization_note'] ?? data_get($order->agreement_snapshot, 'customization_note'),
+                'safepay_required' => $isB2BOrder ? true : data_get($order->agreement_snapshot, 'safepay_required'),
                 'delivery_type' => $order->delivery?->delivery_type,
                 'physical_address' => $order->delivery?->physical_address,
                 'notes' => $validated['message'] ?? null,
                 'offered_by' => 'merchant',
                 'offered_at' => now()->toISOString(),
-            ],
+            ], fn ($value) => $value !== null && $value !== ''),
             'agreed_at' => null,
         ]);
 
@@ -1388,6 +1413,9 @@ class MerchantOrderController extends Controller
                 'shipping_fee' => $shippingFee,
                 'previous_total_paid' => $previousTotalPaid,
                 'total_paid' => $totalPaid,
+                'order_mode' => $isB2BOrder ? 'b2b_quote' : null,
+                'deposit_amount' => $depositAmount,
+                'balance_amount' => $balanceAmount,
             ],
             'is_system' => true,
         ]);

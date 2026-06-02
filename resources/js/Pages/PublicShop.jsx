@@ -462,9 +462,10 @@ function ContentRow({ item }) {
 
 function OfferingGroupCard({ group }) {
     const label = offeringGroupLabel(group);
+    const href = localAppHref(group.href) || `/offerings/${group.id}`;
 
     return (
-        <Link href={group.href || `/offerings/${group.id}`} className="group flex min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:border-brand-200 hover:shadow-sm">
+        <Link href={href} className="group flex min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:border-brand-200 hover:shadow-sm">
             <OfferImage imageUrl={group.cover_image_url} title={group.title} icon={Layers} />
             <div className="flex flex-1 flex-col p-3">
                 <p className="text-[11px] font-black uppercase tracking-wide text-teal-700">{label}</p>
@@ -479,6 +480,23 @@ function OfferingGroupCard({ group }) {
             </div>
         </Link>
     );
+}
+
+function localAppHref(href) {
+    if (!href) return null;
+    const value = String(href);
+    if (value.startsWith('/')) return value;
+
+    try {
+        const url = new URL(value);
+        if (url.hostname === window.location.hostname) {
+            return `${url.pathname}${url.search}${url.hash}`;
+        }
+    } catch {
+        return value;
+    }
+
+    return value;
 }
 
 function FreightRouteCard({ route }) {

@@ -198,6 +198,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [mobileSubMethod, setMobileSubMethod] = useState('account'); // 'account', 'other'
     const [couponCode, setCouponCode] = useState('');
     const [isCouponExpanded, setIsCouponExpanded] = useState(false);
+    const [physicalQuantityInput, setPhysicalQuantityInput] = useState('');
     const [servicePricingInputs, setServicePricingInputs] = useState({
         people: '',
         hours: '',
@@ -449,6 +450,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         setResolvedProduct(product);
         setSelectedVariantId(product?.preselected_variant_id ? String(product.preselected_variant_id) : '');
         setVariantFilters(product?.preselected_variant_filters || {});
+        setPhysicalQuantityInput(product?.is_wholesale_enabled ? String(product?.min_order_quantity || product?.sellable_quantity || 1) : '');
     }, [product, isOpen]);
 
     useEffect(() => {
@@ -693,12 +695,16 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const unitType = activeProduct?.unit_type || null;
     const unitSymbol = unitType?.symbol || unitType?.name || 'unit';
     const sellableQuantity = Math.max(0.001, Number(activeProduct?.sellable_quantity || 1));
-    const requestedPhysicalQuantity = sellableQuantity;
+    const isWholesaleProduct = activeProduct?.type === 'physical' && Boolean(activeProduct?.is_wholesale_enabled);
+    const minimumPhysicalQuantity = Math.max(sellableQuantity, Number(activeProduct?.min_order_quantity || sellableQuantity || 1));
+    const requestedPhysicalQuantity = isWholesaleProduct
+        ? Math.max(minimumPhysicalQuantity, Number(physicalQuantityInput || minimumPhysicalQuantity))
+        : sellableQuantity;
     const packageContentQuantity = Number(activeProduct?.package_content_quantity || 0);
     const packageContentUnit = activeProduct?.package_content_unit_type || null;
     const checkoutQuantitySummary = packageContentQuantity && packageContentUnit
         ? '1 package'
-        : `${formatQuantity(sellableQuantity)} ${unitSymbol}`;
+        : `${formatQuantity(requestedPhysicalQuantity)} ${unitSymbol}`;
     const serviceBaseMultiplier = activeProduct?.type === 'service' && !hasExplicitCheckoutPrice
         ? servicePricingMultiplier(selectedServiceOption?.price_display || activeProduct?.service_price_display)
         : 1;
@@ -1041,6 +1047,9 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
 
         if (isPhysicalProduct && !isPickup && (!customerLat || !customerLng)) {
             return toast.error("Tafadhali chagua eneo/mtaa wako kwenye ramani ili tuweze kufikisha mzigo wako kwa usahihi.");
+        }
+        if (isWholesaleProduct && requestedPhysicalQuantity < minimumPhysicalQuantity) {
+            return toast.error(`Minimum wholesale order is ${formatQuantity(minimumPhysicalQuantity)} ${unitSymbol}.`);
         }
 
         if (isOutsideAreaBlocked) {
@@ -1677,6 +1686,31 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                         )}
                                     </div>
                                 </div>
+
+                                {isWholesaleProduct && itemType === 'product' && (
+                                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-emerald-800">
+                                            Wholesale quantity
+                                        </label>
+                                        <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                                            <Input
+                                                type="number"
+                                                min={minimumPhysicalQuantity}
+                                                step={unitType?.allows_decimal ? '0.001' : '1'}
+                                                value={physicalQuantityInput}
+                                                onChange={(e) => setPhysicalQuantityInput(e.target.value)}
+                                                className="h-11 rounded-xl bg-white font-black"
+                                                placeholder={String(minimumPhysicalQuantity)}
+                                            />
+                                            <span className="text-xs font-bold text-emerald-900">
+                                                MOQ {formatQuantity(minimumPhysicalQuantity)} {unitSymbol}
+                                            </span>
+                                        </div>
+                                        <p className="mt-2 text-xs leading-5 text-emerald-900">
+                                            The merchant will send an official Takeer proforma. Payment remains protected in SafePay.
+                                        </p>
+                                    </div>
+                                )}
 
                                 {!isPhysicalProduct && (
                                     <div className="rounded-2xl border border-brand-100 bg-brand-50/40">

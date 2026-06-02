@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
 import PostCard from '@/Components/PostCard';
 import FollowStoreButton from '@/Components/FollowStoreButton';
-import { BadgeCheck, Globe2, Instagram, Link2, Loader2, Mail, MessageCircle, Music2, Send, Youtube } from 'lucide-react';
+import { BadgeCheck, ExternalLink, Globe2, Instagram, Link2, Loader2, Mail, MessageCircle, Music2, Send, Share2, ShoppingBag, Store, Youtube } from 'lucide-react';
 
 const fetcher = (url) => fetch(url, { headers: { Accept: 'application/json' } }).then(res => res.json());
 
@@ -57,68 +57,78 @@ export default function PublicMerchantProfile({ merchantSlug, initialData }) {
             <Head title={`${merchant?.name || 'Biashara'} | Profile`} />
 
             <div className="mx-auto max-w-[640px]">
-                <header className="border-b border-neutral-200/80 bg-background px-5 pb-5 pt-6">
+                <header className="border-b border-neutral-200/80 bg-background px-5 pb-5 pt-7">
                     {isInitialLoading ? (
                         <ProfileHeaderSkeleton />
                     ) : (
-                        <div className="mx-auto max-w-[560px] text-center">
-                            <ProfileAvatar
-                                name={merchant?.name}
-                                avatarUrl={merchant?.avatar_url}
-                            />
+                        <div className="mx-auto max-w-[560px]">
+                            <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-5 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-7">
+                                <ProfileAvatar
+                                    name={merchant?.name}
+                                    avatarUrl={merchant?.avatar_url}
+                                />
 
-                            <div className="mt-3 flex min-w-0 items-center justify-center gap-1.5">
-                                <p className="truncate text-xl font-bold leading-tight text-foreground">
-                                    {merchant?.name || 'Biashara'}
-                                </p>
-                                {merchant?.is_verified && (
-                                    <BadgeCheck
-                                        className="h-5 w-5 shrink-0 text-sky-500"
-                                        aria-label="Verified profile"
-                                    />
-                                )}
+                                <div className="flex min-w-0 flex-col justify-center">
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                        <h1 className="truncate text-2xl font-black leading-tight text-foreground">
+                                            {merchant?.name || 'Biashara'}
+                                        </h1>
+                                        {merchant?.is_verified && (
+                                            <BadgeCheck
+                                                className="h-5 w-5 shrink-0 text-sky-500"
+                                                aria-label="Verified profile"
+                                            />
+                                        )}
+                                    </div>
+                                    <p className="mt-1 truncate text-sm font-semibold text-muted-foreground">@{slug}</p>
+                                </div>
                             </div>
-                            <p className="mt-0.5 text-sm font-medium text-muted-foreground">@{slug}</p>
 
-                            {(merchant?.business_category || merchant?.bio) && (
-                                <div className="mt-3 space-y-1">
+                            {(merchant?.business_category || merchant?.bio || socialLinks.length > 0) && (
+                                <div className="mt-5 space-y-2">
                                     {merchant?.business_category && (
-                                        <p className="text-sm font-medium text-muted-foreground">
+                                        <p className="text-sm font-bold text-foreground">
                                             {merchant.business_category}
                                         </p>
                                     )}
                                     {merchant?.bio && (
-                                        <p className="mx-auto max-w-[460px] whitespace-pre-line text-sm leading-5 text-foreground">
+                                        <p className="whitespace-pre-line text-sm leading-5 text-foreground">
                                             {merchant.bio}
                                         </p>
                                     )}
+                                    <ProfileLinkRow links={socialLinks} />
                                 </div>
                             )}
 
-                            <ProfileLinkRow links={socialLinks} />
-
-                            <div className="mt-5">
+                            <div className="mt-5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
                                 <Link
                                     href={`/u/${slug}/shop/all`}
-                                    className="inline-flex h-9 w-full items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-black text-white transition-colors hover:bg-brand-700"
                                 >
-                                    Shop
+                                    <ShoppingBag className="h-4 w-4" />
+                                    <span>Shop</span>
                                 </Link>
+                                <div className="min-w-0">
+                                    <FollowStoreButton
+                                        merchantSlug={slug}
+                                        initialFollowing={merchant?.is_following}
+                                        initialCount={merchant?.followers_count}
+                                        isOwner={merchant?.is_owner}
+                                        showCount={false}
+                                        className="h-11 w-full rounded-lg"
+                                        labelFollow="Follow"
+                                    />
+                                </div>
+                                <ShareProfileButton slug={slug} />
                             </div>
-                            <div className="mt-2">
-                                <FollowStoreButton
-                                    merchantSlug={slug}
-                                    initialFollowing={merchant?.is_following}
-                                    initialCount={merchant?.followers_count}
-                                    isOwner={merchant?.is_owner}
-                                />
-                            </div>
+
                             <Link
                                 href={`/m/${slug}`}
-                                className="mt-2.5 flex items-center justify-center gap-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-brand-700"
+                                className="mt-3 inline-flex max-w-full items-center gap-1.5 text-xs font-bold text-muted-foreground transition-colors hover:text-brand-700"
                             >
-                                <Link2 className="h-3 w-3" />
-                                Link page · share on social
+                                <Store className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">Open commerce link page</span>
+                                <ExternalLink className="h-3 w-3 shrink-0" />
                             </Link>
                         </div>
                     )}
@@ -158,7 +168,7 @@ function ProfileAvatar({ name, avatarUrl }) {
     const initial = (name || 'T').charAt(0).toUpperCase();
 
     return (
-        <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-neutral-200/90 bg-neutral-100 shadow-sm">
+        <div className="h-[88px] w-[88px] shrink-0 overflow-hidden rounded-full border border-neutral-200/90 bg-neutral-100 shadow-sm sm:h-[120px] sm:w-[120px]">
             {avatarUrl ? (
                 <img src={avatarUrl} alt={name || 'Profile'} className="h-full w-full object-cover" />
             ) : (
@@ -170,19 +180,51 @@ function ProfileAvatar({ name, avatarUrl }) {
     );
 }
 
+function ShareProfileButton({ slug }) {
+    const shareProfile = async () => {
+        const url = `${window.location.origin}/u/${slug}`;
+        if (navigator.share) {
+            try {
+                await navigator.share({ url });
+                return;
+            } catch {
+                return;
+            }
+        }
+        try {
+            await navigator.clipboard.writeText(url);
+        } catch {}
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={shareProfile}
+            title="Share profile"
+            aria-label="Share profile"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-foreground transition-colors hover:bg-neutral-100"
+        >
+            <Share2 className="h-4 w-4" />
+        </button>
+    );
+}
+
 function ProfileHeaderSkeleton() {
     return (
-        <>
-            <div className="mx-auto h-24 w-24 animate-pulse rounded-full bg-neutral-100" />
-            <div className="mt-4 flex flex-col items-center space-y-2">
-                <div className="h-5 w-40 animate-pulse rounded bg-neutral-100" />
-                <div className="h-3.5 w-24 animate-pulse rounded bg-neutral-100" />
-                <div className="h-3 w-52 animate-pulse rounded bg-neutral-100" />
+        <div className="mx-auto max-w-[560px]">
+            <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-5 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-7">
+                <div className="h-[88px] w-[88px] animate-pulse rounded-full bg-neutral-100 sm:h-[120px] sm:w-[120px]" />
+                <div className="flex flex-col justify-center space-y-3">
+                    <div className="h-6 w-44 animate-pulse rounded bg-neutral-100" />
+                    <div className="h-4 w-24 animate-pulse rounded bg-neutral-100" />
+                </div>
             </div>
-            <div className="mt-5">
-                <div className="h-9 w-full animate-pulse rounded-full bg-neutral-100" />
+            <div className="mt-5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2">
+                <div className="h-11 animate-pulse rounded-lg bg-neutral-100" />
+                <div className="h-11 animate-pulse rounded-lg bg-neutral-100" />
+                <div className="h-11 animate-pulse rounded-lg bg-neutral-100" />
             </div>
-        </>
+        </div>
     );
 }
 

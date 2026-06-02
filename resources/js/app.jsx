@@ -1,8 +1,14 @@
 import './bootstrap';
 import '../css/app.css';
-import { route } from 'ziggy-js';
+import { route as ziggyRoute } from 'ziggy-js';
 
-window.route = route;
+function appRoute(name, params, absolute = false, config) {
+    return ziggyRoute(name, params, absolute, config);
+}
+
+Object.assign(appRoute, ziggyRoute);
+
+window.route = appRoute;
 
 import { createRoot } from 'react-dom/client';
 import { createInertiaApp } from '@inertiajs/react';

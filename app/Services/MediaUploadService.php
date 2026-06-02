@@ -41,10 +41,10 @@ class MediaUploadService
     public function storePublicVideo(UploadedFile $file, $post): string
     {
         // For Feed videos, they are public to East Africa CDN
-        $path = Storage::disk('s3')->putFile('feed/raw', $file, 'public');
+        $path = Storage::disk('public')->putFile('feed/raw', $file, 'public');
 
         // Return raw URL as fallback before HLS completes
-        return Storage::disk('s3')->url($path);
+        return Storage::disk('public')->url($path);
     }
 
     /**
@@ -70,7 +70,7 @@ class MediaUploadService
 
         Storage::disk('public')->put($path, $base64);
 
-        return Storage::url($path);
+        return Storage::disk('public')->url($path);
     }
 
     /**

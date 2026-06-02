@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -38,6 +39,7 @@ class Product extends Model
 
     protected $fillable = [
         'type',
+        'selling_style',
         'module_key',
         'module_details',
         'merchant_id',
@@ -140,6 +142,15 @@ class Product extends Model
         'return_policy_id',
         'min_order_quantity',
         'order_increment',
+        'supply_capacity_quantity',
+        'supply_capacity_period',
+        'wholesale_deposit_mode',
+        'wholesale_deposit_percent',
+        'wholesale_balance_due',
+        'safepay_mobile_money_enabled',
+        'safepay_bank_transfer_enabled',
+        'safepay_wallet_enabled',
+        'safepay_card_enabled',
         'inventory_quantity',
         'views_count',
     ];
@@ -166,6 +177,12 @@ class Product extends Model
             'return_policy_id' => 'integer',
             'min_order_quantity' => 'decimal:3',
             'order_increment' => 'decimal:3',
+            'supply_capacity_quantity' => 'decimal:3',
+            'wholesale_deposit_percent' => 'decimal:2',
+            'safepay_mobile_money_enabled' => 'boolean',
+            'safepay_bank_transfer_enabled' => 'boolean',
+            'safepay_wallet_enabled' => 'boolean',
+            'safepay_card_enabled' => 'boolean',
             'inventory_quantity' => 'decimal:3',
             'buffer_stock' => 'integer',
             'paid_video_size' => 'integer',
@@ -308,6 +325,43 @@ class Product extends Model
     public function images(): HasMany
     {
         return $this->hasMany(ProductImage::class)->orderBy('order');
+    }
+
+    public function productCertificates(): BelongsToMany
+    {
+        return $this->belongsToMany(MerchantProductCertificate::class, 'merchant_product_certificate_product')
+            ->withPivot('public_note')
+            ->withTimestamps();
+    }
+
+    public function pricingTiers(): HasMany
+    {
+        return $this->hasMany(ProductPricingTier::class)->orderBy('sort_order')->orderBy('min_quantity')->orderBy('id');
+    }
+
+    public function leadTimeTiers(): HasMany
+    {
+        return $this->hasMany(ProductLeadTimeTier::class)->orderBy('sort_order')->orderBy('min_quantity')->orderBy('id');
+    }
+
+    public function packagingDetails(): HasMany
+    {
+        return $this->hasMany(ProductPackagingDetail::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function customizationOptions(): HasMany
+    {
+        return $this->hasMany(ProductCustomizationOption::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function specifications(): HasMany
+    {
+        return $this->hasMany(ProductSpecification::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function detailSections(): HasMany
+    {
+        return $this->hasMany(ProductDetailSection::class)->orderBy('sort_order')->orderBy('id');
     }
 
     public function postTags(): HasMany

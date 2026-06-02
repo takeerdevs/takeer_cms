@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { MessageCircle, Send, CornerDownRight, ChevronLeft, Loader2, Share2, MoreHorizontal, ShoppingBag, ShieldCheck, BadgeCheck, Crown, Unlock, X, User, Lock, Boxes, Trash2, Eye, SmilePlus, Utensils, Route, Layers, PlayCircle } from 'lucide-react';
+import { MessageCircle, Send, CornerDownRight, ChevronLeft, Loader2, Share2, MoreHorizontal, ShoppingBag, ShieldCheck, BadgeCheck, Crown, Unlock, X, User, Lock, Boxes, Trash2, Eye, SmilePlus, Utensils, Route, Layers, PlayCircle, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import ShoppablePin from '@/Components/ShoppablePin';
@@ -13,9 +13,11 @@ import LinkifiedText from '@/Components/LinkifiedText';
 import LinkPreviewCard from '@/Components/LinkPreviewCard';
 import VideoPlayer from '@/Components/VideoPlayer';
 import FreightRouteCard from '@/Components/FreightRouteCard';
+import MerchantHoverCard from '@/Components/MerchantHoverCard';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
 import { trackAttributionEvent } from '@/lib/attribution';
 import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
+import { formatQuantity } from '@/lib/productUnits';
 import { toast } from 'sonner';
 
 function CommentItem({ comment, onReply }) {
@@ -658,6 +660,9 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const postHotspots = post.resolved_hotspots || post.hotspots || {};
     const postType = post.post_type || (post.body || post.excerpt ? 'long' : 'short');
     const isLongForm = postType === 'long';
+    const hasPostTitle = Boolean(String(post.title || '').trim());
+    const hasPostExcerpt = Boolean(String(post.excerpt || '').trim());
+    const hasPostCaption = Boolean(String(post.caption || '').trim());
     const shortPresentation = getShortPostPresentation({
         text: post.caption || '',
         bgStyle: post.bg_style,
@@ -692,6 +697,10 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const hasSingleUnlockOption = isRestricted && post.restricted_price !== null;
     const hasPromotableOption = isRestricted && promotables.length > 0;
     const linkPreview = post.link_preview || null;
+    const isLinkPreviewUnavailable = Boolean(linkPreview?.link_unavailable || linkPreview?.tracked_link_status === 'disabled');
+    const unavailableLinkUrls = isLinkPreviewUnavailable
+        ? [linkPreview?.url, linkPreview?.final_url, linkPreview?.tracked_url].filter(Boolean)
+        : [];
     const isForwarderRoutePost = Boolean(post.forwarder_route_snapshot || post.source === 'forwarder_route');
     const forwarderRouteSnapshot = post.forwarder_route_snapshot || {
         id: post.forwarder_route_id || null,
@@ -702,6 +711,8 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
     const forwarderRouteHref = (forwarderRouteSnapshot?.id || post.forwarder_route_id)
         ? `/freight/routes/${forwarderRouteSnapshot?.id || post.forwarder_route_id}`
         : null;
+    const shouldShowDetailCaption = hasPostCaption && !isLongForm && !(!isLongForm && shortPresentation.hasBg);
+    const shouldShowDetailSummary = (hasPostTitle || hasPostExcerpt || shouldShowDetailCaption) && !isForwarderRoutePost;
     const deletedAtLabel = post.deleted_at
         ? new Date(post.deleted_at).toLocaleString(undefined, {
             month: 'short',
@@ -848,13 +859,27 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
         if (attachedProductPriceDisplay === 'package') return `TZS ${productDisplayPrice.toLocaleString()} package`;
         return `TZS ${productDisplayPrice.toLocaleString()}${serviceUnitLabels[attachedProductPriceDisplay] || ''}`;
     })();
+    const attachedProductSellingStyle = attachedProduct?.type === 'physical'
+        ? (attachedProduct?.selling_style || 'retail')
+        : null;
+    const attachedProductIsWholesale = attachedProduct?.type === 'physical'
+        && (Boolean(attachedProduct?.is_wholesale_enabled) || ['wholesale', 'both'].includes(attachedProductSellingStyle));
+    const attachedProductIsWholesaleOnly = attachedProductSellingStyle === 'wholesale';
+    const attachedProductWholesaleBadge = attachedProductIsWholesale
+        ? (attachedProductSellingStyle === 'both' ? 'Retail + Wholesale' : 'Wholesale')
+        : '';
+    const attachedProductMoqLabel = attachedProductIsWholesale && Number(attachedProduct?.min_order_quantity || 0) > 0
+        ? `MOQ ${formatQuantity(attachedProduct.min_order_quantity)} ${attachedProduct?.unit_type?.symbol || attachedProduct?.unit_type?.name || 'units'}`
+        : '';
     const attachedProductCtaLabel = readOnly
         ? 'View'
         : attachedProduct?.has_access
             ? 'Fungua'
             : attachedProductIsService
                 ? (attachedProductServiceMode === 'book_appointment' ? 'Book' : 'View Service')
-                : 'Nunua';
+                : attachedProductIsWholesaleOnly
+                    ? 'Request quote'
+                    : 'Nunua';
     const productHasDiscount = attachedProduct
         ? !attachedProductIsService && Number(attachedProduct.discounted_price) > 0 && Number(attachedProduct.discounted_price) < Number(attachedProduct.price)
         : false;
@@ -904,7 +929,25 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         </div>
                     )}
                     <div className="flex-1 min-w-0">
+                        <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-100">
+                                <ShieldCheck className="h-3 w-3" />
+                                SafePay
+                            </span>
+                            {attachedProductIsWholesale && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white ring-1 ring-slate-800">
+                                    <Boxes className="h-3 w-3" />
+                                    {attachedProductWholesaleBadge}
+                                </span>
+                            )}
+                        </div>
                         <p className="font-bold text-[22px] leading-tight text-foreground truncate">{attachedProduct.title}</p>
+                        {attachedProductMoqLabel && (
+                            <p className="mb-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-800 ring-1 ring-amber-100">
+                                <Package className="h-3 w-3" />
+                                {attachedProductMoqLabel}
+                            </p>
+                        )}
                         {hasVariantPricing ? (
                             <div className="space-y-0.5">
                                 <p className="text-brand-600 dark:text-brand-400 font-black text-2xl leading-none">
@@ -1100,7 +1143,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                         )}
                     </Link>
                     <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5">
+                        <div className="group relative mb-0.5 flex w-fit max-w-full items-center gap-1.5">
                             <Link
                                 href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                                 className="font-bold text-base text-foreground leading-none truncate font-display hover:text-brand-600 transition-colors"
@@ -1108,6 +1151,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                 {post.merchant_profile?.display_name || post.merchant?.name}
                             </Link>
                             {post.merchant_profile?.is_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-blue-500" />}
+                            <MerchantHoverCard merchant={post.merchant_profile || post.merchant} />
                         </div>
                         <div className="flex items-center gap-2">
                             <Link
@@ -1139,26 +1183,28 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                     </div>
                 )}
 
-                {(post.title || post.excerpt || post.caption) && !isForwarderRoutePost && (
+                {shouldShowDetailSummary && (
                     <div className="px-5 pb-6 space-y-3">
-                        {post.title && (
+                        {hasPostTitle && (
                             <h2 className="text-2xl md:text-3xl font-black tracking-tight leading-tight">{post.title}</h2>
                         )}
-                        {post.excerpt && (
+                        {hasPostExcerpt && (
                             <div className="text-sm text-muted-foreground leading-7 whitespace-pre-wrap">
                                 <LinkifiedText
                                     text={post.excerpt}
                                     maxLinkLength={56}
                                     linkClassName="text-brand-600 hover:text-brand-700 underline underline-offset-2 break-all"
+                                    disabledUrls={unavailableLinkUrls}
                                 />
                             </div>
                         )}
-                        {post.caption && !isLongForm && !(!isLongForm && shortPresentation.hasBg) && (
+                        {shouldShowDetailCaption && (
                             <div className={`${isLongForm ? 'text-base leading-relaxed font-medium' : `${shortPresentation.textClass} leading-[1.4]`} whitespace-pre-wrap`}>
                                 <LinkifiedText
                                     text={post.caption}
                                     maxLinkLength={48}
                                     linkClassName="text-brand-600 hover:text-brand-700 underline underline-offset-2 break-all"
+                                    disabledUrls={unavailableLinkUrls}
                                 />
                             </div>
                         )}
@@ -1172,12 +1218,13 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                 )}
 
                 {!isLocked && !isLongForm && shortPresentation.hasBg && (
-                    <div className="mx-5 mb-8 rounded-3xl min-h-[280px] flex items-center justify-center px-8 py-12" style={{ background: shortPresentation.bgValue }}>
-                        <div className={`${shortPresentation.textClass} leading-[1.2] text-center whitespace-pre-wrap`}>
+                    <div className={`mx-5 mb-8 flex items-center justify-center rounded-3xl px-8 py-10 sm:py-12 ${shortPresentation.canvasClass}`} style={{ background: shortPresentation.bgValue }}>
+                        <div className={`${shortPresentation.textClass} ${shortPresentation.lineHeightClass} text-center whitespace-pre-wrap`}>
                             <LinkifiedText
                                 text={post.caption}
                                 maxLinkLength={56}
                                 linkClassName="text-brand-600 hover:text-brand-700 underline underline-offset-2 break-all"
+                                disabledUrls={unavailableLinkUrls}
                             />
                         </div>
                     </div>
@@ -1273,6 +1320,7 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                                     text={post.body}
                                     maxLinkLength={56}
                                     linkClassName="text-brand-600 hover:text-brand-700 underline underline-offset-2 break-all"
+                                    disabledUrls={unavailableLinkUrls}
                                 />
                             </div>
                         )}

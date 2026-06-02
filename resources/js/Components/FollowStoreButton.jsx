@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import axios from 'axios';
-import { Bell, Loader2 } from 'lucide-react';
+import { Bell, Check, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function FollowStoreButton({ merchantSlug, initialFollowing = false, initialCount = 0, isOwner = false }) {
+export default function FollowStoreButton({
+    merchantSlug,
+    initialFollowing = false,
+    initialCount = 0,
+    isOwner = false,
+    variant = 'default',
+    className = '',
+    showCount = true,
+    labelFollow = 'Follow store',
+    labelFollowing = 'Following',
+}) {
     const { auth } = usePage().props;
     const [isFollowing, setIsFollowing] = useState(Boolean(initialFollowing));
     const [followersCount, setFollowersCount] = useState(Number(initialCount || 0));
@@ -22,14 +32,14 @@ export default function FollowStoreButton({ merchantSlug, initialFollowing = fal
                 setFollowersCount(Number(response.data?.followers_count || 0));
                 setOwnedByViewer(Boolean(response.data?.is_owner));
             })
-            .catch(() => {});
+            .catch(() => { });
 
         return () => {
             cancelled = true;
         };
     }, [auth?.user, merchantSlug, isOwner]);
 
-    if (ownedByViewer) return null;
+    if (ownedByViewer || !merchantSlug) return null;
 
     const toggleFollow = async () => {
         if (!auth?.user) {
@@ -53,23 +63,48 @@ export default function FollowStoreButton({ merchantSlug, initialFollowing = fal
         }
     };
 
+    if (variant === 'avatar') {
+        return (
+            <button
+                type="button"
+                onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleFollow();
+                }}
+                disabled={loading}
+                title={isFollowing ? 'Following store' : 'Follow store'}
+                aria-label={isFollowing ? 'Following store' : 'Follow store'}
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-background text-white shadow-sm transition-transform hover:scale-105 disabled:cursor-wait disabled:opacity-70 ${isFollowing ? 'bg-neutral-900' : 'bg-brand-600'} ${className}`}
+            >
+                {loading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : isFollowing ? (
+                    <Check className="h-3.5 w-3.5" />
+                ) : (
+                    <Plus className="h-4 w-4" strokeWidth={3} />
+                )}
+            </button>
+        );
+    }
+
     return (
         <button
             type="button"
             onClick={toggleFollow}
             disabled={loading}
-            className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-full border text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${isFollowing
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${isFollowing
                 ? 'border-neutral-200 bg-white text-foreground hover:bg-neutral-50'
                 : 'border-brand-600 bg-brand-600 text-white hover:bg-brand-700'
-            }`}
+                } ${className}`}
         >
             {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
                 <Bell className="h-4 w-4" />
             )}
-            <span>{isFollowing ? 'Following' : 'Follow store'}</span>
-            {followersCount > 0 && (
+            <span>{isFollowing ? labelFollowing : labelFollow}</span>
+            {showCount && followersCount > 0 && (
                 <span className={isFollowing ? 'text-muted-foreground' : 'text-white/80'}>
                     {formatFollowerCount(followersCount)}
                 </span>

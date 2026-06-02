@@ -109,7 +109,7 @@ class DownloadController extends Controller
 
             return response()->json([
                 'type' => 'live_event',
-                'url' => route('product.show', ['product' => $order->product->slug ?: $order->product->id]),
+                'url' => route('product.show', ['product' => $order->product->slug ?: $order->product->id], false),
                 'digital_content_type' => $order->product->digital_content_type,
                 'digital_usage_license' => $order->product->digital_usage_license,
                 'digital_access_instructions' => $order->product->digital_access_instructions,
@@ -125,7 +125,7 @@ class DownloadController extends Controller
 
             return response()->json([
                 'type' => 'gallery',
-                'url' => route('product.show', ['product' => $order->product->slug ?: $order->product->id]),
+                'url' => route('product.show', ['product' => $order->product->slug ?: $order->product->id], false),
                 'digital_content_type' => $order->product->digital_content_type,
                 'digital_usage_license' => $order->product->digital_usage_license,
                 'digital_access_instructions' => $order->product->digital_access_instructions,
@@ -142,15 +142,15 @@ class DownloadController extends Controller
                 ? route('product.video.hls', [
                     'product' => $order->product->slug ?: $order->product->id,
                     'path' => basename($order->product->premium_video_hls_path),
-                ])
+                ], false)
                 : null;
 
             return response()->json([
                 'type' => 'stream',
                 'stream_kind' => $isAudioStream ? 'audio' : 'video',
                 'url' => $isAudioStream
-                    ? route('product.audio.stream', ['product' => $order->product->slug ?: $order->product->id])
-                    : route('product.video.stream', ['product' => $order->product->slug ?: $order->product->id]),
+                    ? route('product.audio.stream', ['product' => $order->product->slug ?: $order->product->id], false)
+                    : route('product.video.stream', ['product' => $order->product->slug ?: $order->product->id], false),
                 'hls_url' => $hlsUrl,
                 'stream_status' => $isAudioStream ? null : $order->product->premium_video_status,
                 'digital_content_type' => $order->product->digital_content_type,
@@ -295,7 +295,7 @@ class DownloadController extends Controller
         if ($isLiveEvent) {
             return response()->json([
                 'type' => 'live_event',
-                'url' => route('product.show', ['product' => $product->slug ?: $product->id]),
+                'url' => route('product.show', ['product' => $product->slug ?: $product->id], false),
                 'digital_content_type' => $product->digital_content_type,
                 'digital_usage_license' => $product->digital_usage_license,
                 'digital_access_instructions' => $product->digital_access_instructions,
@@ -306,7 +306,7 @@ class DownloadController extends Controller
         if ($isGalleryPack) {
             return response()->json([
                 'type' => 'gallery',
-                'url' => route('product.show', ['product' => $product->slug ?: $product->id]),
+                'url' => route('product.show', ['product' => $product->slug ?: $product->id], false),
                 'digital_content_type' => $product->digital_content_type,
                 'digital_usage_license' => $product->digital_usage_license,
                 'digital_access_instructions' => $product->digital_access_instructions,
@@ -319,15 +319,15 @@ class DownloadController extends Controller
                 ? route('product.video.hls', [
                     'product' => $product->slug ?: $product->id,
                     'path' => basename($product->premium_video_hls_path),
-                ])
+                ], false)
                 : null;
 
             return response()->json([
                 'type' => 'stream',
                 'stream_kind' => $isAudioStream ? 'audio' : 'video',
                 'url' => $isAudioStream
-                    ? route('product.audio.stream', ['product' => $product->slug ?: $product->id])
-                    : route('product.video.stream', ['product' => $product->slug ?: $product->id]),
+                    ? route('product.audio.stream', ['product' => $product->slug ?: $product->id], false)
+                    : route('product.video.stream', ['product' => $product->slug ?: $product->id], false),
                 'hls_url' => $hlsUrl,
                 'stream_status' => $isAudioStream ? null : $product->premium_video_status,
                 'digital_content_type' => $product->digital_content_type,
@@ -849,7 +849,7 @@ class DownloadController extends Controller
             'key' => $license->license_key,
             'status' => $license->status,
             'issued_at' => $license->issued_at?->toISOString(),
-            'offline_license_url' => route('api.orders.license-file', ['order' => $order->id]),
+            'offline_license_url' => route('api.orders.license-file', ['order' => $order->id], false),
         ] : null;
     }
 

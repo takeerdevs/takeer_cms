@@ -49,7 +49,7 @@ class ProductResource extends JsonResource
                     'progress_percent' => $autoGroupSale->progressPercent(),
                     'status' => $autoGroupSale->status,
                     'is_checkout_open' => $autoGroupSale->status === 'successful' || $autoGroupSale->reserved_quantity >= $autoGroupSale->goal_quantity,
-                    'url' => url('/group-sale/'.$autoGroupSale->slug),
+                    'url' => '/group-sale/'.$autoGroupSale->slug,
                 ];
             }
         }
@@ -186,8 +186,48 @@ class ProductResource extends JsonResource
                         ])
                         ->values()
                         ->all(),
-                    'url' => url('/product/'.($product->slug ?: $product->id)),
+                    'url' => '/product/'.($product->slug ?: $product->id),
                 ])
+                ->values()
+                ->all()
+            : [];
+        $productCertificates = $this->relationLoaded('productCertificates')
+            ? $this->productCertificates
+                ->filter(fn ($certificate) => $isOwner || $certificate->isPubliclyVisible())
+                ->map(function ($certificate) use ($isOwner) {
+                    $documentUrl = null;
+                    $path = Str::after((string) $certificate->document_url, 'private://');
+
+                    if ($path !== '' && ($isOwner || $certificate->visibility === 'public_file')) {
+                        try {
+                            $documentUrl = app(\App\Services\MediaUploadService::class)->getSignedUrl($path);
+                        } catch (\Throwable) {
+                            $documentUrl = null;
+                        }
+                    }
+
+                    return [
+                        'id' => $certificate->id,
+                        'title' => $certificate->title,
+                        'certificate_type' => $certificate->certificate_type,
+                        'description' => $certificate->description,
+                        'document_number' => $certificate->document_number,
+                        'issuer' => $certificate->issuer,
+                        'authority' => $certificate->authority,
+                        'issued_at' => $certificate->issued_at?->toDateString(),
+                        'expires_at' => $certificate->expires_at?->toDateString(),
+                        'visibility' => $certificate->visibility,
+                        'status' => $certificate->status,
+                        'display_status' => match ($certificate->status) {
+                            'verified' => 'Takeer verified',
+                            'pending_review' => 'Pending Takeer review',
+                            'rejected' => 'Rejected',
+                            'expired' => 'Expired',
+                            default => 'Merchant provided',
+                        },
+                        'document_url' => $documentUrl,
+                    ];
+                })
                 ->values()
                 ->all()
             : [];
@@ -197,6 +237,8 @@ class ProductResource extends JsonResource
             'title' => $this->title,
             'description' => $this->description,
             'type' => $this->type,
+            'selling_style' => $this->type === 'physical' ? ($this->selling_style ?: 'retail') : null,
+            'is_wholesale_enabled' => $this->type === 'physical' && in_array($this->selling_style ?: 'retail', ['wholesale', 'both'], true),
             'created_by' => $this->creatorPayload(),
             'has_access' => $hasAccess,
             'latest_order_id' => $latestOrderId,
@@ -231,6 +273,81 @@ class ProductResource extends JsonResource
             'package_content_items' => $this->package_content_items ?: [],
             'min_order_quantity' => $this->min_order_quantity !== null ? (float) $this->min_order_quantity : null,
             'order_increment' => $this->order_increment !== null ? (float) $this->order_increment : null,
+            'supply_capacity' => $this->type === 'physical' ? [
+                'quantity' => $this->supply_capacity_quantity !== null ? (float) $this->supply_capacity_quantity : null,
+                'period' => $this->supply_capacity_period,
+            ] : null,
+            'wholesale_payment_terms' => $this->type === 'physical' ? [
+                'deposit_mode' => $this->wholesale_deposit_mode ?: 'quote_based',
+                'deposit_percent' => $this->wholesale_deposit_percent !== null ? (float) $this->wholesale_deposit_percent : null,
+                'balance_due' => $this->wholesale_balance_due ?: 'before_delivery',
+                'safepay_methods' => collect([
+                    'mobile_money' => (bool) ($this->safepay_mobile_money_enabled ?? true),
+                    'bank_transfer' => (bool) ($this->safepay_bank_transfer_enabled ?? true),
+                    'wallet' => (bool) ($this->safepay_wallet_enabled ?? true),
+                    'card' => (bool) ($this->safepay_card_enabled ?? false),
+                ])->filter()->keys()->values()->all(),
+            ] : null,
+            'pricing_tiers' => $this->whenLoaded('pricingTiers', fn () => $this->pricingTiers->map(fn ($tier) => [
+                'id' => $tier->id,
+                'min_quantity' => (float) $tier->min_quantity,
+                'max_quantity' => $tier->max_quantity !== null ? (float) $tier->max_quantity : null,
+                'unit_price' => (float) $tier->unit_price,
+                'currency' => $tier->currency ?: 'TZS',
+                'label' => $tier->label,
+                'sort_order' => (int) $tier->sort_order,
+            ])->values()->all()),
+            'lead_time_tiers' => $this->whenLoaded('leadTimeTiers', fn () => $this->leadTimeTiers->map(fn ($tier) => [
+                'id' => $tier->id,
+                'min_quantity' => (float) $tier->min_quantity,
+                'max_quantity' => $tier->max_quantity !== null ? (float) $tier->max_quantity : null,
+                'lead_time_days' => $tier->lead_time_days !== null ? (int) $tier->lead_time_days : null,
+                'label' => $tier->label,
+                'sort_order' => (int) $tier->sort_order,
+            ])->values()->all()),
+            'packaging_details' => $this->whenLoaded('packagingDetails', fn () => $this->packagingDetails->map(fn ($detail) => [
+                'id' => $detail->id,
+                'selling_units' => $detail->selling_units,
+                'package_quantity' => $detail->package_quantity !== null ? (float) $detail->package_quantity : null,
+                'package_unit' => $detail->package_unit,
+                'package_weight_kg' => $detail->package_weight_kg !== null ? (float) $detail->package_weight_kg : null,
+                'package_length_cm' => $detail->package_length_cm !== null ? (float) $detail->package_length_cm : null,
+                'package_width_cm' => $detail->package_width_cm !== null ? (float) $detail->package_width_cm : null,
+                'package_height_cm' => $detail->package_height_cm !== null ? (float) $detail->package_height_cm : null,
+                'notes' => $detail->notes,
+                'sort_order' => (int) $detail->sort_order,
+            ])->values()->all()),
+            'customization_options' => $this->whenLoaded('customizationOptions', fn () => $this->customizationOptions->map(fn ($option) => [
+                'id' => $option->id,
+                'name' => $option->name,
+                'description' => $option->description,
+                'min_order_quantity' => $option->min_order_quantity !== null ? (float) $option->min_order_quantity : null,
+                'fee_type' => $option->fee_type ?: 'quote',
+                'fee_amount' => $option->fee_amount !== null ? (float) $option->fee_amount : null,
+                'currency' => $option->currency ?: 'TZS',
+                'image_url' => $option->image_url,
+                'notes' => $option->notes,
+                'sort_order' => (int) $option->sort_order,
+            ])->values()->all()),
+            'specifications' => $this->whenLoaded('specifications', fn () => $this->specifications->map(fn ($specification) => [
+                'id' => $specification->id,
+                'group_name' => $specification->group_name,
+                'attribute_name' => $specification->attribute_name,
+                'attribute_value' => $specification->attribute_value,
+                'is_filterable' => (bool) $specification->is_filterable,
+                'sort_order' => (int) $specification->sort_order,
+            ])->values()->all()),
+            'detail_sections' => $this->whenLoaded('detailSections', fn () => $this->detailSections
+                ->filter(fn ($section) => $isOwner || $section->is_visible)
+                ->map(fn ($section) => [
+                    'id' => $section->id,
+                    'section_type' => $section->section_type ?: 'text',
+                    'title' => $section->title,
+                    'body' => $section->body,
+                    'image_url' => $section->image_url,
+                    'is_visible' => (bool) $section->is_visible,
+                    'sort_order' => (int) $section->sort_order,
+                ])->values()->all()),
             'unit_type' => $this->product_unit_type_id ? [
                 'id' => $this->product_unit_type_id,
                 'name' => $this->unitType?->name,
@@ -280,10 +397,10 @@ class ProductResource extends JsonResource
                 'key' => $softwareLicenseKey->license_key,
                 'status' => $softwareLicenseKey->status,
                 'issued_at' => $softwareLicenseKey->issued_at?->toISOString(),
-                'offline_license_url' => $latestOrderId ? route('api.orders.license-file', ['order' => $latestOrderId]) : null,
+                'offline_license_url' => $latestOrderId ? route('api.orders.license-file', ['order' => $latestOrderId], false) : null,
             ] : null,
             'document_reader' => $canReadDocument ? [
-                'url' => route('product.document.read', ['product' => $this->slug ?: $this->id]),
+                'url' => route('product.document.read', ['product' => $this->slug ?: $this->id], false),
                 'name' => $basename ? urldecode($basename) : 'Document.pdf',
                 'mime' => 'application/pdf',
             ] : null,
@@ -298,17 +415,17 @@ class ProductResource extends JsonResource
                 'mime' => $release->mime,
                 'size' => $release->size !== null ? (int) $release->size : null,
                 'download_url' => $canExposeDigitalDelivery
-                    ? route('product.releases.download', ['product' => $this->slug ?: $this->id, 'release' => $release->id])
+                    ? route('product.releases.download', ['product' => $this->slug ?: $this->id, 'release' => $release->id], false)
                     : null,
             ])->values()->all() : [],
             'allow_download' => (bool) ($this->allow_download ?? true),
             'premium_video' => $canViewPremiumVideo ? [
-                'url' => route('product.video.stream', ['product' => $this->slug ?: $this->id]),
+                'url' => route('product.video.stream', ['product' => $this->slug ?: $this->id], false),
                 'hls_url' => $this->premium_video_hls_path
                     ? route('product.video.hls', [
                         'product' => $this->slug ?: $this->id,
                         'path' => basename($this->premium_video_hls_path),
-                    ])
+                    ], false)
                     : null,
                 'status' => $this->premium_video_status,
                 'processing_error' => $isOwner ? $this->premium_video_error : null,
@@ -317,16 +434,16 @@ class ProductResource extends JsonResource
                 'duration_seconds' => $this->paid_video_duration_seconds !== null ? (int) $this->paid_video_duration_seconds : null,
             ] : null,
             'premium_audio' => $canViewPremiumAudio ? [
-                'url' => route('product.audio.stream', ['product' => $this->slug ?: $this->id]),
+                'url' => route('product.audio.stream', ['product' => $this->slug ?: $this->id], false),
                 'mime' => $this->paid_audio_mime,
                 'size' => $this->paid_audio_size !== null ? (int) $this->paid_audio_size : null,
                 'duration_seconds' => $this->paid_audio_duration_seconds !== null ? (int) $this->paid_audio_duration_seconds : null,
             ] : null,
             'gallery_pack' => $canViewGalleryPack ? [
                 'items' => $galleryItems->map(fn ($item, $index) => [
-                    'url' => route('product.gallery.item', ['product' => $this->slug ?: $this->id, 'index' => $index]),
+                    'url' => route('product.gallery.item', ['product' => $this->slug ?: $this->id, 'index' => $index], false),
                     'original_url' => ($this->allow_download ?? false) || $isOwner
-                        ? route('product.gallery.original', ['product' => $this->slug ?: $this->id, 'index' => $index])
+                        ? route('product.gallery.original', ['product' => $this->slug ?: $this->id, 'index' => $index], false)
                         : null,
                     'name' => $item['name'] ?? 'Gallery image',
                     'mime' => $item['preview_mime'] ?? $item['mime'] ?? null,
@@ -380,6 +497,7 @@ class ProductResource extends JsonResource
             'service_contact_channel' => $this->service_contact_channel,
             'service_contact_value' => $this->service_contact_value,
             'service_trust' => $serviceTrust,
+            'product_certificates' => $productCertificates,
             'service_request_payment' => $this->getAttribute('service_request_payment'),
             'service_template' => $this->type === 'service' ? ServiceTemplateRegistry::forProduct($this->resource) : null,
             'module_key' => $this->module_key,

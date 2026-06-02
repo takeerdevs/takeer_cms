@@ -13,7 +13,8 @@ import {
     FileUp, Phone, MessageCircle, ExternalLink, File, CheckCircle, Loader2,
     Plus, Search, Trash2, Info, Store, ShieldCheck, PlayCircle, Music, Images, Palette,
     BookOpen, FileText, Code2, Layers, KeyRound, Copy, RotateCcw, Ban,
-    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap, Clock3, Ship
+    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap, Clock3, Ship,
+    Factory, Package, ListChecks
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -90,6 +91,33 @@ const AUTO_POST_CHANNELS = [
         connected: false,
     },
 ];
+
+const CERTIFICATE_AUTHORITY_OPTIONS = [
+    'TBS',
+    'TFDA',
+    'SGS',
+    'Intertek',
+    'Bureau Veritas',
+    'TUV',
+    'UL',
+    'CE',
+    'RoHS',
+    'ISO',
+    'Other',
+];
+
+const CERTIFICATE_OWNERSHIP_OPTIONS = [
+    { key: 'supplier_owned', label: 'Supplier-owned' },
+    { key: 'manufacturer_issued', label: 'Manufacturer-issued' },
+    { key: 'product_specific', label: 'Product-specific' },
+    { key: 'business_license', label: 'Business license' },
+    { key: 'quality_standard', label: 'Quality standard' },
+    { key: 'other', label: 'Other' },
+];
+
+const certificateTypeLabel = (value) => (
+    CERTIFICATE_OWNERSHIP_OPTIONS.find((option) => option.key === value)?.label || value
+);
 
 const SERVICE_MODULE_PICKER = [
     {
@@ -381,6 +409,39 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const [returnPolicies, setReturnPolicies] = useState([]);
     const [selectedReturnPolicyId, setSelectedReturnPolicyId] = useState('');
     const [useCustomReturnPolicy, setUseCustomReturnPolicy] = useState(false);
+    const [productCertificates, setProductCertificates] = useState([]);
+    const [selectedProductCertificateIds, setSelectedProductCertificateIds] = useState([]);
+    const [certificateForm, setCertificateForm] = useState({
+        title: '',
+        certificate_type: '',
+        description: '',
+        document_number: '',
+        issuer: '',
+        authority: '',
+        issued_at: '',
+        expires_at: '',
+        visibility: 'public_summary',
+        document: null,
+    });
+    const [isSavingCertificate, setIsSavingCertificate] = useState(false);
+    const [sellingStyle, setSellingStyle] = useState('retail');
+    const [pricingTiers, setPricingTiers] = useState([{ min_quantity: '', max_quantity: '', unit_price: '', label: '' }]);
+    const [leadTimeTiers, setLeadTimeTiers] = useState([{ min_quantity: '', max_quantity: '', lead_time_days: '', label: '' }]);
+    const [packagingDetails, setPackagingDetails] = useState([{ selling_units: '', package_quantity: '', package_unit: '', package_weight_kg: '', package_length_cm: '', package_width_cm: '', package_height_cm: '', notes: '' }]);
+    const [customizationOptions, setCustomizationOptions] = useState([{ name: '', description: '', min_order_quantity: '', fee_type: 'quote', fee_amount: '', notes: '' }]);
+    const [productSpecifications, setProductSpecifications] = useState([{ group_name: '', attribute_name: '', attribute_value: '', is_filterable: true }]);
+    const [productDetailSections, setProductDetailSections] = useState([{ section_type: 'text', title: '', body: '', image_url: '', is_visible: true }]);
+    const [supplyCapacityQuantity, setSupplyCapacityQuantity] = useState('');
+    const [supplyCapacityPeriod, setSupplyCapacityPeriod] = useState('month');
+    const [wholesaleDepositMode, setWholesaleDepositMode] = useState('quote_based');
+    const [wholesaleDepositPercent, setWholesaleDepositPercent] = useState('');
+    const [wholesaleBalanceDue, setWholesaleBalanceDue] = useState('before_delivery');
+    const [safePayMethods, setSafePayMethods] = useState({
+        mobile_money: true,
+        bank_transfer: true,
+        wallet: true,
+        card: false,
+    });
     const [minOrderQuantity, setMinOrderQuantity] = useState('');
     const [orderIncrement, setOrderIncrement] = useState('');
     const [locationInventories, setLocationInventories] = useState({}); // { location_id: quantity }
@@ -431,6 +492,78 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setSelectedReturnPolicyId((current) => current || String(policies.find((policy) => policy.is_default)?.id || policies[0]?.id || ''));
         } catch (error) {
             console.error('Failed to load return policies', error);
+        }
+    };
+
+    const fetchProductCertificates = async () => {
+        if (!merchantUsername) return;
+
+        try {
+            const res = await axios.get(`/merchant/${merchantUsername}/product-certificates/api`);
+            setProductCertificates(res.data?.certificates || []);
+        } catch (error) {
+            console.error('Failed to load product certificates', error);
+        }
+    };
+
+    const toggleProductCertificate = (certificateId) => {
+        setSelectedProductCertificateIds((current) => {
+            const id = Number(certificateId);
+            return current.some((value) => Number(value) === id)
+                ? current.filter((value) => Number(value) !== id)
+                : [...current, id];
+        });
+    };
+
+    const resetCertificateForm = () => {
+        setCertificateForm({
+            title: '',
+            certificate_type: '',
+            description: '',
+            document_number: '',
+            issuer: '',
+            authority: '',
+            issued_at: '',
+            expires_at: '',
+            visibility: 'public_summary',
+            document: null,
+        });
+    };
+
+    const saveProductCertificate = async () => {
+        if (!certificateForm.title.trim()) {
+            toast.error('Weka jina la certificate.');
+            return;
+        }
+
+        if (!certificateForm.document) {
+            toast.error('Pakia file ya certificate.');
+            return;
+        }
+
+        const formData = new FormData();
+        Object.entries(certificateForm).forEach(([key, value]) => {
+            if (value !== null && value !== undefined) {
+                formData.append(key, value);
+            }
+        });
+
+        setIsSavingCertificate(true);
+        try {
+            const res = await axios.post(`/merchant/${merchantUsername}/product-certificates/api`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            const certificate = res.data?.certificate;
+            if (certificate) {
+                setProductCertificates((current) => [certificate, ...current]);
+                setSelectedProductCertificateIds((current) => [...new Set([...current, Number(certificate.id)])]);
+            }
+            resetCertificateForm();
+            toast.success(res.data?.message || 'Certificate imeongezwa.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindwa kuhifadhi certificate.');
+        } finally {
+            setIsSavingCertificate(false);
         }
     };
 
@@ -678,6 +811,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         fetchPromotables();
         fetchShippingProfiles();
         fetchReturnPolicies();
+        fetchProductCertificates();
     }, []);
 
     useEffect(() => {
@@ -973,6 +1107,76 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setProductFaqs(Array.isArray(p.faqs) && p.faqs.length > 0
                 ? p.faqs.map((faq) => ({ question: faq.question || '', answer: faq.answer || '', is_published: faq.is_published !== false }))
                 : [{ question: '', answer: '', is_published: true }]);
+            setSelectedProductCertificateIds(Array.isArray(p.product_certificates)
+                ? p.product_certificates.map((certificate) => Number(certificate.id)).filter(Boolean)
+                : []);
+            setSellingStyle(p.selling_style || 'retail');
+            setPricingTiers(Array.isArray(p.pricing_tiers) && p.pricing_tiers.length > 0
+                ? p.pricing_tiers.map((tier) => ({
+                    min_quantity: tier.min_quantity ?? '',
+                    max_quantity: tier.max_quantity ?? '',
+                    unit_price: tier.unit_price ?? '',
+                    label: tier.label || '',
+                }))
+                : [{ min_quantity: '', max_quantity: '', unit_price: '', label: '' }]);
+            setLeadTimeTiers(Array.isArray(p.lead_time_tiers) && p.lead_time_tiers.length > 0
+                ? p.lead_time_tiers.map((tier) => ({
+                    min_quantity: tier.min_quantity ?? '',
+                    max_quantity: tier.max_quantity ?? '',
+                    lead_time_days: tier.lead_time_days ?? '',
+                    label: tier.label || '',
+                }))
+                : [{ min_quantity: '', max_quantity: '', lead_time_days: '', label: '' }]);
+            setPackagingDetails(Array.isArray(p.packaging_details) && p.packaging_details.length > 0
+                ? p.packaging_details.map((detail) => ({
+                    selling_units: detail.selling_units || '',
+                    package_quantity: detail.package_quantity ?? '',
+                    package_unit: detail.package_unit || '',
+                    package_weight_kg: detail.package_weight_kg ?? '',
+                    package_length_cm: detail.package_length_cm ?? '',
+                    package_width_cm: detail.package_width_cm ?? '',
+                    package_height_cm: detail.package_height_cm ?? '',
+                    notes: detail.notes || '',
+                }))
+                : [{ selling_units: '', package_quantity: '', package_unit: '', package_weight_kg: '', package_length_cm: '', package_width_cm: '', package_height_cm: '', notes: '' }]);
+            setCustomizationOptions(Array.isArray(p.customization_options) && p.customization_options.length > 0
+                ? p.customization_options.map((option) => ({
+                    name: option.name || '',
+                    description: option.description || '',
+                    min_order_quantity: option.min_order_quantity ?? '',
+                    fee_type: option.fee_type || 'quote',
+                    fee_amount: option.fee_amount ?? '',
+                    notes: option.notes || '',
+                }))
+                : [{ name: '', description: '', min_order_quantity: '', fee_type: 'quote', fee_amount: '', notes: '' }]);
+            setProductSpecifications(Array.isArray(p.specifications) && p.specifications.length > 0
+                ? p.specifications.map((spec) => ({
+                    group_name: spec.group_name || '',
+                    attribute_name: spec.attribute_name || '',
+                    attribute_value: spec.attribute_value || '',
+                    is_filterable: spec.is_filterable !== false,
+                }))
+                : [{ group_name: '', attribute_name: '', attribute_value: '', is_filterable: true }]);
+            setProductDetailSections(Array.isArray(p.detail_sections) && p.detail_sections.length > 0
+                ? p.detail_sections.map((section) => ({
+                    section_type: section.section_type || 'text',
+                    title: section.title || '',
+                    body: section.body || '',
+                    image_url: section.image_url || '',
+                    is_visible: section.is_visible !== false,
+                }))
+                : [{ section_type: 'text', title: '', body: '', image_url: '', is_visible: true }]);
+            setSupplyCapacityQuantity(p.supply_capacity?.quantity ?? '');
+            setSupplyCapacityPeriod(p.supply_capacity?.period || 'month');
+            setWholesaleDepositMode(p.wholesale_payment_terms?.deposit_mode || 'quote_based');
+            setWholesaleDepositPercent(p.wholesale_payment_terms?.deposit_percent ?? '');
+            setWholesaleBalanceDue(p.wholesale_payment_terms?.balance_due || 'before_delivery');
+            setSafePayMethods({
+                mobile_money: (p.wholesale_payment_terms?.safepay_methods || []).includes('mobile_money') || !Array.isArray(p.wholesale_payment_terms?.safepay_methods),
+                bank_transfer: (p.wholesale_payment_terms?.safepay_methods || []).includes('bank_transfer') || !Array.isArray(p.wholesale_payment_terms?.safepay_methods),
+                wallet: (p.wholesale_payment_terms?.safepay_methods || []).includes('wallet') || !Array.isArray(p.wholesale_payment_terms?.safepay_methods),
+                card: (p.wholesale_payment_terms?.safepay_methods || []).includes('card'),
+            });
             setQuantity(p.inventory_quantity ?? p.inventory_count);
             setFulfillmentMode(p.fulfillment_mode || 'own_stock');
             setSourceDetails({
@@ -1295,6 +1499,64 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             is_published: faq.is_published !== false,
         }))
         .filter((faq) => faq.question && faq.answer);
+    const wholesaleEnabled = step === 'physical' && ['wholesale', 'both'].includes(sellingStyle);
+    const cleanPricingTiers = pricingTiers
+        .map((tier) => ({
+            min_quantity: tier.min_quantity,
+            max_quantity: tier.max_quantity || null,
+            unit_price: tier.unit_price,
+            currency: 'TZS',
+            label: String(tier.label || '').trim(),
+        }))
+        .filter((tier) => tier.min_quantity !== '' && tier.unit_price !== '');
+    const cleanLeadTimeTiers = leadTimeTiers
+        .map((tier) => ({
+            min_quantity: tier.min_quantity,
+            max_quantity: tier.max_quantity || null,
+            lead_time_days: tier.lead_time_days || null,
+            label: String(tier.label || '').trim(),
+        }))
+        .filter((tier) => tier.min_quantity !== '' && (tier.lead_time_days !== null || tier.label));
+    const cleanPackagingDetails = packagingDetails
+        .map((detail) => ({
+            selling_units: String(detail.selling_units || '').trim(),
+            package_quantity: detail.package_quantity || null,
+            package_unit: String(detail.package_unit || '').trim(),
+            package_weight_kg: detail.package_weight_kg || null,
+            package_length_cm: detail.package_length_cm || null,
+            package_width_cm: detail.package_width_cm || null,
+            package_height_cm: detail.package_height_cm || null,
+            notes: String(detail.notes || '').trim(),
+        }))
+        .filter((detail) => detail.selling_units || detail.package_quantity || detail.notes);
+    const cleanCustomizationOptions = customizationOptions
+        .map((option) => ({
+            name: String(option.name || '').trim(),
+            description: String(option.description || '').trim(),
+            min_order_quantity: option.min_order_quantity || null,
+            fee_type: option.fee_type || 'quote',
+            fee_amount: option.fee_amount || null,
+            currency: 'TZS',
+            notes: String(option.notes || '').trim(),
+        }))
+        .filter((option) => option.name);
+    const cleanProductSpecifications = productSpecifications
+        .map((spec) => ({
+            group_name: String(spec.group_name || '').trim(),
+            attribute_name: String(spec.attribute_name || '').trim(),
+            attribute_value: String(spec.attribute_value || '').trim(),
+            is_filterable: spec.is_filterable !== false,
+        }))
+        .filter((spec) => spec.attribute_name && spec.attribute_value);
+    const cleanProductDetailSections = productDetailSections
+        .map((section) => ({
+            section_type: section.section_type || 'text',
+            title: String(section.title || '').trim(),
+            body: String(section.body || '').trim(),
+            image_url: String(section.image_url || '').trim(),
+            is_visible: section.is_visible !== false,
+        }))
+        .filter((section) => section.title || section.body || section.image_url);
     const selectedReturnPolicy = returnPolicies.find((policy) => String(policy.id) === String(selectedReturnPolicyId)) || null;
     const effectiveRefundPolicy = useCustomReturnPolicy ? refundPolicy : (selectedReturnPolicy?.policy || refundPolicy);
     const effectiveRefundWindowDays = useCustomReturnPolicy ? refundWindowDays : (selectedReturnPolicy?.window_days ?? refundWindowDays);
@@ -1442,6 +1704,218 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             </div>
         </div>
     );
+    const renderWholesaleEditor = () => {
+        if (step !== 'physical') return null;
+
+        const addRow = (setter, row) => setter((prev) => [...prev, row]);
+        const updateRow = (setter, index, updates) => setter((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, ...updates } : row));
+        const removeRow = (setter, index, fallback) => setter((prev) => {
+            const next = prev.filter((_, rowIndex) => rowIndex !== index);
+            return next.length > 0 ? next : [fallback];
+        });
+
+        return (
+            <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                            <Factory className="h-4 w-4 text-brand-700" />
+                            Selling style
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">Use wholesale for industries, manufacturers, distributors, and bulky reseller orders.</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+                        {[
+                            ['retail', 'Retail'],
+                            ['wholesale', 'Wholesale'],
+                            ['both', 'Both'],
+                        ].map(([value, label]) => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => setSellingStyle(value)}
+                                className={`h-10 rounded-lg px-3 text-xs font-black ${sellingStyle === value ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-white'}`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {wholesaleEnabled && (
+                    <div className="space-y-4 border-t border-slate-100 pt-4">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <label className="space-y-1.5">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Supply capacity</span>
+                                <Input type="number" min="0.001" value={supplyCapacityQuantity} onChange={(e) => setSupplyCapacityQuantity(e.target.value)} placeholder="10000" className="h-11" />
+                            </label>
+                            <label className="space-y-1.5">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Capacity period</span>
+                                <select className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={supplyCapacityPeriod} onChange={(e) => setSupplyCapacityPeriod(e.target.value)}>
+                                    <option value="day">Per day</option>
+                                    <option value="week">Per week</option>
+                                    <option value="month">Per month</option>
+                                    <option value="quarter">Per quarter</option>
+                                    <option value="year">Per year</option>
+                                    <option value="order">Per order</option>
+                                </select>
+                            </label>
+                            <label className="space-y-1.5">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Deposit terms</span>
+                                <select className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={wholesaleDepositMode} onChange={(e) => setWholesaleDepositMode(e.target.value)}>
+                                    <option value="quote_based">Quote based</option>
+                                    <option value="deposit_required">Deposit required</option>
+                                    <option value="full_payment">Full SafePay payment</option>
+                                </select>
+                            </label>
+                            <label className="space-y-1.5">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Deposit %</span>
+                                <Input type="number" min="0" max="100" value={wholesaleDepositPercent} onChange={(e) => setWholesaleDepositPercent(e.target.value)} placeholder="30" className="h-11" />
+                            </label>
+                            <label className="space-y-1.5 sm:col-span-2">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Balance due</span>
+                                <select className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={wholesaleBalanceDue} onChange={(e) => setWholesaleBalanceDue(e.target.value)}>
+                                    <option value="before_production">Before production</option>
+                                    <option value="before_delivery">Before delivery</option>
+                                    <option value="on_delivery_confirmation">After buyer confirms delivery</option>
+                                    <option value="manual">Manual agreement</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Takeer SafePay funding methods</p>
+                            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {[
+                                    ['mobile_money', 'Mobile money'],
+                                    ['bank_transfer', 'Takeer bank transfer'],
+                                    ['wallet', 'Wallet'],
+                                    ['card', 'Card later'],
+                                ].map(([key, label]) => (
+                                    <label key={key} className="flex min-h-10 items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 text-xs font-bold text-emerald-900">
+                                        <input type="checkbox" checked={Boolean(safePayMethods[key])} onChange={(e) => setSafePayMethods((prev) => ({ ...prev, [key]: e.target.checked }))} />
+                                        {label}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pricing tiers</p>
+                                <button type="button" onClick={() => addRow(setPricingTiers, { min_quantity: '', max_quantity: '', unit_price: '', label: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
+                            </div>
+                            {pricingTiers.map((tier, index) => (
+                                <div key={`pricing-tier-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_1fr_38px]">
+                                    <Input type="number" min="0.001" value={tier.min_quantity} onChange={(e) => updateRow(setPricingTiers, index, { min_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
+                                    <Input type="number" min="0.001" value={tier.max_quantity} onChange={(e) => updateRow(setPricingTiers, index, { max_quantity: e.target.value })} placeholder="Max qty" className="h-10 bg-white" />
+                                    <Input type="number" min="0" value={tier.unit_price} onChange={(e) => updateRow(setPricingTiers, index, { unit_price: e.target.value })} placeholder="Unit price" className="h-10 bg-white" />
+                                    <Input value={tier.label} onChange={(e) => updateRow(setPricingTiers, index, { label: e.target.value })} placeholder="Label" className="h-10 bg-white" />
+                                    <button type="button" onClick={() => removeRow(setPricingTiers, index, { min_quantity: '', max_quantity: '', unit_price: '', label: '' })} className="h-10 rounded-lg border bg-white text-slate-500">×</button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Lead time tiers</p>
+                                    <button type="button" onClick={() => addRow(setLeadTimeTiers, { min_quantity: '', max_quantity: '', lead_time_days: '', label: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
+                                </div>
+                                {leadTimeTiers.map((tier, index) => (
+                                    <div key={`lead-tier-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_38px]">
+                                        <Input type="number" value={tier.min_quantity} onChange={(e) => updateRow(setLeadTimeTiers, index, { min_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
+                                        <Input type="number" value={tier.lead_time_days} onChange={(e) => updateRow(setLeadTimeTiers, index, { lead_time_days: e.target.value })} placeholder="Days" className="h-10 bg-white" />
+                                        <Input value={tier.label} onChange={(e) => updateRow(setLeadTimeTiers, index, { label: e.target.value })} placeholder="Label" className="h-10 bg-white" />
+                                        <button type="button" onClick={() => removeRow(setLeadTimeTiers, index, { min_quantity: '', max_quantity: '', lead_time_days: '', label: '' })} className="h-10 rounded-lg border bg-white text-slate-500">×</button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Packaging</p>
+                                    <button type="button" onClick={() => addRow(setPackagingDetails, { selling_units: '', package_quantity: '', package_unit: '', package_weight_kg: '', package_length_cm: '', package_width_cm: '', package_height_cm: '', notes: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
+                                </div>
+                                {packagingDetails.map((detail, index) => (
+                                    <div key={`packaging-${index}`} className="space-y-2 rounded-xl border bg-white p-2">
+                                        <div className="grid gap-2 sm:grid-cols-3">
+                                            <Input value={detail.selling_units} onChange={(e) => updateRow(setPackagingDetails, index, { selling_units: e.target.value })} placeholder="Single item / carton" className="h-10" />
+                                            <Input type="number" value={detail.package_quantity} onChange={(e) => updateRow(setPackagingDetails, index, { package_quantity: e.target.value })} placeholder="Qty" className="h-10" />
+                                            <Input value={detail.package_unit} onChange={(e) => updateRow(setPackagingDetails, index, { package_unit: e.target.value })} placeholder="pieces / carton" className="h-10" />
+                                        </div>
+                                        <Input value={detail.notes} onChange={(e) => updateRow(setPackagingDetails, index, { notes: e.target.value })} placeholder="Packaging note" className="h-10" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 flex items-center gap-1"><Package className="h-3.5 w-3.5" /> Customization options</p>
+                                <button type="button" onClick={() => addRow(setCustomizationOptions, { name: '', description: '', min_order_quantity: '', fee_type: 'quote', fee_amount: '', notes: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
+                            </div>
+                            {customizationOptions.map((option, index) => (
+                                <div key={`customization-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_140px_120px_38px]">
+                                    <Input value={option.name} onChange={(e) => updateRow(setCustomizationOptions, index, { name: e.target.value })} placeholder="Logo / packaging" className="h-10 bg-white" />
+                                    <Input value={option.description} onChange={(e) => updateRow(setCustomizationOptions, index, { description: e.target.value })} placeholder="Description" className="h-10 bg-white" />
+                                    <Input type="number" value={option.min_order_quantity} onChange={(e) => updateRow(setCustomizationOptions, index, { min_order_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
+                                    <select value={option.fee_type} onChange={(e) => updateRow(setCustomizationOptions, index, { fee_type: e.target.value })} className="h-10 rounded-xl border bg-white px-2 text-xs font-bold">
+                                        <option value="quote">Quote</option>
+                                        <option value="free">Free</option>
+                                        <option value="per_unit">Per unit</option>
+                                        <option value="fixed">Fixed</option>
+                                    </select>
+                                    <button type="button" onClick={() => removeRow(setCustomizationOptions, index, { name: '', description: '', min_order_quantity: '', fee_type: 'quote', fee_amount: '', notes: '' })} className="h-10 rounded-lg border bg-white text-slate-500">×</button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 flex items-center gap-1"><ListChecks className="h-3.5 w-3.5" /> Specifications</p>
+                                    <button type="button" onClick={() => addRow(setProductSpecifications, { group_name: '', attribute_name: '', attribute_value: '', is_filterable: true })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
+                                </div>
+                                {productSpecifications.map((spec, index) => (
+                                    <div key={`spec-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_38px]">
+                                        <Input value={spec.attribute_name} onChange={(e) => updateRow(setProductSpecifications, index, { attribute_name: e.target.value })} placeholder="Attribute" className="h-10 bg-white" />
+                                        <Input value={spec.attribute_value} onChange={(e) => updateRow(setProductSpecifications, index, { attribute_value: e.target.value })} placeholder="Value" className="h-10 bg-white" />
+                                        <button type="button" onClick={() => removeRow(setProductSpecifications, index, { group_name: '', attribute_name: '', attribute_value: '', is_filterable: true })} className="h-10 rounded-lg border bg-white text-slate-500">×</button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Product detail sections</p>
+                                    <button type="button" onClick={() => addRow(setProductDetailSections, { section_type: 'text', title: '', body: '', image_url: '', is_visible: true })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
+                                </div>
+                                {productDetailSections.map((section, index) => (
+                                    <div key={`detail-section-${index}`} className="space-y-2 rounded-xl border bg-white p-2">
+                                        <div className="grid gap-2 sm:grid-cols-[120px_1fr_38px]">
+                                            <select value={section.section_type} onChange={(e) => updateRow(setProductDetailSections, index, { section_type: e.target.value })} className="h-10 rounded-xl border bg-white px-2 text-xs font-bold">
+                                                <option value="text">Text</option>
+                                                <option value="image">Image</option>
+                                                <option value="image_text">Image + text</option>
+                                                <option value="selling_points">Selling points</option>
+                                                <option value="company_intro">Company intro</option>
+                                                <option value="custom">Custom</option>
+                                            </select>
+                                            <Input value={section.title} onChange={(e) => updateRow(setProductDetailSections, index, { title: e.target.value })} placeholder="Section title" className="h-10" />
+                                            <button type="button" onClick={() => removeRow(setProductDetailSections, index, { section_type: 'text', title: '', body: '', image_url: '', is_visible: true })} className="h-10 rounded-lg border text-slate-500">×</button>
+                                        </div>
+                                        <Textarea value={section.body} onChange={(e) => updateRow(setProductDetailSections, index, { body: e.target.value })} placeholder="Details, selling points, company introduction, FAQ-style text..." className="min-h-20 rounded-xl" />
+                                        <Input value={section.image_url} onChange={(e) => updateRow(setProductDetailSections, index, { image_url: e.target.value })} placeholder="Optional image URL" className="h-10" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
     const physicalLocations = merchantLocations.length > 0 ? merchantLocations : (currentMerchant?.locations || []);
     const servingLocations = physicalLocations.filter((loc) => String(loc.type || 'SHOP').toUpperCase() === 'SHOP' || !loc.type);
     const toggleAvailabilityLocation = (locationId) => {
@@ -2848,6 +3322,20 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             toast.error('Tafadhali weka masaa yanayohitajika kuthibitisha au kupata bidhaa.');
             return;
         }
+        if (wholesaleEnabled) {
+            if (!minOrderQuantity) {
+                toast.error('Wholesale inahitaji minimum order quantity.');
+                return;
+            }
+            if (cleanPricingTiers.length === 0) {
+                toast.error('Ongeza angalau pricing tier moja kwa wholesale.');
+                return;
+            }
+            if (!Object.values(safePayMethods).some(Boolean)) {
+                toast.error('Chagua angalau njia moja ya Takeer SafePay.');
+                return;
+            }
+        }
         if (step === 'physical' && !isFocusedPhysicalModule && fulfillmentMode === 'made_to_order' && availabilityLeadTimeDays === '') {
             toast.error('Tafadhali weka siku ngapi zinahitajika kuandaa bidhaa.');
             return;
@@ -3200,6 +3688,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 availability_location_ids: step === 'service' ? availabilityLocationIds.map((id) => Number(id)).filter(Boolean) : [],
                 publish_targets: autoPostTargets,
                 fulfillment_mode: step === 'physical' ? fulfillmentMode : 'own_stock',
+                selling_style: step === 'physical' ? sellingStyle : 'retail',
                 source_details: step === 'physical' ? sourceDetails : null,
                 availability_lead_time_days: step === 'digital' && digitalDeliveryMode === 'custom_delivery' && availabilityLeadTimeDays !== ''
                     ? Number(availabilityLeadTimeDays)
@@ -3221,10 +3710,30 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 return_policy_id: step === 'physical' && !useCustomReturnPolicy && selectedReturnPolicyId ? Number(selectedReturnPolicyId) : null,
                 min_order_quantity: step === 'physical' && minOrderQuantity !== '' ? Number(minOrderQuantity) : null,
                 order_increment: step === 'physical' && orderIncrement !== '' ? Number(orderIncrement) : null,
+                supply_capacity_quantity: wholesaleEnabled && supplyCapacityQuantity !== '' ? Number(supplyCapacityQuantity) : null,
+                supply_capacity_period: wholesaleEnabled ? supplyCapacityPeriod : null,
+                wholesale_deposit_mode: wholesaleEnabled ? wholesaleDepositMode : 'quote_based',
+                wholesale_deposit_percent: wholesaleEnabled && wholesaleDepositPercent !== '' ? Number(wholesaleDepositPercent) : null,
+                wholesale_balance_due: wholesaleEnabled ? wholesaleBalanceDue : 'before_delivery',
+                safepay_mobile_money_enabled: wholesaleEnabled ? Boolean(safePayMethods.mobile_money) : true,
+                safepay_bank_transfer_enabled: wholesaleEnabled ? Boolean(safePayMethods.bank_transfer) : true,
+                safepay_wallet_enabled: wholesaleEnabled ? Boolean(safePayMethods.wallet) : true,
+                safepay_card_enabled: wholesaleEnabled ? Boolean(safePayMethods.card) : false,
+                pricing_tiers: wholesaleEnabled ? cleanPricingTiers : [],
+                lead_time_tiers: wholesaleEnabled ? cleanLeadTimeTiers : [],
+                packaging_details: wholesaleEnabled ? cleanPackagingDetails : [],
+                customization_options: wholesaleEnabled ? cleanCustomizationOptions : [],
+                product_specifications: wholesaleEnabled ? cleanProductSpecifications : [],
+                product_detail_sections: wholesaleEnabled ? cleanProductDetailSections : [],
                 refund_policy: step === 'physical' ? effectiveRefundPolicy : undefined,
                 refund_window_days: step === 'physical' && effectiveRefundPolicy !== 'final_sale' && effectiveRefundWindowDays !== '' && effectiveRefundWindowDays !== null ? Number(effectiveRefundWindowDays) : null,
                 refund_policy_note: step === 'physical' ? String(effectiveRefundPolicyNote || '').trim() || null : null,
                 faqs: step === 'physical' ? cleanProductFaqs : [],
+                product_certificate_ids: step === 'physical'
+                    ? selectedProductCertificateIds
+                        .map((id) => Number(id))
+                        .filter((id) => productCertificates.some((certificate) => Number(certificate.id) === id))
+                    : [],
                 has_variants: step === 'physical' ? hasVariants : false,
                 variants: publishVariants.map((variant, index) => ({
                     name: variant.name,
@@ -3410,6 +3919,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             facebook: false,
             x: false,
         });
+        setSellingStyle('retail');
+        setPricingTiers([{ min_quantity: '', max_quantity: '', unit_price: '', label: '' }]);
+        setLeadTimeTiers([{ min_quantity: '', max_quantity: '', lead_time_days: '', label: '' }]);
+        setPackagingDetails([{ selling_units: '', package_quantity: '', package_unit: '', package_weight_kg: '', package_length_cm: '', package_width_cm: '', package_height_cm: '', notes: '' }]);
+        setCustomizationOptions([{ name: '', description: '', min_order_quantity: '', fee_type: 'quote', fee_amount: '', notes: '' }]);
+        setProductSpecifications([{ group_name: '', attribute_name: '', attribute_value: '', is_filterable: true }]);
+        setProductDetailSections([{ section_type: 'text', title: '', body: '', image_url: '', is_visible: true }]);
+        setSupplyCapacityQuantity('');
+        setSupplyCapacityPeriod('month');
+        setWholesaleDepositMode('quote_based');
+        setWholesaleDepositPercent('');
+        setWholesaleBalanceDue('before_delivery');
+        setSafePayMethods({ mobile_money: true, bank_transfer: true, wallet: true, card: false });
         setQuantity('');
         setLocationInventories({});
         setAvailabilityLocationIds([]);
@@ -4533,6 +5055,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <Input type="number" placeholder="Mf. 15000" className="h-12 text-lg font-black border-dashed bg-white" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
                                                 </div>
                                             </div>
+                                            {renderWholesaleEditor()}
                                             {renderProductFaqEditor()}
                                             <Button
                                                 className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
@@ -4980,6 +5503,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     </div>
                                                 )}
                                             </div>
+                                            {renderWholesaleEditor()}
                                             {renderProductFaqEditor()}
                                             <Button
                                                 className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
@@ -5186,6 +5710,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 <p className="text-[10px] text-muted-foreground italic">Templates hizi zimewekwa kwenye Settings {'>'} Shipping Profiles.</p>
                                             </div>
                                             {renderDeliveryPromiseOverride()}
+                                            {renderWholesaleEditor()}
                                             {renderProductFaqEditor()}
                                             <Button
                                                 className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
@@ -7626,6 +8151,190 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     </div>
                                 )}
                             </div>
+
+                            {step === 'physical' && (
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 space-y-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                            <div>
+                                                <h3 className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-2">
+                                                    <ShieldCheck className="h-4 w-4" />
+                                                    Product certificates
+                                                </h3>
+                                                <p className="mt-1 text-xs text-blue-800">
+                                                    Attach certificates buyers should see for this item. Private certificates stay hidden.
+                                                </p>
+                                            </div>
+                                            {selectedProductCertificateIds.length > 0 && (
+                                                <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700 border border-blue-100">
+                                                    {selectedProductCertificateIds.length} attached
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {productCertificates.length > 0 ? (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {productCertificates.map((certificate) => {
+                                                    const checked = selectedProductCertificateIds.some((id) => Number(id) === Number(certificate.id));
+                                                    return (
+                                                        <button
+                                                            key={certificate.id}
+                                                            type="button"
+                                                            onClick={() => toggleProductCertificate(certificate.id)}
+                                                            className={`min-h-[74px] rounded-xl border px-3 py-2 text-left transition ${checked ? 'border-blue-500 bg-white text-blue-950 shadow-sm' : 'border-blue-100 bg-white/70 text-slate-700 hover:border-blue-300'}`}
+                                                        >
+                                                            <span className="flex items-start gap-2">
+                                                                <span className={`mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center ${checked ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-transparent'}`}>
+                                                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                                                </span>
+                                                                <span className="min-w-0">
+                                                                    <span className="block text-sm font-black truncate">{certificate.title}</span>
+                                                                    <span className="mt-0.5 block text-[11px] font-semibold text-slate-500 truncate">
+                                                                        {[certificateTypeLabel(certificate.certificate_type), certificate.display_status, certificate.visibility === 'public_file' ? 'file visible' : certificate.visibility === 'public_summary' ? 'summary only' : 'private'].filter(Boolean).join(' / ')}
+                                                                    </span>
+                                                                </span>
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-xl border border-dashed border-blue-200 bg-white/70 px-4 py-3 text-sm font-semibold text-blue-800">
+                                                No product certificates yet. Add one below, then it will be attached to this product.
+                                            </div>
+                                        )}
+
+                                        <div className="rounded-xl border border-blue-100 bg-white p-3 space-y-3">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <label className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Certificate name</span>
+                                                    <Input
+                                                        placeholder="RoHS, CE, TBS, ISO 9001"
+                                                        value={certificateForm.title}
+                                                        onChange={(e) => setCertificateForm((current) => ({ ...current, title: e.target.value }))}
+                                                        className="h-11"
+                                                    />
+                                                </label>
+                                                <label className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Certificate type</span>
+                                                    <select
+                                                        value={certificateForm.certificate_type}
+                                                        onChange={(e) => setCertificateForm((current) => ({ ...current, certificate_type: e.target.value }))}
+                                                        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                    >
+                                                        <option value="">Select type</option>
+                                                        {CERTIFICATE_OWNERSHIP_OPTIONS.map((option) => (
+                                                            <option key={option.key} value={option.key}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </label>
+                                                <label className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Certificate number</span>
+                                                    <Input
+                                                        placeholder="AGC08073250301-C001"
+                                                        value={certificateForm.document_number}
+                                                        onChange={(e) => setCertificateForm((current) => ({ ...current, document_number: e.target.value }))}
+                                                        className="h-11"
+                                                    />
+                                                </label>
+                                                <label className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Certificate authority</span>
+                                                    <select
+                                                        value={certificateForm.authority}
+                                                        onChange={(e) => setCertificateForm((current) => ({ ...current, authority: e.target.value }))}
+                                                        className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+                                                    >
+                                                        <option value="">Select authority</option>
+                                                        {CERTIFICATE_AUTHORITY_OPTIONS.map((authority) => (
+                                                            <option key={authority} value={authority}>{authority}</option>
+                                                        ))}
+                                                    </select>
+                                                </label>
+                                                <label className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Issuer name</span>
+                                                    <Input
+                                                        placeholder="AGC, TBS, SGS Tanzania..."
+                                                        value={certificateForm.issuer}
+                                                        onChange={(e) => setCertificateForm((current) => ({ ...current, issuer: e.target.value }))}
+                                                        className="h-11"
+                                                    />
+                                                </label>
+                                                {certificateForm.authority === 'Other' && (
+                                                    <label className="space-y-1.5">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Other authority</span>
+                                                        <Input
+                                                            placeholder="Write authority name"
+                                                            value={certificateForm.issuer}
+                                                            onChange={(e) => setCertificateForm((current) => ({ ...current, issuer: e.target.value }))}
+                                                            className="h-11"
+                                                        />
+                                                    </label>
+                                                )}
+                                                <label className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Valid from</span>
+                                                    <Input
+                                                        type="date"
+                                                        value={certificateForm.issued_at}
+                                                        onChange={(e) => setCertificateForm((current) => ({ ...current, issued_at: e.target.value }))}
+                                                        className="h-11"
+                                                    />
+                                                </label>
+                                                <label className="space-y-1.5">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Valid until</span>
+                                                    <Input
+                                                        type="date"
+                                                        value={certificateForm.expires_at}
+                                                        onChange={(e) => setCertificateForm((current) => ({ ...current, expires_at: e.target.value }))}
+                                                        className="h-11"
+                                                    />
+                                                </label>
+                                            </div>
+                                            <Textarea
+                                                placeholder="Short public explanation, e.g. Complies with EU safety standard"
+                                                value={certificateForm.description}
+                                                onChange={(e) => setCertificateForm((current) => ({ ...current, description: e.target.value }))}
+                                                className="min-h-[72px]"
+                                            />
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                {[
+                                                    { key: 'public_summary', label: 'Summary only' },
+                                                    { key: 'public_file', label: 'Show file' },
+                                                    { key: 'private', label: 'Private' },
+                                                ].map((option) => (
+                                                    <button
+                                                        key={option.key}
+                                                        type="button"
+                                                        onClick={() => setCertificateForm((current) => ({ ...current, visibility: option.key }))}
+                                                        className={`h-10 rounded-xl border text-sm font-black ${certificateForm.visibility === option.key ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600'}`}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row gap-2">
+                                                <label className="h-11 flex-1 rounded-xl border border-dashed border-blue-200 bg-blue-50/70 px-3 text-sm font-bold text-blue-800 flex items-center gap-2 cursor-pointer">
+                                                    <FileText className="h-4 w-4" />
+                                                    <span className="truncate">{certificateForm.document?.name || 'Upload certificate file'}</span>
+                                                    <input
+                                                        type="file"
+                                                        accept=".jpg,.jpeg,.png,.webp,.pdf"
+                                                        className="hidden"
+                                                        onChange={(e) => setCertificateForm((current) => ({ ...current, document: e.target.files?.[0] || null }))}
+                                                    />
+                                                </label>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="h-11 rounded-xl sm:w-40"
+                                                    onClick={saveProductCertificate}
+                                                    disabled={isSavingCertificate}
+                                                >
+                                                    {isSavingCertificate ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+                                                    Add
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                            )}
 
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                                 <div>

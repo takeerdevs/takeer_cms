@@ -1314,6 +1314,18 @@ function OwnedCard({ entry }) {
     };
     const orderId = entry.source_type === 'order' ? entry.source_id : null;
     const merchantConfirmed = Boolean(orderDetails?.is_merchant_confirmed || orderDetails?.merchant_confirmed_at);
+    const agreementSnapshot = orderDetails?.agreement_snapshot || {};
+    const isB2BOrder = agreementSnapshot?.order_mode === 'b2b_quote'
+        || ['wholesale', 'both'].includes(orderDetails?.product?.selling_style || agreementSnapshot?.selling_style || '');
+    const balanceDueLabel = {
+        before_production: 'Before production',
+        before_delivery: 'Before delivery',
+        on_delivery_confirmation: 'After buyer confirms delivery',
+        manual: 'Manual agreement',
+    }[agreementSnapshot?.balance_due] || 'Before delivery';
+    const depositPercent = Number(agreementSnapshot?.deposit_percent || 0);
+    const depositAmount = Number(agreementSnapshot?.deposit_amount || (depositPercent > 0 ? (Number(orderDetails?.total_paid || 0) * depositPercent / 100) : 0));
+    const balanceAmount = Number(agreementSnapshot?.balance_amount || (depositAmount > 0 ? Math.max(0, Number(orderDetails?.total_paid || 0) - depositAmount) : 0));
     const orderChatUrl = orderDetails?.public_id ? `/chat/${orderDetails.public_id}?acting_as=buyer` : null;
     const targetUrl = String(item.url || item.download_link || '').trim();
     const isLinkDigital = isDigitalProduct && /^[a-z][a-z0-9+\-.]*:\/\//i.test(targetUrl);
@@ -1865,8 +1877,14 @@ function OwnedCard({ entry }) {
                             {/* Inquiry Action for Buyer */}
                             {orderDetails.is_inquiry && orderDetails.inquiry_status === 'pending' && orderDetails.payment_status === 'pending' && (
                                 <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100 text-center">
-                                    <p className="text-[10px] font-black uppercase text-brand-700 mb-1 leading-tight">Muuzaji bado hajakupa bei ya usafiri.</p>
-                                    <p className="text-[10px] text-brand-800 leading-tight mb-3">Tumia chat hapa chini kukubaliana naye bei ya usafiri.</p>
+                                    <p className="text-[10px] font-black uppercase text-brand-700 mb-1 leading-tight">
+                                        {isB2BOrder ? 'Muuzaji bado hajatuma proforma.' : 'Muuzaji bado hajakupa bei ya usafiri.'}
+                                    </p>
+                                    <p className="text-[10px] text-brand-800 leading-tight mb-3">
+                                        {isB2BOrder
+                                            ? 'Tumia chat kukubaliana MOQ, customization, delivery, na masharti ya SafePay.'
+                                            : 'Tumia chat hapa chini kukubaliana naye bei ya usafiri.'}
+                                    </p>
                                     <Button
                                         variant="outline"
                                         className="w-full text-xs font-bold border-brand-200 text-brand-700 hover:bg-brand-100"
@@ -1880,8 +1898,14 @@ function OwnedCard({ entry }) {
 
                             {orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && !merchantConfirmed && orderDetails.payment_status === 'pending' && (
                                 <div className="p-3 rounded-2xl bg-amber-50 border border-amber-100 text-center">
-                                    <p className="text-[10px] font-black uppercase text-amber-800 mb-1 leading-tight">Muuzaji bado hajathibitisha oda.</p>
-                                    <p className="text-[10px] text-amber-900 leading-tight mb-3">Malipo yatafunguka baada ya muuzaji kuthibitisha kuwa order ipo.</p>
+                                    <p className="text-[10px] font-black uppercase text-amber-800 mb-1 leading-tight">
+                                        {isB2BOrder ? 'Proforma inasubiri uthibitisho.' : 'Muuzaji bado hajathibitisha oda.'}
+                                    </p>
+                                    <p className="text-[10px] text-amber-900 leading-tight mb-3">
+                                        {isB2BOrder
+                                            ? 'Malipo ya SafePay yatafunguka baada ya muuzaji kuthibitisha proforma rasmi.'
+                                            : 'Malipo yatafunguka baada ya muuzaji kuthibitisha kuwa order ipo.'}
+                                    </p>
                                     <Button
                                         variant="outline"
                                         className="w-full text-xs font-bold border-amber-200 text-amber-800 hover:bg-amber-100"
@@ -1895,12 +1919,66 @@ function OwnedCard({ entry }) {
 
                             {orderDetails.is_inquiry && orderDetails.inquiry_status === 'quoted' && merchantConfirmed && orderDetails.payment_status === 'pending' && (
                                 <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <p className="text-[10px] font-black uppercase text-emerald-700">Shipping Fee:</p>
-                                        <p className="text-sm font-black text-emerald-600">TZS {Number(orderDetails.shipping_fee || 0).toLocaleString()}</p>
-                                    </div>
+                                    {isB2BOrder ? (
+                                        <div className="space-y-2 mb-3">
+                                            <div className="flex items-start gap-2 rounded-xl bg-white/70 border border-emerald-100 p-3">
+                                                <ShieldCheck className="h-4 w-4 mt-0.5 text-emerald-700" />
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Takeer SafePay Proforma</p>
+                                                    <p className="mt-1 text-[10px] leading-4 text-emerald-900">
+                                                        Pay only through Takeer. Funds stay protected until delivery, confirmation, or dispute resolution.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Quantity</p>
+                                                    <p className="text-xs font-black text-emerald-950">{orderQuantityLabel(orderDetails)}</p>
+                                                </div>
+                                                <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Unit price</p>
+                                                    <p className="text-xs font-black text-emerald-950">{orderUnitPriceLabel(orderDetails)}</p>
+                                                </div>
+                                                {depositAmount > 0 && (
+                                                    <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Deposit</p>
+                                                        <p className="text-xs font-black text-emerald-950">TZS {depositAmount.toLocaleString()}</p>
+                                                    </div>
+                                                )}
+                                                {balanceAmount > 0 && (
+                                                    <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Balance</p>
+                                                        <p className="text-xs font-black text-emerald-950">TZS {balanceAmount.toLocaleString()}</p>
+                                                    </div>
+                                                )}
+                                                {agreementSnapshot?.production_lead_time_days && (
+                                                    <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Lead time</p>
+                                                        <p className="text-xs font-black text-emerald-950">{agreementSnapshot.production_lead_time_days} days</p>
+                                                    </div>
+                                                )}
+                                                <div className="rounded-xl bg-white/70 border border-emerald-100 p-2">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700">Balance due</p>
+                                                    <p className="text-xs font-black text-emerald-950">{balanceDueLabel}</p>
+                                                </div>
+                                            </div>
+                                            {(agreementSnapshot?.payment_terms_note || agreementSnapshot?.customization_note) && (
+                                                <div className="rounded-xl bg-white/70 border border-emerald-100 p-2 text-[10px] leading-4 text-emerald-900">
+                                                    {agreementSnapshot?.payment_terms_note && <p><span className="font-black">Terms:</span> {agreementSnapshot.payment_terms_note}</p>}
+                                                    {agreementSnapshot?.customization_note && <p><span className="font-black">Customization:</span> {agreementSnapshot.customization_note}</p>}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <p className="text-[10px] font-black uppercase text-emerald-700">Shipping Fee:</p>
+                                                <p className="text-sm font-black text-emerald-600">TZS {Number(orderDetails.shipping_fee || 0).toLocaleString()}</p>
+                                            </div>
+                                        </>
+                                    )}
                                     <div className="flex justify-between items-center border-t border-emerald-200 pt-2 mb-3">
-                                        <p className="text-[10px] font-black uppercase text-emerald-800">Total to Pay:</p>
+                                        <p className="text-[10px] font-black uppercase text-emerald-800">{isB2BOrder ? 'SafePay Total:' : 'Total to Pay:'}</p>
                                         <p className="text-lg font-black text-emerald-700">TZS {Number(orderDetails.total_paid || 0).toLocaleString()}</p>
                                     </div>
                                     <Button
@@ -1909,7 +1987,7 @@ function OwnedCard({ entry }) {
                                         disabled={payingInquiry}
                                     >
                                         {payingInquiry ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Zap className="h-4 w-4 mr-2 fill-white" />}
-                                        Lipa Sasa (Pay Now)
+                                        {isB2BOrder ? 'Lipa SafePay' : 'Lipa Sasa (Pay Now)'}
                                     </Button>
                                     <Button
                                         variant="ghost"

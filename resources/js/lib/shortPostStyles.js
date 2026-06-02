@@ -14,18 +14,34 @@ export function getShortPostPresentation({ text = '', bgStyle = null, hasMedia =
     const disableStyles = isTextLong || hasMedia;
     const effectiveBg = disableStyles ? null : bgStyle;
     const hasBg = Boolean(effectiveBg);
+    const explicitLineCount = trimmed ? trimmed.split(/\r?\n/).length : 1;
+    const isVeryShortPoster = trimmed.length <= 45 && explicitLineCount <= 2;
+    const isCompactPoster = trimmed.length <= 100 && explicitLineCount <= 3;
 
     const textClass = disableStyles
         ? 'text-base sm:text-lg font-normal text-left text-foreground'
         : hasBg
             ? 'text-3xl sm:text-4xl font-bold text-center text-white drop-shadow-md'
             : 'text-xl sm:text-2xl font-medium text-left text-foreground';
+    const canvasClass = hasBg
+        ? isVeryShortPoster
+            ? 'min-h-[220px] sm:min-h-[280px]'
+            : isCompactPoster
+                ? 'min-h-[280px] sm:min-h-[340px]'
+                : 'min-h-[340px] sm:min-h-[420px]'
+        : '';
+    const lineHeightClass = hasBg
+        ? explicitLineCount <= 4
+            ? 'leading-[1.5]'
+            : 'leading-[1.18]'
+        : 'leading-[1.4]';
 
     return {
         hasBg,
         bgValue: hasBg ? (BG_MAP[effectiveBg] || BG_MAP.gradient_ocean) : null,
         textClass,
+        canvasClass,
+        lineHeightClass,
         disableStyles,
     };
 }
-

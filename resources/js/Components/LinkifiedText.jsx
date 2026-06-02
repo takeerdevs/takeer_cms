@@ -11,6 +11,18 @@ function normalizeUrl(rawUrl) {
         : `https://${rawUrl}`;
 }
 
+function comparableUrl(rawUrl) {
+    try {
+        const cleaned = String(rawUrl || '').trim().replace(/[),.;:!?]+$/, '');
+        const parsed = new URL(normalizeUrl(cleaned));
+        parsed.hash = '';
+        const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+        return `${parsed.hostname.replace(/^www\./i, '').toLowerCase()}${pathname}${parsed.search}`;
+    } catch {
+        return String(rawUrl || '').trim().toLowerCase();
+    }
+}
+
 function isExternalUrl(url) {
     if (typeof window === 'undefined') return true;
     try {
@@ -33,10 +45,17 @@ export default function LinkifiedText({
     maxLinkLength = 44,
     stopPropagationOnLinkClick = false,
     analyticsContext = {},
+    disabledUrls = [],
+    disabledLinkMessage = 'This link is unavailable while Takeer reviews a safety issue.',
 }) {
     const normalizedText = String(text || '');
     if (!normalizedText) return null;
 
+    const disabledUrlSet = new Set(
+        (disabledUrls || [])
+            .filter(Boolean)
+            .map(comparableUrl)
+    );
     const lines = normalizedText.split('\n');
 
     return (
@@ -51,6 +70,26 @@ export default function LinkifiedText({
                                 return <React.Fragment key={`text-${lineIndex}-${index}`}>{part}</React.Fragment>;
                             }
                             const href = normalizeUrl(part);
+                            const isDisabled = disabledUrlSet.has(comparableUrl(part)) || disabledUrlSet.has(comparableUrl(href));
+
+                            if (isDisabled) {
+                                return (
+                                    <span
+                                        key={`url-${lineIndex}-${index}`}
+                                        aria-disabled="true"
+                                        className={`${linkClassName || 'underline underline-offset-2 break-all'} cursor-not-allowed decoration-dotted opacity-70`}
+                                        title={disabledLinkMessage}
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            if (stopPropagationOnLinkClick) {
+                                                event.stopPropagation();
+                                            }
+                                        }}
+                                    >
+                                        {truncateUrl(part, maxLinkLength)}
+                                    </span>
+                                );
+                            }
 
                             return (
                                 <a

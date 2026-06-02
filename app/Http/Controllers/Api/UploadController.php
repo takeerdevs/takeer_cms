@@ -12,6 +12,7 @@ use App\Models\ProductCategoryAttribute;
 use App\Models\ProductCategoryAttributeValue;
 use App\Models\ProductVariant;
 use App\Models\Merchant;
+use App\Models\MerchantProductCertificate;
 use App\Models\MerchantServiceCredential;
 use App\Models\ServiceCategory;
 use App\Models\Post;
@@ -65,7 +66,7 @@ class UploadController extends Controller
 
         $query = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'serviceCategory.parent', 'serviceSubcategory.parent', 'locationAvailabilities.location', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'productCertificates', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications', 'detailSections', 'serviceCategory.parent', 'serviceSubcategory.parent', 'locationAvailabilities.location', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
             ->with(['variants', 'postTags.post:id,views_count'])
             ->withCount('postTags')
             ->withCount([
@@ -98,7 +99,7 @@ class UploadController extends Controller
         $productId = $id ?? $merchantOrId;
         $product = Product::query()
             ->where('merchant_id', $merchantProfile->id)
-            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories.location', 'locationInventories.location', 'locationAvailabilities.location', 'postTags.post:id,views_count', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
+            ->with(['attributes.brand', 'attributes.model', 'images', 'categoryAttributeValues.categoryAttribute', 'unitType', 'packageContentUnitType', 'returnPolicy', 'faqs', 'productCertificates', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications', 'detailSections', 'serviceCategory.parent', 'serviceSubcategory.parent', 'variants.locationInventories.location', 'locationInventories.location', 'locationAvailabilities.location', 'postTags.post:id,views_count', 'createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id'])
             ->withCount('postTags')
             ->withCount([
                 'orders as purchases_count' => fn ($orders) => $orders->whereNotIn('payment_status', ['pending', 'failed']),
@@ -718,6 +719,7 @@ class UploadController extends Controller
             'media_items.*.height' => 'nullable|integer|min:0',
             'media_items.*.processing_status' => 'nullable|string|in:pending,processing,ready,failed',
             'type' => 'required|string|in:physical,digital,service',
+            'selling_style' => 'nullable|string|in:retail,wholesale,both',
             'module_key' => 'nullable|string|in:menu,rooms,tour_departures,custom_orders,appointments,reservations,rentals,workshops,forwarders',
             'module_details' => 'nullable|array',
             'module_details.section' => 'nullable|string|max:80',
@@ -879,8 +881,59 @@ class UploadController extends Controller
             'faqs.*.question' => 'nullable|string|max:1000',
             'faqs.*.answer' => 'nullable|string|max:3000',
             'faqs.*.is_published' => 'nullable|boolean',
+            'product_certificate_ids' => 'nullable|array|max:20',
+            'product_certificate_ids.*' => 'integer|exists:merchant_product_certificates,id',
             'min_order_quantity' => 'nullable|numeric|min:0.001',
             'order_increment' => 'nullable|numeric|min:0.001',
+            'supply_capacity_quantity' => 'nullable|numeric|min:0.001',
+            'supply_capacity_period' => 'nullable|string|in:day,week,month,quarter,year,order',
+            'wholesale_deposit_mode' => 'nullable|string|in:quote_based,deposit_required,full_payment',
+            'wholesale_deposit_percent' => 'nullable|numeric|min:0|max:100',
+            'wholesale_balance_due' => 'nullable|string|in:before_production,before_delivery,on_delivery_confirmation,manual',
+            'safepay_mobile_money_enabled' => 'nullable|boolean',
+            'safepay_bank_transfer_enabled' => 'nullable|boolean',
+            'safepay_wallet_enabled' => 'nullable|boolean',
+            'safepay_card_enabled' => 'nullable|boolean',
+            'pricing_tiers' => 'nullable|array|max:20',
+            'pricing_tiers.*.min_quantity' => 'required_with:pricing_tiers|numeric|min:0.001',
+            'pricing_tiers.*.max_quantity' => 'nullable|numeric|min:0.001',
+            'pricing_tiers.*.unit_price' => 'required_with:pricing_tiers|numeric|min:0',
+            'pricing_tiers.*.currency' => 'nullable|string|size:3',
+            'pricing_tiers.*.label' => 'nullable|string|max:120',
+            'lead_time_tiers' => 'nullable|array|max:20',
+            'lead_time_tiers.*.min_quantity' => 'required_with:lead_time_tiers|numeric|min:0.001',
+            'lead_time_tiers.*.max_quantity' => 'nullable|numeric|min:0.001',
+            'lead_time_tiers.*.lead_time_days' => 'nullable|integer|min:0|max:3650',
+            'lead_time_tiers.*.label' => 'nullable|string|max:160',
+            'packaging_details' => 'nullable|array|max:10',
+            'packaging_details.*.selling_units' => 'nullable|string|max:120',
+            'packaging_details.*.package_quantity' => 'nullable|numeric|min:0.001',
+            'packaging_details.*.package_unit' => 'nullable|string|max:60',
+            'packaging_details.*.package_weight_kg' => 'nullable|numeric|min:0',
+            'packaging_details.*.package_length_cm' => 'nullable|numeric|min:0',
+            'packaging_details.*.package_width_cm' => 'nullable|numeric|min:0',
+            'packaging_details.*.package_height_cm' => 'nullable|numeric|min:0',
+            'packaging_details.*.notes' => 'nullable|string|max:1000',
+            'customization_options' => 'nullable|array|max:20',
+            'customization_options.*.name' => 'required_with:customization_options|string|max:160',
+            'customization_options.*.description' => 'nullable|string|max:1000',
+            'customization_options.*.min_order_quantity' => 'nullable|numeric|min:0.001',
+            'customization_options.*.fee_type' => 'nullable|string|in:free,per_unit,fixed,quote',
+            'customization_options.*.fee_amount' => 'nullable|numeric|min:0',
+            'customization_options.*.currency' => 'nullable|string|size:3',
+            'customization_options.*.image_url' => 'nullable|string|max:2048',
+            'customization_options.*.notes' => 'nullable|string|max:1000',
+            'product_specifications' => 'nullable|array|max:80',
+            'product_specifications.*.group_name' => 'nullable|string|max:120',
+            'product_specifications.*.attribute_name' => 'required_with:product_specifications|string|max:160',
+            'product_specifications.*.attribute_value' => 'required_with:product_specifications|string|max:2000',
+            'product_specifications.*.is_filterable' => 'nullable|boolean',
+            'product_detail_sections' => 'nullable|array|max:40',
+            'product_detail_sections.*.section_type' => 'nullable|string|in:text,image,image_text,selling_points,company_intro,custom',
+            'product_detail_sections.*.title' => 'nullable|string|max:160',
+            'product_detail_sections.*.body' => 'nullable|string|max:10000',
+            'product_detail_sections.*.image_url' => 'nullable|string|max:2048',
+            'product_detail_sections.*.is_visible' => 'nullable|boolean',
             'url' => 'nullable|string',
             'digital_file_url' => 'nullable|string',
             'digital_delivery_type' => 'nullable|string|in:file,external_link,video_stream,audio_stream,gallery_pack,live_event,custom_delivery',
@@ -1039,6 +1092,10 @@ class UploadController extends Controller
         $publishToTakeer = ! array_key_exists('takeer', $publishTargets)
             || filter_var($publishTargets['takeer'], FILTER_VALIDATE_BOOLEAN);
         $isFocusedPhysicalModule = $request->input('type') === 'physical' && $request->input('module_key') === 'menu';
+        $sellingStyle = $request->input('type') === 'physical'
+            ? (string) ($request->input('selling_style') ?: 'retail')
+            : 'retail';
+        $wholesaleEnabled = in_array($sellingStyle, ['wholesale', 'both'], true);
         $hasVariants = $request->input('type') === 'physical' && (bool) $request->boolean('has_variants');
         $fulfillmentMode = $request->input('type') === 'physical'
             ? (string) ($request->input('fulfillment_mode') ?: 'own_stock')
@@ -1072,6 +1129,27 @@ class UploadController extends Controller
         };
 
         if ($request->input('type') === 'physical' && ! $isFocusedPhysicalModule) {
+            if ($wholesaleEnabled) {
+                $pricingTiers = collect((array) $request->input('pricing_tiers', []))
+                    ->filter(fn ($tier) => isset($tier['min_quantity'], $tier['unit_price']) && $tier['min_quantity'] !== '' && $tier['unit_price'] !== '');
+                if ($pricingTiers->isEmpty()) {
+                    return response()->json(['message' => 'Wholesale products need at least one pricing tier.'], 422);
+                }
+
+                if (! $request->filled('min_order_quantity')) {
+                    return response()->json(['message' => 'Wholesale products need a minimum order quantity.'], 422);
+                }
+
+                $hasSafePayMethod = $request->boolean('safepay_mobile_money_enabled', true)
+                    || $request->boolean('safepay_bank_transfer_enabled', true)
+                    || $request->boolean('safepay_wallet_enabled', true)
+                    || $request->boolean('safepay_card_enabled', false);
+
+                if (! $hasSafePayMethod) {
+                    return response()->json(['message' => 'Enable at least one Takeer SafePay funding method for wholesale orders.'], 422);
+                }
+            }
+
             if ($requiresLocationInventory && $merchantLocationIds->isEmpty()) {
                 return response()->json(['message' => 'Tafadhali ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio kabla ya kuuza bidhaa uliyonayo mkononi.'], 422);
             }
@@ -1562,6 +1640,7 @@ class UploadController extends Controller
         $productData = [
             'merchant_id' => $merchantProfile->id,
             'type' => $request->input('type'),
+            'selling_style' => $request->input('type') === 'physical' ? $sellingStyle : 'retail',
             'has_variants' => $hasVariants,
             'title' => $request->input('title'),
             'fulfillment_mode' => $request->input('type') === 'physical' ? $fulfillmentMode : 'own_stock',
@@ -1600,6 +1679,15 @@ class UploadController extends Controller
             'return_policy_id' => $request->input('type') === 'physical' ? $returnPolicyId : null,
             'min_order_quantity' => $request->input('type') === 'physical' && $request->filled('min_order_quantity') ? (float) $request->input('min_order_quantity') : null,
             'order_increment' => $request->input('type') === 'physical' && $request->filled('order_increment') ? (float) $request->input('order_increment') : null,
+            'supply_capacity_quantity' => $request->input('type') === 'physical' && $request->filled('supply_capacity_quantity') ? (float) $request->input('supply_capacity_quantity') : null,
+            'supply_capacity_period' => $request->input('type') === 'physical' ? ($request->input('supply_capacity_period') ?: null) : null,
+            'wholesale_deposit_mode' => $request->input('type') === 'physical' ? ($request->input('wholesale_deposit_mode') ?: 'quote_based') : 'quote_based',
+            'wholesale_deposit_percent' => $request->input('type') === 'physical' && $request->filled('wholesale_deposit_percent') ? (float) $request->input('wholesale_deposit_percent') : null,
+            'wholesale_balance_due' => $request->input('type') === 'physical' ? ($request->input('wholesale_balance_due') ?: 'before_delivery') : 'before_delivery',
+            'safepay_mobile_money_enabled' => $request->input('type') === 'physical' ? $request->boolean('safepay_mobile_money_enabled', true) : true,
+            'safepay_bank_transfer_enabled' => $request->input('type') === 'physical' ? $request->boolean('safepay_bank_transfer_enabled', true) : true,
+            'safepay_wallet_enabled' => $request->input('type') === 'physical' ? $request->boolean('safepay_wallet_enabled', true) : true,
+            'safepay_card_enabled' => $request->input('type') === 'physical' ? $request->boolean('safepay_card_enabled', false) : false,
             'url' => $productUrl,
             'download_link' => $request->input('type') === 'digital' ? $productUrl : null,
             'digital_delivery_type' => $request->input('type') === 'digital' ? $digitalDeliveryType : 'file',
@@ -1757,6 +1845,21 @@ class UploadController extends Controller
             $productData['created_by_staff_id'] = $actingStaff?->id;
             $product = Product::create($productData);
         }
+
+        $this->syncWholesaleCommerceData($product, $merchantProfile, $request, $wholesaleEnabled);
+
+        $certificateIds = collect((array) $request->input('product_certificate_ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+        $validCertificateIds = $certificateIds->isEmpty()
+            ? collect()
+            : MerchantProductCertificate::query()
+                ->where('merchant_id', $merchantProfile->id)
+                ->whereIn('id', $certificateIds->all())
+                ->pluck('id');
+        $product->productCertificates()->sync($validCertificateIds->all());
 
         if ($request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream') {
             ProcessPremiumProductVideo::dispatch($product->id)->afterCommit();
@@ -2114,7 +2217,7 @@ class UploadController extends Controller
             'group_sale_campaign' => $groupSaleCampaign ? [
                 'id' => $groupSaleCampaign->id,
                 'slug' => $groupSaleCampaign->slug,
-                'url' => url('/group-sale/'.$groupSaleCampaign->slug),
+                'url' => '/group-sale/'.$groupSaleCampaign->slug,
             ] : null,
         ]);
     }
@@ -3120,6 +3223,123 @@ class UploadController extends Controller
                 ]
             );
         }
+    }
+
+    private function syncWholesaleCommerceData(Product $product, Merchant $merchant, Request $request, bool $wholesaleEnabled): void
+    {
+        if ($product->type !== 'physical' || ! $wholesaleEnabled) {
+            $product->pricingTiers()->delete();
+            $product->leadTimeTiers()->delete();
+            $product->packagingDetails()->delete();
+            $product->customizationOptions()->delete();
+            $product->specifications()->delete();
+            $product->detailSections()->delete();
+            return;
+        }
+
+        $syncRows = function (string $relation, array $rows) use ($product): void {
+            $product->{$relation}()->delete();
+            foreach ($rows as $row) {
+                $product->{$relation}()->create($row);
+            }
+        };
+
+        $pricingTiers = collect((array) $request->input('pricing_tiers', []))
+            ->map(fn ($tier, $index) => [
+                'merchant_id' => $merchant->id,
+                'min_quantity' => (float) ($tier['min_quantity'] ?? 0),
+                'max_quantity' => isset($tier['max_quantity']) && $tier['max_quantity'] !== '' ? (float) $tier['max_quantity'] : null,
+                'unit_price' => (float) ($tier['unit_price'] ?? 0),
+                'currency' => strtoupper((string) ($tier['currency'] ?? 'TZS')) ?: 'TZS',
+                'label' => trim((string) ($tier['label'] ?? '')) ?: null,
+                'sort_order' => (int) $index,
+            ])
+            ->filter(fn ($tier) => $tier['min_quantity'] > 0 && $tier['unit_price'] >= 0)
+            ->values()
+            ->all();
+
+        $leadTimeTiers = collect((array) $request->input('lead_time_tiers', []))
+            ->map(fn ($tier, $index) => [
+                'merchant_id' => $merchant->id,
+                'min_quantity' => (float) ($tier['min_quantity'] ?? 0),
+                'max_quantity' => isset($tier['max_quantity']) && $tier['max_quantity'] !== '' ? (float) $tier['max_quantity'] : null,
+                'lead_time_days' => isset($tier['lead_time_days']) && $tier['lead_time_days'] !== '' ? (int) $tier['lead_time_days'] : null,
+                'label' => trim((string) ($tier['label'] ?? '')) ?: null,
+                'sort_order' => (int) $index,
+            ])
+            ->filter(fn ($tier) => $tier['min_quantity'] > 0 && ($tier['lead_time_days'] !== null || $tier['label']))
+            ->values()
+            ->all();
+
+        $packagingDetails = collect((array) $request->input('packaging_details', []))
+            ->map(fn ($detail, $index) => [
+                'merchant_id' => $merchant->id,
+                'selling_units' => trim((string) ($detail['selling_units'] ?? '')) ?: null,
+                'package_quantity' => isset($detail['package_quantity']) && $detail['package_quantity'] !== '' ? (float) $detail['package_quantity'] : null,
+                'package_unit' => trim((string) ($detail['package_unit'] ?? '')) ?: null,
+                'package_weight_kg' => isset($detail['package_weight_kg']) && $detail['package_weight_kg'] !== '' ? (float) $detail['package_weight_kg'] : null,
+                'package_length_cm' => isset($detail['package_length_cm']) && $detail['package_length_cm'] !== '' ? (float) $detail['package_length_cm'] : null,
+                'package_width_cm' => isset($detail['package_width_cm']) && $detail['package_width_cm'] !== '' ? (float) $detail['package_width_cm'] : null,
+                'package_height_cm' => isset($detail['package_height_cm']) && $detail['package_height_cm'] !== '' ? (float) $detail['package_height_cm'] : null,
+                'notes' => trim((string) ($detail['notes'] ?? '')) ?: null,
+                'sort_order' => (int) $index,
+            ])
+            ->filter(fn ($detail) => $detail['selling_units'] || $detail['package_quantity'] || $detail['notes'])
+            ->values()
+            ->all();
+
+        $customizationOptions = collect((array) $request->input('customization_options', []))
+            ->map(fn ($option, $index) => [
+                'merchant_id' => $merchant->id,
+                'name' => trim((string) ($option['name'] ?? '')),
+                'description' => trim((string) ($option['description'] ?? '')) ?: null,
+                'min_order_quantity' => isset($option['min_order_quantity']) && $option['min_order_quantity'] !== '' ? (float) $option['min_order_quantity'] : null,
+                'fee_type' => in_array(($option['fee_type'] ?? 'quote'), ['free', 'per_unit', 'fixed', 'quote'], true) ? $option['fee_type'] ?? 'quote' : 'quote',
+                'fee_amount' => isset($option['fee_amount']) && $option['fee_amount'] !== '' ? (float) $option['fee_amount'] : null,
+                'currency' => strtoupper((string) ($option['currency'] ?? 'TZS')) ?: 'TZS',
+                'image_url' => trim((string) ($option['image_url'] ?? '')) ?: null,
+                'notes' => trim((string) ($option['notes'] ?? '')) ?: null,
+                'sort_order' => (int) $index,
+            ])
+            ->filter(fn ($option) => $option['name'] !== '')
+            ->values()
+            ->all();
+
+        $specifications = collect((array) $request->input('product_specifications', []))
+            ->map(fn ($specification, $index) => [
+                'merchant_id' => $merchant->id,
+                'group_name' => trim((string) ($specification['group_name'] ?? '')) ?: null,
+                'attribute_name' => trim((string) ($specification['attribute_name'] ?? '')),
+                'attribute_value' => trim((string) ($specification['attribute_value'] ?? '')),
+                'is_filterable' => (bool) ($specification['is_filterable'] ?? false),
+                'sort_order' => (int) $index,
+            ])
+            ->filter(fn ($specification) => $specification['attribute_name'] !== '' && $specification['attribute_value'] !== '')
+            ->values()
+            ->all();
+
+        $detailSections = collect((array) $request->input('product_detail_sections', []))
+            ->map(fn ($section, $index) => [
+                'merchant_id' => $merchant->id,
+                'section_type' => in_array(($section['section_type'] ?? 'text'), ['text', 'image', 'image_text', 'selling_points', 'company_intro', 'custom'], true)
+                    ? ($section['section_type'] ?? 'text')
+                    : 'text',
+                'title' => trim((string) ($section['title'] ?? '')) ?: null,
+                'body' => trim((string) ($section['body'] ?? '')) ?: null,
+                'image_url' => trim((string) ($section['image_url'] ?? '')) ?: null,
+                'is_visible' => array_key_exists('is_visible', (array) $section) ? (bool) $section['is_visible'] : true,
+                'sort_order' => (int) $index,
+            ])
+            ->filter(fn ($section) => $section['title'] || $section['body'] || $section['image_url'])
+            ->values()
+            ->all();
+
+        $syncRows('pricingTiers', $pricingTiers);
+        $syncRows('leadTimeTiers', $leadTimeTiers);
+        $syncRows('packagingDetails', $packagingDetails);
+        $syncRows('customizationOptions', $customizationOptions);
+        $syncRows('specifications', $specifications);
+        $syncRows('detailSections', $detailSections);
     }
 
     private function productEffectivePrice(Product $product): float

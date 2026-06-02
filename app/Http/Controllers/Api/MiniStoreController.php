@@ -90,6 +90,7 @@ class MiniStoreController extends Controller
                 'service_area_type' => $storefrontSetting->service_area_type,
                 'service_locations' => $storefrontSetting->service_locations ?? [],
             ] : null,
+            'commerce_stats' => $this->publicCommerceStats($merchant, $posts->total()),
             'posts' => PostResource::collection($posts)->response()->getData(true),
         ];
 
@@ -179,6 +180,7 @@ class MiniStoreController extends Controller
     {
         $merchant = Merchant::where('username', $merchantSlug)->firstOrFail();
         $type = (string) $request->query('type', 'all');
+        $search = trim((string) $request->query('q', ''));
         $businessCategory = $merchant->businessCategory();
 
         $payload = [
@@ -201,6 +203,10 @@ class MiniStoreController extends Controller
                 ->where('merchant_id', $merchant->id)
                 ->where('visibility', 'published')
                 ->where('moderation_status', 'approved')
+                ->when($search !== '', fn ($query) => $query->where(function ($inner) use ($search): void {
+                    $inner->where('title', 'like', "%{$search}%")
+                        ->orWhere('excerpt', 'like', "%{$search}%");
+                }))
                 ->latest()
                 ->paginate(24);
             $payload['content_items'] = ContentItemResource::collection($contentItems)->response()->getData(true);
@@ -213,6 +219,10 @@ class MiniStoreController extends Controller
                 ->where('merchant_id', $merchant->id)
                 ->where('status', 'published')
                 ->with('items')
+                ->when($search !== '', fn ($query) => $query->where(function ($inner) use ($search): void {
+                    $inner->where('title', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%");
+                }))
                 ->latest()
                 ->paginate(24);
             $payload['bundles'] = BundleResource::collection($bundles)->response()->getData(true);
@@ -225,6 +235,10 @@ class MiniStoreController extends Controller
                 ->where('merchant_id', $merchant->id)
                 ->where('status', 'active')
                 ->with('items')
+                ->when($search !== '', fn ($query) => $query->where(function ($inner) use ($search): void {
+                    $inner->where('name', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%");
+                }))
                 ->orderBy('tier')
                 ->paginate(24);
             $payload['subscription_plans'] = SubscriptionPlanResource::collection($plans)->response()->getData(true);
@@ -237,6 +251,10 @@ class MiniStoreController extends Controller
                 ->where('merchant_id', $merchant->id)
                 ->where('status', 'published')
                 ->with(['items.product.images', 'items.childGroup'])
+                ->when($search !== '', fn ($query) => $query->where(function ($inner) use ($search): void {
+                    $inner->where('title', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%");
+                }))
                 ->latest()
                 ->paginate(24);
             $payload['offering_groups'] = $this->offeringGroupCollectionPayload($groups);
@@ -246,6 +264,11 @@ class MiniStoreController extends Controller
 
         if ($type === 'freight_route') {
             $routes = $this->publicFreightRouteQuery($merchant)
+                ->when($search !== '', fn ($query) => $query->where(function ($inner) use ($search): void {
+                    $inner->where('route_uid', 'like', "%{$search}%")
+                        ->orWhere('estimate', 'like', "%{$search}%")
+                        ->orWhere('customer_instructions', 'like', "%{$search}%");
+                }))
                 ->latest()
                 ->paginate(24);
             $payload['freight_routes'] = $this->freightRouteCollectionPayload($routes);
@@ -257,6 +280,10 @@ class MiniStoreController extends Controller
             $products = $this->publicCatalogProductQuery($merchant)
                 ->where('type', $type)
                 ->with(['attributes', 'images', 'merchant', 'unitType'])
+                ->when($search !== '', fn ($query) => $query->where(function ($inner) use ($search): void {
+                    $inner->where('title', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%");
+                }))
                 ->latest()
                 ->paginate(24);
             $payload['products'] = ProductResource::collection($products)->response()->getData(true);
@@ -507,7 +534,7 @@ class MiniStoreController extends Controller
             'template_key' => $group->template_key,
             'base_price' => $group->base_price !== null ? (float) $group->base_price : null,
             'items_count' => $items->count(),
-            'href' => url('/offerings/' . $group->id),
+            'href' => '/offerings/' . $group->id,
         ];
     }
 
@@ -559,7 +586,7 @@ class MiniStoreController extends Controller
                 ->all(),
             'forwarder_name' => $route->forwarder?->name,
             'logo_url' => $route->forwarder?->logo_url,
-            'href' => route('forwarder-routes.show', $routeRef),
+            'href' => route('forwarder-routes.show', $routeRef, false),
         ];
     }
 
@@ -629,7 +656,7 @@ class MiniStoreController extends Controller
                 return [
                     ...$link,
                     'url' => $url ?: ($link['url'] ?? ''),
-                    'tracked_url' => $trackedLink?->isActive() ? route('tracked-links.follow', $trackedLink->code) : null,
+                    'tracked_url' => $trackedLink?->isActive() ? route('tracked-links.follow', $trackedLink->code, false) : null,
                     'tracked_link_status' => $trackedLink?->status,
                     'link_unavailable' => $trackedLink ? ! $trackedLink->isActive() : false,
                     'preview' => $preview && $preview->status === 'success' ? [

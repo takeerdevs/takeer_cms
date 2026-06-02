@@ -531,7 +531,7 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
         textAreaClass = "text-foreground placeholder-muted-foreground text-base sm:text-lg font-normal text-left";
     } else {
         if (hasBg) {
-            textAreaClass = "text-center text-white placeholder-white/70 font-bold text-3xl sm:text-4xl drop-shadow-md";
+            textAreaClass = "text-center text-white placeholder-white/70 font-bold text-3xl sm:text-4xl leading-[1.5] drop-shadow-md";
         } else {
             textAreaClass = "text-foreground placeholder-muted-foreground text-xl sm:text-2xl font-medium text-left";
         }
@@ -1025,9 +1025,60 @@ export default function PostComposer({ isOpen, onClose, prefillProduct = null, p
                             )}
                         </AnimatePresence>
 
+                        {/* Background Style Picker (Toolbar Triggered) */}
+                        <AnimatePresence>
+                            {showBg && composerMode === 'short' && (
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="overflow-hidden bg-card/80 backdrop-blur-xl border border-border/50 p-3 rounded-3xl shadow-lg mb-4"
+                                >
+                                    {disableStyles ? (
+                                        <p className="px-2 py-3 text-center text-xs font-semibold text-muted-foreground">
+                                            Background styles are available for short text posts without media.
+                                        </p>
+                                    ) : (
+                                        <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                                            {BG_OPTIONS.map((option) => {
+                                                const active = bg === option.key;
+
+                                                return (
+                                                    <button
+                                                        key={option.key || 'normal'}
+                                                        type="button"
+                                                        onClick={() => setBg(option.key)}
+                                                        className={cn(
+                                                            'group flex flex-col items-center gap-1 rounded-2xl border p-2 transition-all',
+                                                            active
+                                                                ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
+                                                                : 'border-border/50 bg-background/50 text-muted-foreground hover:border-brand-200 hover:text-foreground'
+                                                        )}
+                                                        aria-label={`${option.label} background`}
+                                                        title={option.label}
+                                                    >
+                                                        <span
+                                                            className={cn(
+                                                                'h-8 w-8 rounded-full border shadow-inner',
+                                                                option.key === null && 'bg-background'
+                                                            )}
+                                                            style={option.preview ? { background: option.preview } : {}}
+                                                        />
+                                                        <span className="max-w-full truncate text-[10px] font-black">
+                                                            {option.label.replace(/^\S+\s/, '')}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         {/* Floating Toolbox (Bottom - Short Mode Only) */}
                         {composerMode === 'short' && (
-                            <div className="absolute bottom-6 left-0 right-0 px-4 bg-gradient-to-t from-background/80 via-background/40 to-transparent pt-10 pb-2 flex justify-center w-full max-w-2xl mx-auto pointer-events-none">
+                            <div className="absolute bottom-6 left-0 right-0 px-4 flex justify-center w-full max-w-2xl mx-auto pointer-events-none">
                                 <div className="pointer-events-auto flex items-center justify-center gap-1.5 w-max bg-accent/80 backdrop-blur-xl p-2 rounded-full border border-border/50 shadow-xl">
                                     {/* Media picker */}
                                     <motion.button

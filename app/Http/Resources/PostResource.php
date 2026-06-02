@@ -38,6 +38,7 @@ class PostResource extends JsonResource
         $commentsEnabled = $this->effectiveCommentsEnabled();
         $reactionsEnabled = $this->effectiveReactionsEnabled();
         $isDeleted = method_exists($this->resource, 'trashed') ? (bool) $this->resource->trashed() : false;
+        $businessCategory = $this->merchant?->businessCategory();
 
         // ── Access Logic ─────────────────────────────────────────────────────
         $attachedPromotables = $this->promotables ?? collect();
@@ -147,7 +148,7 @@ class PostResource extends JsonResource
         return [
             'id' => $this->id,
             'public_id' => $this->public_id,
-            'permalink' => url('/p/' . ($this->public_id ?: $this->id)),
+            'permalink' => '/p/' . ($this->public_id ?: $this->id),
             'merchant_id' => $this->merchant_id,
             'forwarder_id' => $this->forwarder_id,
             'forwarder_route_id' => $this->forwarder_route_id,
@@ -173,7 +174,7 @@ class PostResource extends JsonResource
                 'status' => $this->linkPreview->status,
                 'url' => $this->linkPreview->url,
                 'final_url' => $this->linkPreview->final_url,
-                'tracked_url' => $linkPreviewTrackedLink?->isActive() ? route('tracked-links.follow', $linkPreviewTrackedLink->code) : null,
+                'tracked_url' => $linkPreviewTrackedLink?->isActive() ? route('tracked-links.follow', $linkPreviewTrackedLink->code, false) : null,
                 'tracked_link_status' => $linkPreviewTrackedLink?->status,
                 'link_unavailable' => $linkPreviewTrackedLink ? ! $linkPreviewTrackedLink->isActive() : false,
                 'title' => $this->linkPreview->title,
@@ -442,7 +443,7 @@ class PostResource extends JsonResource
                                         : [],
                                 ];
                             })->values(),
-                            'url' => url('/offerings/' . $promotable->id),
+                            'url' => '/offerings/' . $promotable->id,
                         ];
                     }
 
@@ -533,7 +534,15 @@ class PostResource extends JsonResource
                 'display_name' => $this->merchant->display_name,
                 'avatar_url' => $this->merchant->avatar_url,
                 'bio' => $this->merchant->bio,
+                'business_category' => $businessCategory['subcategory_label'] ?? $businessCategory['label'] ?? null,
                 'is_verified' => $this->merchant->is_verified,
+                'followers_count' => $this->merchant->followers()->count(),
+                'is_following' => $request->user()
+                    ? $this->merchant->followers()->where('user_id', $request->user()->id)->exists()
+                    : false,
+                'is_owner' => $request->user()
+                    ? (int) $request->user()->id === (int) $this->merchant->user_id
+                    : false,
             ] : null,
             'product' => $resolvedProduct ? ProductResource::make($resolvedProduct)->resolve($request) : null,
             'product_tags' => $this->whenLoaded(

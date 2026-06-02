@@ -51,12 +51,18 @@ fi
 # Passport Keys Generation
 echo "🔑 Checking Passport keys..."
 if [ ! -f storage/oauth-private.key ] || [ ! -f storage/oauth-public.key ]; then
-    echo "Generating Passport keys..."
-    php artisan passport:keys --force || echo "❌ Failed to generate Passport keys"
-    # Set correct permissions
-    chown www-data:www-data storage/oauth-*.key
-    chmod 600 storage/oauth-*.key
-    chmod 644 storage/oauth-public.key
+    if php artisan list --raw | grep -q '^passport:keys$'; then
+        echo "Generating Passport keys..."
+        php artisan passport:keys --force || echo "❌ Failed to generate Passport keys"
+        # Set correct permissions when the package generated key files.
+        if ls storage/oauth-*.key >/dev/null 2>&1; then
+            chown www-data:www-data storage/oauth-*.key
+            chmod 600 storage/oauth-*.key
+            chmod 644 storage/oauth-public.key 2>/dev/null || true
+        fi
+    else
+        echo "⏭️  Passport is not installed; skipping Passport keys"
+    fi
 else
     echo "✅ Passport keys exist"
 fi
@@ -73,8 +79,12 @@ for i in {1..5}; do
 done
 
 if [ "$DB_CONNECTED" = "true" ]; then
-    echo "🔄 Running migrations..."
-    php artisan migrate --force || echo "❌ Migration failed"
+    if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+        echo "🔄 Running migrations..."
+        php artisan migrate --force || echo "❌ Migration failed"
+    else
+        echo "⏭️  Skipping migrations (RUN_MIGRATIONS is not true)"
+    fi
 else
     echo "⚠️  Skipping database operations - no connection"
 fi
@@ -93,15 +103,23 @@ if [ -f "/var/log/php_errors.log" ]; then
 fi
 
 # Clear any other log files in storage/logs
-find /var/www/html/storage/logs -name "*.log" -type f -exec sh -c "echo \"Clearing log: $1\" && > \"$1\"" _ {} \;
+for log_file in /var/www/html/storage/logs/*.log; do
+    [ -f "$log_file" ] || continue
+    echo "Clearing log: $log_file"
+    : > "$log_file"
+done
 echo "✅ Log cleanup completed"
 
 echo "🔧 Optimizing Laravel..."
-rm -rf bootstrap/cache/packages.php bootstrap/cache/services.php || true
-php artisan optimize:clear || echo "❌ Optimize clear failed"
-php artisan config:cache || echo "❌ Config cache failed"
-php artisan route:cache || echo "❌ Route cache failed"
-php artisan view:cache || echo "❌ View cache failed"
+if [ "${APP_OPTIMIZE_ON_BOOT:-true}" = "true" ]; then
+    rm -rf bootstrap/cache/packages.php bootstrap/cache/services.php || true
+    php artisan optimize:clear || echo "❌ Optimize clear failed"
+    php artisan config:cache || echo "❌ Config cache failed"
+    php artisan route:cache || echo "❌ Route cache failed"
+    php artisan view:cache || echo "❌ View cache failed"
+else
+    php artisan optimize:clear || echo "❌ Optimize clear failed"
+fi
 
 chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache

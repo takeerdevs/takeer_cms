@@ -28,6 +28,7 @@ class ProcessHlsVideo implements ShouldQueue
 
     public function __construct(public Post $post)
     {
+        $this->onQueue('media');
     }
 
     public function handle(): void
@@ -37,10 +38,10 @@ class ProcessHlsVideo implements ShouldQueue
             return;
         }
 
-        // We assume media_url stores raw s3 path like 'feed/raw/vid.mp4'
+        // We assume media_url stores raw public disk path like 'feed/raw/vid.mp4'
         $rawPath = $this->post->media_url;
 
-        // Output directory on S3
+        // Output directory on the public disk
         $outputDir = 'feed/hls/post_' . $this->post->id;
         $m3u8Name = 'playlist.m3u8';
         $fullPath = $outputDir . '/' . $m3u8Name;
@@ -50,11 +51,11 @@ class ProcessHlsVideo implements ShouldQueue
         $lowBitrate = (new X264)->setKiloBitrate(250);
         $midBitrate = (new X264)->setKiloBitrate(1000);
 
-        FFMpeg::fromDisk('s3')
+        FFMpeg::fromDisk('public')
             ->open($rawPath)
             ->exportForHLS()
             ->withRotatingEncryptionKey(function ($filename, $contents) {
-                Storage::disk('s3')->put("feed/keys/$filename", $contents);
+                Storage::disk('public')->put("feed/keys/$filename", $contents);
             }) // Optional encryption for payload protection
             ->addFormat($lowBitrate, function ($media) {
                 $media->scale(640, 360);
@@ -62,15 +63,15 @@ class ProcessHlsVideo implements ShouldQueue
             ->addFormat($midBitrate, function ($media) {
                 $media->scale(1280, 720);
             })
-            ->toDisk('s3')
+            ->toDisk('public')
             ->save($fullPath);
 
         // Update the database record with the final chunked m3u8 playlist URL
         $this->post->update([
-            'hls_url' => Storage::disk('s3')->url($fullPath)
+            'hls_url' => Storage::disk('public')->url($fullPath)
         ]);
 
         // Cleanup the raw mp4 file to save S3 storage costs
-        Storage::disk('s3')->delete($rawPath);
+        Storage::disk('public')->delete($rawPath);
     }
 }

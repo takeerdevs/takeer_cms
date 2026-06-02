@@ -276,6 +276,11 @@ class Merchant extends Model
         return $this->hasMany(MerchantServiceCredential::class);
     }
 
+    public function productCertificates(): HasMany
+    {
+        return $this->hasMany(MerchantProductCertificate::class);
+    }
+
     public function locations(): HasMany
     {
         return $this->hasMany(MerchantLocation::class, 'merchant_id');

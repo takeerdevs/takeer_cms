@@ -19,13 +19,23 @@ export default function LinkPreviewCard({
 }) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [reporting, setReporting] = useState(false);
+    const [imageAspect, setImageAspect] = useState(null);
     if (!preview) return null;
 
     const href = preview.tracked_url || preview.final_url || preview.url;
-    const siteLabel = preview.site_name || hostFromUrl(href);
+    const host = hostFromUrl(preview.final_url || preview.url || href);
+    const siteLabel = preview.site_name || host;
     const embed = preview.embed;
     const unavailable = Boolean(preview.link_unavailable || preview.tracked_link_status === 'disabled');
     const canEmbed = !unavailable && playable && Boolean(embed?.url && embed?.type === 'video');
+    const compactMarketplacePreview = shouldUseCompactMarketplacePreview(preview, host);
+    const fallbackTitle = unavailable && siteLabel ? `Open on ${siteLabel}` : '';
+    const titleText = compactMarketplacePreview && isBlockedPreviewText(String(preview.title || '').toLowerCase())
+        ? `Open on ${siteLabel || 'external shop'}`
+        : (preview.title || fallbackTitle);
+    const descriptionText = compactMarketplacePreview && isBlockedPreviewText(String(preview.description || '').toLowerCase())
+        ? ''
+        : preview.description;
     const playableUrl = canEmbed
         ? `${embed.url}${embed.url.includes('?') ? '&' : '?'}autoplay=1`
         : null;
@@ -75,18 +85,32 @@ export default function LinkPreviewCard({
         }
     };
 
-    const Root = linkMode === 'external' && !preview.tracked_url ? 'a' : 'div';
-    const rootProps = linkMode === 'external' && !preview.tracked_url
+    const Root = linkMode === 'external' && !preview.tracked_url && !unavailable ? 'a' : 'div';
+    const rootProps = linkMode === 'external' && !preview.tracked_url && !unavailable
         ? { href, target: '_blank', rel: 'noopener noreferrer' }
         : {};
+    const previewAspect = clampAspect(imageAspect || 1.91, 0.95, 3.4);
+    const stateClass = unavailable
+        ? 'cursor-not-allowed border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]'
+        : 'border-border bg-background hover:bg-accent/40';
 
     return (
         <Root
             {...rootProps}
             onClick={handleClick}
-            className={`group block overflow-hidden rounded-lg border border-border bg-background transition-colors hover:bg-accent/40 ${className}`}
+            className={`group block overflow-hidden rounded-xl border transition-colors ${stateClass} ${className}`}
+            aria-disabled={unavailable || undefined}
         >
-            {isPlaying && playableUrl ? (
+            {unavailable ? (
+                <div className="relative flex min-h-[200px] items-center justify-center bg-white px-6 py-10 text-center sm:min-h-[250px]">
+                    <Flag className="absolute right-5 top-5 h-5 w-5 text-orange-700" />
+                    <div className="mx-auto max-w-lg">
+                        <p className="text-base font-medium leading-7 text-slate-500 sm:text-lg sm:leading-8">
+                            This link is unavailable while Takeer reviews a safety issue.
+                        </p>
+                    </div>
+                </div>
+            ) : isPlaying && playableUrl ? (
                 <div className="aspect-video w-full overflow-hidden bg-black">
                     <iframe
                         src={playableUrl}
@@ -98,13 +122,22 @@ export default function LinkPreviewCard({
                         allowFullScreen
                     />
                 </div>
-            ) : preview.image_url && (
-                <div className="relative aspect-[1.91/1] w-full overflow-hidden bg-muted">
+            ) : preview.image_url && !compactMarketplacePreview && (
+                <div
+                    className="relative max-h-[420px] w-full overflow-hidden bg-muted"
+                    style={{ aspectRatio: previewAspect }}
+                >
                     <img
                         src={preview.image_url}
                         alt=""
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                         loading="lazy"
+                        onLoad={(event) => {
+                            const { naturalWidth, naturalHeight } = event.currentTarget;
+                            if (naturalWidth > 0 && naturalHeight > 0) {
+                                setImageAspect(naturalWidth / naturalHeight);
+                            }
+                        }}
                     />
                     {canEmbed && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/10">
@@ -115,57 +148,52 @@ export default function LinkPreviewCard({
                     )}
                 </div>
             )}
-            <div className="flex items-start gap-3 p-3">
-                {preview.favicon_url && (
-                    <img
-                        src={preview.favicon_url}
-                        alt=""
-                        className="mt-0.5 h-4 w-4 shrink-0 rounded-sm"
-                        loading="lazy"
-                    />
-                )}
-                <div className="min-w-0 flex-1">
-                    {siteLabel && (
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground truncate">
-                            {siteLabel}
-                        </p>
+            {!unavailable && (
+                <div className={`flex items-start gap-3 ${compactMarketplacePreview ? 'p-4' : 'p-3'}`}>
+                    {preview.favicon_url && (
+                        <img
+                            src={preview.favicon_url}
+                            alt=""
+                            className="mt-0.5 h-4 w-4 shrink-0 rounded-sm"
+                            loading="lazy"
+                        />
                     )}
-                    {preview.title && (
-                        <p className="mt-0.5 text-sm font-black leading-snug text-foreground line-clamp-2">
-                            {preview.title}
-                        </p>
+                    <div className="min-w-0 flex-1">
+                        {siteLabel && (
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground truncate">
+                                {siteLabel}
+                            </p>
+                        )}
+                        {titleText && (
+                            <p className="mt-0.5 text-sm font-black leading-snug text-foreground line-clamp-2">
+                                {titleText}
+                            </p>
+                        )}
+                        {descriptionText && (
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground line-clamp-2">
+                                {descriptionText}
+                            </p>
+                        )}
+                    </div>
+                    {canEmbed && !isPlaying ? (
+                        <Play className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
+                    ) : (
+                        <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
                     )}
-                    {preview.description && (
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground line-clamp-2">
-                            {preview.description}
-                        </p>
-                    )}
-                    {unavailable && (
-                        <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800">
-                            This link is unavailable while Takeer reviews a safety issue.
-                        </p>
+                    {preview.tracked_url && (
+                        <button
+                            type="button"
+                            onClick={handleReport}
+                            disabled={reporting}
+                            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                            aria-label="Report link"
+                            title="Report link"
+                        >
+                            <Flag className="h-3.5 w-3.5" />
+                        </button>
                     )}
                 </div>
-                {unavailable ? (
-                    <Flag className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                ) : canEmbed && !isPlaying ? (
-                    <Play className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-                ) : (
-                    <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-                )}
-                {preview.tracked_url && (
-                    <button
-                        type="button"
-                        onClick={handleReport}
-                        disabled={reporting}
-                        className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
-                        aria-label="Report link"
-                        title="Report link"
-                    >
-                        <Flag className="h-3.5 w-3.5" />
-                    </button>
-                )}
-            </div>
+            )}
         </Root>
     );
 }
@@ -178,4 +206,48 @@ function trackedCode(url) {
     } catch {
         return '';
     }
+}
+
+function clampAspect(value, min, max) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return 1.91;
+    return Math.min(max, Math.max(min, n));
+}
+
+function shouldUseCompactMarketplacePreview(preview, host) {
+    if (!isMarketplaceHost(host)) return false;
+
+    const title = String(preview?.title || '').trim().toLowerCase();
+    const description = String(preview?.description || '').trim().toLowerCase();
+
+    if (!preview?.image_url) return true;
+    if (isBlockedPreviewText(title) || isBlockedPreviewText(description)) return true;
+    if (['amazon', 'ebay', 'aliexpress', 'alibaba'].includes(title)) return true;
+
+    return false;
+}
+
+function isMarketplaceHost(host = '') {
+    const normalized = String(host || '').replace(/^www\./i, '').toLowerCase();
+    return [
+        'amazon.',
+        'ebay.',
+        'aliexpress.',
+        'alibaba.',
+        'etsy.',
+        'temu.',
+        'jumia.',
+        'walmart.',
+    ].some((domain) => normalized === domain.replace('.', '') || normalized.includes(domain));
+}
+
+function isBlockedPreviewText(value = '') {
+    return [
+        'pardon our interruption',
+        'robot check',
+        'captcha',
+        'access denied',
+        'blocked',
+        'unusual traffic',
+    ].some((needle) => value.includes(needle));
 }

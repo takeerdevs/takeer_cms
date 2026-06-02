@@ -483,6 +483,13 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     // Inquiry Quote State
     const [shippingFeeInput, setShippingFeeInput] = useState('');
+    const [quoteUnitPriceInput, setQuoteUnitPriceInput] = useState('');
+    const [quoteDepositPercent, setQuoteDepositPercent] = useState('');
+    const [quoteProductionDays, setQuoteProductionDays] = useState('');
+    const [quoteBalanceDue, setQuoteBalanceDue] = useState('before_delivery');
+    const [quoteInspectionRequired, setQuoteInspectionRequired] = useState(true);
+    const [quotePaymentTermsNote, setQuotePaymentTermsNote] = useState('');
+    const [quoteCustomizationNote, setQuoteCustomizationNote] = useState('');
     const [quoteSubmitting, setQuoteSubmitting] = useState(false);
     const [showRouteShare, setShowRouteShare] = useState(false);
     const [customDeliveryFile, setCustomDeliveryFile] = useState(null);
@@ -511,7 +518,17 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         if (order?.shipping_fee !== null && order?.shipping_fee !== undefined) {
             setShippingFeeInput(String(order.shipping_fee));
         }
-    }, [order?.shipping_fee]);
+        if (order?.unit_price !== null && order?.unit_price !== undefined) {
+            setQuoteUnitPriceInput(String(order.unit_price));
+        }
+        const agreement = order?.agreement_snapshot || {};
+        setQuoteDepositPercent(agreement.deposit_percent !== null && agreement.deposit_percent !== undefined ? String(agreement.deposit_percent) : '');
+        setQuoteProductionDays(agreement.production_lead_time_days !== null && agreement.production_lead_time_days !== undefined ? String(agreement.production_lead_time_days) : '');
+        setQuoteBalanceDue(agreement.balance_due || 'before_delivery');
+        setQuoteInspectionRequired(agreement.inspection_required !== false);
+        setQuotePaymentTermsNote(agreement.payment_terms_note || '');
+        setQuoteCustomizationNote(agreement.customization_note || '');
+    }, [order?.shipping_fee, order?.unit_price, order?.agreement_snapshot]);
 
     useEffect(() => {
         const options = availableDeliveryStatusOptions(order?.delivery);
@@ -588,6 +605,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         && order?.is_inquiry
         && order?.payment_status === 'pending'
         && order?.delivery?.delivery_type !== 'self_pickup';
+    const isB2BOrder = order?.product?.type === 'physical'
+        && ['wholesale', 'both'].includes(order?.product?.selling_style || order?.agreement_snapshot?.selling_style || '');
+    const canEditQuoteTerms = canUpdateOrder
+        && order?.is_inquiry
+        && order?.payment_status === 'pending'
+        && (canEditShipping || isB2BOrder);
     const isWaitingForShippingFee = canEditShipping && order?.shipping_fee === null;
     const statusOptions = availableDeliveryStatusOptions(order?.delivery);
     const deliveryEvents = Array.isArray(order?.delivery?.events) ? order.delivery.events : [];
@@ -813,15 +836,26 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     async function submitQuote(e) {
         e.preventDefault();
         if (!canUpdateOrder) return;
-        if (quoteSubmitting || !shippingFeeInput) return;
+        if (quoteSubmitting) return;
+        if (!isB2BOrder && !shippingFeeInput) return;
+        if (isB2BOrder && !quoteUnitPriceInput) {
+            toast.error('Weka unit price ya proforma.');
+            return;
+        }
 
         setQuoteSubmitting(true);
         try {
             await axios.post(`/api/merchant/orders/${orderId}/quote`, {
-                shipping_fee: shippingFeeInput,
+                unit_price: quoteUnitPriceInput || undefined,
+                shipping_fee: shippingFeeInput || 0,
+                deposit_percent: quoteDepositPercent || undefined,
+                balance_due: quoteBalanceDue,
+                production_lead_time_days: quoteProductionDays || undefined,
+                inspection_required: quoteInspectionRequired,
+                payment_terms_note: quotePaymentTermsNote || undefined,
+                customization_note: quoteCustomizationNote || undefined,
             });
-            toast.success('Gharama ya usafiri imetumwa kwa mteja.');
-            setShippingFeeInput('');
+            toast.success(isB2BOrder ? 'Proforma terms zimetumwa kwa mteja.' : 'Gharama ya usafiri imetumwa kwa mteja.');
             await loadOrder();
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Imeshindwa kutuma gharama.');
@@ -1225,10 +1259,34 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             )}
                                         </div>
 
-                                        {canEditShipping ? (
+                                        {canEditQuoteTerms ? (
                                             <form onSubmit={submitQuote} className={`rounded-xl border bg-white/80 p-4 transition-colors ${isWaitingForShippingFee ? 'border-red-300 ring-2 ring-red-100' : 'border-slate-100'}`}>
-                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                                                    <div className="flex-1">
+                                                {isB2BOrder && (
+                                                    <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Wholesale proforma</p>
+                                                        <p className="mt-1 text-xs font-semibold leading-5 text-emerald-900">
+                                                            Buyer payment must go through Takeer SafePay. Use these terms for deposit, production, delivery, and payout/dispute decisions.
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                                    {isB2BOrder && (
+                                                        <div>
+                                                            <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">
+                                                                Unit Price (TZS)
+                                                            </label>
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="Mf. 25000"
+                                                                value={quoteUnitPriceInput}
+                                                                onChange={e => setQuoteUnitPriceInput(e.target.value)}
+                                                                className="font-bold rounded-xl h-11"
+                                                                required
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <div>
                                                         <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">
                                                             {order.shipping_fee !== null && order.shipping_fee !== undefined ? 'Update Shipping Fee (TZS)' : 'Enter Shipping Fee (TZS)'}
                                                         </label>
@@ -1239,18 +1297,51 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                             value={shippingFeeInput}
                                                             onChange={e => setShippingFeeInput(e.target.value)}
                                                             className={`font-bold rounded-xl h-11 ${isWaitingForShippingFee ? 'border-red-400 bg-red-50/40 focus-visible:ring-red-200' : ''}`}
-                                                            required
+                                                            required={!isB2BOrder}
                                                         />
                                                     </div>
+                                                    {isB2BOrder && (
+                                                        <>
+                                                            <div>
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Deposit %</label>
+                                                                <Input type="number" min="0" max="100" placeholder="30" value={quoteDepositPercent} onChange={e => setQuoteDepositPercent(e.target.value)} className="font-bold rounded-xl h-11" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Production days</label>
+                                                                <Input type="number" min="0" placeholder="14" value={quoteProductionDays} onChange={e => setQuoteProductionDays(e.target.value)} className="font-bold rounded-xl h-11" />
+                                                            </div>
+                                                            <div className="sm:col-span-2">
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">Balance due</label>
+                                                                <select value={quoteBalanceDue} onChange={(e) => setQuoteBalanceDue(e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold">
+                                                                    <option value="before_production">Before production</option>
+                                                                    <option value="before_delivery">Before delivery</option>
+                                                                    <option value="on_delivery_confirmation">After buyer confirms delivery</option>
+                                                                    <option value="manual">Manual agreement</option>
+                                                                </select>
+                                                            </div>
+                                                            <label className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700">
+                                                                <input type="checkbox" checked={quoteInspectionRequired} onChange={(e) => setQuoteInspectionRequired(e.target.checked)} />
+                                                                Inspection required before release
+                                                            </label>
+                                                        </>
+                                                    )}
+                                                    <div className="flex items-end">
                                                     <Button
                                                         type="submit"
-                                                        className="h-11 rounded-xl px-8 bg-brand-600 hover:bg-brand-700 font-bold"
-                                                        disabled={quoteSubmitting || shippingFeeInput === ''}
+                                                        className="h-11 w-full rounded-xl px-8 bg-brand-600 hover:bg-brand-700 font-bold"
+                                                        disabled={quoteSubmitting || (!isB2BOrder && shippingFeeInput === '') || (isB2BOrder && quoteUnitPriceInput === '')}
                                                     >
                                                         {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                                                        {order.shipping_fee !== null && order.shipping_fee !== undefined ? 'SASISHA GHARAMA' : 'TUMA GHARAMA'}
+                                                        {isB2BOrder ? 'TUMA PROFORMA' : (order.shipping_fee !== null && order.shipping_fee !== undefined ? 'SASISHA GHARAMA' : 'TUMA GHARAMA')}
                                                     </Button>
+                                                    </div>
                                                 </div>
+                                                {isB2BOrder && (
+                                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                                        <Input value={quotePaymentTermsNote} onChange={(e) => setQuotePaymentTermsNote(e.target.value)} placeholder="Payment terms note, e.g. 30% deposit, 70% before dispatch" className="h-11 rounded-xl" />
+                                                        <Input value={quoteCustomizationNote} onChange={(e) => setQuoteCustomizationNote(e.target.value)} placeholder="Customization or packaging note" className="h-11 rounded-xl" />
+                                                    </div>
+                                                )}
                                                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
                                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
                                                         <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Current shipping</p>

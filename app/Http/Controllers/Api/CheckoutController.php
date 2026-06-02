@@ -1802,7 +1802,7 @@ class CheckoutController extends Controller
         $selectedVariant = null;
         $requestedQuantity = 1.0;
         if ($validated['purchasable_type'] === 'product') {
-            $product = Product::with(['unitType', 'packageContentUnitType'])->findOrFail($validated['purchasable_id']);
+            $product = Product::with(['unitType', 'packageContentUnitType', 'pricingTiers', 'leadTimeTiers', 'packagingDetails', 'customizationOptions', 'specifications'])->findOrFail($validated['purchasable_id']);
             $isServiceInquiry = $product->isService() && (
                 ($product->service_mode ?? null) === 'request_quote'
                 || ($product->service_pricing_model ?? null) === 'contract_quote'
@@ -1993,6 +1993,31 @@ class CheckoutController extends Controller
                 ] : null,
                 'unit_price' => $unitPrice,
                 'total_paid' => $quotedTotalPrice,
+                'agreement_snapshot' => $product && $product->isPhysical() && in_array($product->selling_style ?: 'retail', ['wholesale', 'both'], true) ? array_filter([
+                    'order_mode' => 'b2b_quote',
+                    'selling_style' => $product->selling_style,
+                    'quantity' => $requestedQuantity,
+                    'unit_price' => $unitPrice,
+                    'total_paid' => $quotedTotalPrice,
+                    'pricing_tiers' => $product->pricingTiers->map(fn ($tier) => [
+                        'min_quantity' => (float) $tier->min_quantity,
+                        'max_quantity' => $tier->max_quantity !== null ? (float) $tier->max_quantity : null,
+                        'unit_price' => (float) $tier->unit_price,
+                        'currency' => $tier->currency,
+                        'label' => $tier->label,
+                    ])->values()->all(),
+                    'deposit_mode' => $product->wholesale_deposit_mode ?: 'quote_based',
+                    'deposit_percent' => $product->wholesale_deposit_percent !== null ? (float) $product->wholesale_deposit_percent : null,
+                    'balance_due' => $product->wholesale_balance_due ?: 'before_delivery',
+                    'safepay_required' => true,
+                    'safepay_methods' => collect([
+                        'mobile_money' => (bool) ($product->safepay_mobile_money_enabled ?? true),
+                        'bank_transfer' => (bool) ($product->safepay_bank_transfer_enabled ?? true),
+                        'wallet' => (bool) ($product->safepay_wallet_enabled ?? true),
+                        'card' => (bool) ($product->safepay_card_enabled ?? false),
+                    ])->filter()->keys()->values()->all(),
+                    'requested_at' => now()->toISOString(),
+                ], fn ($value) => $value !== null && $value !== '') : null,
                 'shipping_fee' => ($isSelfPickup || $isServiceInquiry || $inquiryStatus === 'quoted') ? $resolvedShippingFee : null,
                 'payment_status' => 'pending',
                 'is_inquiry' => true,

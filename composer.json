@@ -11,6 +11,7 @@
         "giggsey/libphonenumber-for-php": "^9.0",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/framework": "^12.0",
+        "laravel/horizon": "^5.47",
         "laravel/reverb": "^1.8",
         "laravel/sanctum": "^4.3",
         "laravel/socialite": "^5.26",
@@ -55,7 +56,20 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite --kill-others"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74,#86efac\" \"php artisan serve\" \"php artisan horizon\" \"php artisan schedule:work\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,horizon,schedule,logs,vite --kill-others"
+        ],
+        "dev:infra": [
+            "docker compose -f docker-compose.dev.yml up -d postgres redis minio minio-init soketi"
+        ],
+        "dev:docker": [
+            "Composer\\Config::disableProcessTimeout",
+            "docker compose -f docker-compose.dev.yml -f docker-compose.local.yml up -d --build app proxy queue scheduler vite"
+        ],
+        "dev:docker:stop": [
+            "docker compose -f docker-compose.dev.yml -f docker-compose.local.yml stop app proxy queue scheduler vite"
+        ],
+        "dev:horizon": [
+            "php artisan horizon"
         ],
         "test": [
             "@php artisan config:clear --ansi",

@@ -7,8 +7,11 @@ import MediaGrid from './MediaGrid';
 import LinkifiedText from './LinkifiedText';
 import LinkPreviewCard from './LinkPreviewCard';
 import FreightRouteCard from './FreightRouteCard';
+import FollowStoreButton from './FollowStoreButton';
+import MerchantHoverCard from './MerchantHoverCard';
 import { getShortPostPresentation } from '@/lib/shortPostStyles';
-import { productCardPriceLabel, productPriceLabel, productPriceRangeLabel, productUnitLabel } from '@/lib/productUnits';
+import { cn } from '@/lib/utils';
+import { formatQuantity, productCardPriceLabel, productPriceLabel, productPriceRangeLabel, productUnitLabel } from '@/lib/productUnits';
 import { trackPlatformEvent } from '@/lib/attribution';
 import { useSubscriptionCountdown } from '@/lib/subscriptionCountdown';
 import { toast } from 'sonner';
@@ -426,6 +429,10 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
     const singleUnlockPrice = Number(postData.restricted_price || 0);
     const shouldShowPremiumCtas = isLocked && (hasSingleUnlockOption || hasPromotableOption);
     const linkPreview = postData.link_preview || null;
+    const isLinkPreviewUnavailable = Boolean(linkPreview?.link_unavailable || linkPreview?.tracked_link_status === 'disabled');
+    const unavailableLinkUrls = isLinkPreviewUnavailable
+        ? [linkPreview?.url, linkPreview?.final_url, linkPreview?.tracked_url].filter(Boolean)
+        : [];
     const isForwarderRoutePost = Boolean(postData.forwarder_route_snapshot || postData.source === 'forwarder_route');
     const forwarderRouteSnapshot = postData.forwarder_route_snapshot || {
         label: postData.forwarder_route_label || postData.title,
@@ -503,6 +510,18 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
     const attachedProductUnitLabel = !attachedProductIsService && attachedProduct?.type === 'physical'
         ? productUnitLabel(attachedProduct)
         : '';
+    const attachedProductSellingStyle = attachedProduct?.type === 'physical'
+        ? (attachedProduct?.selling_style || 'retail')
+        : null;
+    const attachedProductIsWholesale = attachedProduct?.type === 'physical'
+        && (Boolean(attachedProduct?.is_wholesale_enabled) || ['wholesale', 'both'].includes(attachedProductSellingStyle));
+    const attachedProductIsWholesaleOnly = attachedProductSellingStyle === 'wholesale';
+    const attachedProductWholesaleBadge = attachedProductIsWholesale
+        ? (attachedProductSellingStyle === 'both' ? 'Retail + Wholesale' : 'Wholesale')
+        : '';
+    const attachedProductMoqLabel = attachedProductIsWholesale && Number(attachedProduct?.min_order_quantity || 0) > 0
+        ? `MOQ ${formatQuantity(attachedProduct.min_order_quantity)} ${attachedProduct?.unit_type?.symbol || attachedProduct?.unit_type?.name || 'units'}`
+        : '';
     const attachedProductPriceLabel = (() => {
         if (!attachedProductIsService) return productCardPriceLabel(attachedProduct, attachedProductPrice);
         if (attachedProductPriceDisplay === 'hidden' || attachedProductServiceMode === 'showcase_only') return 'Contact provider';
@@ -533,7 +552,9 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                             ? 'Request quote'
                                             : attachedProductIsService
                                                 ? (attachedProductServiceMode === 'book_appointment' ? 'Book' : 'View Service')
-                                                : 'Nunua';
+                                                : attachedProductIsWholesaleOnly
+                                                    ? 'Request quote'
+                                                    : 'Nunua';
     const variantAttributeSummary = useMemo(() => {
         if (!hasVariantPricing) return [];
 
@@ -584,6 +605,24 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
         && normalizedProductDescription !== normalizeDisplayText(postData.caption)
         && normalizedProductDescription !== normalizeDisplayText(postData.excerpt)
         && normalizedProductDescription !== normalizeDisplayText(feedSummaryText);
+    const hasPostTitle = Boolean(String(postData.title || '').trim());
+    const shouldShowFeedSummary = Boolean(feedSummaryText)
+        && !(!isLongForm && shortPresentation.hasBg && !isLocked)
+        && !isOfferingGroupPromotable
+        && !isForwarderRoutePost;
+    const shouldShowPostTitle = (
+        (isLongForm && !isOfferingGroupPromotable)
+        || (!isLongForm && isRestricted)
+    ) && hasPostTitle && !isForwarderRoutePost;
+    const shouldShowPostContentHeader = (
+        shouldShowPostTitle
+        || (isForwarderRoutePost && !isLocked)
+        || shouldShowFeedSummary
+        || (linkPreview && !isLocked)
+        || shouldShowOpenCta
+        || isUnlocking
+        || shouldShowPremiumCtas
+    );
     const deletedAtLabel = postData.deleted_at
         ? new Date(postData.deleted_at).toLocaleString(undefined, {
             month: 'short',
@@ -849,19 +888,30 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                 </div>
             )}
             <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-                <Link
-                    href={`/u/${postData.merchant_profile?.username || postData.merchant?.username || postData.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
-                    className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-sm border-2 border-background shadow-sm overflow-hidden hover:opacity-90 transition-opacity"
-                >
-                    {postData.merchant_profile?.avatar_url ? (
-                        <img src={postData.merchant_profile.avatar_url} className="h-full w-full object-cover" alt="" />
-                    ) : (
-                        (postData.merchant_profile?.display_name || postData.merchant?.name || 'T').charAt(0).toUpperCase()
-                    )}
-                </Link>
+                <div className="relative h-12 w-12 shrink-0">
+                    <Link
+                        href={`/u/${postData.merchant_profile?.username || postData.merchant?.username || postData.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
+                        className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-background bg-gradient-to-br from-brand-400 to-brand-600 text-md font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+                    >
+                        {postData.merchant_profile?.avatar_url ? (
+                            <img src={postData.merchant_profile.avatar_url} className="h-full w-full object-cover" alt="" />
+                        ) : (
+                            (postData.merchant_profile?.display_name || postData.merchant?.name || 'T').charAt(0).toUpperCase()
+                        )}
+                    </Link>
+                    <FollowStoreButton
+                        merchantSlug={postData.merchant_profile?.username || postData.merchant?.username}
+                        initialFollowing={postData.merchant_profile?.is_following}
+                        initialCount={postData.merchant_profile?.followers_count}
+                        isOwner={postData.merchant_profile?.is_owner}
+                        variant="avatar"
+                        showCount={false}
+                        className="absolute -bottom-1 -right-1"
+                    />
+                </div>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
-                        <div className="flex items-center gap-1 max-w-full">
+                        <div className="group relative flex max-w-full items-center gap-1">
                             <Link
                                 href={`/u/${post.merchant_profile?.username || post.merchant?.username || post.merchant?.name?.toLowerCase().replace(/\s/g, '_')}`}
                                 className="font-bold text-sm text-foreground leading-none truncate hover:text-brand-600 transition-colors"
@@ -869,6 +919,7 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                 {post.merchant_profile?.display_name || post.merchant?.name}
                             </Link>
                             {post.merchant_profile?.is_verified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-blue-500" />}
+                            <MerchantHoverCard merchant={post.merchant_profile || post.merchant} />
                         </div>
                     </div>
                     <Link
@@ -898,104 +949,110 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                 )}
             </div>
 
-            <div className="px-4 pb-3 space-y-3 cursor-pointer" onClick={goToPostDetails}>
-                {isLongForm && postData.title && !isForwarderRoutePost && (
-                    <h2 className={`text-2xl font-[850] leading-[1.12] text-foreground sm:text-[1.55rem] ${isOfferingGroupPromotable ? 'sr-only' : ''}`}>
-                        {postData.title}
-                    </h2>
-                )}
-                {!isLongForm && isRestricted && postData.title && !isForwarderRoutePost && (
-                    <h3 className="text-xl font-bold leading-tight text-foreground">
-                        {postData.title}
-                    </h3>
-                )}
+            {shouldShowPostContentHeader && (
+                <div className="px-4 pb-3 space-y-3 cursor-pointer" onClick={goToPostDetails}>
+                    {shouldShowPostTitle && isLongForm && (
+                        <h2 className="text-2xl font-[850] leading-[1.12] text-foreground sm:text-[1.55rem]">
+                            {postData.title}
+                        </h2>
+                    )}
+                    {shouldShowPostTitle && !isLongForm && (
+                        <h3 className="text-xl font-bold leading-tight text-foreground">
+                            {postData.title}
+                        </h3>
+                    )}
 
-                {isForwarderRoutePost && !isLocked && (
-                    <FreightRouteCard snapshot={forwarderRouteSnapshot} onOpen={goToPostDetails} routeHref={forwarderRouteHref} />
-                )}
+                    {isForwarderRoutePost && !isLocked && (
+                        <FreightRouteCard snapshot={forwarderRouteSnapshot} onOpen={goToPostDetails} routeHref={forwarderRouteHref} />
+                    )}
 
-                {(postData.excerpt || postData.caption) && !isOfferingGroupPromotable && !isForwarderRoutePost && (
-                    <div className={
-                        isLongForm
-                            ? 'text-[14px] leading-[1.5] text-foreground/80 font-medium line-clamp-3'
-                            : `${shortPresentation.textClass} leading-[1.4] ${isSubscriptionPromotable ? '' : 'line-clamp-3'}`
-                    }>
-                        <LinkifiedText
-                            text={feedSummaryText}
-                            maxLinkLength={40}
-                            stopPropagationOnLinkClick
-                            linkClassName="text-brand-600 hover:text-brand-700 underline underline-offset-2 break-all"
-                        />
-                    </div>
-                )}
-
-                {linkPreview && !isLocked && (
-                    <LinkPreviewCard preview={linkPreview} linkMode="none" />
-                )}
-
-                {shouldShowOpenCta && (
-                    <div className="pt-1 flex justify-center">
-                        <button
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                goToPostDetails();
-                            }}
-                            className="inline-flex items-center justify-center min-w-32 px-8 py-2 rounded-full border-[1.5px] border-foreground text-foreground font-bold text-base hover:bg-foreground hover:text-background transition-all"
-                        >
-                            Open
-                        </button>
-                    </div>
-                )}
-
-                {/* Lock area: spinner during unlock, then CTAs if still locked */}
-                {isUnlocking ? (
-                    <div className="pt-4 flex flex-col items-center gap-3 py-6 animate-in fade-in">
-                        <div className="h-14 w-14 rounded-2xl bg-brand-50 flex items-center justify-center">
-                            <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+                    {shouldShowFeedSummary && (
+                        <div className={
+                            isLongForm
+                                ? 'text-[14px] leading-[1.5] text-foreground/80 font-medium line-clamp-3'
+                                : `${shortPresentation.textClass} leading-[1.4] ${isSubscriptionPromotable ? '' : 'line-clamp-3'}`
+                        }>
+                            <LinkifiedText
+                                text={feedSummaryText}
+                                maxLinkLength={40}
+                                stopPropagationOnLinkClick
+                                linkClassName="text-brand-600 hover:text-brand-700 underline underline-offset-2 break-all"
+                                disabledUrls={unavailableLinkUrls}
+                            />
                         </div>
-                        <p className="text-sm font-bold text-muted-foreground">Inafungua content yako...</p>
-                    </div>
-                ) : shouldShowPremiumCtas && (
-                    <div className="pt-1">
-                        <div className="flex items-center justify-center mb-3">
-                            <Unlock className="h-10 w-10 text-muted-foreground/60" />
+                    )}
+
+                    {linkPreview && !isLocked && (
+                        <LinkPreviewCard preview={linkPreview} linkMode="none" />
+                    )}
+
+                    {shouldShowOpenCta && (
+                        <div className="pt-1 flex justify-center">
+                            <button
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    goToPostDetails();
+                                }}
+                                className="inline-flex items-center justify-center min-w-32 px-8 py-2 rounded-full border-[1.5px] border-foreground text-foreground font-bold text-base hover:bg-foreground hover:text-background transition-all"
+                            >
+                                Open
+                            </button>
                         </div>
-                        <div className="flex flex-col items-center gap-2">
-                            {hasSingleUnlockOption && (
-                                <button
-                                    onClick={handleSingleUnlockClick}
-                                    className="inline-flex items-center justify-center min-w-48 px-5 py-1.5 rounded-full border-[1.5px] border-foreground text-foreground font-medium text-xs hover:bg-foreground hover:text-background transition-all"
-                                >
-                                    {`Unlock Tsh ${singleUnlockPrice.toLocaleString()}`}
-                                </button>
-                            )}
-                            {hasPromotableOption && (
-                                <button
-                                    onClick={handlePromotableUnlockClick}
-                                    className="inline-flex items-center justify-center min-w-48 px-5 py-1.5 rounded-full border-[1.5px] border-foreground text-foreground font-medium text-xs hover:bg-foreground hover:text-background transition-all"
-                                >
-                                    {hasMultiplePromotables
-                                        ? `Unlock Options`
-                                        : promotableType === 'subscription_plan'
-                                            ? `Subscribe ${(promotableItem?.name || promotableItem?.title || 'Plan')}: Tsh ${Number(promotableItem?.price || 0).toLocaleString()}`
-                                            : `Join ${(promotableItem?.title || 'Bundle')}: Tsh ${Number(promotableItem?.price || 0).toLocaleString()}`
-                                    }
-                                </button>
-                            )}
+                    )}
+
+                    {/* Lock area: spinner during unlock, then CTAs if still locked */}
+                    {isUnlocking ? (
+                        <div className="pt-4 flex flex-col items-center gap-3 py-6 animate-in fade-in">
+                            <div className="h-14 w-14 rounded-2xl bg-brand-50 flex items-center justify-center">
+                                <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+                            </div>
+                            <p className="text-sm font-bold text-muted-foreground">Inafungua content yako...</p>
                         </div>
-                    </div>
-                )}
-            </div>
+                    ) : shouldShowPremiumCtas && (
+                        <div className="pt-1">
+                            <div className="flex items-center justify-center mb-3">
+                                <Unlock className="h-10 w-10 text-muted-foreground/60" />
+                            </div>
+                            <div className="flex flex-col items-center gap-2">
+                                {hasSingleUnlockOption && (
+                                    <button
+                                        onClick={handleSingleUnlockClick}
+                                        className="inline-flex items-center justify-center min-w-48 px-5 py-1.5 rounded-full border-[1.5px] border-foreground text-foreground font-medium text-xs hover:bg-foreground hover:text-background transition-all"
+                                    >
+                                        {`Unlock Tsh ${singleUnlockPrice.toLocaleString()}`}
+                                    </button>
+                                )}
+                                {hasPromotableOption && (
+                                    <button
+                                        onClick={handlePromotableUnlockClick}
+                                        className="inline-flex items-center justify-center min-w-48 px-5 py-1.5 rounded-full border-[1.5px] border-foreground text-foreground font-medium text-xs hover:bg-foreground hover:text-background transition-all"
+                                    >
+                                        {hasMultiplePromotables
+                                            ? `Unlock Options`
+                                            : promotableType === 'subscription_plan'
+                                                ? `Subscribe ${(promotableItem?.name || promotableItem?.title || 'Plan')}: Tsh ${Number(promotableItem?.price || 0).toLocaleString()}`
+                                                : `Join ${(promotableItem?.title || 'Bundle')}: Tsh ${Number(promotableItem?.price || 0).toLocaleString()}`
+                                        }
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {isText && shortPresentation.hasBg && !isLocked && (
                 <div
                     onClick={goToPostDetails}
-                    className="mx-0 flex items-center justify-center py-10 no-underline px-8 min-h-[260px] cursor-pointer"
+                    className={cn(
+                        'mx-4 flex cursor-pointer items-center justify-center overflow-hidden rounded-md px-8 py-10 no-underline sm:py-12',
+                        shortPresentation.canvasClass
+                    )}
                     style={{ background: shortPresentation.bgValue }}
                 >
-                    <p className={`${shortPresentation.textClass} leading-[1.2] select-none`}>
-                        {post.caption}
+                    <p className={`${shortPresentation.textClass} ${shortPresentation.lineHeightClass} max-w-full whitespace-pre-wrap break-words select-none`}>
+                        {postData.caption}
                     </p>
                 </div>
             )}
@@ -1035,8 +1092,20 @@ export default function PostCard({ post, readOnly = false, detailHref = null, ad
                                     <ShieldCheck className="h-3 w-3" />
                                     SafePay
                                 </span>
+                                {attachedProductIsWholesale && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white ring-1 ring-slate-800">
+                                        <Boxes className="h-3 w-3" />
+                                        {attachedProductWholesaleBadge}
+                                    </span>
+                                )}
                             </div>
                             <p className="font-bold text-lg leading-tight text-foreground truncate">{attachedProduct.title}</p>
+                            {attachedProductMoqLabel && (
+                                <p className="mb-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-800 ring-1 ring-amber-100">
+                                    <Package className="h-3 w-3" />
+                                    {attachedProductMoqLabel}
+                                </p>
+                            )}
                             {attachedProductUnitLabel && (
                                 <p className="mb-1 text-[12px] font-bold text-slate-500 truncate">
                                     {attachedProductUnitLabel}

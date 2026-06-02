@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\DispatchController;
 use App\Http\Controllers\Api\MerchantModuleSetupController;
 use App\Http\Controllers\Api\MerchantOrderController;
 use App\Http\Controllers\Api\MerchantPlatformSubscriptionController;
+use App\Http\Controllers\Api\MerchantProductCertificateController;
 use App\Http\Controllers\Api\MerchantSubscriptionPlanController;
 use App\Http\Controllers\Api\MerchantMarketingController;
 use App\Http\Controllers\Api\MerchantAnalyticsExportController;
@@ -54,8 +55,27 @@ use App\Models\Currency;
 use App\Services\EntitlementService;
 use App\Services\SubscriptionRenewalService;
 use App\Support\SeoMeta;
+use App\Http\Controllers\HealthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+
+Route::get('/health', [HealthController::class, 'status'])->withoutMiddleware([
+    \App\Http\Middleware\CheckUserBan::class,
+    \App\Http\Middleware\DetectUserCountry::class,
+    \App\Http\Middleware\HandleInertiaRequests::class,
+]);
+
+Route::get('/health/live', [HealthController::class, 'live'])->withoutMiddleware([
+    \App\Http\Middleware\CheckUserBan::class,
+    \App\Http\Middleware\DetectUserCountry::class,
+    \App\Http\Middleware\HandleInertiaRequests::class,
+]);
+
+Route::get('/health/ready', [HealthController::class, 'ready'])->withoutMiddleware([
+    \App\Http\Middleware\CheckUserBan::class,
+    \App\Http\Middleware\DetectUserCountry::class,
+    \App\Http\Middleware\HandleInertiaRequests::class,
+]);
 
 // ─── PUBLIC PAYMENT PAGES (Commerce Pro) ───────────────────────────────────
 Route::get('/pay/retail-credit/{publicId}', [\App\Http\Controllers\Api\RetailCreditPaymentController::class, 'show'])->name('retail-credit-payment.show');
@@ -180,6 +200,13 @@ Route::get('/product/{product}', function (Product $product) {
         'faqs',
         'images',
         'variants',
+        'productCertificates',
+        'pricingTiers',
+        'leadTimeTiers',
+        'packagingDetails',
+        'customizationOptions',
+        'specifications',
+        'detailSections',
         'categoryAttributeValues.categoryAttribute'
     ]);
 
@@ -236,6 +263,12 @@ Route::get('/service-requests/{publicId}/pay/{token}', function (string $publicI
             'product.faqs',
             'product.images',
             'product.variants',
+            'product.pricingTiers',
+            'product.leadTimeTiers',
+            'product.packagingDetails',
+            'product.customizationOptions',
+            'product.specifications',
+            'product.detailSections',
             'product.categoryAttributeValues.categoryAttribute',
         ])
         ->firstOrFail();
@@ -853,8 +886,8 @@ Route::get('/feed', function (Request $request) {
 
 // ─── AUTH (Stateful) ───────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
-    Route::post('/otp/send', [AuthController::class, 'sendOtp'])->middleware('throttle:5,10');
-    Route::post('/otp/verify', [AuthController::class, 'verifyOtp'])->middleware('throttle:6,10');
+    Route::post('/otp/send', [AuthController::class, 'sendOtp'])->middleware('throttle:60,1');
+    Route::post('/otp/verify', [AuthController::class, 'verifyOtp'])->middleware('throttle:60,1');
     Route::post('/merchant/check', [MerchantAuthController::class, 'check']);
     Route::post('/merchant/register', [MerchantAuthController::class, 'register']);
     Route::post('/merchant/ensure-personal', [MerchantAuthController::class, 'ensurePersonalProfile'])->middleware('auth');
@@ -1816,6 +1849,9 @@ Route::middleware('auth')->group(function () {
         Route::delete('/products/{id}', [UploadController::class, 'deleteProduct'])->whereNumber('id')->middleware('merchant_permission:products.delete,digital_products.delete,services.delete');
         Route::post('/products/{product}/hotspots', [UploadController::class, 'syncHotspots'])->whereNumber('product')->middleware('merchant_permission:products.update,digital_products.update,services.update');
         Route::post('/products/{product}/media', [UploadController::class, 'syncDraftMedia'])->whereNumber('product')->middleware('merchant_permission:products.update,digital_products.update,services.update');
+        Route::get('/product-certificates/api', [MerchantProductCertificateController::class, 'index'])->middleware('merchant_permission:products.view');
+        Route::post('/product-certificates/api', [MerchantProductCertificateController::class, 'store'])->middleware('merchant_permission:products.update');
+        Route::delete('/product-certificates/api/{certificate}', [MerchantProductCertificateController::class, 'destroy'])->whereNumber('certificate')->middleware('merchant_permission:products.update');
         Route::get('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'index'])->middleware('merchant_permission:digital_products.view');
         Route::post('/products/{product:id}/releases', [\App\Http\Controllers\Api\ProductReleaseController::class, 'store'])->middleware('merchant_permission:digital_products.update');
         Route::patch('/products/{product:id}/releases/{release:id}', [\App\Http\Controllers\Api\ProductReleaseController::class, 'update'])->middleware('merchant_permission:digital_products.update');

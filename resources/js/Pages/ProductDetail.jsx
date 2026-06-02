@@ -3,7 +3,8 @@ import { Head, Link } from '@inertiajs/react';
 import {
     ChevronLeft, ChevronRight, Store, ShieldCheck, Zap, Info, BadgeCheck,
     AlertTriangle, DownloadCloud, CalendarClock, MapPin, Link as LinkIcon,
-    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle, Loader2, Clock3
+    ShoppingBag, Bell, Star, Images, BookOpen, ExternalLink, PlayCircle, Loader2, Clock3,
+    X, FileText, Factory, Package, ListChecks, CreditCard
 } from 'lucide-react';
 import { Button } from '@/Components/ui/Button';
 import AppLayout from '@/Layouts/AppLayout';
@@ -33,6 +34,15 @@ function hotspotLinkDomain(value) {
     }
 }
 
+const certificateTypeLabel = (value) => ({
+    supplier_owned: 'Supplier-owned',
+    manufacturer_issued: 'Manufacturer-issued',
+    product_specific: 'Product-specific',
+    business_license: 'Business license',
+    quality_standard: 'Quality standard',
+    other: 'Other',
+}[value] || value);
+
 export default function ProductDetail({ product }) {
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [activeHotspot, setActiveHotspot] = useState(null);
@@ -41,6 +51,7 @@ export default function ProductDetail({ product }) {
     const [isOnWaitlist, setIsOnWaitlist] = useState(false);
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
     const [serviceRequestOpen, setServiceRequestOpen] = useState(false);
+    const [selectedCertificate, setSelectedCertificate] = useState(null);
     const [serviceRequestSubmitting, setServiceRequestSubmitting] = useState(false);
     const [galleryImageLoaded, setGalleryImageLoaded] = useState({});
     const galleryTouchStartRef = useRef(null);
@@ -305,6 +316,7 @@ export default function ProductDetail({ product }) {
         return null;
     })();
     const serviceTrust = product?.service_trust || {};
+    const productCertificates = Array.isArray(product?.product_certificates) ? product.product_certificates : [];
     const serviceTrustBlocksBooking = product?.type === 'service' && !Boolean(serviceTrust.trust_ready);
     const serviceTrustBlockReason = serviceTrust.credential_required && !serviceTrust.credential_verified
         ? 'Huduma hii inasubiri uhakiki wa leseni/cheti cha mtoa huduma.'
@@ -566,6 +578,21 @@ export default function ProductDetail({ product }) {
             refundPolicyLabel ? ['Return policy', refundPolicyLabel] : null,
         ].filter(Boolean)
         : [];
+    const isWholesaleEnabled = product.type === 'physical' && Boolean(product.is_wholesale_enabled);
+    const pricingTiers = Array.isArray(product.pricing_tiers) ? product.pricing_tiers : [];
+    const leadTimeTiers = Array.isArray(product.lead_time_tiers) ? product.lead_time_tiers : [];
+    const packagingDetails = Array.isArray(product.packaging_details) ? product.packaging_details : [];
+    const customizationOptions = Array.isArray(product.customization_options) ? product.customization_options : [];
+    const productSpecifications = Array.isArray(product.specifications) ? product.specifications : [];
+    const productDetailSections = Array.isArray(product.detail_sections) ? product.detail_sections : [];
+    const supplyCapacity = product.supply_capacity || {};
+    const wholesalePaymentTerms = product.wholesale_payment_terms || {};
+    const safepayMethodLabels = {
+        mobile_money: 'Mobile money',
+        bank_transfer: 'Official Takeer bank transfer',
+        wallet: 'Takeer wallet',
+        card: 'Card',
+    };
     const productFaqs = Array.isArray(product?.faqs)
         ? product.faqs.filter((faq) => faq?.question && faq?.answer)
         : [];
@@ -583,7 +610,7 @@ export default function ProductDetail({ product }) {
         if (servicePriceUnitLabels[effectiveServicePriceDisplay]) return `${amount} / ${servicePriceUnitLabels[effectiveServicePriceDisplay]}`;
         return amount;
     })();
-    const canCheckout = !serviceTrustBlocksBooking && (groupSaleReservationMode || (hasProductVariants
+    const canCheckout = !serviceTrustBlocksBooking && (isWholesaleEnabled || groupSaleReservationMode || (hasProductVariants
         ? Boolean(selectedVariant?.id && isVariantSelectionComplete && (!requiresOwnedStock || Number(selectedVariant?.inventory_count || 0) > 0))
         : (!requiresOwnedStock || Number(product.available_stock || 0) > 0)));
     const timeInputValueFromDate = (value) => {
@@ -767,6 +794,9 @@ export default function ProductDetail({ product }) {
         }
         if (groupSaleCheckoutOpen) {
             return 'Buy Group Deal';
+        }
+        if (isWholesaleEnabled) {
+            return 'Request wholesale quote';
         }
         if (product.type === 'digital') {
             return 'Lipa Sasa';
@@ -2187,6 +2217,217 @@ export default function ProductDetail({ product }) {
                         </div>
                     )}
 
+                    {isWholesaleEnabled && (
+                        <div className="mb-8 space-y-5 border-t border-border/40 pt-5">
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h2 className="flex items-center gap-2 text-lg font-black text-foreground">
+                                            <Factory className="h-5 w-5 text-brand-700" />
+                                            Wholesale & industry supply
+                                        </h2>
+                                        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                                            Protected B2B orders are paid through Takeer SafePay. Terms, deposit, production, delivery, and release are confirmed on the official Takeer order.
+                                        </p>
+                                    </div>
+                                    <span className="shrink-0 rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
+                                        {product.selling_style === 'both' ? 'Retail + wholesale' : 'Wholesale'}
+                                    </span>
+                                </div>
+                                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                                    {product.min_order_quantity && (
+                                        <div className="rounded-xl bg-white p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">MOQ</p>
+                                            <p className="mt-1 text-lg font-black text-slate-950">{formatQuantity(product.min_order_quantity)} {unitLabel}</p>
+                                        </div>
+                                    )}
+                                    {supplyCapacity.quantity && (
+                                        <div className="rounded-xl bg-white p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Supply capacity</p>
+                                            <p className="mt-1 text-lg font-black text-slate-950">
+                                                {formatQuantity(supplyCapacity.quantity)} / {supplyCapacity.period || 'period'}
+                                            </p>
+                                        </div>
+                                    )}
+                                    <div className="rounded-xl bg-white p-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Payment protection</p>
+                                        <p className="mt-1 text-sm font-black text-emerald-700">Takeer SafePay required</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {pricingTiers.length > 0 && (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <h3 className="mb-3 text-sm font-black uppercase tracking-widest text-slate-700">Pricing tiers</h3>
+                                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                                        {pricingTiers.map((tier) => (
+                                            <div key={tier.id || `${tier.min_quantity}-${tier.unit_price}`} className="grid grid-cols-2 border-b border-slate-100 last:border-b-0">
+                                                <div className="bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
+                                                    {formatQuantity(tier.min_quantity)}{tier.max_quantity ? ` - ${formatQuantity(tier.max_quantity)}` : '+'} {unitLabel}
+                                                </div>
+                                                <div className="px-3 py-2 text-sm font-black text-slate-950">
+                                                    {(tier.currency || 'TZS')} {Number(tier.unit_price || 0).toLocaleString()} / {unitLabel}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {(leadTimeTiers.length > 0 || packagingDetails.length > 0) && (
+                                <div className="grid gap-4 lg:grid-cols-2">
+                                    {leadTimeTiers.length > 0 && (
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                            <h3 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-700">
+                                                <Clock3 className="h-4 w-4" />
+                                                Lead time
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {leadTimeTiers.map((tier) => (
+                                                    <div key={tier.id || `${tier.min_quantity}-${tier.lead_time_days}`} className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                                                        <span className="font-black text-slate-950">{formatQuantity(tier.min_quantity)}{tier.max_quantity ? ` - ${formatQuantity(tier.max_quantity)}` : '+'} {unitLabel}</span>
+                                                        <span className="text-slate-600"> · {tier.label || `${tier.lead_time_days} days`}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {packagingDetails.length > 0 && (
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                            <h3 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-700">
+                                                <Package className="h-4 w-4" />
+                                                Packaging & delivery
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {packagingDetails.map((detail) => (
+                                                    <div key={detail.id || detail.selling_units} className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                                                        <p className="font-black text-slate-950">{detail.selling_units || 'Packaging'}</p>
+                                                        <p className="text-slate-600">
+                                                            {[detail.package_quantity && `${formatQuantity(detail.package_quantity)} ${detail.package_unit || ''}`, detail.package_weight_kg && `${detail.package_weight_kg} kg`, detail.notes].filter(Boolean).join(' · ')}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {customizationOptions.length > 0 && (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <h3 className="mb-3 text-sm font-black uppercase tracking-widest text-slate-700">Customization options</h3>
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                        {customizationOptions.map((option) => (
+                                            <div key={option.id || option.name} className="rounded-xl bg-slate-50 px-3 py-2">
+                                                <p className="text-sm font-black text-slate-950">{option.name}</p>
+                                                <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+                                                    {[option.description, option.min_order_quantity && `Min order ${formatQuantity(option.min_order_quantity)} ${unitLabel}`, option.fee_type === 'free' ? 'Free' : option.fee_type === 'quote' ? 'Quoted' : option.fee_amount ? `${option.currency || 'TZS'} ${Number(option.fee_amount).toLocaleString()}` : null].filter(Boolean).join(' · ')}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {productSpecifications.length > 0 && (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <h3 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-700">
+                                        <ListChecks className="h-4 w-4" />
+                                        Key attributes
+                                    </h3>
+                                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                                        {productSpecifications.map((spec) => (
+                                            <div key={spec.id || `${spec.attribute_name}-${spec.attribute_value}`} className="grid grid-cols-2 border-b border-slate-100 last:border-b-0">
+                                                <div className="bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{spec.attribute_name}</div>
+                                                <div className="px-3 py-2 text-sm font-black text-slate-950">{spec.attribute_value}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {productDetailSections.length > 0 && (
+                                <div className="space-y-4">
+                                    {productDetailSections.map((section) => (
+                                        <section key={section.id || `${section.title}-${section.sort_order}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                            {section.title && (
+                                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-700">{section.title}</h3>
+                                            )}
+                                            {section.image_url && (
+                                                <img
+                                                    src={section.image_url}
+                                                    alt={section.title || product.title}
+                                                    className="mt-3 w-full max-w-4xl rounded-xl border border-slate-100 object-contain"
+                                                />
+                                            )}
+                                            {section.body && (
+                                                <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{section.body}</p>
+                                            )}
+                                        </section>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                                <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-emerald-900">
+                                    <CreditCard className="h-4 w-4" />
+                                    SafePay order protection
+                                </h3>
+                                <p className="mt-2 text-sm leading-relaxed text-emerald-900">
+                                    Pay only through Takeer. For bank transfer, use the official Takeer account and order reference so your order remains protected.
+                                </p>
+                                {(wholesalePaymentTerms.safepay_methods || []).length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {wholesalePaymentTerms.safepay_methods.map((method) => (
+                                            <span key={method} className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-emerald-800 border border-emerald-100">
+                                                {safepayMethodLabels[method] || method}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {productCertificates.length > 0 && (
+                        <div className="mb-8 border-t border-border/40 pt-5">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <h2 className="text-lg font-black text-foreground flex items-center gap-2">
+                                    <ShieldCheck className="h-5 w-5 text-blue-600" />
+                                    Certificates
+                                </h2>
+                                <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700 border border-blue-100">
+                                    Merchant selected
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {productCertificates.map((certificate) => (
+                                    <button
+                                        key={certificate.id}
+                                        type="button"
+                                        onClick={() => setSelectedCertificate(certificate)}
+                                        className="rounded-2xl border border-blue-100 bg-blue-50/40 p-3 text-left hover:border-blue-300 hover:bg-blue-50 transition"
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div className="h-11 w-11 rounded-xl bg-white border border-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+                                                <FileText className="h-5 w-5" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-black text-slate-950 truncate">{certificate.title}</p>
+                                                <p className="mt-0.5 text-xs font-bold text-blue-700 truncate">
+                                                    {certificateTypeLabel(certificate.certificate_type) || certificate.display_status || 'Certificate'}
+                                                </p>
+                                                {certificate.description && (
+                                                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{certificate.description}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {productFaqs.length > 0 && (
                         <div className="mb-8 border-t border-border/40 pt-5">
                             <h2 className="mb-3 text-lg font-black text-foreground">Questions & Answers</h2>
@@ -2871,6 +3112,81 @@ export default function ProductDetail({ product }) {
                                     {serviceRequestSubmitting ? 'Inatuma...' : 'Tuma Ombi'}
                                 </Button>
                             </form>
+                        </div>
+                    </div>
+                )}
+                {selectedCertificate && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+                        <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-2xl">
+                            <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Certificate</p>
+                                    <h3 className="truncate text-lg font-black text-slate-950">{selectedCertificate.title}</h3>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedCertificate(null)}
+                                    className="h-10 w-10 rounded-full border bg-white text-slate-600 hover:text-slate-950 flex items-center justify-center"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="grid max-h-[calc(90vh-73px)] grid-cols-1 overflow-y-auto lg:grid-cols-2">
+                                <div className="min-h-[360px] bg-slate-50 p-4 flex items-center justify-center">
+                                    {selectedCertificate.document_url ? (
+                                        String(selectedCertificate.document_url).toLowerCase().includes('.pdf') ? (
+                                            <iframe
+                                                title={selectedCertificate.title}
+                                                src={selectedCertificate.document_url}
+                                                className="h-[520px] w-full rounded-2xl border bg-white"
+                                            />
+                                        ) : (
+                                            <img
+                                                src={selectedCertificate.document_url}
+                                                alt={selectedCertificate.title}
+                                                className="max-h-[520px] w-full rounded-2xl object-contain"
+                                            />
+                                        )
+                                    ) : (
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center">
+                                            <FileText className="mx-auto h-10 w-10 text-slate-400" />
+                                            <p className="mt-3 text-sm font-bold text-slate-700">Document summary only</p>
+                                            <p className="mt-1 text-xs text-slate-500">The merchant chose not to show the certificate file publicly.</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="p-5 space-y-4">
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-700">Status</p>
+                                        <p className="mt-1 text-sm font-black text-blue-950">{selectedCertificate.display_status || 'Merchant provided'}</p>
+                                        {selectedCertificate.description && (
+                                            <p className="mt-2 text-sm leading-relaxed text-slate-700">{selectedCertificate.description}</p>
+                                        )}
+                                    </div>
+                                    {[
+                                        ['Certificate type', certificateTypeLabel(selectedCertificate.certificate_type)],
+                                        ['Certificate number', selectedCertificate.document_number],
+                                        ['Validity period', [selectedCertificate.issued_at, selectedCertificate.expires_at].filter(Boolean).join(' - ')],
+                                        ['Certificate authority', selectedCertificate.authority],
+                                        ['Issuer', selectedCertificate.issuer],
+                                    ].filter(([, value]) => value).map(([label, value]) => (
+                                        <div key={label} className="flex items-start justify-between gap-4 border-b pb-3">
+                                            <p className="text-sm font-semibold text-slate-500">{label}</p>
+                                            <p className="text-right text-sm font-black text-slate-900">{value}</p>
+                                        </div>
+                                    ))}
+                                    {selectedCertificate.document_url && (
+                                        <a
+                                            href={selectedCertificate.document_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-4 text-sm font-black text-white hover:bg-slate-800"
+                                        >
+                                            Open certificate
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

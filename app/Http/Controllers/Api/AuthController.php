@@ -17,19 +17,42 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
+
 class AuthController extends Controller
 {
+    private const OTP_SEND_PHONE_MAX_ATTEMPTS = 3;
+    private const OTP_SEND_IP_MAX_ATTEMPTS = 30;
+    private const OTP_SEND_DECAY_SECONDS = 600;
+    private const OTP_VERIFY_MAX_ATTEMPTS = 5;
+    private const OTP_VERIFY_DECAY_SECONDS = 600;
+
     public function __construct(private SmsService $smsService)
     {
     }
 
     /**
      * Send a 6-digit OTP to the given phone number.
-     * Rate-limited in routes: 5 requests / 10 minutes per IP.
+     * Rate-limited by phone and IP so load-balanced deployments do not
+     * accidentally punish every user behind the same proxy address.
      */
     public function sendOtp(SendOtpRequest $request): JsonResponse
     {
         $phone = $request->validated('phone_number');
+        $phoneKey = 'otp-send:phone:' . sha1($phone);
+        $ipKey = 'otp-send:ip:' . sha1((string) $request->ip());
+
+        if (
+            RateLimiter::tooManyAttempts($phoneKey, self::OTP_SEND_PHONE_MAX_ATTEMPTS)
+            || RateLimiter::tooManyAttempts($ipKey, self::OTP_SEND_IP_MAX_ATTEMPTS)
+        ) {
+            return response()->json([
+                'message' => 'Umeomba OTP mara nyingi sana. Tafadhali subiri kidogo kisha ujaribu tena.',
+                'retry_after_seconds' => max(
+                    RateLimiter::availableIn($phoneKey),
+                    RateLimiter::availableIn($ipKey),
+                ),
+            ], 429);
+        }
 
         // Generate 6-digit OTP
         $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -39,6 +62,8 @@ class AuthController extends Controller
 
         // Fire OTP via Beem Africa (non-blocking — logs internally)
         $this->smsService->sendOtp($phone, $otp);
+        RateLimiter::hit($phoneKey, self::OTP_SEND_DECAY_SECONDS);
+        RateLimiter::hit($ipKey, self::OTP_SEND_DECAY_SECONDS);
 
         return response()->json([
             'message' => 'OTP imtumwa kwa nambari yako ya simu.',
@@ -55,7 +80,7 @@ class AuthController extends Controller
         ['phone_number' => $phone, 'otp' => $otp] = $request->validated();
 
         $throttleKey = 'otp-verify:' . sha1($request->ip() . '|' . $phone);
-        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+        if (RateLimiter::tooManyAttempts($throttleKey, self::OTP_VERIFY_MAX_ATTEMPTS)) {
             return response()->json([
                 'message' => 'Umejaribu mara nyingi sana. Tafadhali subiri kidogo kisha ujaribu tena.',
                 'retry_after_seconds' => RateLimiter::availableIn($throttleKey),
@@ -66,7 +91,7 @@ class AuthController extends Controller
         $hashedOtp = Cache::get($cacheKey);
 
         if (!$hashedOtp || !Hash::check($otp, $hashedOtp)) {
-            RateLimiter::hit($throttleKey, 600);
+            RateLimiter::hit($throttleKey, self::OTP_VERIFY_DECAY_SECONDS);
 
             return response()->json([
                 'message' => 'OTP si sahihi au imeisha muda wake.',
