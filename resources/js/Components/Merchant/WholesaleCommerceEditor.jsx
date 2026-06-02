@@ -1,8 +1,8 @@
 import React from 'react';
 import { ListChecks, Package } from 'lucide-react';
 import { Input } from '@/Components/ui/Input';
-import { Textarea } from '@/Components/ui/Textarea';
 import SellingStyleSelector from '@/Components/Merchant/SellingStyleSelector';
+import { cn } from '@/lib/utils';
 
 export default function WholesaleCommerceEditor({
     sellingStyle,
@@ -30,8 +30,9 @@ export default function WholesaleCommerceEditor({
     setCustomizationOptions,
     productSpecifications,
     setProductSpecifications,
-    productDetailSections,
-    setProductDetailSections,
+    pricingUnitLabel = 'unit',
+    packagingUnitOptions = [],
+    className = '',
 }) {
     const addRow = (setter, row) => setter((prev) => [...prev, row]);
     const updateRow = (setter, index, updates) => setter((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, ...updates } : row));
@@ -39,9 +40,16 @@ export default function WholesaleCommerceEditor({
         const next = prev.filter((_, rowIndex) => rowIndex !== index);
         return next.length > 0 ? next : [fallback];
     });
+    const orderUnitLabel = pricingUnitLabel || 'unit';
+    const normalizedPackagingUnitOptions = packagingUnitOptions
+        .map((unit) => ({
+            value: unit.symbol || unit.name || unit.code || '',
+            label: unit.symbol && unit.name ? `${unit.symbol} - ${unit.name}` : (unit.name || unit.symbol || unit.code || ''),
+        }))
+        .filter((unit) => unit.value);
 
     return (
-        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+        <div className={cn('space-y-4 rounded-2xl border border-slate-200 bg-white p-4', className)}>
             <SellingStyleSelector value={sellingStyle} onChange={setSellingStyle} />
 
             {wholesaleEnabled && (
@@ -104,21 +112,25 @@ export default function WholesaleCommerceEditor({
 
                     <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                         <div className="flex items-center justify-between gap-3">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pricing tiers</p>
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pricing tiers</p>
+                                <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-500">
+                                    Based on selected selling unit: <span className="font-black text-slate-700">{orderUnitLabel}</span>
+                                </p>
+                            </div>
                             <button type="button" onClick={() => addRow(setPricingTiers, { min_quantity: '', max_quantity: '', unit_price: '', label: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
                         </div>
                         {pricingTiers.map((tier, index) => (
-                            <div key={`pricing-tier-${index}`} className="grid gap-2 min-[980px]:grid-cols-[1fr_1fr_1fr_1fr_38px]">
-                                <Input type="number" min="0.001" value={tier.min_quantity} onChange={(e) => updateRow(setPricingTiers, index, { min_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
-                                <Input type="number" min="0.001" value={tier.max_quantity} onChange={(e) => updateRow(setPricingTiers, index, { max_quantity: e.target.value })} placeholder="Max qty" className="h-10 bg-white" />
-                                <Input type="number" min="0" value={tier.unit_price} onChange={(e) => updateRow(setPricingTiers, index, { unit_price: e.target.value })} placeholder="Unit price" className="h-10 bg-white" />
-                                <Input value={tier.label} onChange={(e) => updateRow(setPricingTiers, index, { label: e.target.value })} placeholder="Label" className="h-10 bg-white" />
+                            <div key={`pricing-tier-${index}`} className="grid gap-2 min-[980px]:grid-cols-[1fr_1fr_1fr_38px]">
+                                <Input type="number" min="0.001" value={tier.min_quantity} onChange={(e) => updateRow(setPricingTiers, index, { min_quantity: e.target.value })} placeholder={`Min ${orderUnitLabel}`} className="h-10 bg-white" />
+                                <Input type="number" min="0.001" value={tier.max_quantity} onChange={(e) => updateRow(setPricingTiers, index, { max_quantity: e.target.value })} placeholder={`Max ${orderUnitLabel}`} className="h-10 bg-white" />
+                                <Input type="number" min="0" value={tier.unit_price} onChange={(e) => updateRow(setPricingTiers, index, { unit_price: e.target.value })} placeholder={`Price per ${orderUnitLabel}`} className="h-10 bg-white" />
                                 <button type="button" onClick={() => removeRow(setPricingTiers, index, { min_quantity: '', max_quantity: '', unit_price: '', label: '' })} className="h-10 rounded-lg border bg-white text-slate-500">&times;</button>
                             </div>
                         ))}
                     </div>
 
-                    <div className="grid gap-4 min-[1120px]:grid-cols-2">
+                    <div className="grid gap-4 min-[1120px]:grid-cols-1">
                         <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <div className="flex items-center justify-between gap-3">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Lead time tiers</p>
@@ -126,7 +138,7 @@ export default function WholesaleCommerceEditor({
                             </div>
                             {leadTimeTiers.map((tier, index) => (
                                 <div key={`lead-tier-${index}`} className="grid gap-2 min-[980px]:grid-cols-[1fr_1fr_1fr_38px]">
-                                    <Input type="number" value={tier.min_quantity} onChange={(e) => updateRow(setLeadTimeTiers, index, { min_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
+                                    <Input type="number" value={tier.min_quantity} onChange={(e) => updateRow(setLeadTimeTiers, index, { min_quantity: e.target.value })} placeholder={`Min ${orderUnitLabel}`} className="h-10 bg-white" />
                                     <Input type="number" value={tier.lead_time_days} onChange={(e) => updateRow(setLeadTimeTiers, index, { lead_time_days: e.target.value })} placeholder="Days" className="h-10 bg-white" />
                                     <Input value={tier.label} onChange={(e) => updateRow(setLeadTimeTiers, index, { label: e.target.value })} placeholder="Label" className="h-10 bg-white" />
                                     <button type="button" onClick={() => removeRow(setLeadTimeTiers, index, { min_quantity: '', max_quantity: '', lead_time_days: '', label: '' })} className="h-10 rounded-lg border bg-white text-slate-500">&times;</button>
@@ -136,17 +148,35 @@ export default function WholesaleCommerceEditor({
 
                         <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                             <div className="flex items-center justify-between gap-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Packaging</p>
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Bulk packaging / shipping units</p>
+                                    <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-500">
+                                        Show how bulk orders are packed for delivery. Example: buyer orders pieces, you ship 24 pieces per carton.
+                                    </p>
+                                </div>
                                 <button type="button" onClick={() => addRow(setPackagingDetails, { selling_units: '', package_quantity: '', package_unit: '', package_weight_kg: '', package_length_cm: '', package_width_cm: '', package_height_cm: '', notes: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
                             </div>
                             {packagingDetails.map((detail, index) => (
                                 <div key={`packaging-${index}`} className="space-y-2 rounded-xl border bg-white p-2">
                                     <div className="grid gap-2 min-[900px]:grid-cols-3">
-                                        <Input value={detail.selling_units} onChange={(e) => updateRow(setPackagingDetails, index, { selling_units: e.target.value })} placeholder="Single item / carton" className="h-10" />
-                                        <Input type="number" value={detail.package_quantity} onChange={(e) => updateRow(setPackagingDetails, index, { package_quantity: e.target.value })} placeholder="Qty" className="h-10" />
-                                        <Input value={detail.package_unit} onChange={(e) => updateRow(setPackagingDetails, index, { package_unit: e.target.value })} placeholder="pieces / carton" className="h-10" />
+                                        <Input value={detail.selling_units} onChange={(e) => updateRow(setPackagingDetails, index, { selling_units: e.target.value })} placeholder="Carton, box, bag, pallet" className="h-10" />
+                                        <Input type="number" value={detail.package_quantity} onChange={(e) => updateRow(setPackagingDetails, index, { package_quantity: e.target.value })} placeholder="Units per package" className="h-10" />
+                                        {normalizedPackagingUnitOptions.length > 0 ? (
+                                            <select
+                                                value={detail.package_unit || ''}
+                                                onChange={(e) => updateRow(setPackagingDetails, index, { package_unit: e.target.value })}
+                                                className="h-10 rounded-xl border border-input bg-white px-3 text-sm font-semibold text-slate-700"
+                                            >
+                                                <option value="">Unit inside package</option>
+                                                {normalizedPackagingUnitOptions.map((unit) => (
+                                                    <option key={unit.value} value={unit.value}>{unit.label}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <Input value={detail.package_unit} onChange={(e) => updateRow(setPackagingDetails, index, { package_unit: e.target.value })} placeholder="pieces / carton" className="h-10" />
+                                        )}
                                     </div>
-                                    <Input value={detail.notes} onChange={(e) => updateRow(setPackagingDetails, index, { notes: e.target.value })} placeholder="Packaging note" className="h-10" />
+                                    <Input value={detail.notes} onChange={(e) => updateRow(setPackagingDetails, index, { notes: e.target.value })} placeholder="Example: 24 pieces per sealed carton, 20 cartons per pallet" className="h-10" />
                                 </div>
                             ))}
                         </div>
@@ -154,14 +184,19 @@ export default function WholesaleCommerceEditor({
 
                     <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                         <div className="flex items-center justify-between gap-3">
-                            <p className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-600"><Package className="h-3.5 w-3.5" /> Customization options</p>
+                            <div>
+                                <p className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-600"><Package className="h-3.5 w-3.5" /> Bulk customization options</p>
+                                <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-500">
+                                    Optional B2B options such as logo printing, private label packaging, color, size, or made-to-order changes.
+                                </p>
+                            </div>
                             <button type="button" onClick={() => addRow(setCustomizationOptions, { name: '', description: '', min_order_quantity: '', fee_type: 'quote', fee_amount: '', notes: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
                         </div>
                         {customizationOptions.map((option, index) => (
-                            <div key={`customization-${index}`} className="grid gap-2 min-[1120px]:grid-cols-[1fr_1fr_140px_120px_38px]">
-                                <Input value={option.name} onChange={(e) => updateRow(setCustomizationOptions, index, { name: e.target.value })} placeholder="Logo / packaging" className="h-10 bg-white" />
-                                <Input value={option.description} onChange={(e) => updateRow(setCustomizationOptions, index, { description: e.target.value })} placeholder="Description" className="h-10 bg-white" />
-                                <Input type="number" value={option.min_order_quantity} onChange={(e) => updateRow(setCustomizationOptions, index, { min_order_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
+                            <div key={`customization-${index}`} className="grid gap-2 min-[1120px]:grid-cols-2">
+                                <Input value={option.name} onChange={(e) => updateRow(setCustomizationOptions, index, { name: e.target.value })} placeholder="Logo printing / private label" className="h-10 bg-white" />
+                                <Input value={option.description} onChange={(e) => updateRow(setCustomizationOptions, index, { description: e.target.value })} placeholder="What buyer can customize" className="h-10 bg-white" />
+                                <Input type="number" value={option.min_order_quantity} onChange={(e) => updateRow(setCustomizationOptions, index, { min_order_quantity: e.target.value })} placeholder="MOQ" className="h-10 bg-white" />
                                 <select value={option.fee_type} onChange={(e) => updateRow(setCustomizationOptions, index, { fee_type: e.target.value })} className="h-10 rounded-xl border bg-white px-2 text-xs font-bold">
                                     <option value="quote">Quote</option>
                                     <option value="free">Free</option>
@@ -173,45 +208,18 @@ export default function WholesaleCommerceEditor({
                         ))}
                     </div>
 
-                    <div className="grid gap-4 min-[1120px]:grid-cols-2">
-                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="flex items-center justify-between gap-3">
-                                <p className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-600"><ListChecks className="h-3.5 w-3.5" /> Specifications</p>
-                                <button type="button" onClick={() => addRow(setProductSpecifications, { group_name: '', attribute_name: '', attribute_value: '', is_filterable: true })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
-                            </div>
-                            {productSpecifications.map((spec, index) => (
-                                <div key={`spec-${index}`} className="grid gap-2 min-[900px]:grid-cols-[1fr_1fr_38px]">
-                                    <Input value={spec.attribute_name} onChange={(e) => updateRow(setProductSpecifications, index, { attribute_name: e.target.value })} placeholder="Attribute" className="h-10 bg-white" />
-                                    <Input value={spec.attribute_value} onChange={(e) => updateRow(setProductSpecifications, index, { attribute_value: e.target.value })} placeholder="Value" className="h-10 bg-white" />
-                                    <button type="button" onClick={() => removeRow(setProductSpecifications, index, { group_name: '', attribute_name: '', attribute_value: '', is_filterable: true })} className="h-10 rounded-lg border bg-white text-slate-500">&times;</button>
-                                </div>
-                            ))}
+                    <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <p className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-600"><ListChecks className="h-3.5 w-3.5" /> Specifications</p>
+                            <button type="button" onClick={() => addRow(setProductSpecifications, { group_name: '', attribute_name: '', attribute_value: '', is_filterable: true })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
                         </div>
-
-                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="flex items-center justify-between gap-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Product detail sections</p>
-                                <button type="button" onClick={() => addRow(setProductDetailSections, { section_type: 'text', title: '', body: '', image_url: '', is_visible: true })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
+                        {productSpecifications.map((spec, index) => (
+                            <div key={`spec-${index}`} className="grid gap-2 min-[900px]:grid-cols-[1fr_1fr_38px]">
+                                <Input value={spec.attribute_name} onChange={(e) => updateRow(setProductSpecifications, index, { attribute_name: e.target.value })} placeholder="Attribute" className="h-10 bg-white" />
+                                <Input value={spec.attribute_value} onChange={(e) => updateRow(setProductSpecifications, index, { attribute_value: e.target.value })} placeholder="Value" className="h-10 bg-white" />
+                                <button type="button" onClick={() => removeRow(setProductSpecifications, index, { group_name: '', attribute_name: '', attribute_value: '', is_filterable: true })} className="h-10 rounded-lg border bg-white text-slate-500">&times;</button>
                             </div>
-                            {productDetailSections.map((section, index) => (
-                                <div key={`detail-section-${index}`} className="space-y-2 rounded-xl border bg-white p-2">
-                                    <div className="grid gap-2 min-[900px]:grid-cols-[160px_1fr_38px]">
-                                        <select value={section.section_type} onChange={(e) => updateRow(setProductDetailSections, index, { section_type: e.target.value })} className="h-10 rounded-xl border bg-white px-2 text-xs font-bold">
-                                            <option value="text">Text</option>
-                                            <option value="image">Image</option>
-                                            <option value="image_text">Image + text</option>
-                                            <option value="selling_points">Selling points</option>
-                                            <option value="company_intro">Company intro</option>
-                                            <option value="custom">Custom</option>
-                                        </select>
-                                        <Input value={section.title} onChange={(e) => updateRow(setProductDetailSections, index, { title: e.target.value })} placeholder="Section title" className="h-10" />
-                                        <button type="button" onClick={() => removeRow(setProductDetailSections, index, { section_type: 'text', title: '', body: '', image_url: '', is_visible: true })} className="h-10 rounded-lg border text-slate-500">&times;</button>
-                                    </div>
-                                    <Textarea value={section.body} onChange={(e) => updateRow(setProductDetailSections, index, { body: e.target.value })} placeholder="Details, selling points, company introduction, FAQ-style text..." className="min-h-20 rounded-xl" />
-                                    <Input value={section.image_url} onChange={(e) => updateRow(setProductDetailSections, index, { image_url: e.target.value })} placeholder="Optional image URL" className="h-10" />
-                                </div>
-                            ))}
-                        </div>
+                        ))}
                     </div>
                 </div>
             )}

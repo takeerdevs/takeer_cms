@@ -83,7 +83,9 @@ export default function VariantCommerceFields({
                     </>
                 ) : (
                     <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-800">
-                        Mode hii haihitaji stock kwa kila eneo kabla ya publish.
+                        {wholesaleOnly
+                            ? 'Wholesale-only haitumii retail stock. Tumia supply capacity, MOQ, na lead time kwa bulk orders.'
+                            : 'Mode hii haihitaji stock kwa kila eneo kabla ya publish.'}
                     </p>
                 )}
             </div>

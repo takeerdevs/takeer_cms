@@ -112,7 +112,7 @@ export default function PhysicalPackageEditor({
             <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">Yaliyomo kwenye pack/set{compact ? '' : ' (hiari)'}</p>
+                        <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">Yaliyomo kwenye Package</p>
                         {!compact && (
                             <p className="text-[10px] font-semibold text-slate-500">Ongeza item moja kwa mstari. Itaonekana kama 1x Charging Cable, 2x Cell Batteries.</p>
                         )}

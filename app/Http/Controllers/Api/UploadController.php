@@ -44,6 +44,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -932,7 +933,16 @@ class UploadController extends Controller
             'product_detail_sections.*.section_type' => 'nullable|string|in:text,image,image_text,selling_points,company_intro,custom',
             'product_detail_sections.*.title' => 'nullable|string|max:160',
             'product_detail_sections.*.body' => 'nullable|string|max:10000',
-            'product_detail_sections.*.image_url' => 'nullable|string|max:2048',
+            'product_detail_sections.*.image_url' => [
+                'nullable',
+                'string',
+                'max:2048',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! $this->isTakeerHostedPublicMediaUrl((string) $value)) {
+                        $fail('Product detail section images must be uploaded to Takeer storage.');
+                    }
+                },
+            ],
             'product_detail_sections.*.is_visible' => 'nullable|boolean',
             'url' => 'nullable|string',
             'digital_file_url' => 'nullable|string',
@@ -1096,11 +1106,12 @@ class UploadController extends Controller
             ? (string) ($request->input('selling_style') ?: 'retail')
             : 'retail';
         $wholesaleEnabled = in_array($sellingStyle, ['wholesale', 'both'], true);
+        $retailCheckoutEnabled = $sellingStyle !== 'wholesale';
         $hasVariants = $request->input('type') === 'physical' && (bool) $request->boolean('has_variants');
         $fulfillmentMode = $request->input('type') === 'physical'
             ? (string) ($request->input('fulfillment_mode') ?: 'own_stock')
             : 'own_stock';
-        $requiresLocationInventory = $request->input('type') === 'physical' && ! $isFocusedPhysicalModule && $fulfillmentMode === 'own_stock';
+        $requiresLocationInventory = $request->input('type') === 'physical' && ! $isFocusedPhysicalModule && $retailCheckoutEnabled && $fulfillmentMode === 'own_stock';
         $sourceDetails = collect((array) $request->input('source_details', []))
             ->map(fn ($value) => is_string($value) ? trim($value) : $value)
             ->filter(fn ($value) => $value !== null && $value !== '')
@@ -1154,17 +1165,19 @@ class UploadController extends Controller
                 return response()->json(['message' => 'Tafadhali ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio kabla ya kuuza bidhaa uliyonayo mkononi.'], 422);
             }
 
-            $inventoryLocationIds = collect(array_keys((array) $request->input('location_inventories', [])));
-            $variantInventoryLocationIds = $incomingVariants
-                ->flatMap(fn ($variant) => array_keys((array) (((array) $variant)['location_inventories'] ?? [])));
-            $invalidLocationIds = $inventoryLocationIds
-                ->merge($variantInventoryLocationIds)
-                ->filter(fn ($locationId) => ! $merchantLocationIds->contains((int) $locationId))
-                ->unique()
-                ->values();
+            if ($requiresLocationInventory) {
+                $inventoryLocationIds = collect(array_keys((array) $request->input('location_inventories', [])));
+                $variantInventoryLocationIds = $incomingVariants
+                    ->flatMap(fn ($variant) => array_keys((array) (((array) $variant)['location_inventories'] ?? [])));
+                $invalidLocationIds = $inventoryLocationIds
+                    ->merge($variantInventoryLocationIds)
+                    ->filter(fn ($locationId) => ! $merchantLocationIds->contains((int) $locationId))
+                    ->unique()
+                    ->values();
 
-            if ($invalidLocationIds->isNotEmpty()) {
-                return response()->json(['message' => 'Stock inaweza kuwekwa kwenye maduka au maeneo yako ya stock/pickup pekee.'], 422);
+                if ($invalidLocationIds->isNotEmpty()) {
+                    return response()->json(['message' => 'Stock inaweza kuwekwa kwenye maduka au maeneo yako ya stock/pickup pekee.'], 422);
+                }
             }
 
             if ($fulfillmentMode === 'supplier_sourced') {
@@ -3122,6 +3135,33 @@ class UploadController extends Controller
         return 'none';
     }
 
+    private function isTakeerHostedPublicMediaUrl(string $url): bool
+    {
+        $url = trim($url);
+
+        if ($url === '') {
+            return true;
+        }
+
+        if (Str::startsWith($url, ['data:', 'blob:'])) {
+            return false;
+        }
+
+        $allowedBases = array_filter(array_unique([
+            rtrim((string) config('filesystems.disks.public.url'), '/'),
+            rtrim(Storage::disk('public')->url(''), '/'),
+            rtrim(url('/storage'), '/'),
+        ]));
+
+        foreach ($allowedBases as $base) {
+            if ($base !== '' && Str::startsWith($url, $base . '/')) {
+                return true;
+            }
+        }
+
+        return Str::startsWith($url, ['/storage/', 'storage/']);
+    }
+
     private function merchantFromRequest(Request $request): Merchant
     {
         $routeMerchant = $request->route('merchant');
@@ -3227,7 +3267,14 @@ class UploadController extends Controller
 
     private function syncWholesaleCommerceData(Product $product, Merchant $merchant, Request $request, bool $wholesaleEnabled): void
     {
-        if ($product->type !== 'physical' || ! $wholesaleEnabled) {
+        $syncRows = function (string $relation, array $rows) use ($product): void {
+            $product->{$relation}()->delete();
+            foreach ($rows as $row) {
+                $product->{$relation}()->create($row);
+            }
+        };
+
+        if ($product->type !== 'physical') {
             $product->pricingTiers()->delete();
             $product->leadTimeTiers()->delete();
             $product->packagingDetails()->delete();
@@ -3237,14 +3284,7 @@ class UploadController extends Controller
             return;
         }
 
-        $syncRows = function (string $relation, array $rows) use ($product): void {
-            $product->{$relation}()->delete();
-            foreach ($rows as $row) {
-                $product->{$relation}()->create($row);
-            }
-        };
-
-        $pricingTiers = collect((array) $request->input('pricing_tiers', []))
+        $pricingTiers = $wholesaleEnabled ? collect((array) $request->input('pricing_tiers', []))
             ->map(fn ($tier, $index) => [
                 'merchant_id' => $merchant->id,
                 'min_quantity' => (float) ($tier['min_quantity'] ?? 0),
@@ -3256,9 +3296,9 @@ class UploadController extends Controller
             ])
             ->filter(fn ($tier) => $tier['min_quantity'] > 0 && $tier['unit_price'] >= 0)
             ->values()
-            ->all();
+            ->all() : [];
 
-        $leadTimeTiers = collect((array) $request->input('lead_time_tiers', []))
+        $leadTimeTiers = $wholesaleEnabled ? collect((array) $request->input('lead_time_tiers', []))
             ->map(fn ($tier, $index) => [
                 'merchant_id' => $merchant->id,
                 'min_quantity' => (float) ($tier['min_quantity'] ?? 0),
@@ -3269,9 +3309,9 @@ class UploadController extends Controller
             ])
             ->filter(fn ($tier) => $tier['min_quantity'] > 0 && ($tier['lead_time_days'] !== null || $tier['label']))
             ->values()
-            ->all();
+            ->all() : [];
 
-        $packagingDetails = collect((array) $request->input('packaging_details', []))
+        $packagingDetails = $wholesaleEnabled ? collect((array) $request->input('packaging_details', []))
             ->map(fn ($detail, $index) => [
                 'merchant_id' => $merchant->id,
                 'selling_units' => trim((string) ($detail['selling_units'] ?? '')) ?: null,
@@ -3286,9 +3326,9 @@ class UploadController extends Controller
             ])
             ->filter(fn ($detail) => $detail['selling_units'] || $detail['package_quantity'] || $detail['notes'])
             ->values()
-            ->all();
+            ->all() : [];
 
-        $customizationOptions = collect((array) $request->input('customization_options', []))
+        $customizationOptions = $wholesaleEnabled ? collect((array) $request->input('customization_options', []))
             ->map(fn ($option, $index) => [
                 'merchant_id' => $merchant->id,
                 'name' => trim((string) ($option['name'] ?? '')),
@@ -3303,9 +3343,9 @@ class UploadController extends Controller
             ])
             ->filter(fn ($option) => $option['name'] !== '')
             ->values()
-            ->all();
+            ->all() : [];
 
-        $specifications = collect((array) $request->input('product_specifications', []))
+        $specifications = $wholesaleEnabled ? collect((array) $request->input('product_specifications', []))
             ->map(fn ($specification, $index) => [
                 'merchant_id' => $merchant->id,
                 'group_name' => trim((string) ($specification['group_name'] ?? '')) ?: null,
@@ -3316,7 +3356,7 @@ class UploadController extends Controller
             ])
             ->filter(fn ($specification) => $specification['attribute_name'] !== '' && $specification['attribute_value'] !== '')
             ->values()
-            ->all();
+            ->all() : [];
 
         $detailSections = collect((array) $request->input('product_detail_sections', []))
             ->map(fn ($section, $index) => [

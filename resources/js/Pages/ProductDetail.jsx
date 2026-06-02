@@ -474,7 +474,8 @@ export default function ProductDetail({ product }) {
     const groupSaleOffer = product.group_sale_offer || null;
     const groupSaleCheckoutOpen = Boolean(groupSaleOffer?.is_checkout_open);
     const physicalFulfillmentMode = product.fulfillment_mode || 'own_stock';
-    const requiresOwnedStock = product.type === 'physical' && physicalFulfillmentMode === 'own_stock';
+    const isWholesaleOnlyProduct = product.type === 'physical' && product.selling_style === 'wholesale';
+    const requiresOwnedStock = product.type === 'physical' && !isWholesaleOnlyProduct && physicalFulfillmentMode === 'own_stock';
     const groupSaleReservationMode = product.type === 'physical' && physicalFulfillmentMode === 'group_sale' && groupSaleOffer && !groupSaleCheckoutOpen;
     const fulfillmentModeLabels = {
         own_stock: 'In stock',
@@ -2346,28 +2347,6 @@ export default function ProductDetail({ product }) {
                                 </div>
                             )}
 
-                            {productDetailSections.length > 0 && (
-                                <div className="space-y-4">
-                                    {productDetailSections.map((section) => (
-                                        <section key={section.id || `${section.title}-${section.sort_order}`} className="rounded-2xl border border-slate-200 bg-white p-4">
-                                            {section.title && (
-                                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-700">{section.title}</h3>
-                                            )}
-                                            {section.image_url && (
-                                                <img
-                                                    src={section.image_url}
-                                                    alt={section.title || product.title}
-                                                    className="mt-3 w-full max-w-4xl rounded-xl border border-slate-100 object-contain"
-                                                />
-                                            )}
-                                            {section.body && (
-                                                <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{section.body}</p>
-                                            )}
-                                        </section>
-                                    ))}
-                                </div>
-                            )}
-
                             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
                                 <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-emerald-900">
                                     <CreditCard className="h-4 w-4" />
@@ -2385,6 +2364,31 @@ export default function ProductDetail({ product }) {
                                         ))}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    )}
+
+                    {productDetailSections.length > 0 && (
+                        <div className="mb-8 border-t border-border/40 pt-5">
+                            <h2 className="mb-4 text-lg font-black text-foreground">In-depth product details</h2>
+                            <div className="space-y-4">
+                                {productDetailSections.map((section) => (
+                                    <section key={section.id || `${section.title}-${section.sort_order}`} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        {section.title && (
+                                            <h3 className="text-sm font-black uppercase tracking-widest text-slate-700">{section.title}</h3>
+                                        )}
+                                        {section.image_url && (
+                                            <img
+                                                src={section.image_url}
+                                                alt={section.title || product.title}
+                                                className="mt-3 w-full max-w-4xl rounded-xl border border-slate-100 object-contain"
+                                            />
+                                        )}
+                                        {section.body && (
+                                            <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{section.body}</p>
+                                        )}
+                                    </section>
+                                ))}
                             </div>
                         </div>
                     )}

@@ -34,7 +34,7 @@ export default function PhysicalStockEditor({
     return (
         <div className="space-y-4 sm:col-span-2">
             <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
-                <Store className="h-3 w-3" /> Hifadhi & Upatikanaji (Stock)
+                <Store className="h-3 w-3" /> Hifadhi & Upatikanaji (Stock) [Reja Reja]
             </h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {physicalLocations.map((loc) => (

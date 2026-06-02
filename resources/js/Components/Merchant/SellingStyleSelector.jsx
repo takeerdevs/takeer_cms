@@ -9,13 +9,13 @@ const sellingStyleOptions = [
 
 export default function SellingStyleSelector({ value, onChange }) {
     return (
-        <div className="space-y-3">
-            <div>
+        <div className="grid gap-4 min-[760px]:grid-cols-1 min-[760px]:items-center">
+            <div className="min-w-0">
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-700">
                     <Factory className="h-4 w-4 text-brand-700" />
                     Selling style
                 </p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
                     Use wholesale for industries, manufacturers, distributors, and bulky reseller orders.
                 </p>
             </div>
