@@ -722,9 +722,6 @@ export default function Profile({
                                                 {can('settings.view') && (
                                                     <ActionBtn icon={Settings} label="Settings" href={`/merchant/${merchantSlug}/settings`} color="bg-slate-50" textColor="text-slate-700" borderColor="border-slate-100" />
                                                 )}
-                                                {isBusinessMerchant && hasVerifiedPersonalProfile && !forwarderApplied && can('services.create') && (
-                                                    <ActionBtn icon={Truck} label="Apply Freight" href={`/merchant/${merchantSlug}/forwarders/setup`} color="bg-indigo-50" textColor="text-indigo-700" borderColor="border-indigo-100" />
-                                                )}
                                             </div>
                                         </div>
 

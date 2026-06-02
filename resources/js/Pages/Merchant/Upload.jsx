@@ -13,13 +13,21 @@ import {
     FileUp, Phone, MessageCircle, ExternalLink, File, CheckCircle, Loader2,
     Plus, Search, Trash2, Info, Store, ShieldCheck, PlayCircle, Music, Images, Palette,
     BookOpen, FileText, Code2, Layers, KeyRound, Copy, RotateCcw, Ban,
-    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap, Clock3, Ship,
-    Factory, Package, ListChecks
+    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap, Clock3, Ship
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import PolicyNotice from '@/Components/PolicyNotice';
 import AddressPickerModal from '@/Components/AddressPickerModal';
+import WholesaleCommerceEditor from '@/Components/Merchant/WholesaleCommerceEditor';
+import ProductFaqEditor from '@/Components/Merchant/ProductFaqEditor';
+import PhysicalPackageEditor from '@/Components/Merchant/PhysicalPackageEditor';
+import PhysicalStockEditor, { MissingStockLocationNotice } from '@/Components/Merchant/PhysicalStockEditor';
+import VariantCommerceFields from '@/Components/Merchant/VariantCommerceFields';
+import VariantIdentityEditor from '@/Components/Merchant/VariantIdentityEditor';
+import PhysicalPublishPanel from '@/Components/Merchant/PhysicalPublishPanel';
+import PhysicalFulfillmentEditor from '@/Components/Merchant/PhysicalFulfillmentEditor';
+import ServiceBookingPolicyEditor from '@/Components/Merchant/ServiceBookingPolicyEditor';
 import { KNOWN_UPLOAD_MODULE_KEYS, getUploadModuleConfig, publishModuleKey } from '@/lib/uploadModules';
 import { RepeatableTextList, ServiceModuleCreateFields } from '@/Components/Merchant/ServiceModuleCreateFields';
 
@@ -1500,6 +1508,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         }))
         .filter((faq) => faq.question && faq.answer);
     const wholesaleEnabled = step === 'physical' && ['wholesale', 'both'].includes(sellingStyle);
+    const wholesaleOnly = step === 'physical' && sellingStyle === 'wholesale';
+    const retailPriceEnabled = step !== 'physical' || sellingStyle !== 'wholesale';
     const cleanPricingTiers = pricingTiers
         .map((tier) => ({
             min_quantity: tier.min_quantity,
@@ -1652,268 +1662,74 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         </div>
     );
     const renderProductFaqEditor = () => (
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="flex items-start justify-between gap-3">
-                <div>
-                    <p className="text-xs font-black uppercase tracking-wider text-slate-700">Product FAQ</p>
-                    <p className="text-xs text-slate-500">Maswali na majibu yatakayoonekana kwenye ukurasa wa bidhaa.</p>
-                </div>
-                <button
-                    type="button"
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black text-slate-700"
-                    onClick={() => setProductFaqs((prev) => [...prev, { question: '', answer: '', is_published: true }])}
-                >
-                    Add FAQ
-                </button>
-            </div>
-            <div className="space-y-3">
-                {productFaqs.map((faq, index) => (
-                    <div key={`product-faq-${index}`} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-                        <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">FAQ {index + 1}</span>
-                            <button
-                                type="button"
-                                className="text-xs font-black text-red-600"
-                                onClick={() => setProductFaqs((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
-                            >
-                                Remove
-                            </button>
-                        </div>
-                        <Input
-                            className="h-10 bg-slate-50"
-                            value={faq.question}
-                            onChange={(e) => setProductFaqs((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, question: e.target.value } : row))}
-                            placeholder="Mf. Does it come with charger?"
-                        />
-                        <Textarea
-                            className="min-h-20 rounded-xl bg-slate-50"
-                            value={faq.answer}
-                            onChange={(e) => setProductFaqs((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, answer: e.target.value } : row))}
-                            placeholder="Mf. Yes, it includes 1 charging cable and manual."
-                        />
-                        <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-                            <input
-                                type="checkbox"
-                                checked={faq.is_published !== false}
-                                onChange={(e) => setProductFaqs((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, is_published: e.target.checked } : row))}
-                            />
-                            Published
-                        </label>
-                    </div>
-                ))}
-            </div>
-        </div>
+        <ProductFaqEditor productFaqs={productFaqs} setProductFaqs={setProductFaqs} />
     );
+    const renderPhysicalPackageEditor = ({ compact = false, className = '' } = {}) => {
+        if (step !== 'physical' || selectedSchemaUnitTypes.length === 0) return null;
+
+        return (
+            <PhysicalPackageEditor
+                compact={compact}
+                className={className}
+                selectedSchemaUnitTypes={selectedSchemaUnitTypes}
+                selectedUnitTypeId={selectedUnitTypeId}
+                setSelectedUnitTypeId={setSelectedUnitTypeId}
+                stockUnitLabel={stockUnitLabel}
+                stockStep={stockStep}
+                sellableQuantity={sellableQuantity}
+                setSellableQuantity={setSellableQuantity}
+                selectedPackageContentUnitType={selectedPackageContentUnitType}
+                packageContentQuantity={packageContentQuantity}
+                setPackageContentQuantity={setPackageContentQuantity}
+                packageContentUnitTypeId={packageContentUnitTypeId}
+                setPackageContentUnitTypeId={setPackageContentUnitTypeId}
+                packageContentItems={packageContentItems}
+                setPackageContentItems={setPackageContentItems}
+                cleanPackageContentItems={cleanPackageContentItems}
+                formatPackageQuantity={formatPackageQuantity}
+                packageContents={packageContents}
+                setPackageContents={setPackageContents}
+                packagePreviewLabel={packagePreviewLabel}
+                minOrderQuantity={minOrderQuantity}
+                setMinOrderQuantity={setMinOrderQuantity}
+                selectedUnitType={selectedUnitType}
+                quantityChipLabel={quantityChipLabel}
+            />
+        );
+    };
     const renderWholesaleEditor = () => {
         if (step !== 'physical') return null;
 
-        const addRow = (setter, row) => setter((prev) => [...prev, row]);
-        const updateRow = (setter, index, updates) => setter((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, ...updates } : row));
-        const removeRow = (setter, index, fallback) => setter((prev) => {
-            const next = prev.filter((_, rowIndex) => rowIndex !== index);
-            return next.length > 0 ? next : [fallback];
-        });
-
         return (
-            <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                        <p className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                            <Factory className="h-4 w-4 text-brand-700" />
-                            Selling style
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">Use wholesale for industries, manufacturers, distributors, and bulky reseller orders.</p>
-                    </div>
-                    <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
-                        {[
-                            ['retail', 'Retail'],
-                            ['wholesale', 'Wholesale'],
-                            ['both', 'Both'],
-                        ].map(([value, label]) => (
-                            <button
-                                key={value}
-                                type="button"
-                                onClick={() => setSellingStyle(value)}
-                                className={`h-10 rounded-lg px-3 text-xs font-black ${sellingStyle === value ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-white'}`}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {wholesaleEnabled && (
-                    <div className="space-y-4 border-t border-slate-100 pt-4">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <label className="space-y-1.5">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Supply capacity</span>
-                                <Input type="number" min="0.001" value={supplyCapacityQuantity} onChange={(e) => setSupplyCapacityQuantity(e.target.value)} placeholder="10000" className="h-11" />
-                            </label>
-                            <label className="space-y-1.5">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Capacity period</span>
-                                <select className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={supplyCapacityPeriod} onChange={(e) => setSupplyCapacityPeriod(e.target.value)}>
-                                    <option value="day">Per day</option>
-                                    <option value="week">Per week</option>
-                                    <option value="month">Per month</option>
-                                    <option value="quarter">Per quarter</option>
-                                    <option value="year">Per year</option>
-                                    <option value="order">Per order</option>
-                                </select>
-                            </label>
-                            <label className="space-y-1.5">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Deposit terms</span>
-                                <select className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={wholesaleDepositMode} onChange={(e) => setWholesaleDepositMode(e.target.value)}>
-                                    <option value="quote_based">Quote based</option>
-                                    <option value="deposit_required">Deposit required</option>
-                                    <option value="full_payment">Full SafePay payment</option>
-                                </select>
-                            </label>
-                            <label className="space-y-1.5">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Deposit %</span>
-                                <Input type="number" min="0" max="100" value={wholesaleDepositPercent} onChange={(e) => setWholesaleDepositPercent(e.target.value)} placeholder="30" className="h-11" />
-                            </label>
-                            <label className="space-y-1.5 sm:col-span-2">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Balance due</span>
-                                <select className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold" value={wholesaleBalanceDue} onChange={(e) => setWholesaleBalanceDue(e.target.value)}>
-                                    <option value="before_production">Before production</option>
-                                    <option value="before_delivery">Before delivery</option>
-                                    <option value="on_delivery_confirmation">After buyer confirms delivery</option>
-                                    <option value="manual">Manual agreement</option>
-                                </select>
-                            </label>
-                        </div>
-
-                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Takeer SafePay funding methods</p>
-                            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {[
-                                    ['mobile_money', 'Mobile money'],
-                                    ['bank_transfer', 'Takeer bank transfer'],
-                                    ['wallet', 'Wallet'],
-                                    ['card', 'Card later'],
-                                ].map(([key, label]) => (
-                                    <label key={key} className="flex min-h-10 items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 text-xs font-bold text-emerald-900">
-                                        <input type="checkbox" checked={Boolean(safePayMethods[key])} onChange={(e) => setSafePayMethods((prev) => ({ ...prev, [key]: e.target.checked }))} />
-                                        {label}
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="flex items-center justify-between gap-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pricing tiers</p>
-                                <button type="button" onClick={() => addRow(setPricingTiers, { min_quantity: '', max_quantity: '', unit_price: '', label: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
-                            </div>
-                            {pricingTiers.map((tier, index) => (
-                                <div key={`pricing-tier-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_1fr_38px]">
-                                    <Input type="number" min="0.001" value={tier.min_quantity} onChange={(e) => updateRow(setPricingTiers, index, { min_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
-                                    <Input type="number" min="0.001" value={tier.max_quantity} onChange={(e) => updateRow(setPricingTiers, index, { max_quantity: e.target.value })} placeholder="Max qty" className="h-10 bg-white" />
-                                    <Input type="number" min="0" value={tier.unit_price} onChange={(e) => updateRow(setPricingTiers, index, { unit_price: e.target.value })} placeholder="Unit price" className="h-10 bg-white" />
-                                    <Input value={tier.label} onChange={(e) => updateRow(setPricingTiers, index, { label: e.target.value })} placeholder="Label" className="h-10 bg-white" />
-                                    <button type="button" onClick={() => removeRow(setPricingTiers, index, { min_quantity: '', max_quantity: '', unit_price: '', label: '' })} className="h-10 rounded-lg border bg-white text-slate-500">×</button>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Lead time tiers</p>
-                                    <button type="button" onClick={() => addRow(setLeadTimeTiers, { min_quantity: '', max_quantity: '', lead_time_days: '', label: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
-                                </div>
-                                {leadTimeTiers.map((tier, index) => (
-                                    <div key={`lead-tier-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_38px]">
-                                        <Input type="number" value={tier.min_quantity} onChange={(e) => updateRow(setLeadTimeTiers, index, { min_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
-                                        <Input type="number" value={tier.lead_time_days} onChange={(e) => updateRow(setLeadTimeTiers, index, { lead_time_days: e.target.value })} placeholder="Days" className="h-10 bg-white" />
-                                        <Input value={tier.label} onChange={(e) => updateRow(setLeadTimeTiers, index, { label: e.target.value })} placeholder="Label" className="h-10 bg-white" />
-                                        <button type="button" onClick={() => removeRow(setLeadTimeTiers, index, { min_quantity: '', max_quantity: '', lead_time_days: '', label: '' })} className="h-10 rounded-lg border bg-white text-slate-500">×</button>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Packaging</p>
-                                    <button type="button" onClick={() => addRow(setPackagingDetails, { selling_units: '', package_quantity: '', package_unit: '', package_weight_kg: '', package_length_cm: '', package_width_cm: '', package_height_cm: '', notes: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
-                                </div>
-                                {packagingDetails.map((detail, index) => (
-                                    <div key={`packaging-${index}`} className="space-y-2 rounded-xl border bg-white p-2">
-                                        <div className="grid gap-2 sm:grid-cols-3">
-                                            <Input value={detail.selling_units} onChange={(e) => updateRow(setPackagingDetails, index, { selling_units: e.target.value })} placeholder="Single item / carton" className="h-10" />
-                                            <Input type="number" value={detail.package_quantity} onChange={(e) => updateRow(setPackagingDetails, index, { package_quantity: e.target.value })} placeholder="Qty" className="h-10" />
-                                            <Input value={detail.package_unit} onChange={(e) => updateRow(setPackagingDetails, index, { package_unit: e.target.value })} placeholder="pieces / carton" className="h-10" />
-                                        </div>
-                                        <Input value={detail.notes} onChange={(e) => updateRow(setPackagingDetails, index, { notes: e.target.value })} placeholder="Packaging note" className="h-10" />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="flex items-center justify-between gap-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 flex items-center gap-1"><Package className="h-3.5 w-3.5" /> Customization options</p>
-                                <button type="button" onClick={() => addRow(setCustomizationOptions, { name: '', description: '', min_order_quantity: '', fee_type: 'quote', fee_amount: '', notes: '' })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
-                            </div>
-                            {customizationOptions.map((option, index) => (
-                                <div key={`customization-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_140px_120px_38px]">
-                                    <Input value={option.name} onChange={(e) => updateRow(setCustomizationOptions, index, { name: e.target.value })} placeholder="Logo / packaging" className="h-10 bg-white" />
-                                    <Input value={option.description} onChange={(e) => updateRow(setCustomizationOptions, index, { description: e.target.value })} placeholder="Description" className="h-10 bg-white" />
-                                    <Input type="number" value={option.min_order_quantity} onChange={(e) => updateRow(setCustomizationOptions, index, { min_order_quantity: e.target.value })} placeholder="Min qty" className="h-10 bg-white" />
-                                    <select value={option.fee_type} onChange={(e) => updateRow(setCustomizationOptions, index, { fee_type: e.target.value })} className="h-10 rounded-xl border bg-white px-2 text-xs font-bold">
-                                        <option value="quote">Quote</option>
-                                        <option value="free">Free</option>
-                                        <option value="per_unit">Per unit</option>
-                                        <option value="fixed">Fixed</option>
-                                    </select>
-                                    <button type="button" onClick={() => removeRow(setCustomizationOptions, index, { name: '', description: '', min_order_quantity: '', fee_type: 'quote', fee_amount: '', notes: '' })} className="h-10 rounded-lg border bg-white text-slate-500">×</button>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 flex items-center gap-1"><ListChecks className="h-3.5 w-3.5" /> Specifications</p>
-                                    <button type="button" onClick={() => addRow(setProductSpecifications, { group_name: '', attribute_name: '', attribute_value: '', is_filterable: true })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
-                                </div>
-                                {productSpecifications.map((spec, index) => (
-                                    <div key={`spec-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_38px]">
-                                        <Input value={spec.attribute_name} onChange={(e) => updateRow(setProductSpecifications, index, { attribute_name: e.target.value })} placeholder="Attribute" className="h-10 bg-white" />
-                                        <Input value={spec.attribute_value} onChange={(e) => updateRow(setProductSpecifications, index, { attribute_value: e.target.value })} placeholder="Value" className="h-10 bg-white" />
-                                        <button type="button" onClick={() => removeRow(setProductSpecifications, index, { group_name: '', attribute_name: '', attribute_value: '', is_filterable: true })} className="h-10 rounded-lg border bg-white text-slate-500">×</button>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Product detail sections</p>
-                                    <button type="button" onClick={() => addRow(setProductDetailSections, { section_type: 'text', title: '', body: '', image_url: '', is_visible: true })} className="rounded-lg border bg-white px-2.5 py-1 text-[10px] font-black">Add</button>
-                                </div>
-                                {productDetailSections.map((section, index) => (
-                                    <div key={`detail-section-${index}`} className="space-y-2 rounded-xl border bg-white p-2">
-                                        <div className="grid gap-2 sm:grid-cols-[120px_1fr_38px]">
-                                            <select value={section.section_type} onChange={(e) => updateRow(setProductDetailSections, index, { section_type: e.target.value })} className="h-10 rounded-xl border bg-white px-2 text-xs font-bold">
-                                                <option value="text">Text</option>
-                                                <option value="image">Image</option>
-                                                <option value="image_text">Image + text</option>
-                                                <option value="selling_points">Selling points</option>
-                                                <option value="company_intro">Company intro</option>
-                                                <option value="custom">Custom</option>
-                                            </select>
-                                            <Input value={section.title} onChange={(e) => updateRow(setProductDetailSections, index, { title: e.target.value })} placeholder="Section title" className="h-10" />
-                                            <button type="button" onClick={() => removeRow(setProductDetailSections, index, { section_type: 'text', title: '', body: '', image_url: '', is_visible: true })} className="h-10 rounded-lg border text-slate-500">×</button>
-                                        </div>
-                                        <Textarea value={section.body} onChange={(e) => updateRow(setProductDetailSections, index, { body: e.target.value })} placeholder="Details, selling points, company introduction, FAQ-style text..." className="min-h-20 rounded-xl" />
-                                        <Input value={section.image_url} onChange={(e) => updateRow(setProductDetailSections, index, { image_url: e.target.value })} placeholder="Optional image URL" className="h-10" />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            <WholesaleCommerceEditor
+                sellingStyle={sellingStyle}
+                setSellingStyle={setSellingStyle}
+                wholesaleEnabled={wholesaleEnabled}
+                supplyCapacityQuantity={supplyCapacityQuantity}
+                setSupplyCapacityQuantity={setSupplyCapacityQuantity}
+                supplyCapacityPeriod={supplyCapacityPeriod}
+                setSupplyCapacityPeriod={setSupplyCapacityPeriod}
+                wholesaleDepositMode={wholesaleDepositMode}
+                setWholesaleDepositMode={setWholesaleDepositMode}
+                wholesaleDepositPercent={wholesaleDepositPercent}
+                setWholesaleDepositPercent={setWholesaleDepositPercent}
+                wholesaleBalanceDue={wholesaleBalanceDue}
+                setWholesaleBalanceDue={setWholesaleBalanceDue}
+                safePayMethods={safePayMethods}
+                setSafePayMethods={setSafePayMethods}
+                pricingTiers={pricingTiers}
+                setPricingTiers={setPricingTiers}
+                leadTimeTiers={leadTimeTiers}
+                setLeadTimeTiers={setLeadTimeTiers}
+                packagingDetails={packagingDetails}
+                setPackagingDetails={setPackagingDetails}
+                customizationOptions={customizationOptions}
+                setCustomizationOptions={setCustomizationOptions}
+                productSpecifications={productSpecifications}
+                setProductSpecifications={setProductSpecifications}
+                productDetailSections={productDetailSections}
+                setProductDetailSections={setProductDetailSections}
+            />
         );
     };
     const physicalLocations = merchantLocations.length > 0 ? merchantLocations : (currentMerchant?.locations || []);
@@ -2775,7 +2591,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         const rawQuantity = variant?.quantity;
         const hasPrice = rawPrice !== '' && rawPrice !== null && !Number.isNaN(Number(rawPrice));
         const hasQuantity = rawQuantity !== '' && rawQuantity !== null && !Number.isNaN(Number(rawQuantity));
-        return !!(name || variantAttributeName(variant?.attributes || {})) && hasPrice && hasQuantity;
+        return !!(name || variantAttributeName(variant?.attributes || {})) && (wholesaleOnly || hasPrice) && hasQuantity;
     };
     const merchantVariantOptionPreview = useMemo(() => (
         variantAxisAttributes.reduce((acc, axis) => {
@@ -2872,7 +2688,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (isFocusedPhysicalModule) return '';
         if (requiresLocationInventory && physicalLocations.length === 0) return 'Ongeza angalau duka au eneo la stock/pickup kwenye Mipangilio.';
         if (requiresLocationInventory && !hasVariants && locationStockTotal <= 0) return `Weka stock kwenye angalau eneo moja (${stockUnitLabel}).`;
-        if (hasVariants && configuredPhysicalVariants.length === 0) return 'Jaza angalau variant moja yenye bei.';
+        if (hasVariants && configuredPhysicalVariants.length === 0) return wholesaleOnly ? 'Jaza angalau variant moja.' : 'Jaza angalau variant moja yenye bei.';
         if (requiresLocationInventory && hasVariants && configuredVariantStockTotal <= 0) return 'Weka stock ya angalau variant moja kwenye duka au eneo la stock/pickup.';
         if (fulfillmentMode === 'supplier_sourced' && (!sourceDetails.supplier_name?.trim() || !sourceDetails.supplier_phone?.trim())) return 'Weka jina na simu ya supplier kwa Takeer.';
         if (fulfillmentMode === 'supplier_sourced' && sourceDetails.confirmation_hours === '') return 'Weka muda wa kuthibitisha au kupata bidhaa kwa masaa.';
@@ -3287,6 +3103,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         );
         if (
             !price
+            && retailPriceEnabled
             && !(step === 'digital' && assignedAccessGroup)
             && !(step === 'physical' && hasVariants)
             && !(step === 'service' && !serviceNeedsCatalogPrice)
@@ -3359,7 +3176,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (step === 'physical' && !isFocusedPhysicalModule && hasVariants) {
             const configuredVariants = configuredPhysicalVariants;
             if (configuredVariants.length === 0) {
-                toast.error('Jaza angalau variant moja yenye bei.');
+                toast.error(wholesaleOnly ? 'Jaza angalau variant moja.' : 'Jaza angalau variant moja yenye bei.');
                 return;
             }
             const invalidVariantQuantity = configuredVariants.find((variant) => Number(variant.quantity) < 0 || Number.isNaN(Number(variant.quantity)));
@@ -3627,7 +3444,9 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 ? `${serviceContactType}:${serviceContactValue}`
                                 : null)
                         : null,
-                price: step === 'service'
+                price: wholesaleOnly
+                    ? 0
+                    : step === 'service'
                     ? (
                         servicePriceDisplay === 'hourly'
                             ? parseFloat(serviceHourlyRate || price || 0)
@@ -3636,7 +3455,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 : (price === '' ? 0 : parseFloat(price))
                     )
                     : (price === '' ? 0 : parseFloat(price)),
-                compare_price: comparePrice ? parseFloat(comparePrice) : null,
+                compare_price: wholesaleOnly ? null : (comparePrice ? parseFloat(comparePrice) : null),
                 service_pricing_model: step === 'service'
                     ? (
                         serviceMode === 'showcase_only' ? 'showcase_only'
@@ -3738,8 +3557,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 variants: publishVariants.map((variant, index) => ({
                     name: variant.name,
                     sku: variant.sku || null,
-                    price: variant.price !== '' ? Number(variant.price) : null,
-                    compare_price: variant.compare_price !== '' ? Number(variant.compare_price) : null,
+                    price: wholesaleOnly ? 0 : (variant.price !== '' ? Number(variant.price) : null),
+                    compare_price: wholesaleOnly ? null : (variant.compare_price !== '' ? Number(variant.compare_price) : null),
                     quantity: requiresLocationInventory ? Number(variant.quantity || 0) : 99999,
                     attributes: variant.attributes || {},
                     swatch_image_url: variant.swatch_image_url || null,
@@ -4886,137 +4705,25 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <div className="space-y-2">
                                                         {variants.map((variant, index) => (
                                                             <div key={variant.id || index} className="rounded-xl border border-slate-200 p-3 space-y-2">
-                                                                <div className="flex items-center justify-between gap-2">
-                                                                    <div>
-                                                                        <p className="font-semibold text-slate-900">{variant.name || variantAttributeName(variant.attributes) || `Variant ${index + 1}`}</p>
-                                                                        {variantAttributeName(variant.attributes) && (
-                                                                            <p className="text-[11px] font-medium text-slate-500">
-                                                                                Generated: {variantAttributeName(variant.attributes)}
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
+                                                                <VariantIdentityEditor
+                                                                    variant={variant}
+                                                                    index={index}
+                                                                    setVariants={setVariants}
+                                                                    variantAxisAttributes={variantAxisAttributes}
+                                                                    generatedName={variantAttributeName(variant.attributes)}
+                                                                    suggestions={variantSellingNameSuggestions(variant)}
+                                                                />
 
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {variantAxisAttributes.length > 0
-                                                                        ? variantAxisAttributes.map((axis) => (
-                                                                            <span key={`${variant.id || index}-${axis.key}`} className="inline-flex items-center rounded-full border border-slate-300 px-2 py-1 text-xs">
-                                                                                {axis.label}: {variant.attributes?.[axis.key] || '-'}
-                                                                            </span>
-                                                                        ))
-                                                                        : Object.entries(variant.attributes || {}).map(([key, value]) => (
-                                                                            <span key={`${variant.id || index}-${key}`} className="inline-flex items-center rounded-full border border-slate-300 px-2 py-1 text-xs">
-                                                                                {key}: {String(value)}
-                                                                            </span>
-                                                                        ))
-                                                                    }
-                                                                </div>
-
-                                                                <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-3 space-y-2">
-                                                                    <div className="grid gap-2 sm:grid-cols-[1.4fr_0.8fr]">
-                                                                        <div className="space-y-1">
-                                                                            <label className="text-[11px] font-semibold text-slate-700">Jina la kuuza kwa mteja</label>
-                                                                            <Input
-                                                                                className="h-10 bg-white"
-                                                                                placeholder={variantAttributeName(variant.attributes) || 'Mfano: Family pack, Robo kilo, Carton ya 12'}
-                                                                                value={variant.name || ''}
-                                                                                onChange={(e) => setVariants((prev) => prev.map((row, idx) => idx === index ? { ...row, name: e.target.value } : row))}
-                                                                            />
-                                                                        </div>
-                                                                        <div className="space-y-1">
-                                                                            <label className="text-[11px] font-semibold text-slate-700">Mifano ya haraka</label>
-                                                                            <div className="flex flex-wrap gap-1.5">
-                                                                                {variantSellingNameSuggestions(variant).map((suggestion) => (
-                                                                                    <button
-                                                                                        key={`${variant.id || index}-${suggestion}`}
-                                                                                        type="button"
-                                                                                        className="rounded-full border border-brand-200 bg-white px-2 py-1 text-[10px] font-bold text-brand-700"
-                                                                                        onClick={() => setVariants((prev) => prev.map((row, idx) => idx === index ? { ...row, name: suggestion } : row))}
-                                                                                    >
-                                                                                        {suggestion}
-                                                                                    </button>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="grid sm:grid-cols-4 gap-2">
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[11px] font-semibold text-slate-600">SKU (optional)</label>
-                                                                        <Input
-                                                                            className="h-10"
-                                                                            placeholder="SKU"
-                                                                            value={variant.sku || ''}
-                                                                            onChange={(e) => setVariants((prev) => prev.map((row, idx) => idx === index ? { ...row, sku: e.target.value } : row))}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[11px] font-semibold text-slate-600">Bei (Tsh)</label>
-                                                                        <Input
-                                                                            type="number"
-                                                                            className="h-10"
-                                                                            placeholder="Bei"
-                                                                            value={variant.price ?? ''}
-                                                                            onChange={(e) => setVariants((prev) => prev.map((row, idx) => idx === index ? { ...row, price: e.target.value } : row))}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="space-y-1 sm:col-span-2">
-                                                                        <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
-                                                                            <Store className="w-2.5 h-2.5" /> Stock kwa Maeneo
-                                                                        </label>
-                                                                        {requiresLocationInventory ? (
-                                                                            <>
-                                                                                <div className="grid grid-cols-2 gap-2 p-2 rounded-lg bg-slate-50 border border-slate-100">
-                                                                                    {physicalLocations.map((loc) => (
-                                                                                        <div key={loc.id} className="space-y-1">
-                                                                                            <label className="text-[10px] text-slate-500 truncate block font-bold">{loc.name}</label>
-                                                                                            <Input
-                                                                                                type="number"
-                                                                                                step={stockStep}
-                                                                                                className="h-8 text-xs font-black bg-white"
-                                                                                                placeholder="0"
-                                                                                                value={variant.location_inventories?.[loc.id] || ''}
-                                                                                                onChange={(e) => {
-                                                                                                    const val = e.target.value;
-                                                                                                    setVariants((prev) => prev.map((row, idx) =>
-                                                                                                        idx === index ? {
-                                                                                                            ...row,
-                                                                                                            location_inventories: {
-                                                                                                                ...(row.location_inventories || {}),
-                                                                                                                [loc.id]: val
-                                                                                                            }
-                                                                                                        } : row
-                                                                                                    ));
-                                                                                                }}
-                                                                                            />
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                                {physicalLocations.length === 0 && (
-                                                                                    <p className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] font-semibold text-orange-800">
-                                                                                        Ongeza duka au eneo la stock/pickup kwenye Mipangilio ili kuweka stock ya variants.
-                                                                                    </p>
-                                                                                )}
-                                                                            </>
-                                                                        ) : (
-                                                                            <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-800">
-                                                                                Mode hii haihitaji stock kwa kila eneo kabla ya publish.
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[11px] font-semibold text-slate-600">Picha (Mwonekano)</label>
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="outline"
-                                                                            className="h-10 w-full"
-                                                                            onClick={() => openSwatchModal(index)}
-                                                                        >
-                                                                            {variant.isUploadingSwatch ? 'Uploading...' : 'Swatch'}
-                                                                        </Button>
-                                                                    </div>
-                                                                </div>
+                                                                <VariantCommerceFields
+                                                                    variant={variant}
+                                                                    index={index}
+                                                                    setVariants={setVariants}
+                                                                    wholesaleOnly={wholesaleOnly}
+                                                                    requiresLocationInventory={requiresLocationInventory}
+                                                                    physicalLocations={physicalLocations}
+                                                                    stockStep={stockStep}
+                                                                    openSwatchModal={openSwatchModal}
+                                                                />
 
                                                                 {variant.swatch_image_url && (
                                                                     <div className="flex items-center gap-2">
@@ -5045,28 +4752,33 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             <h3 className="font-bold uppercase tracking-widest text-xs">Menu Pricing</h3>
                                         </div>
                                         <CardContent className="p-5 space-y-4">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-orange-700 uppercase tracking-wider">Price (TZS)</label>
-                                                    <Input type="number" placeholder="Mf. 12000" className="h-12 text-lg font-black bg-white border-orange-200" value={price} onChange={e => setPrice(e.target.value)} />
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Compare price</label>
-                                                    <Input type="number" placeholder="Mf. 15000" className="h-12 text-lg font-black border-dashed bg-white" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
-                                                </div>
-                                            </div>
                                             {renderWholesaleEditor()}
-                                            {renderProductFaqEditor()}
-                                            <Button
-                                                className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
-                                                onClick={publishProduct}
-                                                disabled={Boolean(physicalPublishDisabledReason)}
-                                            >
-                                                Weka Sokoni <ChevronRight className="ml-2 h-5 w-5" />
-                                            </Button>
-                                            {physicalPublishDisabledReason && (
-                                                <p className="text-center text-xs font-semibold text-slate-500">{physicalPublishDisabledReason}</p>
+                                            {retailPriceEnabled ? (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-bold text-orange-700 uppercase tracking-wider">Bei ya Reja Reja (TZS)</label>
+                                                        <Input type="number" placeholder="Mf. 12000" className="h-12 text-lg font-black bg-white border-orange-200" value={price} onChange={e => setPrice(e.target.value)} />
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ya awali</label>
+                                                        <Input type="number" placeholder="Mf. 15000" className="h-12 text-lg font-black border-dashed bg-white" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-xs font-semibold leading-5 text-emerald-900">
+                                                    Wholesale-only product. Bei ya mteja itatoka kwenye pricing tiers na proforma ya Takeer SafePay.
+                                                </div>
                                             )}
+                                            <PhysicalPublishPanel
+                                                boxed={false}
+                                                showShippingProfile={false}
+                                                shippingProfiles={shippingProfiles}
+                                                selectedShippingProfileId={selectedShippingProfileId}
+                                                setSelectedShippingProfileId={setSelectedShippingProfileId}
+                                                faqEditor={renderProductFaqEditor()}
+                                                onPublish={publishProduct}
+                                                disabledReason={physicalPublishDisabledReason}
+                                            />
                                         </CardContent>
                                     </Card>
                                 )}
@@ -5080,349 +4792,64 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         <CardContent className="p-5 space-y-4">
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 {step === 'physical' && (
-                                                    <div className="space-y-4 sm:col-span-2 rounded-2xl border border-slate-200 bg-white p-4">
-                                                        <div>
-                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-700">Fulfillment / Source</p>
-                                                            <p className="text-xs text-slate-500">Chagua kama bidhaa ipo mkononi, inatengenezwa, itatafutwa kwa supplier, au ni preorder/group sale.</p>
-                                                        </div>
-                                                        <div className="grid gap-2 sm:grid-cols-3">
-                                                            {fulfillmentModeOptions.map((mode) => (
-                                                                <button
-                                                                    key={mode.key}
-                                                                    type="button"
-                                                                    className={`rounded-xl border p-3 text-left transition ${fulfillmentMode === mode.key ? 'border-brand-500 bg-brand-50 text-brand-800 ring-1 ring-brand-200' : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-brand-200'}`}
-                                                                    onClick={() => setFulfillmentMode(mode.key)}
-                                                                >
-                                                                    <span className="block text-sm font-black">{mode.label}</span>
-                                                                    <span className="mt-1 block text-[11px] font-semibold leading-snug opacity-75">{mode.hint}</span>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                        {selectedCatalogSchema?.requires_verified_business && (
-                                                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                                                                Category hii inaweza kuhitaji verified business/KYB kabla ya kuchapishwa au kupata review ya Takeer.
-                                                            </div>
-                                                        )}
-                                                        {fulfillmentMode === 'supplier_sourced' && (
-                                                            <div className="grid gap-3 sm:grid-cols-2">
-                                                                <label className="space-y-1">
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Supplier/shop name</span>
-                                                                    <Input className="h-11" value={sourceDetails.supplier_name} onChange={(e) => updateSourceDetail('supplier_name', e.target.value)} placeholder="Private to Takeer" />
-                                                                </label>
-                                                                <label className="space-y-1">
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Supplier phone/WhatsApp</span>
-                                                                    <Input className="h-11" value={sourceDetails.supplier_phone} onChange={(e) => updateSourceDetail('supplier_phone', e.target.value)} placeholder="Private to Takeer" />
-                                                                </label>
-                                                                <label className="space-y-1">
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Supplier area/location</span>
-                                                                    <Input className="h-11" value={sourceDetails.supplier_location} onChange={(e) => updateSourceDetail('supplier_location', e.target.value)} placeholder="Optional private note" />
-                                                                </label>
-                                                                <label className="space-y-1">
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Hours to confirm/source</span>
-                                                                    <Input type="number" min="0" className="h-11" value={sourceDetails.confirmation_hours} onChange={(e) => updateSourceDetail('confirmation_hours', e.target.value)} placeholder="Mf. 6" />
-                                                                    <span className="block text-[10px] font-semibold text-muted-foreground">How many hours you need to confirm or get the item from supplier after order.</span>
-                                                                </label>
-                                                            </div>
-                                                        )}
-                                                        {fulfillmentMode === 'made_to_order' && (
-                                                            <label className="block space-y-1">
-                                                                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Preparation days after order</span>
-                                                                <Input type="number" min="0" className="h-11" value={availabilityLeadTimeDays} onChange={(e) => setAvailabilityLeadTimeDays(e.target.value)} placeholder="Mf. 3" />
-                                                                <span className="block text-[10px] font-semibold text-muted-foreground">How many days you need to make, assemble, or prepare the item after the customer orders.</span>
-                                                            </label>
-                                                        )}
-                                                        {['farm_harvest', 'preorder', 'group_sale'].includes(fulfillmentMode) && (
-                                                            <div className="grid gap-3 sm:grid-cols-3">
-                                                                <label className={fulfillmentMode === 'group_sale' ? 'space-y-1' : 'space-y-1 sm:col-span-3'}>
-                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{availabilityDateCopy?.label || 'Expected availability date'}</span>
-                                                                    <Input type="date" className="h-11" value={availableFrom} onChange={(e) => setAvailableFrom(e.target.value)} aria-label={availabilityDateCopy?.placeholder || 'Expected availability date'} />
-                                                                    <span className="block text-[10px] font-semibold text-muted-foreground">{availabilityDateCopy?.helper || 'Date when customers should expect this item to be available.'}</span>
-                                                                </label>
-                                                                {fulfillmentMode === 'group_sale' && (
-                                                                    <>
-                                                                        <label className="space-y-1">
-                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Target orders needed</span>
-                                                                            <Input type="number" min="2" className="h-11" value={groupSaleGoalQuantity} onChange={(e) => setGroupSaleGoalQuantity(e.target.value)} placeholder="Mf. 20" />
-                                                                            <span className="block text-[10px] font-semibold text-muted-foreground">Minimum customer quantity needed before fulfillment starts.</span>
-                                                                        </label>
-                                                                        <label className="space-y-1">
-                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Group sale closing date</span>
-                                                                            <Input type="date" className="h-11" value={groupSaleDeadline} onChange={(e) => setGroupSaleDeadline(e.target.value)} aria-label="Group sale closing date" />
-                                                                            <span className="block text-[10px] font-semibold text-muted-foreground">Last day customers can join this group sale.</span>
-                                                                        </label>
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        {['supplier_sourced', 'farm_harvest', 'preorder', 'group_sale'].includes(fulfillmentMode) && (
-                                                            <Textarea
-                                                                className="min-h-20 rounded-xl"
-                                                                value={sourceDetails.source_note}
-                                                                onChange={(e) => updateSourceDetail('source_note', e.target.value)}
-                                                                placeholder={fulfillmentMode === 'farm_harvest' ? 'Private note: farm/harvest source, batch details, or pickup plan' : 'Private source note for Takeer support/review'}
-                                                            />
-                                                        )}
-                                                        {!requiresLocationInventory && (
-                                                            <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
-                                                                <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                                                                <span>{selectedFulfillmentMode.label} haitahitaji stock kwenye eneo sasa. Mnunuzi ataona matarajio siku bidhaa itakamilika, na malipo yatashikiliwa hadi mteja atakapokea bidhaa yake ndani ya siku ulizoweka.</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                    <PhysicalFulfillmentEditor
+                                                        fulfillmentMode={fulfillmentMode}
+                                                        setFulfillmentMode={setFulfillmentMode}
+                                                        fulfillmentModeOptions={fulfillmentModeOptions}
+                                                        selectedCatalogSchema={selectedCatalogSchema}
+                                                        sourceDetails={sourceDetails}
+                                                        updateSourceDetail={updateSourceDetail}
+                                                        availabilityLeadTimeDays={availabilityLeadTimeDays}
+                                                        setAvailabilityLeadTimeDays={setAvailabilityLeadTimeDays}
+                                                        availabilityDateCopy={availabilityDateCopy}
+                                                        availableFrom={availableFrom}
+                                                        setAvailableFrom={setAvailableFrom}
+                                                        groupSaleGoalQuantity={groupSaleGoalQuantity}
+                                                        setGroupSaleGoalQuantity={setGroupSaleGoalQuantity}
+                                                        groupSaleDeadline={groupSaleDeadline}
+                                                        setGroupSaleDeadline={setGroupSaleDeadline}
+                                                        requiresLocationInventory={requiresLocationInventory}
+                                                        selectedFulfillmentMode={selectedFulfillmentMode}
+                                                    />
                                                 )}
-                                                {step === 'physical' && selectedSchemaUnitTypes.length > 0 && (
-                                                    <div className="space-y-4 sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                                        <div>
-                                                            <p className="text-xs font-black uppercase tracking-wider text-slate-700">Bei hii ni ya nini?</p>
-                                                            <p className="text-xs text-slate-500">Tengeneza mstari mfupi ambao mteja ataona kwenye card. Mfano: 1 pc (50 g), 1 pack (250 ml), 3 pairs, au 2 pcs (675 ml).</p>
-                                                        </div>
-                                                        <div className="grid gap-3">
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[11px] font-semibold text-slate-600">Mteja atanunua nini?</label>
-                                                                <select
-                                                                    className="w-full h-11 rounded-xl border border-input bg-white px-3 text-sm"
-                                                                    value={selectedUnitTypeId}
-                                                                    onChange={(e) => setSelectedUnitTypeId(e.target.value)}
-                                                                >
-                                                                    <option value="">Chagua kipimo</option>
-                                                                    {selectedSchemaUnitTypes.map((unit) => (
-                                                                        <option key={unit.id} value={unit.id}>
-                                                                            {unit.name}{unit.symbol ? ` (${unit.symbol})` : ''}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="text-[11px] font-semibold text-slate-600">Idadi ya {stockUnitLabel} kwa bei hii</label>
-                                                                <Input
-                                                                    type="number"
-                                                                    min="0.001"
-                                                                    step={stockStep}
-                                                                    className="h-11 bg-white"
-                                                                    value={sellableQuantity}
-                                                                    onChange={(e) => setSellableQuantity(e.target.value)}
-                                                                    placeholder="1"
-                                                                />
-                                                                <p className="text-[10px] font-semibold leading-snug text-slate-500">
-                                                                    Mfano: tshirt moja weka 1. Soksi jozi 3 weka 3. Betri pack ya 4 pcs weka 4 kama kipimo ni pc.
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="grid gap-3 sm:grid-cols-2">
-                                                            <label className="space-y-1.5">
-                                                                <span className="text-[11px] font-semibold text-slate-600">Ndani yake kuna kipimo gani? (hiari)</span>
-                                                                <Input
-                                                                    type="number"
-                                                                    min="0.001"
-                                                                    step={selectedPackageContentUnitType?.allows_decimal ? '0.001' : '1'}
-                                                                    className="h-11 bg-white"
-                                                                    value={packageContentQuantity}
-                                                                    onChange={(e) => setPackageContentQuantity(e.target.value)}
-                                                                    placeholder="Mf. 250"
-                                                                />
-                                                            </label>
-                                                            <label className="space-y-1.5">
-                                                                <span className="text-[11px] font-semibold text-slate-600">Kipimo cha ndani</span>
-                                                                <select
-                                                                    className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm"
-                                                                    value={packageContentUnitTypeId}
-                                                                    onChange={(e) => setPackageContentUnitTypeId(e.target.value)}
-                                                                >
-                                                                    <option value="">Hakuna</option>
-                                                                    {selectedSchemaUnitTypes.map((unit) => (
-                                                                        <option key={`content-${unit.id}`} value={unit.id}>
-                                                                            {unit.name}{unit.symbol ? ` (${unit.symbol})` : ''}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </label>
-                                                        </div>
-                                                        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-                                                            <div className="flex items-center justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">Yaliyomo kwenye pack/set (hiari)</p>
-                                                                    <p className="text-[10px] font-semibold text-slate-500">Ongeza item moja kwa mstari. Itaonekana kama 1x Charging Cable, 2x Cell Batteries.</p>
-                                                                </div>
-                                                                <button
-                                                                    type="button"
-                                                                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-700"
-                                                                    onClick={() => setPackageContentItems((prev) => [...prev, { qty: '1', unit: 'pc', name: '' }])}
-                                                                >
-                                                                    Add
-                                                                </button>
-                                                            </div>
-                                                            <div className="space-y-2">
-                                                                {packageContentItems.map((item, index) => (
-                                                                    <div key={`content-row-${index}`} className="grid gap-2 sm:grid-cols-[80px_90px_1fr_36px]">
-                                                                        <Input
-                                                                            type="number"
-                                                                            min="0.001"
-                                                                            step="0.001"
-                                                                            className="h-10 bg-slate-50"
-                                                                            value={item.qty}
-                                                                            onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: e.target.value } : row))}
-                                                                            placeholder="1"
-                                                                        />
-                                                                        <Input
-                                                                            className="h-10 bg-slate-50"
-                                                                            value={item.unit}
-                                                                            onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, unit: e.target.value } : row))}
-                                                                            placeholder="pc"
-                                                                        />
-                                                                        <Input
-                                                                            className="h-10 bg-slate-50"
-                                                                            value={item.name}
-                                                                            onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, name: e.target.value } : row))}
-                                                                            placeholder="Charging Cable"
-                                                                        />
-                                                                        <button
-                                                                            type="button"
-                                                                            className="h-10 rounded-lg border border-slate-200 text-slate-500"
-                                                                            onClick={() => setPackageContentItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
-                                                                            aria-label="Remove package content"
-                                                                        >
-                                                                            ×
-                                                                        </button>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                            {cleanPackageContentItems.length > 0 && (
-                                                                <div className="flex flex-wrap gap-1.5">
-                                                                    {cleanPackageContentItems.map((item, index) => (
-                                                                        <span key={`${item.name}-${index}`} className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">
-                                                                            {formatPackageQuantity(item.qty)}x {item.name}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                            <Input
-                                                                className="h-10 bg-white"
-                                                                value={packageContents}
-                                                                onChange={(e) => setPackageContents(e.target.value)}
-                                                                placeholder="Extra note (optional), e.g. colors may vary"
-                                                            />
-                                                        </div>
-                                                        {packagePreviewLabel && (
-                                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900">
-                                                                Itaonekana kwa wateja: <span className="text-emerald-700">{packagePreviewLabel}</span>
-                                                            </div>
-                                                        )}
-                                                        <details className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                                            <summary className="cursor-pointer text-[11px] font-black uppercase tracking-wider text-slate-700">
-                                                                Sheria ya oda ya chini (hiari)
-                                                            </summary>
-                                                            <div className="mt-3 space-y-2">
-                                                                <Input
-                                                                    type="number"
-                                                                    min="0.001"
-                                                                    step={stockStep}
-                                                                    className="h-11 bg-white"
-                                                                    value={minOrderQuantity}
-                                                                    onChange={(e) => setMinOrderQuantity(e.target.value)}
-                                                                    placeholder={selectedUnitType?.min_order_quantity || sellableQuantity || '1'}
-                                                                />
-                                                                <p className="text-[10px] font-semibold leading-5 text-slate-500">
-                                                                    Tumia hii tu kama hutaki mteja anunue chini ya kiwango fulani. Ukiiacha wazi, oda ya chini itakuwa sawa na pakiti/kiasi cha mauzo hapo juu.
-                                                                </p>
-                                                            </div>
-                                                        </details>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {(selectedUnitType?.common_quantities || []).map((entry) => (
-                                                                <button
-                                                                    key={`${entry.label}-${entry.value}`}
-                                                                    type="button"
-                                                                    className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
-                                                                    onClick={() => {
-                                                                        setSellableQuantity(String(entry.quantity ?? entry.value ?? 1));
-                                                                    }}
-                                                                >
-                                                                    {quantityChipLabel(entry)}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                {renderPhysicalPackageEditor({ className: 'sm:col-span-2' })}
+                                                {renderWholesaleEditor()}
                                                 {step === 'physical' && !hasVariants && requiresLocationInventory && (
-                                                    <div className="space-y-4 sm:col-span-2">
-                                                        <h3 className="font-bold uppercase tracking-widest text-xs flex items-center gap-2">
-                                                            <Store className="w-3 h-3" /> Hifadhi & Upatikanaji (Stock)
-                                                        </h3>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                            {physicalLocations.map((loc) => (
-                                                                <div key={loc.id} className="rounded-xl border border-slate-200 p-3 space-y-2 bg-slate-50/50">
-                                                                    <div className="flex items-center justify-between gap-2">
-                                                                        <label className="text-xs font-bold text-slate-700 truncate">{loc.name}</label>
-                                                                        {loc.is_primary && (
-                                                                            <span className="text-[10px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded font-bold border border-brand-100 uppercase">Primary</span>
-                                                                        )}
-                                                                    </div>
-                                                                    <Input
-                                                                        type="number"
-                                                                        step={stockStep}
-                                                                        placeholder="0"
-                                                                        className="h-10 text-lg font-black bg-white"
-                                                                        value={locationInventories[loc.id] || ''}
-                                                                        onChange={e => setLocationInventories(prev => ({ ...prev, [loc.id]: e.target.value }))}
-                                                                    />
-                                                                    <p className="text-[10px] font-semibold text-slate-500">{stockUnitLabel} in stock</p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        {physicalLocations.length === 0 && (
-                                                            <div className="p-4 rounded-xl border border-orange-200 bg-orange-50 flex items-start gap-3">
-                                                                <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0" />
-                                                                <div className="space-y-1">
-                                                                    <p className="text-sm font-bold text-orange-800">Hujajaza duka au eneo la stock/pickup</p>
-                                                                    <p className="text-xs text-orange-700 leading-relaxed">
-                                                                        Ili kuuza bidhaa uliyonayo mkononi, tumia duka lililopo au ongeza eneo la stock/pickup kwenye Mipangilio.
-                                                                    </p>
-                                                                    <button
-                                                                        type="button"
-                                                                        className="pt-1 text-xs font-black text-orange-900 underline"
-                                                                        onClick={() => { window.location.href = `/merchant/${merchantUsername}/settings`; }}
-                                                                    >
-                                                                        Fungua Mipangilio
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                    <PhysicalStockEditor
+                                                        physicalLocations={physicalLocations}
+                                                        stockStep={stockStep}
+                                                        stockUnitLabel={stockUnitLabel}
+                                                        locationInventories={locationInventories}
+                                                        setLocationInventories={setLocationInventories}
+                                                        merchantUsername={merchantUsername}
+                                                    />
                                                 )}
                                             </div>
-                                            <div className="space-y-4 rounded-2xl border border-brand-100 bg-white p-4">
-                                                <div>
-                                                    <p className="text-xs font-black uppercase tracking-wider text-slate-700">Bei & Usafirishaji</p>
-                                                    <p className="text-xs text-slate-500">Hakiki bei na template ya usafirishaji kabla ya kuweka bidhaa sokoni.</p>
-                                                </div>
-                                                {step === 'physical' && (
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Shipping Profile (Template)</label>
-                                                        <select
-                                                            className="w-full h-12 rounded-xl border border-input bg-white px-3 text-sm font-bold text-brand-700"
-                                                            value={selectedShippingProfileId}
-                                                            onChange={(e) => setSelectedShippingProfileId(e.target.value)}
-                                                        >
-                                                            <option value="">Chagua profile ya usafirishaji...</option>
-                                                            {shippingProfiles.map(profile => (
-                                                                <option key={profile.id} value={profile.id}>
-                                                                    {profile.name} {profile.is_default ? '(Default)' : ''}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                        <p className="text-[10px] text-muted-foreground italic">Templates hizi zimewekwa kwenye Settings {'>'} Shipping Profiles.</p>
+                                            <PhysicalPublishPanel
+                                                shippingProfiles={shippingProfiles}
+                                                selectedShippingProfileId={selectedShippingProfileId}
+                                                setSelectedShippingProfileId={setSelectedShippingProfileId}
+                                                deliveryPromiseOverride={renderDeliveryPromiseOverride()}
+                                                faqEditor={renderProductFaqEditor()}
+                                                onPublish={publishProduct}
+                                                disabledReason={physicalPublishDisabledReason}
+                                            >
+                                                {retailPriceEnabled ? (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-xs font-bold text-brand-600 uppercase tracking-wider">Bei ya Reja Reja (TZS)</label>
+                                                            <Input type="number" placeholder="Mf. 35000" className="h-12 text-lg font-black bg-brand-50 border-brand-200" value={price} onChange={e => setPrice(e.target.value)} />
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ya Awali (Strike-through)</label>
+                                                            <Input type="number" placeholder="Mf. 45000" className="h-12 text-lg font-black border-dashed" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-xs font-semibold leading-5 text-emerald-900">
+                                                        Wholesale-only product. Bei ya mteja itatoka kwenye pricing tiers na proforma ya Takeer SafePay.
                                                     </div>
                                                 )}
-                                                {step === 'physical' && renderDeliveryPromiseOverride()}
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-brand-600 uppercase tracking-wider">Bei ya Sasa (TZS)</label>
-                                                        <Input type="number" placeholder="Mf. 35000" className="h-12 text-lg font-black bg-brand-50 border-brand-200" value={price} onChange={e => setPrice(e.target.value)} />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bei ya Awali (Strike-through)</label>
-                                                        <Input type="number" placeholder="Mf. 45000" className="h-12 text-lg font-black border-dashed" value={comparePrice} onChange={e => setComparePrice(e.target.value)} />
-                                                    </div>
-                                                </div>
                                                 {step === 'physical' && (
                                                     <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                                                         <div>
@@ -5502,19 +4929,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                         )}
                                                     </div>
                                                 )}
-                                            </div>
-                                            {renderWholesaleEditor()}
-                                            {renderProductFaqEditor()}
-                                            <Button
-                                                className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
-                                                onClick={publishProduct}
-                                                disabled={Boolean(physicalPublishDisabledReason)}
-                                            >
-                                                Weka Sokoni <ChevronRight className="ml-2 h-5 w-5" />
-                                            </Button>
-                                            {physicalPublishDisabledReason && (
-                                                <p className="text-center text-xs font-semibold text-slate-500">{physicalPublishDisabledReason}</p>
-                                            )}
+                                            </PhysicalPublishPanel>
                                         </CardContent>
                                     </Card>
                                 )}
@@ -5526,202 +4941,31 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             <h3 className="font-bold uppercase tracking-widest text-xs">Shipping & Variant Details</h3>
                                         </div>
                                         <CardContent className="p-5 space-y-3">
-                                            {selectedSchemaUnitTypes.length > 0 && (
-                                                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
-                                                    <div>
-                                                        <p className="text-xs font-black uppercase tracking-wider text-slate-700">Bei hii ni ya nini?</p>
-                                                        <p className="text-xs text-slate-500">Mstari huu utaonekana kwenye card na order. Mfano: 1 pc (50 g), 1 pack (250 ml), au 3 pairs.</p>
-                                                    </div>
-                                                    <div className="grid gap-3">
-                                                        <label className="space-y-1">
-                                                            <span className="text-[11px] font-semibold text-slate-600">Mteja atanunua nini?</span>
-                                                            <select
-                                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm"
-                                                                value={selectedUnitTypeId}
-                                                                onChange={(e) => setSelectedUnitTypeId(e.target.value)}
-                                                            >
-                                                                <option value="">Chagua kipimo</option>
-                                                                {selectedSchemaUnitTypes.map((unit) => (
-                                                                    <option key={unit.id} value={unit.id}>
-                                                                        {unit.name}{unit.symbol ? ` (${unit.symbol})` : ''}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </label>
-                                                        <label className="space-y-1">
-                                                            <span className="text-[11px] font-semibold text-slate-600">Idadi ya {stockUnitLabel} kwa bei hii</span>
-                                                            <Input
-                                                                type="number"
-                                                                min="0.001"
-                                                                step={stockStep}
-                                                                className="h-11 bg-white"
-                                                                value={sellableQuantity}
-                                                                onChange={(e) => setSellableQuantity(e.target.value)}
-                                                                placeholder="Mf. 1"
-                                                            />
-                                                        </label>
-                                                    </div>
-                                                    <div className="grid gap-3 sm:grid-cols-2">
-                                                        <label className="space-y-1">
-                                                            <span className="text-[11px] font-semibold text-slate-600">Kipimo cha ndani (hiari)</span>
-                                                            <Input
-                                                                type="number"
-                                                                min="0.001"
-                                                                step={selectedPackageContentUnitType?.allows_decimal ? '0.001' : '1'}
-                                                                className="h-11 bg-white"
-                                                                value={packageContentQuantity}
-                                                                onChange={(e) => setPackageContentQuantity(e.target.value)}
-                                                                placeholder="Mf. 250"
-                                                            />
-                                                        </label>
-                                                        <label className="space-y-1">
-                                                            <span className="text-[11px] font-semibold text-slate-600">Unit ya ndani</span>
-                                                            <select
-                                                                className="h-11 w-full rounded-xl border border-input bg-white px-3 text-sm"
-                                                                value={packageContentUnitTypeId}
-                                                                onChange={(e) => setPackageContentUnitTypeId(e.target.value)}
-                                                            >
-                                                                <option value="">Hakuna</option>
-                                                                {selectedSchemaUnitTypes.map((unit) => (
-                                                                    <option key={`variant-content-${unit.id}`} value={unit.id}>
-                                                                        {unit.name}{unit.symbol ? ` (${unit.symbol})` : ''}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </label>
-                                                    </div>
-                                                    <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-                                                        <div className="flex items-center justify-between gap-3">
-                                                            <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">Yaliyomo kwenye pack/set</p>
-                                                            <button
-                                                                type="button"
-                                                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-700"
-                                                                onClick={() => setPackageContentItems((prev) => [...prev, { qty: '1', unit: 'pc', name: '' }])}
-                                                            >
-                                                                Add
-                                                            </button>
-                                                        </div>
-                                                        {packageContentItems.map((item, index) => (
-                                                            <div key={`variant-content-row-${index}`} className="grid gap-2 sm:grid-cols-[80px_90px_1fr_36px]">
-                                                                <Input
-                                                                    type="number"
-                                                                    min="0.001"
-                                                                    step="0.001"
-                                                                    className="h-10 bg-slate-50"
-                                                                    value={item.qty}
-                                                                    onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: e.target.value } : row))}
-                                                                    placeholder="1"
-                                                                />
-                                                                <Input
-                                                                    className="h-10 bg-slate-50"
-                                                                    value={item.unit}
-                                                                    onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, unit: e.target.value } : row))}
-                                                                    placeholder="pc"
-                                                                />
-                                                                <Input
-                                                                    className="h-10 bg-slate-50"
-                                                                    value={item.name}
-                                                                    onChange={(e) => setPackageContentItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, name: e.target.value } : row))}
-                                                                    placeholder="Charging Cable"
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    className="h-10 rounded-lg border border-slate-200 text-slate-500"
-                                                                    onClick={() => setPackageContentItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
-                                                                    aria-label="Remove package content"
-                                                                >
-                                                                    ×
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                        <Input
-                                                            className="h-10 bg-white"
-                                                            value={packageContents}
-                                                            onChange={(e) => setPackageContents(e.target.value)}
-                                                            placeholder="Extra note (optional)"
-                                                        />
-                                                    </div>
-                                                    {packagePreviewLabel && (
-                                                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900 mt-2">
-                                                            Itaonekana kwa wateja: <span className="text-emerald-700">{packagePreviewLabel}</span>
-                                                        </div>
-                                                    )}
-                                                    <details className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                                        <summary className="cursor-pointer text-[11px] font-black uppercase tracking-wider text-slate-700">
-                                                            Sheria ya oda ya chini (hiari)
-                                                        </summary>
-                                                        <div className="mt-3 space-y-2">
-                                                            <Input
-                                                                type="number"
-                                                                min="0.001"
-                                                                step={stockStep}
-                                                                className="h-11 bg-white"
-                                                                value={minOrderQuantity}
-                                                                onChange={(e) => setMinOrderQuantity(e.target.value)}
-                                                                placeholder={selectedUnitType?.min_order_quantity || sellableQuantity || '1'}
-                                                            />
-                                                            <p className="text-[10px] font-semibold leading-5 text-slate-500">
-                                                                Ukiiacha wazi, oda ya chini itakuwa sawa na pakiti/kiasi cha mauzo hapo juu.
-                                                            </p>
-                                                        </div>
-                                                    </details>
-                                                </div>
-                                            )}
-                                            {physicalLocations.length === 0 && (
-                                                <div className="p-4 rounded-xl border border-orange-200 bg-orange-50 flex items-start gap-3">
-                                                    <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0" />
-                                                    <div className="space-y-1">
-                                                        <p className="text-sm font-bold text-orange-800">Hujajaza duka au eneo la stock/pickup</p>
-                                                        <p className="text-xs text-orange-700 leading-relaxed">
-                                                            Ili kuuza bidhaa uliyonayo mkononi, tumia duka lililopo au ongeza eneo la stock/pickup kwenye Mipangilio.
-                                                        </p>
-                                                        <button
-                                                            type="button"
-                                                            className="pt-1 text-xs font-black text-orange-900 underline"
-                                                            onClick={() => { window.location.href = `/merchant/${merchantUsername}/settings`; }}
-                                                        >
-                                                            Fungua Mipangilio
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                            <p className="text-sm text-slate-600">
-                                                Configured variants: <span className="font-bold">{configuredPhysicalVariants.length}</span>
-                                                {requiresLocationInventory ? (
-                                                    <> · Total stock: <span className="font-bold">{configuredVariantStockTotal}</span></>
-                                                ) : (
-                                                    <> · Source mode: <span className="font-bold">{selectedFulfillmentMode.label}</span></>
-                                                )}
-                                            </p>
-                                            <div className="space-y-1.5 rounded-2xl border border-brand-100 bg-white p-4">
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Shipping Profile (Template)</label>
-                                                <select
-                                                    className="w-full h-12 rounded-xl border border-input bg-white px-3 text-sm font-bold text-brand-700"
-                                                    value={selectedShippingProfileId}
-                                                    onChange={(e) => setSelectedShippingProfileId(e.target.value)}
-                                                >
-                                                    <option value="">Chagua profile ya usafirishaji...</option>
-                                                    {shippingProfiles.map(profile => (
-                                                        <option key={profile.id} value={profile.id}>
-                                                            {profile.name} {profile.is_default ? '(Default)' : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <p className="text-[10px] text-muted-foreground italic">Templates hizi zimewekwa kwenye Settings {'>'} Shipping Profiles.</p>
-                                            </div>
-                                            {renderDeliveryPromiseOverride()}
+                                            {renderPhysicalPackageEditor({ compact: true })}
                                             {renderWholesaleEditor()}
-                                            {renderProductFaqEditor()}
-                                            <Button
-                                                className="w-full h-14 text-lg font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-lg shadow-brand-600/20"
-                                                onClick={publishProduct}
-                                                disabled={Boolean(physicalPublishDisabledReason)}
-                                            >
-                                                Weka Sokoni <ChevronRight className="ml-2 h-5 w-5" />
-                                            </Button>
-                                            {physicalPublishDisabledReason && (
-                                                <p className="text-center text-xs font-semibold text-slate-500">{physicalPublishDisabledReason}</p>
+                                            {physicalLocations.length === 0 && (
+                                                <MissingStockLocationNotice merchantUsername={merchantUsername} />
                                             )}
+                                            <PhysicalPublishPanel
+                                                boxed={false}
+                                                summary={(
+                                                    <p className="text-sm text-slate-600">
+                                                        Configured variants: <span className="font-bold">{configuredPhysicalVariants.length}</span>
+                                                        {requiresLocationInventory ? (
+                                                            <> · Total stock: <span className="font-bold">{configuredVariantStockTotal}</span></>
+                                                        ) : (
+                                                            <> · Source mode: <span className="font-bold">{selectedFulfillmentMode.label}</span></>
+                                                        )}
+                                                    </p>
+                                                )}
+                                                shippingProfiles={shippingProfiles}
+                                                selectedShippingProfileId={selectedShippingProfileId}
+                                                setSelectedShippingProfileId={setSelectedShippingProfileId}
+                                                deliveryPromiseOverride={renderDeliveryPromiseOverride()}
+                                                faqEditor={renderProductFaqEditor()}
+                                                onPublish={publishProduct}
+                                                disabledReason={physicalPublishDisabledReason}
+                                            />
                                         </CardContent>
                                     </Card>
                                 )}
@@ -7595,136 +6839,22 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     )}
                                                 </div>
 
-                                                <div className="rounded-2xl border p-3 sm:p-4 space-y-3">
-                                                    <div>
-                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Booking policy</label>
-                                                        <p className="mt-1 text-xs text-muted-foreground">
-                                                            Standard for every service. Choose whether customers request first, wait for your confirmation, or book/pay instantly.
-                                                        </p>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                        <div className="space-y-2 sm:col-span-2">
-                                                            <div>
-                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Service duration</span>
-                                                                <p className="text-[10px] text-muted-foreground">How long does one booking/session usually take? Used to create booking slots.</p>
-                                                            </div>
-                                                            <div className="grid grid-cols-2 gap-2">
-                                                                <Input
-                                                                    type="number"
-                                                                    min="1"
-                                                                    placeholder="Mf. 1"
-                                                                    value={serviceDurationValue}
-                                                                    onChange={(e) => setServiceDurationValue(e.target.value)}
-                                                                    className="h-11 font-bold"
-                                                                />
-                                                                <select
-                                                                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                                    value={serviceDurationUnit}
-                                                                    onChange={(e) => setServiceDurationUnit(e.target.value)}
-                                                                >
-                                                                    <option value="minutes">Minutes</option>
-                                                                    <option value="hours">Hours</option>
-                                                                    <option value="days">Days</option>
-                                                                </select>
-                                                            </div>
-                                                            <div className="grid grid-cols-3 gap-1.5">
-                                                                {serviceDurationPresets.map((preset) => {
-                                                                    const selected = String(serviceDurationValue) === String(preset.value) && serviceDurationUnit === preset.unit;
-                                                                    return (
-                                                                        <button
-                                                                            key={`${preset.label}-${preset.value}-${preset.unit}`}
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                setServiceDurationValue(String(preset.value));
-                                                                                setServiceDurationUnit(preset.unit);
-                                                                            }}
-                                                                            className={`min-h-9 rounded-lg border px-2 text-[10px] font-black transition-colors ${selected
-                                                                                ? 'border-purple-600 bg-purple-50 text-purple-700'
-                                                                                : 'border-border bg-background text-muted-foreground hover:border-purple-300'
-                                                                                }`}
-                                                                        >
-                                                                            {preset.label}
-                                                                        </button>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                            {serviceDurationMinutes && (
-                                                                <p className="text-[10px] font-semibold text-purple-700">
-                                                                    Saved as {Number(serviceDurationMinutes).toLocaleString()} minutes.
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                        <div className="space-y-1.5">
-                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Booking Confirmation flow</span>
-                                                            <select
-                                                                className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
-                                                                value={serviceBookingType}
-                                                                onChange={(e) => setServiceBookingType(e.target.value)}
-                                                            >
-                                                                <option value="request">Request First</option>
-                                                                <option value="manual_confirm">Manual Confirm</option>
-                                                                <option value="instant">Instant</option>
-                                                            </select>
-                                                        </div>
-                                                        <div className="space-y-1.5">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Advance / deposit</span>
-                                                                <button
-                                                                    type="button"
-                                                                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-purple-200 bg-purple-50 text-purple-700 transition-colors hover:bg-purple-100"
-                                                                    onClick={() => setShowServiceDepositInfo((value) => !value)}
-                                                                    aria-label="Show advance deposit explanation"
-                                                                    aria-expanded={showServiceDepositInfo}
-                                                                >
-                                                                    <Info className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            </div>
-                                                            <Input
-                                                                type="number"
-                                                                placeholder="Mf. 30000"
-                                                                value={serviceDepositAmount}
-                                                                onChange={(e) => setServiceDepositAmount(e.target.value)}
-                                                                className="h-11 font-bold"
-                                                            />
-                                                            {showServiceDepositInfo && (
-                                                                <p className="rounded-xl border border-purple-100 bg-purple-50/70 px-3 py-2 text-[10px] leading-snug text-purple-800">
-                                                                    Optional amount customer pays now to secure the service. It becomes the checkout amount for this listing and should be treated as advance paid toward the service.
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                        <label className="space-y-1.5">
-                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Buffer after booking</span>
-                                                            <Input
-                                                                type="number"
-                                                                min="0"
-                                                                placeholder="15"
-                                                                value={serviceDetails.buffer_minutes ?? ''}
-                                                                onChange={(e) => updateServiceDetail('buffer_minutes', e.target.value)}
-                                                                className="h-11 font-bold"
-                                                            />
-                                                        </label>
-                                                        <label className="space-y-1.5">
-                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Capacity per slot</span>
-                                                            <Input
-                                                                type="number"
-                                                                min="1"
-                                                                placeholder="1"
-                                                                value={serviceDetails.capacity ?? ''}
-                                                                onChange={(e) => updateServiceDetail('capacity', e.target.value)}
-                                                                className="h-11 font-bold"
-                                                            />
-                                                        </label>
-                                                        <label className="space-y-1.5 sm:col-span-2">
-                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Preparation notes</span>
-                                                            <Input
-                                                                placeholder="Arrive 10 minutes early, bring documents..."
-                                                                value={serviceDetails.preparation_notes || ''}
-                                                                onChange={(e) => updateServiceDetail('preparation_notes', e.target.value)}
-                                                                className="h-11 font-bold"
-                                                            />
-                                                        </label>
-                                                    </div>
-                                                </div>
+                                                <ServiceBookingPolicyEditor
+                                                    serviceDurationValue={serviceDurationValue}
+                                                    setServiceDurationValue={setServiceDurationValue}
+                                                    serviceDurationUnit={serviceDurationUnit}
+                                                    setServiceDurationUnit={setServiceDurationUnit}
+                                                    serviceDurationPresets={serviceDurationPresets}
+                                                    serviceDurationMinutes={serviceDurationMinutes}
+                                                    serviceBookingType={serviceBookingType}
+                                                    setServiceBookingType={setServiceBookingType}
+                                                    serviceDepositAmount={serviceDepositAmount}
+                                                    setServiceDepositAmount={setServiceDepositAmount}
+                                                    showServiceDepositInfo={showServiceDepositInfo}
+                                                    setShowServiceDepositInfo={setShowServiceDepositInfo}
+                                                    serviceDetails={serviceDetails}
+                                                    updateServiceDetail={updateServiceDetail}
+                                                />
                                             </div>
 
                                             <div className="grid grid-cols-1 gap-4">
@@ -8084,11 +7214,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                             {/* Price row */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                                {(step !== 'service' || serviceNeedsCatalogPrice) ? (
+                                {retailPriceEnabled && (step !== 'service' || serviceNeedsCatalogPrice) ? (
                                     <>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                {step === 'service' ? 'Bei Kamili Mteja Atalipa (TZS)' : 'Bei ya sasa (TZS)'}
+                                                {step === 'service' ? 'Bei Kamili Mteja Atalipa (TZS)' : 'Bei ya Reja Reja (TZS)'}
                                             </label>
                                             <Input
                                                 type="number"
@@ -8145,6 +7275,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                             )}
                                         </div>
                                     </>
+                                ) : wholesaleOnly ? (
+                                    <div className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 font-medium">
+                                        Wholesale-only product. Bei ya mteja itatoka kwenye pricing tiers na proforma ya Takeer SafePay.
+                                    </div>
                                 ) : (
                                     <div className="sm:col-span-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800 font-medium">
                                         Service hii ni ya <span className="font-black uppercase">{serviceMode === 'request_quote' ? 'Request/Quote' : serviceMode === 'showcase_only' ? 'Showcase' : 'Contact/Booking'}</span>. Hakuna bei ya checkout inayohitajika.
