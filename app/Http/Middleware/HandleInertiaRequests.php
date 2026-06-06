@@ -89,6 +89,7 @@ class HandleInertiaRequests extends Middleware
             'is_admin' => (bool) $user->is_admin,
             'is_banned' => (bool) $user->is_banned,
             'is_merchant' => $user->is_merchant || $merchantProfiles->isNotEmpty(),
+            'two_factor_enabled' => $user->hasEnabledTotp(),
             'merchant_profiles' => $merchantProfiles,
         ];
     }

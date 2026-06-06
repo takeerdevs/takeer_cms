@@ -3,6 +3,7 @@ services:
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
+      - APP_KEY=${APP_KEY}
       - APP_URL=http://localhost:8000
       - LOG_LEVEL=debug
       - APP_OPTIMIZE_ON_BOOT=false
@@ -17,6 +18,7 @@ services:
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
+      - APP_KEY=${APP_KEY}
       - APP_URL=http://localhost:8000
       - LOG_LEVEL=debug
       - APP_OPTIMIZE_ON_BOOT=false
@@ -40,6 +42,7 @@ services:
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
+      - APP_KEY=${APP_KEY}
       - APP_URL=http://localhost:8000
       - LOG_LEVEL=debug
       - TRUSTED_PROXIES=*

@@ -80,6 +80,9 @@ export default function Terms() {
                     <p className="text-sm leading-7 text-muted-foreground">
                         These Terms explain the rules for using Takeer as a customer, creator, personal seller, reseller, merchant, or service provider.
                     </p>
+                    <p className="text-sm leading-7 text-muted-foreground">
+                        Takeer is operated by Avly Tech Group Limited, a company incorporated in Tanzania.
+                    </p>
                 </div>
 
                 {sections.map((section) => (

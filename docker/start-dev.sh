@@ -25,9 +25,12 @@ done
 echo "✅ Database is ready!"
 
 # Generate application key if not set
-if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
+ENV_APP_KEY="$(grep -E '^APP_KEY=' /var/www/html/.env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\"')"
+if [ -z "$APP_KEY" ] && [ -z "$ENV_APP_KEY" ]; then
     echo "🔑 Generating application key..."
     php artisan key:generate --force
+else
+    echo "✅ Application key already configured"
 fi
 
 # Clear caches for development

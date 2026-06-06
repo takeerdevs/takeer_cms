@@ -28,6 +28,7 @@ services:
     environment:
       - APP_ENV=production
       - APP_DEBUG=false
+      - APP_KEY=${APP_KEY}
       - LOG_LEVEL=info
       - TRUSTED_PROXIES=*
       - APP_OPTIMIZE_ON_BOOT=true
@@ -99,6 +100,7 @@ services:
     environment:
       - APP_ENV=production
       - APP_DEBUG=false
+      - APP_KEY=${APP_KEY}
       - LOG_LEVEL=info
       - TRUSTED_PROXIES=*
       - HORIZON_PATH=admin/horizon

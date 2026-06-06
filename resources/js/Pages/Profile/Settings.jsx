@@ -1,20 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import {
-    ArrowLeft, Mail, Smartphone, MapPin, CheckCircle2, ShieldCheck, Globe
+    ArrowLeft, Mail, Smartphone, MapPin, CheckCircle2, ShieldCheck
 } from 'lucide-react';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import UserAddressManager from '@/Components/UserAddressManager';
-
-const MAP_CONTAINER_STYLE = {
-    width: '100%',
-    height: '300px',
-    borderRadius: '12px',
-};
+import TotpSecurityPanel from '@/Components/Profile/TotpSecurityPanel';
 
 const DEFAULT_CENTER = {
     lat: -6.7924, // Dar es Salaam
@@ -23,13 +17,6 @@ const DEFAULT_CENTER = {
 
 export default function ProfileSettings({ oneClickProfile }) {
     const { auth, flash } = usePage().props;
-    const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: googleMapsApiKey,
-        libraries: ['places']
-    });
 
     const { data, setData, post, processing, errors, isDirty } = useForm({
         email: auth?.user?.email || '',
@@ -39,18 +26,6 @@ export default function ProfileSettings({ oneClickProfile }) {
         latitude: parseFloat(oneClickProfile?.latitude) || DEFAULT_CENTER.lat,
         longitude: parseFloat(oneClickProfile?.longitude) || DEFAULT_CENTER.lng,
     });
-
-    const [markerPosition, setMarkerPosition] = useState({
-        lat: parseFloat(oneClickProfile?.latitude) || DEFAULT_CENTER.lat,
-        lng: parseFloat(oneClickProfile?.longitude) || DEFAULT_CENTER.lng,
-    });
-
-    const onMarkerDragEnd = useCallback((e) => {
-        const newLat = e.latLng.lat();
-        const newLng = e.latLng.lng();
-        setMarkerPosition({ lat: newLat, lng: newLng });
-        setData(prev => ({ ...prev, latitude: newLat, longitude: newLng }));
-    }, [setData]);
 
     const submit = (e) => {
         e.preventDefault();
@@ -123,7 +98,10 @@ export default function ProfileSettings({ oneClickProfile }) {
                         </CardContent>
                     </Card>
 
-                    {/* Section 2: 1-Tap Checkout */}
+                    {/* Section 2: Authenticator app 2FA */}
+                    <TotpSecurityPanel initialEnabled={auth?.user?.two_factor_enabled} />
+
+                    {/* Section 3: 1-Tap Checkout */}
                     <Card className="border-border shadow-sm">
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between mb-4">
@@ -166,7 +144,7 @@ export default function ProfileSettings({ oneClickProfile }) {
                         </CardContent>
                     </Card>
 
-                    {/* Section 3: Shipping Addresses */}
+                    {/* Section 4: Shipping Addresses */}
                     <Card className="border-border shadow-sm">
                         <CardContent className="p-6">
                             <div className="flex items-center gap-2 mb-4 text-brand-700">
@@ -194,4 +172,3 @@ export default function ProfileSettings({ oneClickProfile }) {
         </AppLayout>
     );
 }
-

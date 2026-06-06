@@ -6,7 +6,7 @@ import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/Components/ui/Dialog';
 import {
-    User, UserCircle, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
+    User, Shield, Settings, LogOut, Store, ExternalLink, ChevronRight, Plus, ChevronDown, ChevronUp, BarChart3, Package, DownloadCloud, Briefcase,
     Wallet, CreditCard, Link as LinkIcon, Truck, TrendingUp, Banknote, AlertTriangle, FileCheck, CheckCircle2, ShieldCheck, BookOpenText, Boxes, Crown, CalendarClock, ShoppingBag,
     Mail, Phone, Fingerprint, FileText, Camera, Clock, ArrowLeft, Building2, Landmark, ShieldAlert, Smartphone, User2, MessageSquare, HardDrive, Megaphone, Layers,
     Search, Loader2, KeyRound, MapPin, Globe, Ship
@@ -57,10 +57,7 @@ export default function Profile({
     const [checkupVerifying, setCheckupVerifying] = useState(false);
     const retailEligible = isRetailEligible(activeMerchant, merchantKyc, merchantKycStatus);
     const hasVerifiedEmail = Boolean(auth?.user?.email && auth?.user?.email_verified_at);
-    const profileLabel = activeMerchant
-        ? (activeMerchant.type === 'personal' ? 'Personal Profile' : activeMerchant.type?.replace('_', ' ').toUpperCase())
-        : 'Personal Profile';
-
+    const hasTotpEnabled = Boolean(auth?.user?.two_factor_enabled);
     const isVerified = activeMerchant?.is_verified ?? false;
     const merchantSlug = activeMerchant?.username ?? '';
     const isBusinessMerchant = Boolean(activeMerchant && activeMerchant.type !== 'personal');
@@ -329,21 +326,14 @@ export default function Profile({
             <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24 space-y-6">
 
                 {/* ── Profile Header ── */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-                    <div className="flex items-center gap-4">
-                        <div className="h-16 w-16 rounded-2xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 shrink-0">
-                            <UserCircle className="h-8 w-8" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Akaunti Yangu</h1>
-                            <p className="text-slate-500 font-medium text-sm">
-                                {profileLabel}
-                            </p>
-                        </div>
-                    </div>
+                <div className="mb-8 flex items-center justify-between gap-4">
+                    <ProfileSwitcher
+                        variant="hero"
+                        className="min-w-0"
+                        onCreateBusiness={() => setIsCreateShopModalOpen(true)}
+                    />
 
-                    <div className="flex items-center gap-2">
-                        <ProfileSwitcher onCreateBusiness={() => setIsCreateShopModalOpen(true)} />
+                    <div className="flex shrink-0 items-center gap-2">
                         <Button
                             variant="ghost"
                             size="icon"
@@ -1375,6 +1365,24 @@ export default function Profile({
                                                         <img src="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png" className="h-3.5 w-3.5" alt="Google" />
                                                         {auth?.user?.email ? 'Thibitisha kwa Google' : 'Unganisha Google'}
                                                     </a>
+                                                )}
+                                            />
+                                            <DetailRow
+                                                label="Authenticator 2FA"
+                                                value={(
+                                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${hasTotpEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                                            <span className={`h-1.5 w-1.5 rounded-full ${hasTotpEnabled ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                            {hasTotpEnabled ? 'Already set' : 'Not set'}
+                                                        </span>
+                                                        <Link
+                                                            href="/profile/security"
+                                                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50"
+                                                        >
+                                                            {hasTotpEnabled ? 'Manage' : 'Set up'}
+                                                            <ChevronRight className="h-3.5 w-3.5" />
+                                                        </Link>
+                                                    </div>
                                                 )}
                                             />
                                             <DetailRow label="Jina la Mtumiaji" value={`@${activeMerchant?.username || 'user'}`} />

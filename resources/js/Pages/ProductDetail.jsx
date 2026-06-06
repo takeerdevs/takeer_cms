@@ -1804,7 +1804,7 @@ export default function ProductDetail({ product }) {
                         )}
                         {product.type === 'physical' && unitLabel && (
                             <p className="mt-2 text-xs font-bold uppercase tracking-wider text-brand-700">
-                                Bei kwa pakiti hii · {productStockLabel(product)}
+                                {productStockLabel(product)}
                             </p>
                         )}
                         {product.type === 'service' && (

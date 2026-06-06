@@ -3,9 +3,9 @@ import { Head, Link } from '@inertiajs/react';
 import { Button } from '@/Components/ui/Button';
 import { Card, CardContent } from '@/Components/ui/Card';
 import SeoHead from '@/Components/SeoHead';
-import { 
-    ShieldCheck, Zap, ArrowRight, Package, 
-    CheckCircle2, Star, Share2, Info 
+import {
+    ShieldCheck, Zap, ArrowRight, Package,
+    CheckCircle2, Star, Share2, Info
 } from 'lucide-react';
 import CheckoutModal from '@/Components/CheckoutModal';
 
@@ -57,12 +57,12 @@ export default function PublicPaymentPage({ page, merchant }) {
             </header>
 
             <main className="max-w-2xl mx-auto px-4 py-8 space-y-10 pb-32">
-                
+
                 {/* Hero / Merchant Branding */}
                 <section className="text-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div className="inline-block p-1 bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100">
-                        <img 
-                            src={merchant.storefront_setting?.avatar_url || 'https://ui-avatars.com/api/?name=' + merchant.display_name} 
+                        <img
+                            src={merchant.storefront_setting?.avatar_url || 'https://ui-avatars.com/api/?name=' + merchant.display_name}
                             className="h-20 w-20 rounded-[22px] object-cover"
                             alt={merchant.display_name}
                         />
@@ -75,7 +75,7 @@ export default function PublicPaymentPage({ page, merchant }) {
                     </div>
                     <div className="flex items-center justify-center gap-4 pt-2">
                         <div className="flex -space-x-2">
-                            {[1,2,3].map(i => (
+                            {[1, 2, 3].map(i => (
                                 <img key={i} className="w-8 h-8 rounded-full border-2 border-slate-50" src={`https://i.pravatar.cc/100?u=user${i}`} alt="Buyer" />
                             ))}
                         </div>
@@ -86,14 +86,14 @@ export default function PublicPaymentPage({ page, merchant }) {
                 {/* Items Grid */}
                 <section className="space-y-6">
                     {page.items.map((item, index) => (
-                        <Card 
-                            key={index} 
+                        <Card
+                            key={index}
                             className="overflow-hidden border-slate-200 shadow-xl shadow-slate-200/40 hover:scale-[1.02] transition-transform duration-300"
                         >
                             <CardContent className="p-0">
                                 <div className="aspect-[16/10] bg-slate-100 relative overflow-hidden">
-                                    <img 
-                                        src={item.item?.images?.[0]?.url || 'https://via.placeholder.com/600x400?text=Product'} 
+                                    <img
+                                        src={item.item?.images?.[0]?.url || 'https://via.placeholder.com/600x400?text=Product'}
                                         className="w-full h-full object-cover"
                                         alt={item.item?.title}
                                     />
@@ -108,7 +108,7 @@ export default function PublicPaymentPage({ page, merchant }) {
                                         <div>
                                             <h3 className="text-xl font-black text-slate-900">{item.item?.title}</h3>
                                             <div className="flex items-center gap-1 mt-1">
-                                                {[1,2,3,4,5].map(i => <Star key={i} className="h-3 w-3 text-amber-400 fill-amber-400" />)}
+                                                {[1, 2, 3, 4, 5].map(i => <Star key={i} className="h-3 w-3 text-amber-400 fill-amber-400" />)}
                                                 <span className="text-[10px] font-bold text-slate-400 ml-1">4.9 (128 reviews)</span>
                                             </div>
                                         </div>
@@ -120,7 +120,7 @@ export default function PublicPaymentPage({ page, merchant }) {
                                         </div>
                                     </div>
 
-                                    <Button 
+                                    <Button
                                         onClick={() => handleBuy(item)}
                                         className="w-full h-14 rounded-2xl text-white font-black text-lg shadow-lg group transition-all"
                                         style={{ backgroundColor: themeColor, boxShadow: `0 10px 20px -5px ${themeColor}40` }}
@@ -153,7 +153,7 @@ export default function PublicPaymentPage({ page, merchant }) {
                             Malipo yako yanashikiliwa na Takeer Escrow mpaka upate bidhaa yako. Hakuna upotevu wa pesa.
                         </p>
                     </div>
-                    
+
                     <div className="flex items-center justify-center gap-4">
                         <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/M-Pesa_Logo.png" className="h-4 grayscale opacity-50" alt="M-Pesa" />
                         <img src="https://upload.wikimedia.org/wikipedia/commons/d/d1/Visa_Logo.png" className="h-3 grayscale opacity-50" alt="Visa" />
@@ -164,7 +164,7 @@ export default function PublicPaymentPage({ page, merchant }) {
 
             {/* Checkout Integration */}
             {selectedProduct && (
-                <CheckoutModal 
+                <CheckoutModal
                     product={selectedProduct}
                     isOpen={isCheckoutOpen}
                     onOpenChange={setIsCheckoutOpen}

@@ -8,6 +8,7 @@ use App\Models\AdminSetting;
 use App\Models\Order;
 use App\Models\Transaction;
 use App\Models\WithdrawalRequest;
+use App\Services\StepUpVerificationService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -259,11 +260,28 @@ class MerchantWalletController extends Controller
     public function requestWithdrawal(Request $request, Merchant $merchant)
     {
         $user = $request->user();
+        $stepUp = app(StepUpVerificationService::class);
         
         $request->validate([
             'amount' => 'required|numeric|min:5000',
             'method' => 'required|string',
+            'verification_code' => 'nullable|string|max:32',
         ]);
+
+        if (! $stepUp->recentlyVerified($request, 'merchant_wallet_withdrawal')) {
+            $code = (string) $request->input('verification_code', '');
+            if ($code === '') {
+                return back()->withErrors([
+                    'verification_code' => 'Tuma verification code kisha uiweke hapa kabla ya kutoa pesa.',
+                ]);
+            }
+
+            if (! $stepUp->verify($request, 'merchant_wallet_withdrawal', $code)) {
+                return back()->withErrors([
+                    'verification_code' => 'Verification code si sahihi au imeisha muda wake.',
+                ]);
+            }
+        }
 
         $wallet = $merchant->wallet()->firstOrCreate(
             ['merchant_id' => $merchant->id],

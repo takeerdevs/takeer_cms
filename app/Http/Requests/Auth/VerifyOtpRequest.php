@@ -31,6 +31,7 @@ class VerifyOtpRequest extends FormRequest
             'phone_number' => ['required', 'string', 'max:20'],
             'otp' => ['required', 'string', 'digits:6'],
             'country_id' => ['nullable', 'exists:countries,id'],
+            'purpose' => ['nullable', 'string', 'max:40'],
         ];
     }
 

@@ -26,6 +26,9 @@ class User extends Authenticatable
         'is_shadow_user',
         'shadow_source',
         'onboarded_at',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'two_factor_confirmed_at',
     ];
 
     protected $hidden = [
@@ -46,7 +49,15 @@ class User extends Authenticatable
             'is_banned' => 'boolean',
             'is_shadow_user' => 'boolean',
             'onboarded_at' => 'datetime',
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function hasEnabledTotp(): bool
+    {
+        return !empty($this->two_factor_secret) && !is_null($this->two_factor_confirmed_at);
     }
 
     /**

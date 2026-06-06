@@ -30,6 +30,7 @@ class SendOtpRequest extends FormRequest
         return [
             'phone_number' => ['required', 'string', 'max:20'],
             'country_id' => ['nullable', 'exists:countries,id'],
+            'purpose' => ['nullable', 'string', 'max:40'],
         ];
     }
 

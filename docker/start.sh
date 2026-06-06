@@ -23,9 +23,12 @@ done
 echo "Database is ready!"
 
 # Generate application key if not set
-if [ "$APP_KEY" = "" ] || [ "$APP_KEY" = "base64:your-production-app-key-here" ]; then
+ENV_APP_KEY="$(grep -E '^APP_KEY=' /var/www/html/.env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\"')"
+if { [ "$APP_KEY" = "" ] && [ "$ENV_APP_KEY" = "" ]; } || [ "$APP_KEY" = "base64:your-production-app-key-here" ] || [ "$ENV_APP_KEY" = "base64:your-production-app-key-here" ]; then
     echo "Generating application key..."
     php artisan key:generate --force
+else
+    echo "Application key already configured"
 fi
 
 # Clear and optionally warm framework caches.

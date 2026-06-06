@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\AdminTrackedLinkController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\MerchantProfileController;
 use App\Http\Controllers\OfferingGroupController;
+use App\Http\Controllers\SupportEnquiryController;
 use App\Http\Controllers\TrackedLinkController;
 use App\Http\Resources\PostResource;
 use App\Http\Resources\ProductResource;
@@ -160,6 +161,10 @@ Route::get('/freight/routes/{routeRef}', [ForwarderController::class, 'showRoute
 Route::get('/offerings/{offeringGroup:id}', [OfferingGroupController::class, 'show'])
     ->name('offering-groups.show');
 Route::get('/r/{code}', [MerchantMarketingController::class, 'followReferral'])->name('referral.follow');
+Route::get('/help', [SupportEnquiryController::class, 'show'])->name('help.show');
+Route::post('/help', [SupportEnquiryController::class, 'store'])
+    ->middleware('throttle:6,10')
+    ->name('help.store');
 Route::get('/campaign/{merchant:username}/{code}', [MerchantMarketingController::class, 'showCampaignLanding'])->name('campaign.show');
 Route::get('/group-sale/{slug}', [MerchantMarketingController::class, 'showGroupSale'])->name('group-sale.show');
 Route::post('/group-sale/{slug}/join', [MerchantMarketingController::class, 'joinGroupSale'])->name('group-sale.join');
@@ -888,6 +893,15 @@ Route::get('/feed', function (Request $request) {
 Route::prefix('auth')->group(function () {
     Route::post('/otp/send', [AuthController::class, 'sendOtp'])->middleware('throttle:60,1');
     Route::post('/otp/verify', [AuthController::class, 'verifyOtp'])->middleware('throttle:60,1');
+    Route::post('/2fa/totp/login', [AuthController::class, 'verifyTotpLogin'])->middleware('throttle:12,1');
+    Route::middleware('auth')->group(function () {
+        Route::post('/2fa/send', [AuthController::class, 'sendStepUpCode'])->middleware('throttle:12,1');
+        Route::post('/2fa/verify', [AuthController::class, 'verifyStepUpCode'])->middleware('throttle:12,1');
+        Route::post('/2fa/totp/start', [AuthController::class, 'startTotpSetup'])->middleware('throttle:6,1');
+        Route::post('/2fa/totp/confirm', [AuthController::class, 'confirmTotpSetup'])->middleware('throttle:12,1');
+        Route::post('/2fa/totp/recovery-codes', [AuthController::class, 'regenerateTotpRecoveryCodes'])->middleware('throttle:6,1');
+        Route::delete('/2fa/totp', [AuthController::class, 'disableTotp'])->middleware('throttle:6,1');
+    });
     Route::post('/merchant/check', [MerchantAuthController::class, 'check']);
     Route::post('/merchant/register', [MerchantAuthController::class, 'register']);
     Route::post('/merchant/ensure-personal', [MerchantAuthController::class, 'ensurePersonalProfile'])->middleware('auth');
@@ -1313,6 +1327,10 @@ Route::middleware('auth')->group(function () {
             'oneClickProfile' => $oneClickProfile,
         ]);
     })->name('profile.settings');
+
+    Route::get('/profile/security', function () {
+        return Inertia::render('Profile/Security');
+    })->name('profile.security');
 
     Route::post('/profile/settings', function (\Illuminate\Http\Request $request) {
         $validated = $request->validate([
@@ -2295,6 +2313,8 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::post('/trust-safety-reviews/{review}', [AdminController::class, 'resolveTrustSafetyReview']);
         Route::get('/service-risk', [AdminController::class, 'serviceRiskDashboard']);
         Route::get('/notifications', [AdminController::class, 'notificationLogs']);
+        Route::get('/enquiries', [SupportEnquiryController::class, 'adminIndex']);
+        Route::patch('/enquiries/{supportEnquiry:id}', [SupportEnquiryController::class, 'adminUpdate']);
 
         Route::get('/withdrawals', [AdminSettingsController::class, 'withdrawals']);
         Route::post('/withdrawals/{withdrawal}/approve', [AdminController::class, 'approveWithdrawal']);
@@ -2394,6 +2414,10 @@ Route::middleware(['auth', 'admin'])->group(function () {
     });
     Route::get('/admin/notifications', function () {
         return Inertia::render('Admin/Notifications');
+    });
+
+    Route::get('/admin/enquiries', function () {
+        return Inertia::render('Admin/Enquiries');
     });
 
     Route::get('/admin/users', function () {

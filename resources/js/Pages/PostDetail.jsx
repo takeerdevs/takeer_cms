@@ -1968,26 +1968,18 @@ export default function PostDetail({ post: initialPost, initialComments, readOnl
                             </div>
 
                             <div className="p-5 space-y-4">
-                                <div className="rounded-2xl border border-border bg-accent/40 p-4">
-                                    {guestEngagement.action === 'comment' ? (
-                                        <>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Your comment</p>
-                                            <p className="text-sm font-semibold leading-relaxed text-foreground break-words">
-                                                {guestEngagement.text}
-                                            </p>
-                                        </>
-                                    ) : (
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-12 w-12 rounded-2xl bg-background border border-border flex items-center justify-center text-2xl">
-                                                {guestEngagement.emoji}
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Your reaction</p>
-                                                <p className="text-sm font-bold">Confirm to add this reaction.</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
+                                {guestEngagement.action === 'comment' ? (
+                                    <div className="rounded-2xl border border-border bg-accent/40 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Your comment</p>
+                                        <p className="text-sm font-semibold leading-relaxed text-foreground break-words">
+                                            {guestEngagement.text}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center text-6xl gap-3">
+                                        {guestEngagement.emoji}
+                                    </div>
+                                )}
 
                                 {guestEngagement.step === 'identity' ? (
                                     <div className="space-y-3">

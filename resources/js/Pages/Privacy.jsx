@@ -80,6 +80,9 @@ export default function Privacy() {
                     <p className="text-sm leading-7 text-muted-foreground">
                         This Privacy Policy explains how Takeer collects, uses, shares, and protects information across marketplace, content, payments, services, fulfillment, analytics, and merchant tools.
                     </p>
+                    <p className="text-sm leading-7 text-muted-foreground">
+                        Takeer is operated by Avly Tech Group Limited, a company incorporated in Tanzania.
+                    </p>
                 </div>
 
                 {sections.map((section) => (

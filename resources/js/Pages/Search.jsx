@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, usePage } from '@inertiajs/react';
-import { DownloadCloud, Filter, LocateFixed, Search as SearchIcon, Loader2, PenLine, ShoppingBag, Sparkles, Store } from 'lucide-react';
+import { Filter, LocateFixed, Search as SearchIcon, Loader2, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import PostCard from '@/Components/PostCard';
 import MerchantSearchCard from '@/Components/MerchantSearchCard';
@@ -34,6 +34,7 @@ export default function SearchPage() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [locating, setLocating] = useState(false);
     const [locationError, setLocationError] = useState('');
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     useEffect(() => {
         setQuery(initialQuery || '');
@@ -142,6 +143,7 @@ export default function SearchPage() {
 
     const hasMore = Boolean(meta && meta.current_page < meta.last_page);
     const activeResultFilters = meta?.filters || compactFilters(initialFilters);
+    const activeFilterCount = countVisibleFilters(filters);
     const productResultsLayout = results.length > 0
         && results.every((item) => item.type === 'product')
         && activeResultFilters.surface === 'products'
@@ -206,21 +208,6 @@ export default function SearchPage() {
         });
     };
 
-    const browseMode = (next) => {
-        const nextFilters = {
-            ...filters,
-            ...next,
-            ...(next.type !== 'physical' ? { category_id: '', sub_category_id: '' } : {}),
-            ...(next.type !== 'service' ? { service_category_id: '', service_subcategory_id: '', service_category: '', service_subcategory: '' } : {}),
-        };
-        setQuery('');
-        setFilters(nextFilters);
-        router.get('/search', { page: 1, ...compactFilters(nextFilters) }, {
-            preserveState: true,
-            replace: false,
-        });
-    };
-
     const selectedProductCategory = productCategories.find((category) => String(category.id) === String(filters.category_id));
     const selectedServiceCategory = serviceCategories.find((category) => (
         String(category.id) === String(filters.service_category_id)
@@ -267,16 +254,34 @@ export default function SearchPage() {
 
             <div className="max-w-2xl mx-auto px-4 pt-5 pb-24">
                 <form onSubmit={submit} className="sticky top-0 z-20 bg-background/95 backdrop-blur py-2 space-y-2">
-                    <div className="relative">
-                        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                        <input
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Tafuta bidhaa, specs, huduma, courses..."
-                            className="w-full pl-12 pr-4 py-3 rounded-2xl border border-border bg-background"
-                        />
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <div className="relative">
+                            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                            <input
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="Tafuta bidhaa, specs, huduma, courses..."
+                                className="w-full pl-12 pr-4 py-3 rounded-2xl border border-border bg-background"
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setFiltersOpen((open) => !open)}
+                            aria-expanded={filtersOpen}
+                            aria-label="Toggle discovery filters"
+                            className={`relative h-12 w-12 rounded-2xl border inline-flex items-center justify-center transition-colors ${filtersOpen ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-border bg-background text-foreground hover:bg-accent/60'}`}
+                            title="Discovery filters"
+                        >
+                            <Filter className="h-5 w-5" />
+                            {activeFilterCount > 0 && (
+                                <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
+                                    {activeFilterCount}
+                                </span>
+                            )}
+                        </button>
                     </div>
-                    <div className="rounded-2xl border border-border/70 bg-background p-2 space-y-2">
+                    {filtersOpen && (
+                    <div className="rounded-2xl border border-border/70 bg-background p-2 space-y-2 shadow-sm">
                         <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground px-1">
                             <Filter className="h-3.5 w-3.5" />
                             Discovery filters
@@ -421,14 +426,8 @@ export default function SearchPage() {
                             </div>
                         )}
                     </div>
+                    )}
                 </form>
-
-                <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <BrowseButton icon={ShoppingBag} label="Products" active={filters.type === 'physical'} onClick={() => browseMode({ type: 'physical', surface: 'products' })} />
-                    <BrowseButton icon={DownloadCloud} label="Downloads" active={filters.type === 'digital'} onClick={() => browseMode({ type: 'digital', surface: 'products' })} />
-                    <BrowseButton icon={Store} label="Services" active={filters.type === 'service'} onClick={() => browseMode({ type: 'service', surface: 'products' })} />
-                    <BrowseButton icon={PenLine} label="Custom work" active={filters.type === 'custom'} onClick={() => browseMode({ type: 'custom', surface: 'products' })} />
-                </div>
 
                 {!hasSearchIntent(initialQuery, compactFilters(initialFilters)) && (
                     <div className="py-16 text-center text-muted-foreground">
@@ -526,23 +525,28 @@ function LazyPostCard({ post }) {
     );
 }
 
-function BrowseButton({ icon: Icon, label, active, onClick }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={`h-11 rounded-xl border px-3 text-sm font-black inline-flex items-center justify-center gap-2 transition-colors ${active ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-border bg-background text-foreground hover:bg-accent/50'}`}
-        >
-            <Icon className="h-4 w-4" />
-            {label}
-        </button>
-    );
-}
-
 function compactFilters(filters = {}) {
     return Object.fromEntries(
         Object.entries(filters).filter(([, value]) => value !== '' && value !== null && value !== undefined && value !== 'all')
     );
+}
+
+function countVisibleFilters(filters = {}) {
+    const visibleValues = [
+        filters.type,
+        filters.category_id,
+        filters.sub_category_id,
+        filters.service_category_id || filters.service_category,
+        filters.service_subcategory_id || filters.service_subcategory,
+        filters.country_id,
+        filters.location,
+    ];
+
+    const count = visibleValues.reduce((total, value) => {
+        return value && value !== 'all' ? total + 1 : total;
+    }, 0);
+
+    return filters.lat && filters.lng ? count + 1 : count;
 }
 
 function hasSearchIntent(query = '', filters = {}) {

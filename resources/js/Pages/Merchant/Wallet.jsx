@@ -8,7 +8,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose
 } from '@/Components/ui/Dialog';
 import {
-    HardDrive, Wallet, ArrowLeft, ArrowUpRight, ArrowDownLeft, Store, ShieldCheck, HelpCircle, History, Clock, FileCheck
+    HardDrive, Wallet, ArrowLeft, ArrowUpRight, ArrowDownLeft, Store, ShieldCheck, HelpCircle, History, Clock, FileCheck, Loader2
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
@@ -20,9 +20,13 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
     const [loading, setLoading] = useState(true);
     const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
     const [ledgerType, setLedgerType] = useState(initialLedgerType);
+    const [verificationCodeSent, setVerificationCodeSent] = useState(false);
+    const [sendingVerificationCode, setSendingVerificationCode] = useState(false);
+    const [verificationMessage, setVerificationMessage] = useState('');
     const { can } = useMerchantPermissions(merchantUsername);
     const canWithdraw = can('wallet.withdraw');
     const canUpdateSettings = can('settings.update');
+    const hasTotpEnabled = Boolean(auth?.user?.two_factor_enabled);
 
     const storageUsedMb = merchant?.storage_used_mb || 0;
     const storageLimitMb = merchant?.storage_limit_mb || 500;
@@ -37,6 +41,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
     const { data, setData, post, processing, errors, reset, clearErrors } = useForm({
         amount: '',
         method: 'mobile_money',
+        verification_code: '',
     });
 
     const isSalesLedger = ['escrow', 'non-escrow', 'credit'].includes(effectiveLedgerType);
@@ -81,10 +86,32 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
         post(`/merchant/${merchantUsername}/wallet/withdraw`, {
             onSuccess: () => {
                 reset();
+                setVerificationCodeSent(false);
+                setVerificationMessage('');
                 setIsWithdrawModalOpen(false);
                 fetchHistory(); // Refresh history slightly later
             },
         });
+    };
+
+    const sendWithdrawalVerificationCode = async () => {
+        if (!canWithdraw || sendingVerificationCode) return;
+
+        setSendingVerificationCode(true);
+        setVerificationMessage('');
+        clearErrors('verification_code');
+
+        try {
+            const res = await window.axios.post('/auth/2fa/send', {
+                purpose: 'merchant_wallet_withdrawal',
+            });
+            setVerificationCodeSent(true);
+            setVerificationMessage(res.data?.message || 'Verification code imetumwa kwenye simu yako.');
+        } catch (error) {
+            setVerificationMessage(error.response?.data?.message || 'Imeshindwa kutuma verification code. Jaribu tena.');
+        } finally {
+            setSendingVerificationCode(false);
+        }
     };
 
     const goToLedger = (type = null, page = 1) => {
@@ -535,7 +562,12 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
             {/* Withdraw Modal */}
             <Dialog open={canWithdraw && isWithdrawModalOpen} onOpenChange={(open) => {
                 setIsWithdrawModalOpen(open);
-                if (!open) clearErrors();
+                if (!open) {
+                    clearErrors();
+                    setData('verification_code', '');
+                    setVerificationCodeSent(false);
+                    setVerificationMessage('');
+                }
             }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -582,6 +614,51 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                 Njia za malipo zinaweza kusetiwa katika ukurasa wako wa mipangilio.
                             </p>
                             {errors.method && <p className="text-sm text-red-500 mt-1 font-medium">{errors.method}</p>}
+                        </div>
+
+                        <div className="rounded-2xl border border-brand-100 bg-brand-50/50 p-4">
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm">
+                                    <ShieldCheck className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-black text-foreground">Security verification</p>
+                                    <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
+                                        {hasTotpEnabled
+                                            ? 'Weka code ya authenticator app yako kwa withdrawal hii.'
+                                            : 'Tutatuma verification code kwenye simu yako kwa withdrawal hii.'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="mt-3 flex gap-2">
+                                <Input
+                                    inputMode="numeric"
+                                    placeholder="000000"
+                                    className="h-11 text-center text-lg font-black tracking-[0.25em]"
+                                    value={data.verification_code}
+                                    onChange={e => setData('verification_code', hasTotpEnabled
+                                        ? e.target.value.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 32)
+                                        : e.target.value.replace(/\D/g, '').slice(0, 6)
+                                    )}
+                                />
+                                {!hasTotpEnabled && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="h-11 shrink-0 rounded-xl font-bold"
+                                        onClick={sendWithdrawalVerificationCode}
+                                        disabled={sendingVerificationCode}
+                                    >
+                                        {sendingVerificationCode ? <Loader2 className="h-4 w-4 animate-spin" /> : (verificationCodeSent ? 'Tuma tena' : 'Tuma code')}
+                                    </Button>
+                                )}
+                            </div>
+                            {verificationMessage && (
+                                <p className="mt-2 text-xs font-bold text-brand-700">{verificationMessage}</p>
+                            )}
+                            {errors.verification_code && (
+                                <p className="mt-2 text-sm font-medium text-red-500">{errors.verification_code}</p>
+                            )}
                         </div>
 
                         <DialogFooter className="gap-2 sm:gap-0 mt-6">

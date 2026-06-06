@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, usePage } from '@inertiajs/react';
 import useSWRInfinite from 'swr/infinite';
-import { BadgeCheck, BookOpen, ChevronRight, FileText, HelpCircle, Home, ImagePlus, Loader2, MapPin, Plus, Search, ShieldCheck, ShoppingBag, Store, Truck } from 'lucide-react';
+import { BadgeCheck, ChevronRight, DownloadCloud, Image, ImagePlus, Loader2, Music, PenLine, Play, Plus, ShieldCheck, ShoppingBag, Sparkles, Store } from 'lucide-react';
 import PostCard from '@/Components/PostCard';
 import { DiscoveryRailSection, useDiscoveryRails } from '@/Components/DiscoveryRails';
 
@@ -181,24 +181,66 @@ function FeedComposerPrompt({ profile = null, isAuthenticated = false }) {
 }
 
 function FeedLeftRail({ rails = [], profile = null, isAuthenticated = false }) {
-    return (
-        <aside className="hidden xl:sticky xl:top-4 xl:block xl:max-h-[calc(100vh-6rem)] xl:self-start xl:overflow-y-auto xl:pr-1 xl:[scrollbar-width:none] xl:[&::-webkit-scrollbar]:hidden" aria-label="Njia za haraka za feed">
-            <nav className="space-y-5 py-1">
-                <RailSection>
-                    <SideRailLink href="/" icon={Home} label="Nyumbani" active />
-                    <SideRailLink href="/search?surface=products" icon={Search} label="Tafuta sokoni" />
-                    <SideRailLink href="/search?q=nearby&type=physical&surface=products" icon={MapPin} label="Vilivyo karibu" />
-                    <SideRailLink href={isAuthenticated ? '/orders' : '/login'} icon={ShoppingBag} label="Oda" />
-                </RailSection>
+    const digitalRails = rails.filter((rail) => ['premium_media', 'downloads'].includes(rail.key));
+    const digitalItems = digitalRails
+        .flatMap((rail) => (rail.items || []).map((item) => ({ ...item, railKey: rail.key })))
+        .filter((item) => item.type === 'digital')
+        .slice(0, 4);
+    const featuredItem = digitalItems[0] || null;
+    const uploadHref = isAuthenticated && profile?.username
+        ? `/merchant/${profile.username}/upload?type=digital`
+        : '/merchant/register';
 
-                <RailSection title="Msaada">
-                    <SideRailLink href="/search?q=safepay" icon={ShieldCheck} label="SafePay" />
-                    <SideRailLink href="/search?q=delivery" icon={Truck} label="Huduma za delivery" />
-                    <SideRailLink href="/terms" icon={FileText} label="Masharti" />
-                    <SideRailLink href="/privacy" icon={BookOpen} label="Faragha" />
-                    <SideRailLink href="/search?q=help" icon={HelpCircle} label="Usaidizi" />
-                </RailSection>
-            </nav>
+    return (
+        <aside className="hidden xl:sticky xl:top-4 xl:block xl:h-[calc(100vh-2rem)] xl:self-start xl:overflow-y-auto xl:pr-1 xl:[scrollbar-width:none] xl:[&::-webkit-scrollbar]:hidden" aria-label="Bidhaa za kidigitali">
+            <div className="space-y-4 py-1">
+                <div className="rounded-2xl bg-white/78 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-brand-500">Digital shelf</p>
+                            <p className="mt-0.5 text-sm font-bold text-slate-950">Nunua, fungua papo hapo</p>
+                        </div>
+                        <Sparkles className="h-5 w-5 text-amber-500" />
+                    </div>
+
+                    {featuredItem ? (
+                        <DigitalFeaturedCard item={featuredItem} />
+                    ) : (
+                        <DigitalUploadPrompt href={uploadHref} isAuthenticated={isAuthenticated} />
+                    )}
+                </div>
+
+                {digitalItems.length > 1 && (
+                    <div className="rounded-2xl bg-white/60 p-4 ring-1 ring-slate-200/60 backdrop-blur-md">
+                        <div className="flex items-center justify-between gap-3">
+                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Premium drops</p>
+                            <Link href="/search?q=premium&type=digital&surface=products" className="text-[11px] font-black text-brand-600">Ona zote</Link>
+                        </div>
+                        <div className="mt-3 space-y-3">
+                            {digitalItems.slice(1).map((item) => (
+                                <DigitalShelfRow key={`digital-${item.id}`} item={item} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                <Link href={uploadHref} className="group block rounded-2xl border border-dashed border-brand-200 bg-brand-50/70 p-4 transition-colors hover:bg-brand-50">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-brand-600 ring-1 ring-brand-100">
+                            <DownloadCloud className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-sm font-black text-slate-950">Uza digital product</p>
+                            <p className="mt-0.5 text-xs font-semibold leading-5 text-slate-600">Upload file, video, audio au picha za kulipia.</p>
+                            <p className="text-xs mt-2 font-semibold leading-5 text-slate-600">Vigezo na masharti kuzingatiwa</p>
+                        </div>
+                    </div>
+                    <div className="mt-3 flex items-center text-xs font-black text-brand-700">
+                        {isAuthenticated ? 'Anza kuuza sasa' : 'Fungua akaunti uanze kuuza'}
+                        <ChevronRight className="ml-1 h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                </Link>
+            </div>
         </aside>
     );
 }
@@ -212,9 +254,9 @@ function FeedRightRail({ rails = [], posts = [], profile = null, isAuthenticated
     const storeEntries = activeMerchants.length > 0 ? activeMerchants : [profile].filter(Boolean);
 
     return (
-        <aside className="hidden xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100vh-6rem)] xl:self-start xl:flex-col xl:overflow-y-auto xl:pr-1 xl:[scrollbar-width:none] xl:[&::-webkit-scrollbar]:hidden" aria-label="Taarifa za biashara">
+        <aside className="hidden xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-2rem)] xl:self-start xl:flex-col xl:overflow-y-auto xl:pr-1 xl:[scrollbar-width:none] xl:[&::-webkit-scrollbar]:hidden" aria-label="Taarifa za biashara">
             <div className="space-y-4">
-                <div className="rounded-2xl bg-white/78 p-4 ring-1 ring-slate-200/70 backdrop-blur-md">
+                <div className="rounded-2xl bg-white/78 p-4">
                     <div className="flex items-center justify-between gap-3">
                         <div>
                             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Zinazotazamwa</p>
@@ -286,7 +328,7 @@ function FeedRightRail({ rails = [], posts = [], profile = null, isAuthenticated
                 <div className="flex flex-wrap gap-x-3">
                     <Link href="/terms" className="hover:text-slate-900">Masharti</Link>
                     <Link href="/privacy" className="hover:text-slate-900">Faragha</Link>
-                    <Link href="/search?q=help" className="hover:text-slate-900">Usaidizi</Link>
+                    <Link href="/help" className="hover:text-slate-900">Usaidizi</Link>
                 </div>
                 <p className="mt-2">Takeer © 2026</p>
             </div>
@@ -294,44 +336,106 @@ function FeedRightRail({ rails = [], posts = [], profile = null, isAuthenticated
     );
 }
 
-function SideRailLink({ href, icon: Icon, label, active = false }) {
+function DigitalFeaturedCard({ item }) {
+    const Icon = digitalProductIcon(item);
+
     return (
-        <Link
-            href={href}
-            className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${active
-                    ? 'bg-white/80 text-slate-950 ring-1 ring-slate-200/70'
-                    : 'text-slate-700 hover:bg-white/70 hover:text-brand-700'
-                }`}
-        >
-            <span className="flex items-center gap-2">
-                <Icon className={`h-4 w-4 ${active ? 'text-brand-600' : 'text-slate-400'}`} />
-                {label}
-            </span>
-            <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
+        <Link href={`/product/${item.slug || item.id}`} className="mt-4 block overflow-hidden rounded-xl bg-slate-950 text-white shadow-sm transition-transform hover:-translate-y-0.5">
+            <div className="relative aspect-[4/3] bg-slate-900">
+                {item.image_url ? (
+                    <img src={item.image_url} alt="" className="h-full w-full object-cover opacity-85" />
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900 via-brand-900 to-slate-800">
+                        <Icon className="h-10 w-10 text-brand-100" />
+                    </div>
+                )}
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-[10px] font-black uppercase text-slate-950">
+                    <Icon className="h-3 w-3" />
+                    {digitalProductLabel(item)}
+                </span>
+            </div>
+            <div className="p-3">
+                <p className="line-clamp-2 text-sm font-black leading-tight">{item.title || item.name}</p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-black text-brand-200">{priceLabel(item)}</p>
+                    <span className="inline-flex h-8 items-center rounded-lg bg-white px-3 text-xs font-black text-slate-950">Fungua</span>
+                </div>
+            </div>
         </Link>
     );
 }
 
-function RailSection({ title = null, children }) {
+function DigitalShelfRow({ item }) {
+    const Icon = digitalProductIcon(item);
+
     return (
-        <div className="space-y-1">
-            {title && (
-                <p className="px-3 pb-1 text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
-                    {title}
-                </p>
-            )}
-            {children}
-        </div>
+        <Link href={`/product/${item.slug || item.id}`} className="group flex items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-brand-50 text-brand-600 ring-1 ring-brand-100">
+                {item.image_url ? (
+                    <img src={item.image_url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                    <Icon className="h-5 w-5" />
+                )}
+            </div>
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-slate-950 group-hover:text-brand-700">{item.title || item.name}</p>
+                <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{digitalProductLabel(item)} · {priceLabel(item)}</p>
+            </div>
+        </Link>
     );
 }
 
-function MiniStat({ value, label }) {
+function DigitalUploadPrompt({ href, isAuthenticated = false }) {
     return (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="text-lg font-black leading-none text-slate-950">{value}</p>
-            <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-        </div>
+        <Link href={href} className="mt-4 block">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-brand-600 ring-1 ring-slate-200">
+                <DownloadCloud className="h-6 w-6" />
+            </div>
+            <p className="mt-3 text-sm font-black leading-tight text-slate-950">
+                Hakuna digital offers bado.
+            </p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+                Weka template, e-book, video, audio au gallery ya kulipia ili wateja wanunue na wapate access papo hapo.
+            </p>
+            <p className="mt-3 inline-flex items-center text-xs font-black text-brand-700">
+                {isAuthenticated ? 'Upload product ya kuuza' : 'Jiunge uanze kuuza'}
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+            </p>
+        </Link>
     );
+}
+
+function digitalProductLabel(product = {}) {
+    return {
+        video_stream: 'Premium video',
+        audio_stream: 'Premium audio',
+        gallery_pack: 'Paid gallery',
+        live_event: 'Event access',
+        custom_delivery: 'Custom digital',
+        file: product.digital_content_type === 'ebook'
+            ? 'E-book'
+            : product.digital_content_type === 'software'
+                ? 'Software'
+                : product.digital_content_type === 'document'
+                    ? 'Document'
+                    : 'Download',
+    }[product.digital_delivery_type] || 'Digital';
+}
+
+function digitalProductIcon(product = {}) {
+    return {
+        video_stream: Play,
+        audio_stream: Music,
+        gallery_pack: Image,
+        live_event: Sparkles,
+        custom_delivery: PenLine,
+        file: DownloadCloud,
+    }[product.digital_delivery_type] || DownloadCloud;
+}
+
+function priceLabel(item = {}) {
+    const price = Number(item.checkout_price ?? item.discounted_price ?? item.price ?? 0);
+    return price > 0 ? `TZS ${price.toLocaleString()}` : 'Tazama bei';
 }
 
 function merchantName(merchant = {}) {
@@ -403,15 +507,4 @@ function railIndexForPost(index, railCount) {
     const insertOrder = [2, 6, 10, 15];
     const position = Math.max(0, insertOrder.indexOf(index));
     return position % railCount;
-}
-
-function railSearchHref(rail) {
-    const map = {
-        nearby: '/search?q=nearby&type=physical&surface=products',
-        premium_media: '/search?q=premium&type=digital&surface=products',
-        creator_tools: '/search?q=creator&type=digital&surface=products',
-        subscriptions: '/search?q=membership&type=creator',
-    };
-
-    return map[rail?.key] || '/search?surface=products';
 }
