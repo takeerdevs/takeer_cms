@@ -146,6 +146,31 @@ export const UPLOAD_MODULES = {
             serviceDurationUnit: 'hours',
         },
     },
+    online_live_events: {
+        key: 'online_live_events',
+        type: 'service',
+        title: 'Online Live Event',
+        translations: {
+            sw: { title: 'Online Live Event' },
+            en: { title: 'Online Live Event' },
+        },
+        category: 'Education & Training',
+        subcategory: 'Workshop',
+        serviceTemplateKey: 'learning',
+        defaults: {
+            servicePriceDisplay: 'per_session',
+            serviceMode: 'book_appointment',
+            serviceBookingType: 'manual_confirm',
+            serviceSchedulingType: 'fixed_sessions',
+            serviceDurationValue: '90',
+            serviceDurationUnit: 'minutes',
+            serviceLocationType: 'remote',
+            serviceDetails: {
+                workshop_format: 'live_session',
+                delivery_channel: 'online_live_event',
+            },
+        },
+    },
     forwarders: {
         key: 'forwarders',
         type: 'service',

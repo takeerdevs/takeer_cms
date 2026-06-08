@@ -166,6 +166,13 @@ const SERVICE_MODULE_PICKER = [
         tone: 'violet',
     },
     {
+        key: 'online_live_events',
+        icon: CalendarClock,
+        title: 'Online Live Event',
+        description: 'Kwa webinar, live class, online workshop, link ya kuhudhuria, ratiba, na nafasi za washiriki.',
+        tone: 'blue',
+    },
+    {
         key: 'forwarders',
         icon: Ship,
         title: 'Forwarder / Import logistics',
@@ -678,15 +685,6 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             previewHint: 'Add a cover, blurred sample page, or chart screenshot in Media za Bidhaa.',
             uploadHint: 'PDF, DOCX, XLSX, PPTX, ZIP',
             accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip',
-        },
-        {
-            key: 'live_event',
-            label: 'Live Event',
-            icon: Calendar,
-            description: 'Paid webinars, workshops, and live sessions.',
-            previewHint: 'Add an event poster, host video, agenda image, or trailer in Media za Bidhaa.',
-            uploadHint: 'No file required. Add schedule and meeting access below.',
-            accept: '',
         },
         {
             key: 'custom_commission',
@@ -2372,6 +2370,13 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (defaults.serviceSchedulingType) setServiceSchedulingType(defaults.serviceSchedulingType);
         if (defaults.serviceDurationValue) setServiceDurationValue(defaults.serviceDurationValue);
         if (defaults.serviceDurationUnit) setServiceDurationUnit(defaults.serviceDurationUnit);
+        if (defaults.serviceLocationType) setServiceLocationType(defaults.serviceLocationType);
+        if (defaults.serviceDetails) {
+            setServiceDetails((prev) => ({
+                ...(prev || {}),
+                ...defaults.serviceDetails,
+            }));
+        }
     };
 
     const handleModuleSelect = (moduleKey) => {
@@ -2416,6 +2421,15 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             setManualStepCompleted(false);
             setPhysicalFlowStep(1);
         }
+    };
+
+    const handleUploadBack = () => {
+        if (step === 'service') {
+            setStep('service_modules');
+            return;
+        }
+
+        setStep('select');
     };
 
     const handleImageSelect = (e) => {
@@ -4079,7 +4093,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
             <div className="p-4 md:p-8 max-w-2xl mx-auto space-y-6 pb-24">
                 <div className="flex items-center gap-4 mb-2">
                     <button
-                        onClick={() => resetForm()}
+                        onClick={handleUploadBack}
                         className="h-10 w-10 bg-accent rounded-full flex items-center justify-center hover:bg-accent/80 transition-colors"
                     >
                         <ArrowLeft className="h-5 w-5" />
@@ -5113,20 +5127,6 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                setDigitalDeliveryMode('live_event');
-                                                setDigitalContentType('live_event');
-                                            }}
-                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'live_event'
-                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                : 'border-border text-muted-foreground hover:border-blue-200'
-                                                }`}
-                                        >
-                                            <Calendar className="h-5 w-5" />
-                                            <span className="text-[11px] font-bold">Live Event</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
                                                 setDigitalDeliveryMode('custom_delivery');
                                                 setDigitalContentType('custom_commission');
                                             }}
@@ -5268,7 +5268,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 >
                                                     <PlayCircle className="h-9 w-9" />
                                                     <span className="font-bold">Pakia full premium video</span>
-                                                    <span className="text-xs opacity-70">MP4, MOV, WEBM. Trailer ibaki kwenye Media za Bidhaa hapo juu.</span>
+                                                    <span className="text-xs opacity-70">MP4, MOV, WEBM. Trailer kama ipo iweke kwenye Media za Bidhaa hapo juu.</span>
                                                     <input
                                                         type="file"
                                                         accept="video/mp4,video/quicktime,video/webm"
