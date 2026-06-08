@@ -455,7 +455,7 @@ const deliveryCopy = (order) => {
     if (type === 'forwarder') return 'Forwarder drop-off';
     if (type === 'local_boda') return 'Local delivery';
     if (type === 'intercity_bus') return 'Intercity bus';
-    if (type === 'shipping') return 'Shipping';
+    if (type === 'shipping') return 'Local delivery';
     if (isPhysicalOrder(order)) return 'Physical order';
     if (isDigitalOrder(order)) return digitalAccessCopy(order);
     return 'Delivery pending';
@@ -2920,7 +2920,7 @@ export default function Chat({
                                                                 onClick={() => {
                                                                     const activeZone = shippingZones.find(z => String(z.id) === String(selectedZoneId));
                                                                     submitAction('update_delivery', {
-                                                                        delivery_type: isSelfPickupChoice ? 'self_pickup' : 'shipping',
+                                                                        delivery_type: isSelfPickupChoice ? 'self_pickup' : (activeZone?.delivery_type || 'local_boda'),
                                                                         delivery_zone_id: isSelfPickupChoice ? null : selectedZoneId,
                                                                         shipping_fee: isSelfPickupChoice ? 0 : (activeZone?.flat_rate_fee || 0),
                                                                         physical_address: physicalAddress || order?.delivery?.physical_address,

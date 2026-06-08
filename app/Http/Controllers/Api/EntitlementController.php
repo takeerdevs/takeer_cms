@@ -654,6 +654,11 @@ class EntitlementController extends Controller
     private function buildOrderDetails(Order $order): array
     {
         $this->ensureCustomerPins($order);
+        $deliveryType = $order->delivery
+            ? (($order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type) === 'shipping'
+                ? 'local_boda'
+                : ($order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type))
+            : null;
 
         return [
             'id' => $order->id,
@@ -701,8 +706,8 @@ class EntitlementController extends Controller
             ],
             'delivery' => $order->delivery ? [
                 'status' => $order->delivery->delivery_status,
-                'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
-                'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
+                'type' => $deliveryType,
+                'delivery_type' => $deliveryType,
                 'pickup_pin' => $order->delivery->pickup_pin,
                 'buyer_release_pin' => $order->delivery->buyer_release_pin,
                 'bus_company' => $order->delivery->bus_company,

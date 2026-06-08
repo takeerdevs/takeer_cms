@@ -70,7 +70,7 @@ export default function PlatformWallet() {
                             <Wallet className="h-6 w-6 text-brand-700" /> Platform Wallet
                         </h1>
                         <p className="text-slate-600 mt-1 text-sm">
-                            Track Takeer fees, GMV, merchant payouts, and transaction proof for investor-ready reporting.
+                            Track merchant fees, provider costs, Takeer margin, GMV, and transaction proof for investor-ready reporting.
                         </p>
                     </div>
                     <Link href="/admin/withdrawals">
@@ -82,16 +82,16 @@ export default function PlatformWallet() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                     <MetricCard
-                        title={`System Wallet (${baseCurrency})`}
-                        value={formatMoney(metrics.total_takeer_fees)}
-                        hint="Lifetime Takeer platform fees"
+                        title={`Takeer Margin (${baseCurrency})`}
+                        value={formatMoney(metrics.total_takeer_margin)}
+                        hint={`Merchant fees ${formatMoney(metrics.total_takeer_fees)} · provider costs ${formatMoney(metrics.total_provider_costs)}`}
                         icon={Wallet}
                         tone="text-brand-700"
                     />
                     <MetricCard
-                        title={`This Month Fees (${baseCurrency})`}
-                        value={formatMoney(metrics.this_month_takeer_fees)}
-                        hint={`Today: ${formatMoney(metrics.today_takeer_fees)}`}
+                        title={`This Month Margin (${baseCurrency})`}
+                        value={formatMoney(metrics.this_month_takeer_margin)}
+                        hint={`Today: ${formatMoney(metrics.today_takeer_margin)}`}
                         icon={TrendingUp}
                         tone="text-emerald-700"
                     />
@@ -132,7 +132,8 @@ export default function PlatformWallet() {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm font-black text-slate-900">{formatMoney(row.total_gmv, row.currency_code)}</p>
-                                    <p className="text-xs text-emerald-600 font-bold">Fees {formatMoney(row.total_takeer_fees, row.currency_code)}</p>
+                                    <p className="text-xs text-emerald-600 font-bold">Margin {formatMoney(row.total_takeer_margin, row.currency_code)}</p>
+                                    <p className="text-[10px] text-slate-500 font-semibold">Provider cost {formatMoney(row.total_provider_costs, row.currency_code)}</p>
                                 </div>
                             </>
                         )}
@@ -150,7 +151,8 @@ export default function PlatformWallet() {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm font-black text-slate-900">{formatMoney(row.base_gmv)}</p>
-                                    <p className="text-xs text-emerald-600 font-bold">Fees {formatMoney(row.base_takeer_fees)}</p>
+                                    <p className="text-xs text-emerald-600 font-bold">Margin {formatMoney(row.base_takeer_margin)}</p>
+                                    <p className="text-[10px] text-slate-500 font-semibold">Provider cost {formatMoney(row.base_provider_costs)}</p>
                                 </div>
                             </>
                         )}
@@ -221,7 +223,7 @@ export default function PlatformWallet() {
                             <div>
                                 <h2 className="text-lg font-black text-slate-900">Transaction Proof Ledger</h2>
                                 <p className="text-sm text-slate-500 mt-0.5">
-                                    Every row ties Takeer fee revenue back to a payment reference, order, merchant, and customer.
+                                    Every row ties merchant fees, provider cost, and Takeer margin back to a payment reference, order, merchant, and customer.
                                 </p>
                             </div>
                             <Store className="h-5 w-5 text-slate-400" />
@@ -243,7 +245,7 @@ export default function PlatformWallet() {
                                             <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-500">Merchant</th>
                                             <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-500">Customer / Product</th>
                                             <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-500">Gross</th>
-                                            <th className="p-4 text-[11px] font-black uppercase tracking-widest text-red-500">Takeer Fee</th>
+                                            <th className="p-4 text-[11px] font-black uppercase tracking-widest text-red-500">Fee Breakdown</th>
                                             <th className="p-4 text-[11px] font-black uppercase tracking-widest text-emerald-600">Merchant Net</th>
                                         </tr>
                                     </thead>
@@ -269,7 +271,9 @@ export default function PlatformWallet() {
                                                 </td>
                                                 <td className="p-4">
                                                     <p className="text-sm font-black text-red-500">{formatMoney(tx.fee_amount, tx.currency_code)}</p>
-                                                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{formatMoney(tx.fee_amount_base, tx.base_currency_code)}</p>
+                                                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Total {formatMoney(tx.fee_amount_base, tx.base_currency_code)}</p>
+                                                    <p className="text-[10px] text-slate-500 font-semibold">Provider {formatMoney(tx.provider_cost_amount, tx.currency_code)}</p>
+                                                    <p className="text-[10px] text-emerald-700 font-semibold">Margin {formatMoney(tx.takeer_margin_amount, tx.currency_code)}</p>
                                                 </td>
                                                 <td className="p-4">
                                                     <p className="text-sm font-black text-emerald-600">{formatMoney(tx.net_amount, tx.currency_code)}</p>

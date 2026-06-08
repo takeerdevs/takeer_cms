@@ -42,6 +42,7 @@ use App\Http\Controllers\TrackedLinkController;
 use App\Http\Resources\PostResource;
 use App\Http\Resources\ProductResource;
 use App\Http\Resources\SubscriptionPlanResource;
+use App\Services\PaymentProviderCatalogService;
 use App\Models\Bundle;
 use App\Models\ContentItem;
 use App\Models\Merchant;
@@ -2526,6 +2527,7 @@ Route::middleware(['auth', 'admin'])->group(function () {
                 ->orderByDesc('is_base_currency')
                 ->orderBy('code')
                 ->get(['id', 'code', 'name', 'symbol', 'is_base_currency']),
+            'paymentChannels' => app(PaymentProviderCatalogService::class)->feePolicyChannelOptions(),
         ]);
     });
 

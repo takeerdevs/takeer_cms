@@ -35,6 +35,7 @@ class MerchantOrderController extends Controller
         'in_transit',
         'arrived',
         'ready_at_terminal',
+        'delivered',
         'issue_reported',
     ];
 
@@ -264,11 +265,12 @@ class MerchantOrderController extends Controller
 
         $merchant->loadMissing('currency');
         $merchantCurrencyCode = $merchant->currency?->code ?: 'TZS';
-        $order->load(['buyer', 'product.unitType', 'variant', 'delivery.shippingZone', 'delivery.events.actor', 'merchant.locations', 'dispute', 'review', 'returnRequest']);
+        $order->load(['buyer', 'product.unitType', 'product.images', 'variant', 'delivery.shippingZone', 'delivery.events.actor', 'merchant.locations', 'dispute', 'review', 'returnRequest']);
         $forwarderShipment = $order->delivery?->delivery_type === 'forwarder'
             ? app(ForwarderShipmentService::class)->createForTakeerOrder($order, $order->user_address_id)
             : null;
         $display = $this->resolveDisplay($order);
+        $deliveryType = $this->normalizeDeliveryType($order->delivery?->delivery_type ?? $order->delivery?->shippingZone?->delivery_type);
 
         return response()->json([
             'id' => $order->id,
@@ -354,8 +356,8 @@ class MerchantOrderController extends Controller
                 'id' => $order->delivery->id,
                 'delivery_status' => $order->delivery->delivery_status,
                 'status' => $order->delivery->delivery_status,
-                'delivery_type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
-                'type' => $order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type,
+                'delivery_type' => $deliveryType,
+                'type' => $deliveryType,
                 'shipping_zone_id' => $order->delivery->shipping_zone_id,
                 'shipping_zone' => $order->delivery->shippingZone ? [
                     'id' => $order->delivery->shippingZone->id,
@@ -413,6 +415,7 @@ class MerchantOrderController extends Controller
             'display_title' => $display['title'],
             'display_kind' => $display['kind'],
             'display_icon' => $display['icon'],
+            'display_image' => $display['image'] ?? null,
             'is_escrow_order' => $display['is_escrow_order'],
             'order_flow' => $display['is_escrow_order'] ? 'escrow' : 'instant',
         ]);
@@ -902,15 +905,16 @@ class MerchantOrderController extends Controller
 
         $delivery = DB::transaction(function () use ($order, $request, $validated, $proofUrl, $proofMime, $proofType, $proofMedia, $courierReceiptUrl) {
             $delivery = $order->delivery()->firstOrNew(['order_id' => $order->id]);
+            $deliveryType = $this->normalizeDeliveryType($delivery->delivery_type ?: 'local_boda');
             $delivery->fill([
                 'delivery_status' => $validated['status'],
-                'delivery_type' => $delivery->delivery_type ?: 'local_boda',
+                'delivery_type' => $deliveryType,
                 'boda_phone' => $validated['boda_phone'] ?? $delivery->boda_phone,
                 'delivery_person_name' => $validated['delivery_person_name'] ?? $delivery->delivery_person_name,
                 'bus_company' => $validated['bus_company'] ?? $delivery->bus_company,
                 'waybill_tracking_number' => $validated['waybill_tracking_number'] ?? $delivery->waybill_tracking_number,
                 'waybill_photo_url' => $courierReceiptUrl ?? $delivery->waybill_photo_url,
-                'buyer_release_pin' => $delivery->delivery_type === 'forwarder'
+                'buyer_release_pin' => $deliveryType === 'forwarder'
                     ? null
                     : ($delivery->buyer_release_pin ?: str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT)),
             ])->save();
@@ -938,7 +942,7 @@ class MerchantOrderController extends Controller
             ]);
 
             if (
-                in_array($validated['status'], ['dispatched', 'with_boda', 'in_transit', 'arrived', 'ready_at_terminal'], true)
+                in_array($validated['status'], ['dispatched', 'with_boda', 'in_transit', 'arrived', 'ready_at_terminal', 'delivered'], true)
                 && $order->payment_status === 'awaiting_merchant_confirmation'
             ) {
                 $order->update([
@@ -990,15 +994,22 @@ class MerchantOrderController extends Controller
 
     private function deliveryStepIndex(?string $status, ?string $type): int
     {
+        $type = $this->normalizeDeliveryType($type);
+        $status = $status === 'dispatched' ? 'with_boda' : $status;
         $steps = match ($type) {
             'forwarder' => ['packing', 'with_boda', 'ready_at_terminal'],
-            'intercity_bus' => ['with_boda', 'in_transit', 'ready_at_terminal', 'delivered'],
-            default => ['with_boda', 'in_transit', 'arrived', 'delivered'],
+            'intercity_bus' => ['packing', 'with_boda', 'in_transit', 'ready_at_terminal', 'delivered'],
+            default => ['packing', 'with_boda', 'in_transit', 'arrived', 'delivered'],
         };
 
         $index = array_search($status, $steps, true);
 
         return $index === false ? -1 : (int) $index;
+    }
+
+    private function normalizeDeliveryType(?string $type): ?string
+    {
+        return $type === 'shipping' ? 'local_boda' : $type;
     }
 
     private function appendDeliveryChatUpdate(Order $order, string $status, ?string $note = null, ?string $proofUrl = null, array $proofMedia = [], array $metadata = []): void

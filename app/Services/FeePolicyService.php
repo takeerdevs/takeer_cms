@@ -15,7 +15,7 @@ class FeePolicyService
         $merchant = $order->merchant ?: $order->product?->merchant;
         $paymentChannel = $this->paymentChannelForOrder($order);
 
-        return $this->calculate(
+        $fee = $this->calculate(
             'sale',
             $grossAmount,
             $merchant,
@@ -23,6 +23,8 @@ class FeePolicyService
             $merchant?->currency?->code,
             $paymentChannel
         );
+
+        return $this->applyProviderCostFloorForOrder($order, $grossAmount, $fee);
     }
 
     public function calculateWithdrawal(Merchant $merchant, float $amount, ?string $paymentChannel = null): array
@@ -177,17 +179,87 @@ class FeePolicyService
 
     private function paymentChannelForOrder(Order $order): ?string
     {
-        if ($order->payment_gateway) {
-            return strtolower($order->payment_gateway);
+        $snapshot = $order->payment_channel_snapshot ?: [];
+        $channelKey = strtolower((string) ($snapshot['payment_provider_channel_key'] ?? ''));
+
+        if ($channelKey !== '') {
+            return $channelKey;
         }
 
-        return match ($order->payment_mode) {
-            'cash' => 'cash',
-            'merchant_mm' => 'merchant_mobile_money',
-            'online_escrow' => 'online_escrow',
-            'store_credit' => 'store_credit',
-            default => null,
+        return null;
+    }
+
+    private function applyProviderCostFloorForOrder(Order $order, float $grossAmount, array $fee): array
+    {
+        $providerCost = $this->providerCostForOrder($order);
+        $fee['snapshot']['provider_cost_amount'] = $providerCost['merchant_amount'];
+        $fee['snapshot']['provider_cost_currency_code'] = $providerCost['merchant_currency_code'];
+        $fee['snapshot']['provider_cost_original_amount'] = $providerCost['provider_amount'];
+        $fee['snapshot']['provider_cost_original_currency_code'] = $providerCost['provider_currency_code'];
+        $fee['snapshot']['provider_cost_floor_applied'] = false;
+        $fee['snapshot']['takeer_margin_amount'] = round(max(0, (float) $fee['fee_amount'] - $providerCost['merchant_amount']), 2);
+
+        if ($providerCost['merchant_amount'] <= (float) $fee['fee_amount']) {
+            return $fee;
+        }
+
+        $feeAmount = round($providerCost['merchant_amount'], 2);
+        $taxAmount = round($feeAmount * 0.18, 2);
+
+        $fee['fee_amount'] = $feeAmount;
+        $fee['tax_amount'] = $taxAmount;
+        $fee['net_amount'] = round(max(0, $grossAmount - $feeAmount), 2);
+        $fee['snapshot']['provider_cost_floor_applied'] = true;
+        $fee['snapshot']['fee_policy_name'] = trim(($fee['snapshot']['fee_policy_name'] ?? 'Takeer sale fee') . ' (provider cost floor)');
+        $fee['snapshot']['takeer_margin_amount'] = 0.0;
+
+        return $fee;
+    }
+
+    private function providerCostForOrder(Order $order): array
+    {
+        $snapshot = $order->payment_channel_snapshot ?: [];
+        $feeType = (string) ($snapshot['fee_type'] ?? 'none');
+        $customerAmount = (float) ($order->customer_total_amount ?: 0);
+
+        if ($customerAmount <= 0) {
+            $rate = (float) ($order->fx_effective_rate_merchant_to_customer ?: $order->fx_rate_merchant_to_customer ?: 1);
+            $customerAmount = round((float) ($order->total_paid ?? 0) * max($rate, 0), 2);
+        }
+
+        $fixed = max(0, (float) ($snapshot['fee_fixed'] ?? 0));
+        $percentBps = max(0, min(10000, (int) ($snapshot['fee_percent_bps'] ?? 0)));
+        $providerAmount = match ($feeType) {
+            'fixed' => $fixed,
+            'percent' => $customerAmount * ($percentBps / 10000),
+            'fixed_plus_percent' => $fixed + ($customerAmount * ($percentBps / 10000)),
+            default => 0,
         };
+
+        $providerAmount = round(max(0, $providerAmount), 2);
+        $min = max(0, (float) ($snapshot['fee_min'] ?? 0));
+        $max = $snapshot['fee_max'] ?? null;
+
+        if ($providerAmount > 0 && $min > 0) {
+            $providerAmount = max($providerAmount, $min);
+        }
+        if ($max !== null && $max !== '' && (float) $max >= 0) {
+            $providerAmount = min($providerAmount, (float) $max);
+        }
+
+        $providerCurrencyCode = strtoupper((string) ($order->customer_currency_code ?: data_get($snapshot, 'currencies.0') ?: $order->merchant_currency_code ?: 'TZS'));
+        $merchantCurrencyCode = strtoupper((string) ($order->merchant_currency_code ?: $order->merchant?->currency?->code ?: 'TZS'));
+        $rate = (float) ($order->fx_effective_rate_merchant_to_customer ?: $order->fx_rate_merchant_to_customer ?: 1);
+        $merchantAmount = $providerCurrencyCode === $merchantCurrencyCode
+            ? $providerAmount
+            : ($rate > 0 ? round($providerAmount / $rate, 2) : $this->convertFixedAmount($providerAmount, $providerCurrencyCode, $merchantCurrencyCode));
+
+        return [
+            'provider_amount' => round($providerAmount, 2),
+            'provider_currency_code' => $providerCurrencyCode,
+            'merchant_amount' => round(max(0, $merchantAmount), 2),
+            'merchant_currency_code' => $merchantCurrencyCode,
+        ];
     }
 
     private function convertFixedAmount(float $amount, string $fromCurrencyCode, string $toCurrencyCode): float

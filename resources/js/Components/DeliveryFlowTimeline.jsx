@@ -3,6 +3,7 @@ import { Camera, Check, Circle, MapPin, Phone, TriangleAlert, Truck } from 'luci
 import { cn } from '@/lib/utils';
 
 export const LOCAL_DELIVERY_STEPS = [
+    { value: 'packing', label: 'Packing order', riderLabel: 'Mzigo unaandaliwa' },
     { value: 'with_boda', label: 'Picked up', riderLabel: 'Nimechukua mzigo' },
     { value: 'in_transit', label: 'On the way', riderLabel: 'Nipo njiani' },
     { value: 'arrived', label: 'Arrived', riderLabel: 'Nimefika kwa mteja' },
@@ -10,7 +11,8 @@ export const LOCAL_DELIVERY_STEPS = [
 ];
 
 export const INTERCITY_DELIVERY_STEPS = [
-    { value: 'with_boda', label: 'Picked up', riderLabel: 'Nimechukua mzigo' },
+    { value: 'packing', label: 'Packing order', riderLabel: 'Mzigo unaandaliwa' },
+    { value: 'with_boda', label: 'Dispatched to bus', riderLabel: 'Nimefikisha kwa basi/cargo' },
     { value: 'in_transit', label: 'On the way', riderLabel: 'Nipo njiani' },
     { value: 'ready_at_terminal', label: 'At terminal (Bus Terminal)', riderLabel: 'Uko terminal (Bus Terminal)' },
     { value: 'delivered', label: 'Delivered', riderLabel: 'Imekabidhiwa' },
@@ -73,8 +75,14 @@ export function deliveryStatusTextSw(status) {
 
 export function deliveryCurrentIndex(delivery = {}) {
     const steps = deliveryStepsFor(delivery.delivery_type || delivery.type);
-    const eventStatuses = Array.isArray(delivery.events) ? delivery.events.map((event) => event.status) : [];
-    const status = delivery.status || delivery.delivery_status;
+
+    return deliveryCurrentIndexForSteps(delivery, steps);
+}
+
+export function deliveryCurrentIndexForSteps(delivery = {}, steps = deliveryStepsFor(delivery.delivery_type || delivery.type)) {
+    const normalizeStatus = (value) => value === 'dispatched' ? 'with_boda' : value;
+    const eventStatuses = Array.isArray(delivery.events) ? delivery.events.map((event) => normalizeStatus(event.status)) : [];
+    const status = normalizeStatus(delivery.status || delivery.delivery_status);
     const indexes = [...eventStatuses, status]
         .map((value) => steps.findIndex((step) => step.value === value))
         .filter((index) => index >= 0);
@@ -106,11 +114,13 @@ export function DeliveryFlowTimeline({
     onSelectStatus,
     riderLabels = false,
     disabledStatuses = [],
+    hiddenStatuses = [],
     renderAfterStep,
     swahili = false,
     className = '',
 }) {
-    const steps = deliveryStepsFor(delivery.delivery_type || delivery.type);
+    const steps = deliveryStepsFor(delivery.delivery_type || delivery.type)
+        .filter((step) => !hiddenStatuses.includes(step.value));
     const events = Array.isArray(delivery.events)
         ? [...delivery.events].sort((a, b) => {
             const timeA = new Date(a.created_at || 0).getTime();
@@ -119,13 +129,14 @@ export function DeliveryFlowTimeline({
             return String(a.id || '').localeCompare(String(b.id || ''));
         })
         : [];
-    const currentIndex = deliveryCurrentIndex(delivery);
+    const currentIndex = deliveryCurrentIndexForSteps(delivery, steps);
     const latestSelectableIndex = Math.min(currentIndex + 1, steps.length - 1);
+    const normalizeStatus = (value) => value === 'dispatched' ? 'with_boda' : value;
     const grouped = steps.reduce((acc, step) => {
-        acc[step.value] = events.filter((event) => event.status === step.value || event.metadata?.stage_status === step.value);
+        acc[step.value] = events.filter((event) => normalizeStatus(event.status) === step.value || normalizeStatus(event.metadata?.stage_status) === step.value);
         return acc;
     }, {});
-    const otherEvents = events.filter((event) => !steps.some((step) => step.value === event.status || event.metadata?.stage_status === step.value));
+    const otherEvents = events.filter((event) => !steps.some((step) => step.value === normalizeStatus(event.status) || normalizeStatus(event.metadata?.stage_status) === step.value));
 
     return (
         <div className={cn('rounded-3xl border border-slate-200 bg-white p-4', className)}>

@@ -100,6 +100,34 @@ class PaymentProviderCatalogService
             ->get();
     }
 
+    public function feePolicyChannelOptions()
+    {
+        $this->ensureDefaults();
+
+        return PaymentProviderChannel::query()
+            ->with('provider:id,key,name,status')
+            ->orderBy('country_code')
+            ->orderBy('direction')
+            ->orderBy('priority')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (PaymentProviderChannel $channel) => [
+                'id' => $channel->id,
+                'key' => $channel->key,
+                'name' => $channel->name,
+                'provider_key' => $channel->provider?->key,
+                'provider_name' => $channel->provider?->name,
+                'provider_status' => $channel->provider?->status,
+                'country_code' => $channel->country_code,
+                'direction' => $channel->direction,
+                'method' => $channel->method,
+                'network' => $channel->network,
+                'currencies' => $channel->currencies ?: [],
+                'status' => $channel->status,
+            ])
+            ->values();
+    }
+
     public function channelToArray(PaymentProviderChannel $channel): array
     {
         $provider = $channel->provider;

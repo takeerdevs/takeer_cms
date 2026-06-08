@@ -110,10 +110,16 @@ export default function AdminWithdrawals() {
                                             <p className="text-xs font-bold text-emerald-700">
                                                 Payout {formatMoney(w.payout_amount ?? w.amount, w.payout_currency_code)}
                                             </p>
-                                            {(Number(w.payout_snapshot?.fx_margin_amount || 0) > 0 || Number(w.payout_snapshot?.withdrawal_fee_amount || 0) > 0) && (
+                                            {Number(w.wallet_debit_amount || 0) > Number(w.merchant_amount || w.amount || 0) && (
+                                                <p className="text-[11px] font-semibold text-slate-600">
+                                                    Wallet debit {formatMoney(w.wallet_debit_amount, w.merchant_currency_code)}
+                                                </p>
+                                            )}
+                                            {(Number(w.payout_snapshot?.fx_margin_amount || 0) > 0 || Number(w.withdrawal_fee_amount || 0) > 0 || Number(w.provider_cost_amount || 0) > 0) && (
                                                 <p className="text-[11px] font-semibold text-amber-700">
                                                     Buffer {formatMoney(w.payout_snapshot?.fx_margin_amount || 0, w.payout_currency_code)}
-                                                    {' '}• Fee {formatMoney(w.payout_snapshot?.withdrawal_fee_amount || 0, w.payout_snapshot?.withdrawal_fee_currency_code || w.payout_currency_code)}
+                                                    {' '}• Merchant fee {formatMoney(w.withdrawal_fee_amount || 0, w.withdrawal_fee_currency_code || w.merchant_currency_code)}
+                                                    {' '}• Provider cost {formatMoney(w.provider_cost_amount || 0, w.provider_cost_currency_code || w.payout_currency_code)}
                                                 </p>
                                             )}
                                             {w.fx_rate_merchant_to_payout && (

@@ -315,7 +315,7 @@ export default function PayoutSettings() {
 
                                                     <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
                                                         <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Fee rule</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Provider cost rule</p>
                                                             <p className="text-[10px] font-bold text-slate-500">
                                                                 {(channel.currencies || []).join(', ') || 'Channel currency'}
                                                             </p>
@@ -335,7 +335,7 @@ export default function PayoutSettings() {
                                                                 <span className="block text-[10px] font-bold text-slate-500">{formatBps(channel.fx_margin_bps)}</span>
                                                             </label>
                                                             <label className="space-y-1.5">
-                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Fee type</span>
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Cost type</span>
                                                                 <select
                                                                     className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
                                                                     value={channel.fee_type || 'fixed_plus_percent'}
@@ -353,7 +353,7 @@ export default function PayoutSettings() {
                                                                     type="number"
                                                                     min="0"
                                                                     step="0.01"
-                                                                    title="Fixed fee in the merchant wallet currency before payout conversion."
+                                                                    title="Fixed provider rail cost in the payout/channel currency."
                                                                     className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
                                                                     value={channel.fee_fixed ?? 0}
                                                                     onChange={(e) => patchOpsChannelState(provider.id, channel.id, { fee_fixed: e.target.value })}
@@ -376,7 +376,7 @@ export default function PayoutSettings() {
                                                                     type="number"
                                                                     min="0"
                                                                     step="0.01"
-                                                                    title="Minimum fee in the merchant wallet currency before payout conversion."
+                                                                    title="Minimum provider rail cost in the payout/channel currency."
                                                                     className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
                                                                     value={channel.fee_min ?? 0}
                                                                     onChange={(e) => patchOpsChannelState(provider.id, channel.id, { fee_min: e.target.value })}
@@ -388,7 +388,7 @@ export default function PayoutSettings() {
                                                                     type="number"
                                                                     min="0"
                                                                     step="0.01"
-                                                                    title="Maximum fee in the merchant wallet currency before payout conversion."
+                                                                    title="Maximum provider rail cost in the payout/channel currency."
                                                                     className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
                                                                     value={channel.fee_max ?? ''}
                                                                     onChange={(e) => patchOpsChannelState(provider.id, channel.id, { fee_max: e.target.value })}
@@ -401,7 +401,7 @@ export default function PayoutSettings() {
                                                         <div className="mt-3 rounded-xl border border-slate-100 bg-white p-3">
                                                             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Withdrawal limits</p>
-                                                                <p className="text-[10px] font-bold text-slate-500">Merchant wallet currency</p>
+                                                                <p className="text-[10px] font-bold text-slate-500">Payout/channel currency</p>
                                                             </div>
                                                             <div className="grid gap-3 sm:grid-cols-2">
                                                                 <label className="space-y-1.5">
@@ -410,7 +410,7 @@ export default function PayoutSettings() {
                                                                         type="number"
                                                                         min="0"
                                                                         step="0.01"
-                                                                        title="Minimum amount the merchant can withdraw through this channel, in their wallet currency."
+                                                                        title="Minimum provider payout amount through this channel, in the payout/channel currency."
                                                                         className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
                                                                         value={channel.limits?.min_withdrawal_amount ?? ''}
                                                                         onChange={(e) => patchOpsChannelLimitState(provider, channel, 'min_withdrawal_amount', e.target.value)}
@@ -422,7 +422,7 @@ export default function PayoutSettings() {
                                                                         type="number"
                                                                         min="0"
                                                                         step="0.01"
-                                                                        title="Optional maximum amount the merchant can withdraw through this channel, in their wallet currency."
+                                                                        title="Optional maximum provider payout amount through this channel, in the payout/channel currency."
                                                                         className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
                                                                         value={channel.limits?.max_withdrawal_amount ?? ''}
                                                                         onChange={(e) => patchOpsChannelLimitState(provider, channel, 'max_withdrawal_amount', e.target.value)}

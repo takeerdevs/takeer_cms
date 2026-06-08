@@ -89,7 +89,7 @@ class CheckoutController extends Controller
         }
 
         $selectedCheckoutAddress = null;
-        if (($validated['delivery_type'] ?? 'shipping') !== 'self_pickup' && !empty($validated['user_address_id'])) {
+        if (($validated['delivery_type'] ?? 'local_boda') !== 'self_pickup' && !empty($validated['user_address_id'])) {
             $selectedCheckoutAddress = UserAddress::query()
                 ->whereKey($validated['user_address_id'])
                 ->where('user_id', $buyer->id)
@@ -108,7 +108,7 @@ class CheckoutController extends Controller
 
             $validated = $this->applyCheckoutAddressGeo($validated, $selectedCheckoutAddress);
         }
-        $isForwarderCheckout = ($validated['delivery_type'] ?? 'shipping') !== 'self_pickup'
+        $isForwarderCheckout = ($validated['delivery_type'] ?? 'local_boda') !== 'self_pickup'
             && $selectedCheckoutAddress?->type === 'forwarder'
             && !empty($selectedCheckoutAddress->forwarder_route_id);
 
@@ -1823,7 +1823,7 @@ class CheckoutController extends Controller
             'quantity' => 'nullable|numeric|min:0.001|max:100000',
             'account_phone' => 'required|string',
             'buyer_name' => 'nullable|string|max:255',
-            'delivery_type' => 'nullable|in:shipping,self_pickup',
+            'delivery_type' => 'nullable|in:local_boda,intercity_bus,self_pickup',
             'user_address_id' => 'nullable|integer|exists:user_addresses,id',
             'delivery_zone_id' => 'nullable|integer|exists:shipping_zones,id',
             'physical_address' => 'nullable|string|min:3',
@@ -1854,7 +1854,7 @@ class CheckoutController extends Controller
             'service_pricing_inputs.check_out' => 'nullable|date|after:service_pricing_inputs.check_in',
         ]);
 
-        $deliveryType = $validated['delivery_type'] ?? 'shipping';
+        $deliveryType = $validated['delivery_type'] ?? 'local_boda';
         $isSelfPickup = $deliveryType === 'self_pickup';
         $servicePricingInputs = $this->normalizeServicePricingInputs($validated['service_pricing_inputs'] ?? []);
 

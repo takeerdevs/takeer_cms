@@ -1112,7 +1112,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 buyer_name: name || (isGuest ? 'Guest' : undefined),
                 country_iso2: detectedIso2 || undefined,
                 user_address_id: isPhysicalProduct && selectedAddressId ? selectedAddressId : undefined,
-                delivery_type: isPhysicalProduct ? (isSelfPickupChoice ? 'self_pickup' : 'shipping') : undefined,
+                delivery_type: isPhysicalProduct ? (isSelfPickupChoice ? 'self_pickup' : (activeShippingZone?.delivery_type || 'local_boda')) : undefined,
                 delivery_zone_id: (isPhysicalProduct && !isSelfPickupChoice) ? selectedShippingZoneId : undefined,
                 customer_city: isPhysicalProduct ? (customerCity || undefined) : undefined,
                 customer_region: isPhysicalProduct ? (customerRegion || undefined) : undefined,

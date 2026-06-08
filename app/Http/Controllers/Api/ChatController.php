@@ -311,8 +311,14 @@ class ChatController extends Controller
                 } elseif ($actionType === 'update_delivery') {
                     if ($order->canBeCancelledBeforePayment()) {
                         $payload = $request->input('payload', []);
-                        $deliveryType = $payload['delivery_type'] ?? 'shipping';
                         $zoneId = $payload['delivery_zone_id'] ?? null;
+                        $zoneDeliveryType = $zoneId
+                            ? \App\Models\ShippingZone::query()->whereKey($zoneId)->value('delivery_type')
+                            : null;
+                        $deliveryType = $payload['delivery_type'] ?? $zoneDeliveryType ?? 'local_boda';
+                        if ($deliveryType === 'shipping') {
+                            $deliveryType = $zoneDeliveryType ?: 'local_boda';
+                        }
                         $shippingFee = (float) ($payload['shipping_fee'] ?? 0);
 
                         $order->shipping_fee = ($deliveryType === 'self_pickup') ? 0 : $shippingFee;
@@ -320,7 +326,7 @@ class ChatController extends Controller
                         $order->save();
 
                         $delivery = $order->delivery()->firstOrCreate(['order_id' => $order->id]);
-                        $delivery->delivery_type = ($deliveryType === 'self_pickup') ? 'self_pickup' : 'shipping';
+                        $delivery->delivery_type = ($deliveryType === 'self_pickup') ? 'self_pickup' : $deliveryType;
                         $delivery->shipping_zone_id = $zoneId ?: $delivery->shipping_zone_id;
                         $delivery->physical_address = $payload['physical_address'] ?? $delivery->physical_address;
                         $delivery->latitude = $payload['latitude'] ?? $delivery->latitude;

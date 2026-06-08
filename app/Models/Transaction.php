@@ -28,6 +28,10 @@ class Transaction extends Model
         'gross_amount_base',
         'fee_amount',
         'fee_amount_base',
+        'provider_cost_amount',
+        'provider_cost_amount_base',
+        'takeer_margin_amount',
+        'takeer_margin_amount_base',
         'net_amount',
         'net_amount_base',
         'tax_amount',
@@ -42,6 +46,10 @@ class Transaction extends Model
             'gross_amount_base' => 'decimal:2',
             'fee_amount' => 'decimal:2',
             'fee_amount_base' => 'decimal:2',
+            'provider_cost_amount' => 'decimal:2',
+            'provider_cost_amount_base' => 'decimal:2',
+            'takeer_margin_amount' => 'decimal:2',
+            'takeer_margin_amount_base' => 'decimal:2',
             'net_amount' => 'decimal:2',
             'net_amount_base' => 'decimal:2',
             'tax_amount' => 'decimal:2',
@@ -78,6 +86,12 @@ class Transaction extends Model
                 }
                 if ($transaction->fee_amount_base === null) {
                     $transaction->fee_amount_base = static::convertToBase($transaction->fee_amount, $rate);
+                }
+                if ($transaction->provider_cost_amount_base === null) {
+                    $transaction->provider_cost_amount_base = static::convertToBase($transaction->provider_cost_amount, $rate);
+                }
+                if ($transaction->takeer_margin_amount_base === null) {
+                    $transaction->takeer_margin_amount_base = static::convertToBase($transaction->takeer_margin_amount, $rate);
                 }
                 if ($transaction->net_amount_base === null) {
                     $transaction->net_amount_base = static::convertToBase($transaction->net_amount, $rate);

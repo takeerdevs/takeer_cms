@@ -37,7 +37,7 @@ const blankForm = {
 };
 
 export default function FeePolicies() {
-    const { currencies = [] } = usePage().props;
+    const { currencies = [], paymentChannels: initialPaymentChannels = [] } = usePage().props;
     const [policies, setPolicies] = useState([]);
     const [activeCategory, setActiveCategory] = useState('sale');
     const [form, setForm] = useState(blankForm);
@@ -45,6 +45,7 @@ export default function FeePolicies() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [previewAmount, setPreviewAmount] = useState('10000');
+    const [paymentChannels, setPaymentChannels] = useState(initialPaymentChannels);
 
     const visiblePolicies = useMemo(
         () => policies.filter((policy) => policy.category === activeCategory),
@@ -58,6 +59,14 @@ export default function FeePolicies() {
             ? activeCurrencies
             : [{ code: 'USD', name: 'US Dollar', symbol: '$', is_base_currency: true }];
     }, [currencies]);
+    const paymentChannelOptions = useMemo(
+        () => paymentChannels.filter((channel) => channel.direction === categoryDirection(form.category)),
+        [paymentChannels, form.category]
+    );
+    const paymentChannelByKey = useMemo(
+        () => Object.fromEntries(paymentChannels.map((channel) => [channel.key, channel])),
+        [paymentChannels]
+    );
 
     const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -75,7 +84,10 @@ export default function FeePolicies() {
                 if (!response.ok) throw new Error(payload.message || 'Failed to load fee policies.');
                 return payload;
             })
-            .then((payload) => setPolicies(payload.policies || []))
+            .then((payload) => {
+                setPolicies(payload.policies || []);
+                setPaymentChannels(payload.payment_channels || []);
+            })
             .catch((error) => toast.error(error.message))
             .finally(() => setLoading(false));
     };
@@ -129,7 +141,7 @@ export default function FeePolicies() {
             country_code: form.country_code || null,
             currency_code: form.currency_code || null,
             merchant_id: form.merchant_id || null,
-            payment_channel: form.payment_channel || null,
+            payment_channel: form.scope === 'payment_channel' ? form.payment_channel || null : null,
             fixed_fee_currency_code: form.fixed_fee_currency_code || 'USD',
             min_fee: form.min_fee === '' ? null : form.min_fee,
             max_fee: form.max_fee === '' ? null : form.max_fee,
@@ -190,7 +202,7 @@ export default function FeePolicies() {
                         <Percent className="h-6 w-6 text-brand-700" /> Pricing & Fees
                     </h1>
                     <p className="text-sm text-slate-600 mt-1">
-                        Manage Takeer charging rules with scopes, caps, and effective dates.
+                        Manage merchant-facing Takeer fees with scopes, caps, and effective dates. Provider rail costs and hard limits live in Payment Providers.
                     </p>
                 </div>
 
@@ -220,7 +232,9 @@ export default function FeePolicies() {
                         <CardContent className="p-0">
                             <div className="p-5 border-b border-slate-200">
                                 <h2 className="font-black text-slate-900">{categories.find((c) => c.value === activeCategory)?.label} Policies</h2>
-                                <p className="text-xs text-slate-500 mt-1">Most specific active policy wins: merchant, payment channel, country, currency, then global.</p>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    Most specific active policy wins. Withdrawal policies are Takeer markup; provider payout cost is added from Payment Providers.
+                                </p>
                             </div>
 
                             {loading ? (
@@ -249,7 +263,7 @@ export default function FeePolicies() {
                                                     {describePolicy(policy)}
                                                 </p>
                                                 <p className="text-xs text-slate-400 mt-1">
-                                                    {policy.payment_channel || policy.country_code || policy.currency_code || policy.merchant?.display_name || 'Global'} · Effective {formatDate(policy.effective_from) || 'now'}
+                                                    {policyScopeLabel(policy, paymentChannelByKey)} · Effective {formatDate(policy.effective_from) || 'now'}
                                                 </p>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -292,7 +306,7 @@ export default function FeePolicies() {
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <Field label="Category">
-                                            <Select value={form.category} onChange={(e) => set('category', e.target.value)}>
+                                            <Select value={form.category} onChange={(e) => setForm((current) => ({ ...current, category: e.target.value, payment_channel: '' }))}>
                                                 {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
                                             </Select>
                                         </Field>
@@ -325,18 +339,19 @@ export default function FeePolicies() {
                                         <Field label="Payment Channel">
                                             <Select value={form.payment_channel} onChange={(e) => set('payment_channel', e.target.value)}>
                                                 <option value="">Choose channel</option>
-                                                <option value="azampay">AzamPay</option>
-                                                <option value="flutterwave">Flutterwave</option>
-                                                <option value="mpesa_ke">M-Pesa Kenya</option>
-                                                <option value="card">Card</option>
-                                                <option value="mobile_money">Mobile Money</option>
-                                                <option value="cash">POS Cash</option>
-                                                <option value="merchant_mobile_money">POS Merchant Mobile Money</option>
-                                                <option value="online_escrow">POS Online Escrow</option>
-                                                <option value="store_credit">Store Credit</option>
-                                                <option value="mobile_money_payout">Mobile Money Payout</option>
-                                                <option value="bank_payout">Bank Payout</option>
+                                                {paymentChannelOptions.map((channel) => (
+                                                    <option key={channel.key} value={channel.key}>
+                                                        {paymentChannelLabel(channel)}
+                                                    </option>
+                                                ))}
                                             </Select>
+                                            {paymentChannelOptions.length === 0 && (
+                                                <p className="mt-2 text-xs font-semibold text-amber-700">
+                                                    {paymentChannels.length === 0
+                                                        ? 'Provider channels are still loading. If this stays empty, check Payment Providers.'
+                                                        : 'No provider channels are configured for this category.'}
+                                                </p>
+                                            )}
                                         </Field>
                                     )}
                                 </BuilderSection>
@@ -363,6 +378,15 @@ export default function FeePolicies() {
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
                                         {feeTypeExplanation(form.fee_type)}
                                     </div>
+
+                                    {form.category === 'withdrawal' && (
+                                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                                            <p className="font-black uppercase tracking-widest text-[10px]">Withdrawal fee strategy</p>
+                                            <p className="mt-1">
+                                                Takeer charges merchants provider rail cost plus this policy as markup. Set this policy to zero to pass provider cost through without extra markup.
+                                            </p>
+                                        </div>
+                                    )}
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <Field label="Percent Rate">
@@ -468,9 +492,9 @@ export default function FeePolicies() {
                                         </div>
                                     </div>
                                     <div className="mt-4 grid grid-cols-3 gap-3">
-                                        <PreviewMetric label="Gross" value={preview.gross} />
-                                        <PreviewMetric label="Fee" value={preview.fee} tone="text-red-600" />
-                                        <PreviewMetric label="Net" value={preview.net} tone="text-emerald-700" />
+                                        <PreviewMetric label={form.category === 'withdrawal' ? 'Principal' : 'Gross'} value={preview.gross} />
+                                        <PreviewMetric label={form.category === 'withdrawal' ? 'Markup' : 'Fee'} value={preview.fee} tone="text-red-600" />
+                                        <PreviewMetric label={form.category === 'withdrawal' ? 'Before Provider Cost' : 'Net'} value={preview.net} tone="text-emerald-700" />
                                     </div>
                                 </div>
 
@@ -562,6 +586,34 @@ function currencyLabel(currency) {
     const name = currency.name ? ` - ${currency.name}` : '';
     const base = currency.is_base_currency ? ' (base)' : '';
     return `${currency.code}${name}${base}`;
+}
+
+function categoryDirection(category) {
+    if (category === 'withdrawal') return 'payout';
+    if (category === 'sale') return 'payin';
+    return '';
+}
+
+function paymentChannelLabel(channel) {
+    const provider = channel.provider_name || channel.provider_key || 'Provider';
+    const country = channel.country_code || '*';
+    const direction = channel.direction || 'channel';
+    const currencies = Array.isArray(channel.currencies) && channel.currencies.length > 0
+        ? channel.currencies.join(', ')
+        : '';
+    const status = channel.status && channel.status !== 'enabled' ? ` · ${channel.status}` : '';
+    const currencySuffix = currencies ? ` · ${currencies}` : '';
+
+    return `${channel.name || channel.key} · ${provider} · ${country} · ${direction}${currencySuffix}${status}`;
+}
+
+function policyScopeLabel(policy, paymentChannelByKey) {
+    if (policy.payment_channel) {
+        const channel = paymentChannelByKey[policy.payment_channel];
+        return channel ? paymentChannelLabel(channel) : policy.payment_channel;
+    }
+
+    return policy.country_code || policy.currency_code || policy.merchant?.display_name || 'Global';
 }
 
 function calculatePreview(form, rawAmount) {

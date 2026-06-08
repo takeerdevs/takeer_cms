@@ -57,6 +57,10 @@ class SelcomPayoutService
                     : ($result->success ? 'processing' : 'pending'),
                 'payout_snapshot' => $snapshot,
             ]);
+
+            if ($result->success) {
+                app(WithdrawalAccountingService::class)->recordSubmitted($withdrawal->fresh());
+            }
         });
 
         return $result;

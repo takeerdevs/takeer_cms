@@ -6,7 +6,7 @@ import { Camera, CheckCircle2, Loader2, MapPin, PackageCheck, Truck, TriangleAle
 import {
     DeliveryDirectionsButton,
     DeliveryFlowTimeline,
-    deliveryCurrentIndex,
+    deliveryCurrentIndexForSteps,
     deliveryStatusTextSw,
     deliveryStepsFor,
 } from '@/Components/DeliveryFlowTimeline';
@@ -45,11 +45,12 @@ export default function RiderDelivery({ token, delivery: initialDelivery }) {
     }, [delivery?.expires_at]);
 
     const steps = deliveryStepsFor(delivery?.delivery_type);
-    const currentIndex = deliveryCurrentIndex(delivery);
-    const activeStep = currentIndex >= 0 ? steps[currentIndex] : null;
+    const riderSteps = steps.filter((step) => step.value !== 'packing');
+    const currentIndex = deliveryCurrentIndexForSteps(delivery, riderSteps);
+    const activeStep = currentIndex >= 0 ? riderSteps[currentIndex] : null;
     const isDelivered = delivery?.status === 'delivered';
     const isIntercity = delivery?.delivery_type === 'intercity_bus';
-    const arrivedIndex = steps.findIndex((step) => step.value === 'arrived');
+    const arrivedIndex = riderSteps.findIndex((step) => step.value === 'arrived');
     const canCompleteLocal = !isIntercity && !isDelivered && arrivedIndex >= 0 && currentIndex >= arrivedIndex;
     const canAddUpdate = Boolean(activeStep) && !isDelivered;
     const completeDeliveryCard = canCompleteLocal ? (
@@ -372,7 +373,7 @@ export default function RiderDelivery({ token, delivery: initialDelivery }) {
                 <section className="flex-1 space-y-4 px-5 py-5">
                     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Mzigo</p>
-                        <p className="mt-1 text-xl font-black">{delivery?.title || 'Oda ya usafirishaji'}</p>
+                        <p className="mt-1 text-xl font-black">Mzigo wa Takeer</p>
                         <p className="mt-2 inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-black uppercase tracking-widest text-sky-700">
                             {deliveryStatusTextSw(delivery?.status)}
                         </p>
@@ -401,6 +402,7 @@ export default function RiderDelivery({ token, delivery: initialDelivery }) {
                                     selectedStatus={stageSubmitting}
                                     onSelectStatus={saveStage}
                                     disabledStatuses={['delivered']}
+                                    hiddenStatuses={['packing']}
                                     renderAfterStep={(step) => step.value === 'arrived' ? completeDeliveryCard : null}
                                     swahili
                                     className="mt-3 border-slate-100 bg-slate-50/60 shadow-none"

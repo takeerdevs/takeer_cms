@@ -10,7 +10,6 @@ import {
     BookOpenText,
     Boxes,
     CalendarClock,
-    Camera,
     CheckCircle2,
     CircleAlert,
     Copy,
@@ -21,6 +20,7 @@ import {
     MessageSquare,
     Image as ImageIcon,
     Layers,
+    Link as LinkIcon,
     Play,
     Printer,
     ReceiptText,
@@ -222,9 +222,10 @@ function deliveryStatusOptions(delivery) {
     if (type === 'intercity_bus') {
         return [
             { value: 'packing', label: 'Packing order' },
-            { value: 'dispatched', label: 'Dispatched to bus' },
+            { value: 'with_boda', label: 'Dispatched to bus' },
             { value: 'in_transit', label: 'In transit' },
             { value: 'ready_at_terminal', label: 'Ready at terminal (Bus Terminal)' },
+            { value: 'delivered', label: 'Delivered' },
             { value: 'issue_reported', label: 'Issue reported' },
         ];
     }
@@ -238,9 +239,10 @@ function deliveryStatusOptions(delivery) {
     }
     return [
         { value: 'packing', label: 'Packing order' },
-        { value: 'ready_for_pickup', label: 'Ready for rider' },
         { value: 'with_boda', label: 'With delivery rider' },
+        { value: 'in_transit', label: 'In transit' },
         { value: 'arrived', label: 'Arrived at customer area' },
+        { value: 'delivered', label: 'Delivered' },
         { value: 'issue_reported', label: 'Issue reported' },
     ];
 }
@@ -480,14 +482,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const canVerifyPickup = can('orders.verify_pickup');
     const [loading, setLoading] = useState(true);
     const [order, setOrder] = useState(null);
-    const [dispatchMode, setDispatchMode] = useState('intercity');
-    const [dispatchVideo, setDispatchVideo] = useState(null);
-    const [transportReceipt, setTransportReceipt] = useState(null);
     const [busCompany, setBusCompany] = useState('');
     const [waybillTrackingNumber, setWaybillTrackingNumber] = useState('');
     const [bodaPhone, setBodaPhone] = useState(''); // Keep variable name but update label below
-    const [localDeliveryPhone, setLocalDeliveryPhone] = useState('');
-    const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
 
     // PIN Verification State
     const [pickupPinInput, setPickupPinInput] = useState('');
@@ -575,18 +572,19 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                 return 'Hii ni order ya escrow: pesa hushikiliwa hadi hatua za utimilifu zikamilike.';
             }
             if (order.payment_status === 'resolved_merchant_paid') {
-                return 'Escrow imekamilika: mteja amelipa, order imekabidhiwa, na fedha zimetumwa kwa muuzaji.';
+                return 'Escrow imekamilika: mteja amelipa, order imekabidhiwa, na fedha imeachiwa kwa muuzaji.';
             }
             return 'Escrow bado haijakamilika kwa order hii.';
         }
         return 'Hii ni order ya instant flow: malipo huwekwa settled mara moja.';
     }, [order]);
 
-    const canDispatchNow = !!order
-        && order.is_escrow_order
-        && ['awaiting_merchant_confirmation', 'escrow_locked'].includes(order.payment_status);
     const merchantConfirmed = Boolean(order?.is_merchant_confirmed || order?.merchant_confirmed_at);
     const isForwarderOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'forwarder';
+    const deliveryType = order?.delivery?.delivery_type || order?.delivery?.type || '';
+    const isPackingStatus = deliveryStatusInput === 'packing';
+    const needsTransportEvidence = ['intercity_bus', 'forwarder'].includes(deliveryType)
+        && ['with_boda', 'in_transit', 'ready_at_terminal'].includes(deliveryStatusInput);
     const customerLocation = order?.delivery?.latitude && order?.delivery?.longitude
         ? {
             latitude: Number(order.delivery.latitude),
@@ -639,47 +637,6 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         && order?.product?.digital_delivery_type === 'custom_delivery';
     const returnRequest = order?.return_request || null;
 
-    async function submitDispatch(e) {
-        e.preventDefault();
-        if (!canDispatch) return;
-        if (!canDispatchNow || dispatchSubmitting) return;
-
-        if (!dispatchVideo) {
-            toast.error('Tafadhali chagua picha au video ya packing kwanza.');
-            return;
-        }
-        if (dispatchMode === 'intercity' && !transportReceipt) {
-            toast.error('Tafadhali pakia risiti/waybill ya usafirishaji.');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('dispatch_video', dispatchVideo);
-        if (dispatchMode === 'intercity') {
-            formData.append('transport_receipt', transportReceipt);
-            if (busCompany.trim()) formData.append('bus_company', busCompany.trim());
-            if (waybillTrackingNumber.trim()) formData.append('waybill_tracking_number', waybillTrackingNumber.trim());
-        } else if (bodaPhone.trim()) {
-            formData.append('boda_phone', bodaPhone.trim());
-        }
-
-        setDispatchSubmitting(true);
-        try {
-            const endpoint = `/merchant/${merchantUsername}/dispatch/${orderId}/${dispatchMode}`;
-            await axios.post(endpoint, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-            toast.success('Dispatch evidence imehifadhiwa.');
-            setDispatchVideo(null);
-            setTransportReceipt(null);
-            await loadOrder();
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Imeshindwa kuhifadhi dispatch evidence.');
-        } finally {
-            setDispatchSubmitting(false);
-        }
-    }
-
     async function submitDeliveryStatus(e) {
         e.preventDefault();
         if (!canUpdateDeliveryStatus || deliveryStatusSubmitting) return;
@@ -690,12 +647,12 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             formData.append('note', deliveryStatusNote.trim());
         }
         deliveryStatusProofs.forEach((file) => formData.append('proofs[]', file));
-        if (isForwarderOrder && ['with_boda', 'ready_at_terminal'].includes(deliveryStatusInput)) {
+        if (needsTransportEvidence) {
             if (deliveryCourierReceipt) formData.append('courier_receipt', deliveryCourierReceipt);
             if (busCompany.trim()) formData.append('bus_company', busCompany.trim());
             if (waybillTrackingNumber.trim()) formData.append('waybill_tracking_number', waybillTrackingNumber.trim());
             if (trackingLink.trim()) formData.append('tracking_link', trackingLink.trim());
-            formData.append('forwarder_evidence_type', forwarderEvidenceType);
+            if (isForwarderOrder) formData.append('forwarder_evidence_type', forwarderEvidenceType);
         }
         if (order?.delivery?.delivery_type === 'local_boda' && bodaPhone.trim()) {
             formData.append('boda_phone', bodaPhone.trim());
@@ -836,17 +793,6 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         }
     }
 
-    // Auto-select dispatch mode based on delivery type
-    useEffect(() => {
-        if (order?.delivery?.delivery_type) {
-            if (order.delivery.delivery_type === 'local_boda') {
-                setDispatchMode('local');
-            } else if (['intercity_bus', 'forwarder'].includes(order.delivery.delivery_type)) {
-                setDispatchMode('intercity');
-            }
-        }
-    }, [order?.delivery?.delivery_type]);
-
     async function submitQuote(e) {
         e.preventDefault();
         if (!canUpdateOrder) return;
@@ -963,6 +909,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 
     const isPos = order?.source === 'pos';
     const displayId = isPos ? `#POS-${order.public_id}` : `#${order?.transaction_ref || orderId}`;
+    const orderImage = order?.variant?.swatch_image_url || order?.product?.image_url || order?.display_image;
+    const productDetailUrl = order?.product?.id ? `/merchant/${merchantUsername}/products/${order.product.id}` : null;
 
     return (
         <AppLayout>
@@ -1009,23 +957,46 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                 ) : (
                     <>
                         <Card className="rounded-2xl overflow-hidden">
-                            <CardContent className="p-5 md:p-6 flex items-start justify-between gap-4">
-                                <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${status.cls}`}>
-                                            {status.label}
-                                        </span>
-                                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black ${kind.cls}`}>
-                                            <KindIcon className="h-3.5 w-3.5" />
-                                            {kind.label}
-                                        </span>
+                            <CardContent className="p-5 md:p-6 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="flex min-w-0 items-start gap-4">
+                                    <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-accent text-muted-foreground md:h-28 md:w-28">
+                                        {orderImage ? (
+                                            productDetailUrl ? (
+                                                <button
+                                                    type="button"
+                                                    className="group h-full w-full cursor-pointer"
+                                                    onClick={() => router.visit(productDetailUrl)}
+                                                    aria-label={`Open product details for ${order.display_title || 'order item'}`}
+                                                >
+                                                    <img src={orderImage} alt={order.display_title || 'Order item'} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                                                    <span className="absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-brand-700 shadow-sm ring-1 ring-slate-200 transition-colors group-hover:bg-brand-600 group-hover:text-white">
+                                                        <LinkIcon className="h-3.5 w-3.5" />
+                                                    </span>
+                                                </button>
+                                            ) : (
+                                                <img src={orderImage} alt={order.display_title || 'Order item'} className="h-full w-full object-cover" />
+                                            )
+                                        ) : (
+                                            <KindIcon className="h-9 w-9 opacity-70" />
+                                        )}
                                     </div>
-                                    <h2 className="text-xl md:text-2xl font-black mt-3 break-words">{order.display_title || 'Order item'}</h2>
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                        {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
-                                    </p>
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${status.cls}`}>
+                                                {status.label}
+                                            </span>
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black ${kind.cls}`}>
+                                                <KindIcon className="h-3.5 w-3.5" />
+                                                {kind.label}
+                                            </span>
+                                        </div>
+                                        <h2 className="text-xl md:text-2xl font-black mt-3 break-words">{order.display_title || 'Order item'}</h2>
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                            {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
+                                        </p>
+                                    </div>
                                 </div>
-                                <p className="text-3xl md:text-4xl font-black text-brand-600 shrink-0">
+                                <p className="text-3xl md:text-4xl font-black text-brand-600 shrink-0 sm:text-right">
                                     {formatMoney(order.total_paid || 0, currencyCode)}
                                 </p>
                             </CardContent>
@@ -1340,14 +1311,14 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                         </>
                                                     )}
                                                     <div className="flex items-end">
-                                                    <Button
-                                                        type="submit"
-                                                        className="h-11 w-full rounded-xl px-8 bg-brand-600 hover:bg-brand-700 font-bold"
-                                                        disabled={quoteSubmitting || (!isB2BOrder && shippingFeeInput === '') || (isB2BOrder && quoteUnitPriceInput === '')}
-                                                    >
-                                                        {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                                                        {isB2BOrder ? 'TUMA PROFORMA' : (order.shipping_fee !== null && order.shipping_fee !== undefined ? 'SASISHA GHARAMA' : 'TUMA GHARAMA')}
-                                                    </Button>
+                                                        <Button
+                                                            type="submit"
+                                                            className="h-11 w-full rounded-xl px-8 bg-brand-600 hover:bg-brand-700 font-bold"
+                                                            disabled={quoteSubmitting || (!isB2BOrder && shippingFeeInput === '') || (isB2BOrder && quoteUnitPriceInput === '')}
+                                                        >
+                                                            {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                                                            {isB2BOrder ? 'TUMA PROFORMA' : (order.shipping_fee !== null && order.shipping_fee !== undefined ? 'SASISHA GHARAMA' : 'TUMA GHARAMA')}
+                                                        </Button>
                                                     </div>
                                                 </div>
                                                 {isB2BOrder && (
@@ -1605,283 +1576,183 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 </div>
                                             </div>
                                         ) : (
-                                        <form onSubmit={submitDeliveryStatus} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                                            <div className="grid gap-3 md:grid-cols-2">
-                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                    Delivery Status
-                                                    <select
-                                                        value={deliveryStatusInput}
-                                                        onChange={(e) => setDeliveryStatusInput(e.target.value)}
-                                                        className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
-                                                    >
-                                                        {statusOptions.map((option) => (
-                                                            <option key={option.value} value={option.value}>{option.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </label>
-                                                <div className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                    Proof Photo/Video
-                                                    <label
-                                                        htmlFor="delivery-status-proofs"
-                                                        onDragOver={(event) => {
-                                                            event.preventDefault();
-                                                            setDeliveryProofDragging(true);
-                                                        }}
-                                                        onDragLeave={() => setDeliveryProofDragging(false)}
-                                                        onDrop={(event) => {
-                                                            event.preventDefault();
-                                                            setDeliveryProofDragging(false);
-                                                            addDeliveryStatusProofs(event.dataTransfer.files);
-                                                        }}
-                                                        className={cn(
-                                                            'mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed bg-white px-4 py-5 text-center transition',
-                                                            deliveryProofDragging ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-300 hover:border-brand-300 hover:bg-brand-50/40'
-                                                        )}
-                                                    >
-                                                        <input
-                                                            id="delivery-status-proofs"
-                                                            type="file"
-                                                            accept="image/*,video/*"
-                                                            multiple
-                                                            onChange={(e) => {
-                                                                addDeliveryStatusProofs(e.target.files);
-                                                                e.target.value = '';
-                                                            }}
-                                                            className="sr-only"
-                                                        />
-                                                        <FileUp className="mb-2 h-7 w-7 text-brand-600" />
-                                                        <span className="text-sm font-black normal-case tracking-normal text-slate-950">
-                                                            Tap to add photos/videos
-                                                        </span>
-                                                        <span className="mt-1 text-[11px] font-bold normal-case tracking-normal text-muted-foreground">
-                                                            Or drop files here. Up to 10 media files.
-                                                        </span>
-                                                    </label>
-                                                    {deliveryStatusProofs.length > 0 && (
-                                                        <div className="mt-2 grid gap-2 normal-case tracking-normal">
-                                                            {deliveryStatusProofs.map((file, index) => (
-                                                                <div key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                                                    <div className="min-w-0">
-                                                                        <p className="truncate text-xs font-black text-slate-900">{file.name}</p>
-                                                                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                                            {(file.size / 1024 / 1024).toFixed(1)} MB · {file.type?.startsWith('video/') ? 'Video' : 'Photo'}
-                                                                        </p>
-                                                                    </div>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => removeDeliveryStatusProof(index)}
-                                                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600"
-                                                                        aria-label={`Remove ${file.name}`}
-                                                                    >
-                                                                        <X className="h-4 w-4" />
-                                                                    </button>
-                                                                </div>
+                                            <form onSubmit={submitDeliveryStatus} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                                <div className="grid gap-3 md:grid-cols-2">
+                                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                        Delivery Status
+                                                        <select
+                                                            value={deliveryStatusInput}
+                                                            onChange={(e) => setDeliveryStatusInput(e.target.value)}
+                                                            className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                        >
+                                                            {statusOptions.map((option) => (
+                                                                <option key={option.value} value={option.value}>{option.label}</option>
                                                             ))}
+                                                        </select>
+                                                    </label>
+                                                    <div className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                        {isPackingStatus ? 'Packing Proof Photo/Video' : 'Proof Photo/Video'}
+                                                        <label
+                                                            htmlFor="delivery-status-proofs"
+                                                            onDragOver={(event) => {
+                                                                event.preventDefault();
+                                                                setDeliveryProofDragging(true);
+                                                            }}
+                                                            onDragLeave={() => setDeliveryProofDragging(false)}
+                                                            onDrop={(event) => {
+                                                                event.preventDefault();
+                                                                setDeliveryProofDragging(false);
+                                                                addDeliveryStatusProofs(event.dataTransfer.files);
+                                                            }}
+                                                            className={cn(
+                                                                'mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed bg-white px-4 py-5 text-center transition',
+                                                                deliveryProofDragging ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-300 hover:border-brand-300 hover:bg-brand-50/40'
+                                                            )}
+                                                        >
+                                                            <input
+                                                                id="delivery-status-proofs"
+                                                                type="file"
+                                                                accept="image/*,video/*"
+                                                                multiple
+                                                                onChange={(e) => {
+                                                                    addDeliveryStatusProofs(e.target.files);
+                                                                    e.target.value = '';
+                                                                }}
+                                                                className="sr-only"
+                                                            />
+                                                            <FileUp className="mb-2 h-7 w-7 text-brand-600" />
+                                                            <span className="text-sm font-black normal-case tracking-normal text-slate-950">
+                                                                Tap to add photos/videos
+                                                            </span>
+                                                            <span className="mt-1 text-[11px] font-bold normal-case tracking-normal text-muted-foreground">
+                                                                Or drop files here. Up to 10 media files.
+                                                            </span>
+                                                        </label>
+                                                        {deliveryStatusProofs.length > 0 && (
+                                                            <div className="mt-2 grid min-w-0 gap-2 normal-case tracking-normal">
+                                                                {deliveryStatusProofs.map((file, index) => (
+                                                                    <div key={`${file.name}-${file.size}-${index}`} className="flex w-full min-w-0 items-center justify-between gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <p className="truncate text-xs font-black text-slate-900">{file.name}</p>
+                                                                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                                                {(file.size / 1024 / 1024).toFixed(1)} MB · {file.type?.startsWith('video/') ? 'Video' : 'Photo'}
+                                                                            </p>
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => removeDeliveryStatusProof(index)}
+                                                                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600"
+                                                                            aria-label={`Remove ${file.name}`}
+                                                                        >
+                                                                            <X className="h-4 w-4" />
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {order.delivery.delivery_type === 'local_boda' && (
+                                                        <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                            Delivery Phone
+                                                            <input
+                                                                value={bodaPhone}
+                                                                onChange={(e) => setBodaPhone(e.target.value)}
+                                                                placeholder={order.delivery.boda_phone || '+2557...'}
+                                                                className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                            />
+                                                        </label>
+                                                    )}
+                                                    {needsTransportEvidence && (
+                                                        <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
+                                                            {isForwarderOrder && (
+                                                                <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground md:col-span-2">
+                                                                    Evidence Type
+                                                                    <select
+                                                                        value={forwarderEvidenceType}
+                                                                        onChange={(e) => setForwarderEvidenceType(e.target.value)}
+                                                                        className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                                    >
+                                                                        <option value="tracked_courier">Tracked courier (DHL/FedEx/UPS/SF etc.)</option>
+                                                                        <option value="manual_forwarder">Manual forwarder / cargo / bus receipt</option>
+                                                                        <option value="takeer_verified_forwarder">Takeer verified forwarder</option>
+                                                                    </select>
+                                                                </label>
+                                                            )}
+                                                            <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                                Transport Receipt / Waybill
+                                                                <input
+                                                                    type="file"
+                                                                    accept="image/*,application/pdf"
+                                                                    onChange={(e) => setDeliveryCourierReceipt(e.target.files?.[0] || null)}
+                                                                    className="mt-2 block w-full rounded-xl border border-input bg-white px-3 py-2 text-xs normal-case tracking-normal text-slate-700"
+                                                                />
+                                                                {deliveryCourierReceipt && (
+                                                                    <p className="mt-2 truncate text-[11px] font-bold normal-case tracking-normal text-brand-700">{deliveryCourierReceipt.name}</p>
+                                                                )}
+                                                            </label>
+                                                            <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                                {isForwarderOrder ? 'Carrier / Forwarder' : 'Bus / Cargo Company'}
+                                                                <input
+                                                                    value={busCompany}
+                                                                    onChange={(e) => setBusCompany(e.target.value)}
+                                                                    placeholder={isForwarderOrder ? 'Mf. DHL / Silent Ocean / local cargo' : 'Mf. Tashriff / BM Coach / cargo'}
+                                                                    className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                                />
+                                                            </label>
+                                                            <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                                Receipt / Waybill / Tracking # (optional)
+                                                                <input
+                                                                    value={waybillTrackingNumber}
+                                                                    onChange={(e) => setWaybillTrackingNumber(e.target.value)}
+                                                                    placeholder="Reference, waybill, or tracking number"
+                                                                    className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                                />
+                                                            </label>
+                                                            <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                                                Tracking Link (optional)
+                                                                <input
+                                                                    type="url"
+                                                                    value={trackingLink}
+                                                                    onChange={(e) => setTrackingLink(e.target.value)}
+                                                                    placeholder="https://..."
+                                                                    className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                                />
+                                                            </label>
                                                         </div>
                                                     )}
-                                                </div>
-                                                {order.delivery.delivery_type === 'local_boda' && (
-                                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                        Delivery Phone
-                                                        <input
-                                                            value={bodaPhone}
-                                                            onChange={(e) => setBodaPhone(e.target.value)}
-                                                            placeholder={order.delivery.boda_phone || '+2557...'}
-                                                            className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
+                                                    <label className="text-xs font-black uppercase tracking-widest text-muted-foreground md:col-span-2">
+                                                        Note
+                                                        <textarea
+                                                            value={deliveryStatusNote}
+                                                            onChange={(e) => setDeliveryStatusNote(e.target.value)}
+                                                            placeholder={isPackingStatus ? 'Mf. Package packed and sealed, ready for pickup.' : (isForwarderOrder ? 'Mf. Package dispatched to forwarder warehouse with courier proof.' : 'Mf. Package handed to rider, waiting for customer PIN.')}
+                                                            className="mt-2 min-h-[84px] w-full rounded-xl border border-input bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-950"
                                                         />
                                                     </label>
-                                                )}
-                                                {isForwarderOrder && ['with_boda', 'ready_at_terminal'].includes(deliveryStatusInput) && (
-                                                    <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
-                                                        <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground md:col-span-2">
-                                                            Evidence Type
-                                                            <select
-                                                                value={forwarderEvidenceType}
-                                                                onChange={(e) => setForwarderEvidenceType(e.target.value)}
-                                                                className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
-                                                            >
-                                                                <option value="tracked_courier">Tracked courier (DHL/FedEx/UPS/SF etc.)</option>
-                                                                <option value="manual_forwarder">Manual forwarder / cargo / bus receipt</option>
-                                                                <option value="takeer_verified_forwarder">Takeer verified forwarder</option>
-                                                            </select>
-                                                        </label>
-                                                        <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                            Transport Receipt / Waybill
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*,application/pdf"
-                                                                onChange={(e) => setDeliveryCourierReceipt(e.target.files?.[0] || null)}
-                                                                className="mt-2 block w-full rounded-xl border border-input bg-white px-3 py-2 text-xs normal-case tracking-normal text-slate-700"
-                                                            />
-                                                            {deliveryCourierReceipt && (
-                                                                <p className="mt-2 truncate text-[11px] font-bold normal-case tracking-normal text-brand-700">{deliveryCourierReceipt.name}</p>
-                                                            )}
-                                                        </label>
-                                                        <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                            Carrier / Forwarder
-                                                            <input
-                                                                value={busCompany}
-                                                                onChange={(e) => setBusCompany(e.target.value)}
-                                                                placeholder="Mf. DHL / Silent Ocean / local cargo"
-                                                                className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
-                                                            />
-                                                        </label>
-                                                        <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                            Receipt / Waybill / Tracking # (optional)
-                                                            <input
-                                                                value={waybillTrackingNumber}
-                                                                onChange={(e) => setWaybillTrackingNumber(e.target.value)}
-                                                                placeholder="Reference, waybill, or tracking number"
-                                                                className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
-                                                            />
-                                                        </label>
-                                                        <label className="rounded-2xl border border-slate-200 bg-white p-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
-                                                            Tracking Link (optional)
-                                                            <input
-                                                                type="url"
-                                                                value={trackingLink}
-                                                                onChange={(e) => setTrackingLink(e.target.value)}
-                                                                placeholder="https://..."
-                                                                className="mt-2 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm font-bold normal-case tracking-normal text-slate-950"
-                                                            />
-                                                        </label>
-                                                    </div>
-                                                )}
-                                                <label className="text-xs font-black uppercase tracking-widest text-muted-foreground md:col-span-2">
-                                                    Note
-                                                    <textarea
-                                                        value={deliveryStatusNote}
-                                                        onChange={(e) => setDeliveryStatusNote(e.target.value)}
-                                                        placeholder={isForwarderOrder ? 'Mf. Package dispatched to forwarder warehouse with courier proof.' : 'Mf. Package handed to rider, waiting for customer PIN.'}
-                                                        className="mt-2 min-h-[84px] w-full rounded-xl border border-input bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-950"
-                                                    />
-                                                </label>
-                                            </div>
-                                            <div className="mt-3 flex items-center justify-between gap-3">
-                                                <p className="text-xs text-muted-foreground">Delivery updates stay separate from payment status and build a proof timeline for both sides.</p>
-                                                <Button type="submit" className="rounded-xl font-bold" disabled={deliveryStatusSubmitting}>
-                                                    {deliveryStatusSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                    Save Status
-                                                </Button>
-                                            </div>
-                                        </form>
+                                                </div>
+                                                <div className="mt-3 flex items-center justify-between gap-3">
+                                                    <p className="text-xs text-muted-foreground">Delivery updates stay separate from payment status and build a proof timeline for both sides.</p>
+                                                    <Button type="submit" className="rounded-xl font-bold" disabled={deliveryStatusSubmitting}>
+                                                        {deliveryStatusSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                        Save Status
+                                                    </Button>
+                                                </div>
+                                            </form>
                                         )}
                                     </CardContent>
                                 </Card>
                             )}
 
-                            {order.is_escrow_order && (canDispatch || canVerifyPickup) && order.delivery?.delivery_type !== 'self_pickup' && !isForwarderOrder && (
+                            {order.is_escrow_order && canVerifyPickup && order.payment_status === 'escrow_locked' && ['local_boda', 'intercity_bus'].includes(order.delivery?.delivery_type) && (
                                 <Card className="rounded-2xl md:col-span-2">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                                             <Truck className="h-4 w-4 text-brand-600" />
-                                            {isForwarderOrder
-                                                ? 'Forwarder Drop-off Evidence'
-                                                : (order.payment_status === 'escrow_locked' ? 'Verification & Delivery Info' : 'Dispatch Evidence (Physical Only)')}
+                                            Verification & Delivery Info
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
-                                        {order.payment_status === 'awaiting_merchant_confirmation' && canDispatch && (
-                                            <>
-                                                {!isForwarderOrder && (
-                                                    <div className="grid gap-2 sm:grid-cols-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setDispatchMode('intercity')}
-                                                            className={`h-11 rounded-xl border text-sm font-bold ${dispatchMode === 'intercity' ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-input bg-background text-muted-foreground'}`}
-                                                        >
-                                                            Intercity Bus
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setDispatchMode('local')}
-                                                            className={`h-11 rounded-xl border text-sm font-bold ${dispatchMode === 'local' ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-input bg-background text-muted-foreground'}`}
-                                                        >
-                                                            Local
-                                                        </button>
-                                                    </div>
-                                                )}
-
-                                                <form onSubmit={submitDispatch} className="grid gap-3 md:grid-cols-2 mt-4">
-                                                    <label className="rounded-xl border border-input bg-background p-3 text-sm">
-                                                        <span className="mb-2 inline-flex items-center gap-2 font-semibold">
-                                                            <Camera className="h-4 w-4 text-brand-600" />
-                                                            Packing Proof
-                                                        </span>
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*,video/*"
-                                                            onChange={(e) => setDispatchVideo(e.target.files?.[0] || null)}
-                                                            className="mt-2 block w-full text-xs"
-                                                            required
-                                                        />
-                                                    </label>
-
-                                                    {dispatchMode === 'intercity' ? (
-                                                        <label className="rounded-xl border border-input bg-background p-3 text-sm">
-                                                            <span className="mb-2 inline-flex items-center gap-2 font-semibold">
-                                                                <ImageIcon className="h-4 w-4 text-brand-600" />
-                                                                {isForwarderOrder ? 'Courier Receipt / Waybill' : 'Transport Receipt / Waybill'}
-                                                            </span>
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*"
-                                                                onChange={(e) => setTransportReceipt(e.target.files?.[0] || null)}
-                                                                className="mt-2 block w-full text-xs"
-                                                                required
-                                                            />
-                                                        </label>
-                                                    ) : (
-                                                        <label className="rounded-xl border border-input bg-background p-3 text-sm">
-                                                            <span className="mb-2 inline-flex items-center gap-2 font-semibold">Delivery Phone (optional)</span>
-                                                            <input
-                                                                value={bodaPhone}
-                                                                onChange={(e) => setBodaPhone(e.target.value)}
-                                                                placeholder="+2557..."
-                                                                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                                            />
-                                                        </label>
-                                                    )}
-
-                                                    {dispatchMode === 'intercity' && (
-                                                        <>
-                                                            <label className="rounded-xl border border-input bg-background p-3 text-sm">
-                                                                <span className="mb-2 inline-flex items-center gap-2 font-semibold">{isForwarderOrder ? 'Courier / Cargo Company (optional)' : 'Bus Company (optional)'}</span>
-                                                                <input
-                                                                    value={busCompany}
-                                                                    onChange={(e) => setBusCompany(e.target.value)}
-                                                                    placeholder={isForwarderOrder ? 'Mf. SF Express / DHL / local cargo' : 'Mf. Tashriff'}
-                                                                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                                                />
-                                                            </label>
-                                                            <label className="rounded-xl border border-input bg-background p-3 text-sm">
-                                                                <span className="mb-2 inline-flex items-center gap-2 font-semibold">Waybill Tracking # (optional)</span>
-                                                                <input
-                                                                    value={waybillTrackingNumber}
-                                                                    onChange={(e) => setWaybillTrackingNumber(e.target.value)}
-                                                                    placeholder={isForwarderOrder ? 'Tracking / waybill number' : 'BUS-12345'}
-                                                                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                                                />
-                                                            </label>
-                                                        </>
-                                                    )}
-
-                                                    <div className="md:col-span-2 flex items-center justify-between gap-3 pt-2">
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {canDispatchNow
-                                                                ? (isForwarderOrder ? 'Weka packing proof na courier/waybill evidence ya mzigo kwenda forwarder.' : 'Weka ushahidi wa dispatch ili escrow iendelee salama.')
-                                                                : 'Dispatch imefungwa kwa status ya sasa ya order.'}
-                                                        </p>
-                                                        <Button type="submit" className="rounded-xl font-bold" disabled={!canDispatchNow || dispatchSubmitting}>
-                                                            {dispatchSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                                                            THIBITISHA DISPATCH
-                                                        </Button>
-                                                    </div>
-                                                </form>
-                                            </>
-                                        )}
-
-                                        {order.payment_status === 'escrow_locked' && canVerifyPickup && order.delivery?.delivery_type === 'local_boda' && (
+                                        {order.delivery?.delivery_type === 'local_boda' && (
                                             <div className="bg-brand-50/50 p-4 rounded-xl border border-brand-100 flex flex-col gap-3">
                                                 <p className="text-sm font-semibold text-brand-900">Delivery verification needed:</p>
                                                 <p className="text-sm">Dereva wako akishamkabidhi mteja mzigo, mteja atampa huyo dereva <strong>Release PIN</strong>. Ingiza hapa chini ili kupata pesa zako:</p>
@@ -1900,23 +1771,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             </div>
                                         )}
 
-                                        {order.payment_status === 'escrow_locked' && order.delivery?.delivery_type === 'intercity_bus' && (
+                                        {order.delivery?.delivery_type === 'intercity_bus' && (
                                             <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
                                                 <p className="text-sm font-bold text-indigo-900">In Transit (Mkoani)</p>
                                                 <p className="text-sm mt-1">Destination na bei ya mkoa vimehifadhiwa kwenye order. Pickup/drop-off office halisi itathibitishwa kwenye waybill/risiti au simu kutoka transporter. Mteja akichukua mzigo na kila kitu kiko sawa, atathibitisha kwenye App.</p>
-                                            </div>
-                                        )}
-
-                                        {(order.merchant_dispatch_video_url || order.delivery?.waybill_photo_url) && (
-                                            <div className="grid gap-2 text-sm md:grid-cols-2 pt-2 border-t mt-2">
-                                                <p className="truncate">
-                                                    <span className="text-muted-foreground text-xs uppercase font-black">Packing proof:</span>{' '}
-                                                    {order.merchant_dispatch_video_url ? <a className="font-semibold text-brand-600 underline" href={order.merchant_dispatch_video_url} target="_blank" rel="noreferrer">View</a> : 'N/A'}
-                                                </p>
-                                                <p className="truncate">
-                                                    <span className="text-muted-foreground text-xs uppercase font-black">Waybill/receipt:</span>{' '}
-                                                    {order.delivery?.waybill_photo_url ? <a className="font-semibold text-brand-600 underline" href={order.delivery.waybill_photo_url} target="_blank" rel="noreferrer">View</a> : 'N/A'}
-                                                </p>
                                             </div>
                                         )}
                                     </CardContent>

@@ -28,6 +28,7 @@ use App\Services\PlatformNotificationService;
 use App\Services\AdminAttentionService;
 use App\Services\PayoutPolicyService;
 use App\Services\SelcomPayoutService;
+use App\Services\WithdrawalAccountingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -461,6 +462,7 @@ class AdminController extends Controller
 
         DB::transaction(function () use ($withdrawal) {
             $withdrawal->update(['status' => 'approved']);
+            app(WithdrawalAccountingService::class)->recordSubmitted($withdrawal->fresh());
         });
 
         return response()->json(['message' => 'Withdrawal approved successfully.']);

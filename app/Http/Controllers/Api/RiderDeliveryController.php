@@ -27,7 +27,7 @@ class RiderDeliveryController extends Controller
     public function show(string $token): Response
     {
         $delivery = $this->deliveryForToken($token)
-            ->load(['order.merchant.locations', 'order.product', 'events']);
+            ->load(['order.merchant.locations']);
         $this->ensureReleasePin($delivery);
 
         return Inertia::render('RiderDelivery', [
@@ -101,7 +101,7 @@ class RiderDeliveryController extends Controller
 
         return response()->json([
             'message' => 'Status imehifadhiwa.',
-            'delivery' => $this->payload($delivery->fresh(['order.merchant.locations', 'order.product', 'events'])),
+            'delivery' => $this->payload($delivery->fresh(['order.merchant.locations'])),
         ]);
     }
 
@@ -174,7 +174,7 @@ class RiderDeliveryController extends Controller
 
         return response()->json([
             'message' => 'Mzigo umethibitishwa. Malipo yameidhinishwa.',
-            'delivery' => $this->payload($delivery->fresh(['order.merchant.locations', 'order.product', 'events'])),
+            'delivery' => $this->payload($delivery->fresh(['order.merchant.locations'])),
         ]);
     }
 
@@ -215,7 +215,7 @@ class RiderDeliveryController extends Controller
 
         return response()->json([
             'message' => 'Umeongezwa kwenye orodha ya kusubiri.',
-            'delivery' => $this->payload($delivery->fresh(['order.merchant.locations', 'order.product', 'events'])),
+            'delivery' => $this->payload($delivery->fresh(['order.merchant.locations'])),
         ]);
     }
 
@@ -249,9 +249,7 @@ class RiderDeliveryController extends Controller
             'id' => $delivery->id,
             'order_public_id' => $order?->public_id,
             'order_id' => $order?->id,
-            'title' => $order?->product?->title
-                ?: data_get($order?->offering_group_selection, 'group.title')
-                ?: 'Oda ya usafirishaji',
+            'title' => 'Mzigo wa Takeer',
             'merchant_name' => $order?->merchant?->display_name,
             'status' => $delivery->delivery_status,
             'delivery_type' => $delivery->delivery_type,
@@ -271,15 +269,7 @@ class RiderDeliveryController extends Controller
             ) : null,
             'rider_waitlist_joined' => $this->riderWaitlistJoined($delivery),
             'expires_at' => $delivery->rider_access_expires_at?->toISOString(),
-            'events' => $delivery->events->sortBy('created_at')->map(fn ($event) => [
-                'id' => $event->id,
-                'status' => $event->status,
-                'note' => $event->note,
-                'proof_url' => $event->proof_url,
-                'proof_type' => $event->proof_type,
-                'metadata' => $event->metadata,
-                'created_at' => $event->created_at?->toISOString(),
-            ])->values(),
+            'events' => [],
         ];
     }
 

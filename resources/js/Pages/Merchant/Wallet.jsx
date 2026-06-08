@@ -108,6 +108,8 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
     const isWalletEntryLedger = effectiveLedgerType === 'wallet-entry';
     const isWithdrawalLedger = effectiveLedgerType === 'withdrawal';
     const ledgerItems = history;
+    const withdrawalWalletDebit = Number(withdrawalQuote?.wallet_debit_amount || data.amount || 0);
+    const withdrawalExceedsBalance = Boolean(data.amount) && withdrawalWalletDebit > Number(wallet.balance || 0);
 
     useEffect(() => {
         fetchHistory();
@@ -143,7 +145,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
     }, [isWithdrawModalOpen, defaultPayoutCredential?.id]);
 
     useEffect(() => {
-        if (!isWithdrawModalOpen || !payoutCredentials.length || !data.amount || Number(data.amount) <= 0 || Number(data.amount) > wallet.balance) {
+        if (!isWithdrawModalOpen || !payoutCredentials.length || !data.amount || Number(data.amount) <= 0) {
             setWithdrawalQuote(null);
             setQuoteError('');
             setQuoteLoading(false);
@@ -873,6 +875,11 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                                             </td>
                                                             <td className="p-4 text-right">
                                                                 <p className="text-lg font-black">{formatMoney(item.merchant_amount ?? item.amount, item.merchant_currency_code || businessCurrencyCode)}</p>
+                                                                {Number(item.withdrawal_fee_amount || 0) > 0 && (
+                                                                    <p className="text-[10px] font-bold text-amber-600 mt-0.5">
+                                                                        Fee {formatMoney(item.withdrawal_fee_amount, item.withdrawal_fee_currency_code || item.merchant_currency_code || businessCurrencyCode)}
+                                                                    </p>
+                                                                )}
                                                                 {item.payout_currency_code && item.payout_currency_code !== (item.merchant_currency_code || businessCurrencyCode) && (
                                                                     <p className="text-[10px] font-bold text-muted-foreground mt-0.5">
                                                                         Pays {formatMoney(item.payout_amount ?? item.amount, item.payout_currency_code)}
@@ -916,6 +923,11 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                                                             ? formatMoney(item.merchant_amount ?? item.amount, item.merchant_currency_code || businessCurrencyCode)
                                                                             : formatMoney(item.amount)}
                                                                     </p>
+                                                                    {item.type === 'withdrawal' && Number(item.withdrawal_fee_amount || 0) > 0 && (
+                                                                        <p className="text-[10px] font-bold text-amber-600 mt-0.5">
+                                                                            Fee {formatMoney(item.withdrawal_fee_amount, item.withdrawal_fee_currency_code || item.merchant_currency_code || businessCurrencyCode)}
+                                                                        </p>
+                                                                    )}
                                                                     {item.type === 'withdrawal' && item.payout_currency_code && item.payout_currency_code !== (item.merchant_currency_code || businessCurrencyCode) && (
                                                                         <p className="text-[10px] font-bold text-muted-foreground mt-0.5">
                                                                             Pays {formatMoney(item.payout_amount ?? item.amount, item.payout_currency_code)}
@@ -1005,7 +1017,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                             </div>
                             <div className="flex justify-between text-xs text-muted-foreground">
                                 <span>Salio Lililopo: <span className="font-bold text-foreground">{formatMoney(wallet.balance)}</span></span>
-                                {data.amount && Number(data.amount) > wallet.balance && (
+                                {withdrawalExceedsBalance && (
                                     <span className="text-red-500">Salio halitoshi</span>
                                 )}
                             </div>
@@ -1084,34 +1096,59 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                 {quoteError ? (
                                     <p className="mt-3 text-xs font-bold text-red-600">{quoteError}</p>
                                 ) : withdrawalQuote ? (() => {
-                                    const convertedAmount = Number(withdrawalQuote.merchant_amount || 0) * Number(withdrawalQuote.effective_rate_merchant_to_payout || 0);
                                     const hasWithdrawalFee = Number(withdrawalQuote.withdrawal_fee_amount || 0) > 0;
                                     const hasFxSpread = Number(withdrawalQuote.fx_margin_bps || 0) > 0;
+                                    const merchantCurrency = withdrawalQuote.merchant_currency_code;
+                                    const payoutCurrency = withdrawalQuote.payout_currency_code;
+                                    const hasCurrencyExchange = merchantCurrency && payoutCurrency && merchantCurrency !== payoutCurrency;
+                                    const providerCost = Number(withdrawalQuote.provider_cost_amount || 0);
+                                    const markup = Number(withdrawalQuote.takeer_markup_amount || 0);
 
                                     return (
                                         <div className="mt-3 space-y-2">
                                             <div className="flex items-start justify-between gap-3 text-xs font-semibold text-slate-700">
                                                 <div>
-                                                    <span>Wallet debit</span>
+                                                    <span>Withdrawal principal</span>
                                                     <p className="mt-0.5 text-[10px] font-bold text-muted-foreground">
-                                                        {formatMoney(withdrawalQuote.merchant_amount, withdrawalQuote.merchant_currency_code)}
+                                                        Amount to send before fees
                                                     </p>
                                                 </div>
                                                 <span className="text-right font-black text-slate-900">
-                                                    {formatMoney(convertedAmount, withdrawalQuote.payout_currency_code)}
+                                                    {formatMoney(withdrawalQuote.merchant_principal_amount || withdrawalQuote.merchant_amount, withdrawalQuote.merchant_currency_code)}
                                                 </span>
                                             </div>
-                                            <div className="flex items-start justify-between gap-3 text-xs font-semibold text-slate-600">
-                                                <span>Exchange rate{hasFxSpread ? ' (includes spread)' : ''}</span>
-                                                <span className="text-right">
-                                                    1 {withdrawalQuote.merchant_currency_code} ≈ {formatFxRate(withdrawalQuote.effective_rate_merchant_to_payout)} {withdrawalQuote.payout_currency_code}
-                                                </span>
-                                            </div>
-                                            {hasWithdrawalFee && (
-                                                <div className="flex items-center justify-between gap-3 text-xs font-semibold text-amber-700">
-                                                    <span>Withdrawal fee</span>
-                                                    <span>-{formatMoney(withdrawalQuote.withdrawal_fee_amount, withdrawalQuote.withdrawal_fee_currency_code || withdrawalQuote.payout_currency_code)}</span>
+                                            {hasCurrencyExchange && (
+                                                <div className="flex items-start justify-between gap-3 text-xs font-semibold text-slate-600">
+                                                    <span>Exchange rate{hasFxSpread ? ' (includes spread)' : ''}</span>
+                                                    <span className="text-right">
+                                                        1 {merchantCurrency} ≈ {formatFxRate(withdrawalQuote.effective_rate_merchant_to_payout)} {payoutCurrency}
+                                                    </span>
                                                 </div>
+                                            )}
+                                            {hasWithdrawalFee && (
+                                                <>
+                                                    <div className="flex items-center justify-between gap-3 text-xs font-semibold text-amber-700">
+                                                        <span>Withdrawal fee</span>
+                                                        <span>{formatMoney(withdrawalQuote.withdrawal_fee_amount, withdrawalQuote.withdrawal_fee_currency_code || withdrawalQuote.merchant_currency_code)}</span>
+                                                    </div>
+                                                    {(providerCost > 0 || markup > 0) && (
+                                                        <p className="text-[10px] font-semibold leading-4 text-muted-foreground">
+                                                            Includes provider rail cost {formatMoney(providerCost, withdrawalQuote.provider_cost_currency_code || withdrawalQuote.payout_currency_code)}
+                                                            {markup > 0 ? ` + Takeer markup ${formatMoney(markup, withdrawalQuote.takeer_markup_currency_code || withdrawalQuote.merchant_currency_code)}` : ''}.
+                                                        </p>
+                                                    )}
+                                                </>
+                                            )}
+                                            <div className="flex items-center justify-between gap-3 text-xs font-black text-slate-900">
+                                                <span>Total wallet debit</span>
+                                                <span className={`text-right ${withdrawalExceedsBalance ? 'text-red-600' : 'text-slate-950'}`}>
+                                                    {formatMoney(withdrawalQuote.wallet_debit_amount, withdrawalQuote.merchant_currency_code)}
+                                                </span>
+                                            </div>
+                                            {withdrawalExceedsBalance && (
+                                                <p className="text-xs font-bold text-red-600">
+                                                    Salio halitoshi baada ya kuongeza ada ya withdrawal.
+                                                </p>
                                             )}
                                             <div className="border-t border-slate-200 pt-3">
                                                 <div className="flex items-center justify-between gap-3">
@@ -1179,7 +1216,7 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                             <Button type="button" variant="outline" className="w-full sm:w-auto h-11" onClick={() => setIsWithdrawModalOpen(false)}>
                                 Ghairi
                             </Button>
-                            <Button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 h-11 font-bold" disabled={processing || !payoutCredentials.length || !data.amount || Number(data.amount) <= 0 || Number(data.amount) > wallet.balance}>
+                            <Button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 h-11 font-bold" disabled={processing || !payoutCredentials.length || !data.amount || Number(data.amount) <= 0 || withdrawalExceedsBalance}>
                                 {processing ? 'Tafadhali subiri...' : 'Tuma Ombi la Pesa'}
                             </Button>
                         </DialogFooter>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FeePolicy;
+use App\Services\PaymentProviderCatalogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -12,6 +13,8 @@ class AdminFeePolicyController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $catalog = app(PaymentProviderCatalogService::class);
+
         $category = $request->query('category');
 
         $policies = FeePolicy::query()
@@ -24,7 +27,10 @@ class AdminFeePolicyController extends Controller
             ->latest()
             ->get();
 
-        return response()->json(['policies' => $policies]);
+        return response()->json([
+            'policies' => $policies,
+            'payment_channels' => $catalog->feePolicyChannelOptions(),
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -57,9 +63,12 @@ class AdminFeePolicyController extends Controller
 
     private function validated(Request $request): array
     {
+        app(PaymentProviderCatalogService::class)->ensureDefaults();
+
         $request->merge([
             'currency_code' => $request->filled('currency_code') ? strtoupper((string) $request->input('currency_code')) : null,
             'fixed_fee_currency_code' => $request->filled('fixed_fee_currency_code') ? strtoupper((string) $request->input('fixed_fee_currency_code')) : null,
+            'payment_channel' => $request->filled('payment_channel') ? strtolower((string) $request->input('payment_channel')) : null,
         ]);
 
         $data = $request->validate([
@@ -69,7 +78,13 @@ class AdminFeePolicyController extends Controller
             'country_code' => ['nullable', 'string', 'size:2'],
             'currency_code' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],
             'merchant_id' => ['nullable', 'integer', 'exists:merchants,id'],
-            'payment_channel' => ['nullable', 'string', 'max:80'],
+            'payment_channel' => [
+                'nullable',
+                'string',
+                'max:100',
+                Rule::requiredIf(fn () => $request->input('scope') === 'payment_channel'),
+                Rule::exists('payment_provider_channels', 'key'),
+            ],
             'fee_type' => ['required', Rule::in(['percentage', 'fixed', 'hybrid'])],
             'percentage_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'fixed_amount' => ['nullable', 'numeric', 'min:0'],

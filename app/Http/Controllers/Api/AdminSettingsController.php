@@ -432,32 +432,41 @@ class AdminSettingsController extends Controller
             ->where('status', 'pending')
             ->latest()
             ->get()
-            ->map(fn (WithdrawalRequest $withdrawal) => [
-                'id' => $withdrawal->id,
-                'amount' => (float) $withdrawal->amount,
-                'merchant_amount' => $withdrawal->merchant_amount !== null ? (float) $withdrawal->merchant_amount : (float) $withdrawal->amount,
-                'payout_amount' => $withdrawal->payout_amount !== null ? (float) $withdrawal->payout_amount : (float) $withdrawal->amount,
-                'merchant_currency_code' => $withdrawal->merchant_currency_code ?: $withdrawal->merchant?->currency?->code ?: 'TZS',
-                'payout_currency_code' => $withdrawal->payout_currency_code ?: $withdrawal->merchant_currency_code ?: $withdrawal->merchant?->currency?->code ?: 'TZS',
-                'fx_rate_merchant_to_payout' => $withdrawal->fx_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_rate_merchant_to_payout : null,
-                'fx_market_rate_merchant_to_payout' => $withdrawal->fx_market_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_market_rate_merchant_to_payout : null,
-                'fx_effective_rate_merchant_to_payout' => $withdrawal->fx_effective_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_effective_rate_merchant_to_payout : null,
-                'fx_spread_bps' => (int) $withdrawal->fx_spread_bps,
-                'fx_spread_amount' => $withdrawal->fx_spread_amount !== null ? (float) $withdrawal->fx_spread_amount : 0,
-                'fx_spread_currency_code' => $withdrawal->fx_spread_currency_code,
-                'fx_rate_date' => $withdrawal->fx_rate_date?->toDateString(),
-                'payout_snapshot' => $withdrawal->payout_snapshot ?: [],
-                'money_quote_snapshot' => $withdrawal->money_quote_snapshot ?: [],
-                'method' => $withdrawal->method,
-                'status' => $withdrawal->status,
-                'created_at' => $withdrawal->created_at?->toISOString(),
-                'user' => $withdrawal->user,
-                'merchant' => $withdrawal->merchant ? [
-                    'id' => $withdrawal->merchant->id,
-                    'display_name' => $withdrawal->merchant->display_name,
-                    'username' => $withdrawal->merchant->username,
-                ] : null,
-            ]);
+            ->map(function (WithdrawalRequest $withdrawal) {
+                $snapshot = $withdrawal->payout_snapshot ?: [];
+
+                return [
+                    'id' => $withdrawal->id,
+                    'amount' => (float) $withdrawal->amount,
+                    'merchant_amount' => $withdrawal->merchant_amount !== null ? (float) $withdrawal->merchant_amount : (float) $withdrawal->amount,
+                    'payout_amount' => $withdrawal->payout_amount !== null ? (float) $withdrawal->payout_amount : (float) $withdrawal->amount,
+                    'wallet_debit_amount' => (float) ($snapshot['wallet_debit_amount'] ?? 0),
+                    'withdrawal_fee_amount' => (float) ($snapshot['merchant_fee_amount'] ?? 0),
+                    'withdrawal_fee_currency_code' => $snapshot['merchant_fee_currency_code'] ?? null,
+                    'provider_cost_amount' => (float) ($snapshot['provider_cost_amount'] ?? 0),
+                    'provider_cost_currency_code' => $snapshot['provider_cost_currency_code'] ?? null,
+                    'merchant_currency_code' => $withdrawal->merchant_currency_code ?: $withdrawal->merchant?->currency?->code ?: 'TZS',
+                    'payout_currency_code' => $withdrawal->payout_currency_code ?: $withdrawal->merchant_currency_code ?: $withdrawal->merchant?->currency?->code ?: 'TZS',
+                    'fx_rate_merchant_to_payout' => $withdrawal->fx_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_rate_merchant_to_payout : null,
+                    'fx_market_rate_merchant_to_payout' => $withdrawal->fx_market_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_market_rate_merchant_to_payout : null,
+                    'fx_effective_rate_merchant_to_payout' => $withdrawal->fx_effective_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_effective_rate_merchant_to_payout : null,
+                    'fx_spread_bps' => (int) $withdrawal->fx_spread_bps,
+                    'fx_spread_amount' => $withdrawal->fx_spread_amount !== null ? (float) $withdrawal->fx_spread_amount : 0,
+                    'fx_spread_currency_code' => $withdrawal->fx_spread_currency_code,
+                    'fx_rate_date' => $withdrawal->fx_rate_date?->toDateString(),
+                    'payout_snapshot' => $withdrawal->payout_snapshot ?: [],
+                    'money_quote_snapshot' => $withdrawal->money_quote_snapshot ?: [],
+                    'method' => $withdrawal->method,
+                    'status' => $withdrawal->status,
+                    'created_at' => $withdrawal->created_at?->toISOString(),
+                    'user' => $withdrawal->user,
+                    'merchant' => $withdrawal->merchant ? [
+                        'id' => $withdrawal->merchant->id,
+                        'display_name' => $withdrawal->merchant->display_name,
+                        'username' => $withdrawal->merchant->username,
+                    ] : null,
+                ];
+            });
 
         return response()->json(['withdrawals' => $withdrawals]);
     }
@@ -469,26 +478,38 @@ class AdminSettingsController extends Controller
         $platformRevenueQuery = Transaction::query()->whereIn('type', ['order_revenue', 'platform_fee']);
         $baseCurrencyCode = (string) (Transaction::query()->whereNotNull('base_currency_code')->value('base_currency_code') ?: 'USD');
 
-        $baseFeeSql = 'COALESCE(SUM(CASE
-            WHEN fee_amount_base IS NOT NULL THEN fee_amount_base
-            WHEN gross_amount_base IS NOT NULL AND net_amount_base IS NOT NULL AND gross_amount_base > net_amount_base THEN gross_amount_base - net_amount_base
-            ELSE 0
-        END), 0) as total';
+        $baseFeeSql = 'COALESCE(SUM(COALESCE(fee_amount_base, 0)), 0) as total';
+        $baseProviderCostSql = 'COALESCE(SUM(COALESCE(provider_cost_amount_base, 0)), 0) as total';
+        $baseTakeerMarginSql = 'COALESCE(SUM(COALESCE(takeer_margin_amount_base, 0)), 0) as total';
 
         $totalGmv = (float) (clone $revenueQuery)->sum('gross_amount_base');
         $totalNetToMerchants = (float) (clone $revenueQuery)->sum('net_amount_base');
         $totalTakeerFees = (float) (clone $platformRevenueQuery)
             ->selectRaw($baseFeeSql)
             ->value('total');
+        $totalProviderCosts = (float) (clone $platformRevenueQuery)
+            ->selectRaw($baseProviderCostSql)
+            ->value('total');
+        $totalTakeerMargin = (float) (clone $platformRevenueQuery)
+            ->selectRaw($baseTakeerMarginSql)
+            ->value('total');
 
         $todayTakeerFees = (float) (clone $platformRevenueQuery)
             ->whereDate('created_at', now()->toDateString())
             ->selectRaw($baseFeeSql)
             ->value('total');
+        $todayTakeerMargin = (float) (clone $platformRevenueQuery)
+            ->whereDate('created_at', now()->toDateString())
+            ->selectRaw($baseTakeerMarginSql)
+            ->value('total');
 
         $thisMonthTakeerFees = (float) (clone $platformRevenueQuery)
             ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
             ->selectRaw($baseFeeSql)
+            ->value('total');
+        $thisMonthTakeerMargin = (float) (clone $platformRevenueQuery)
+            ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->selectRaw($baseTakeerMarginSql)
             ->value('total');
 
         $hasOrderFxAudit = Schema::hasColumn('orders', 'fx_spread_amount');
@@ -606,7 +627,9 @@ class AdminSettingsController extends Controller
         $nativeCurrencyTotals = (clone $revenueQuery)
             ->selectRaw('currency_code')
             ->selectRaw('COALESCE(SUM(gross_amount), 0) as total_gmv')
-            ->selectRaw('COALESCE(SUM(CASE WHEN fee_amount > 0 THEN fee_amount WHEN gross_amount > net_amount THEN gross_amount - net_amount ELSE 0 END), 0) as total_takeer_fees')
+            ->selectRaw('COALESCE(SUM(COALESCE(fee_amount, 0)), 0) as total_takeer_fees')
+            ->selectRaw('COALESCE(SUM(COALESCE(provider_cost_amount, 0)), 0) as total_provider_costs')
+            ->selectRaw('COALESCE(SUM(COALESCE(takeer_margin_amount, 0)), 0) as total_takeer_margin')
             ->selectRaw('COALESCE(SUM(net_amount), 0) as total_net_to_merchants')
             ->selectRaw('COUNT(*) as transaction_count')
             ->groupBy('currency_code')
@@ -616,6 +639,8 @@ class AdminSettingsController extends Controller
                 'currency_code' => $row->currency_code ?: 'TZS',
                 'total_gmv' => (float) $row->total_gmv,
                 'total_takeer_fees' => (float) $row->total_takeer_fees,
+                'total_provider_costs' => (float) $row->total_provider_costs,
+                'total_takeer_margin' => (float) $row->total_takeer_margin,
                 'total_net_to_merchants' => (float) $row->total_net_to_merchants,
                 'transaction_count' => (int) $row->transaction_count,
             ])
@@ -632,6 +657,8 @@ class AdminSettingsController extends Controller
             ->selectRaw('COALESCE(SUM(transactions.gross_amount), 0) as native_gmv')
             ->selectRaw('COALESCE(SUM(transactions.gross_amount_base), 0) as base_gmv')
             ->selectRaw('COALESCE(SUM(transactions.fee_amount_base), 0) as base_takeer_fees')
+            ->selectRaw('COALESCE(SUM(COALESCE(transactions.provider_cost_amount_base, 0)), 0) as base_provider_costs')
+            ->selectRaw('COALESCE(SUM(COALESCE(transactions.takeer_margin_amount_base, 0)), 0) as base_takeer_margin')
             ->selectRaw('COUNT(*) as transaction_count')
             ->groupBy(DB::raw("COALESCE(countries.iso_alpha2, orders.country_code, 'TZ')"))
             ->groupBy(DB::raw("COALESCE(countries.name, orders.country_code, 'Tanzania')"))
@@ -645,6 +672,8 @@ class AdminSettingsController extends Controller
                 'native_gmv' => (float) $row->native_gmv,
                 'base_gmv' => (float) $row->base_gmv,
                 'base_takeer_fees' => (float) $row->base_takeer_fees,
+                'base_provider_costs' => (float) $row->base_provider_costs,
+                'base_takeer_margin' => (float) $row->base_takeer_margin,
                 'transaction_count' => (int) $row->transaction_count,
             ])
             ->values();
@@ -657,10 +686,8 @@ class AdminSettingsController extends Controller
                 $gross = (float) $transaction->gross_amount;
                 $net = (float) $transaction->net_amount;
                 $fee = (float) $transaction->fee_amount;
-
-                if ($fee <= 0 && $gross > $net) {
-                    $fee = round($gross - $net, 2);
-                }
+                $providerCost = (float) ($transaction->provider_cost_amount ?? 0);
+                $takeerMargin = (float) ($transaction->takeer_margin_amount ?? 0);
 
                 return [
                     'id' => $transaction->id,
@@ -671,10 +698,14 @@ class AdminSettingsController extends Controller
                     'fx_rate_date' => $transaction->fx_rate_date?->toDateString(),
                     'gross_amount' => $gross,
                     'fee_amount' => $fee,
+                    'provider_cost_amount' => $providerCost,
+                    'takeer_margin_amount' => $takeerMargin,
                     'net_amount' => $net,
                     'tax_amount' => (float) $transaction->tax_amount,
                     'gross_amount_base' => (float) $transaction->gross_amount_base,
-                    'fee_amount_base' => (float) ($transaction->fee_amount_base ?: max(0, (float) $transaction->gross_amount_base - (float) $transaction->net_amount_base)),
+                    'fee_amount_base' => (float) ($transaction->fee_amount_base ?? 0),
+                    'provider_cost_amount_base' => (float) ($transaction->provider_cost_amount_base ?? 0),
+                    'takeer_margin_amount_base' => (float) ($transaction->takeer_margin_amount_base ?? 0),
                     'net_amount_base' => (float) $transaction->net_amount_base,
                     'tax_amount_base' => (float) $transaction->tax_amount_base,
                     'reference' => $transaction->reference,
@@ -703,8 +734,12 @@ class AdminSettingsController extends Controller
                 'base_currency_code' => $baseCurrencyCode,
                 'total_gmv' => $totalGmv,
                 'total_takeer_fees' => $totalTakeerFees,
+                'total_provider_costs' => $totalProviderCosts,
+                'total_takeer_margin' => $totalTakeerMargin,
                 'today_takeer_fees' => $todayTakeerFees,
+                'today_takeer_margin' => $todayTakeerMargin,
                 'this_month_takeer_fees' => $thisMonthTakeerFees,
+                'this_month_takeer_margin' => $thisMonthTakeerMargin,
                 'total_fx_spread' => round($orderFxSpreadBase + $withdrawalFxSpreadBase, 2),
                 'payin_fx_spread' => round($orderFxSpreadBase, 2),
                 'payout_fx_spread' => round($withdrawalFxSpreadBase, 2),

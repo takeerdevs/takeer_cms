@@ -634,69 +634,119 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const digitalContentTypes = [
         {
             key: 'file',
-            label: 'General File',
+            label: 'Faili ya kawaida',
             icon: File,
-            description: 'Any secure digital download.',
-            previewHint: 'Use Media za Bidhaa for a cover image or short demo preview.',
+            description: 'PDF, ZIP, Word, Excel, slides, au faili mchanganyiko.',
+            previewHint: 'Weka cover, picha ya mfano, au video fupi kwenye Media za Bidhaa.',
             uploadHint: 'PDF, ZIP, audio, video, docs, sheets, slides',
             accept: '.pdf,.epub,.zip,.rar,.7z,.mp4,.mp3,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt',
+            deliveryMode: 'upload',
         },
         {
             key: 'ebook',
             label: 'E-book / PDF',
             icon: BookOpen,
-            description: 'Books, guides, reports, workbooks.',
-            previewHint: 'Add a cover, sample page, or short flip-through in Media za Bidhaa.',
+            description: 'Kitabu, guide, report, workbook, au notes.',
+            previewHint: 'Weka cover, sample page, au video fupi ya kuonyesha ndani ya kitabu.',
             uploadHint: 'PDF, EPUB, DOCX, ZIP bonus files',
             accept: '.pdf,.epub,.doc,.docx,.zip',
+            deliveryMode: 'upload',
+        },
+        {
+            key: 'video',
+            label: 'Video',
+            icon: PlayCircle,
+            description: 'Lesson, tutorial, movie, au darasa lililorekodiwa.',
+            previewHint: 'Weka thumbnail, trailer, au clip fupi ya kuvutia mteja.',
+            uploadHint: 'MP4, MOV, WEBM',
+            accept: 'video/mp4,video/quicktime,video/webm',
+            deliveryMode: 'video_stream',
+        },
+        {
+            key: 'audio',
+            label: 'Audio / Music',
+            icon: Music,
+            description: 'Wimbo, beat, podcast, Audio Book, au somo la sauti.',
+            previewHint: 'Weka cover art, sample clip, au promo fupi kwenye Media za Bidhaa.',
+            uploadHint: 'MP3, WAV, M4A, AAC, OGG, FLAC',
+            accept: 'audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/flac',
+            deliveryMode: 'audio_stream',
+        },
+        {
+            key: 'gallery',
+            label: 'Photo Pack',
+            icon: Images,
+            description: 'Picha, artwork, wallpaper, au gallery ya kulipia.',
+            previewHint: 'Weka sample images au previews zenye watermark kwenye Media za Bidhaa.',
+            uploadHint: 'JPG, PNG, WEBP',
+            accept: 'image/jpeg,image/png,image/webp',
+            deliveryMode: 'gallery_pack',
         },
         {
             key: 'template_asset',
             label: 'Template',
             icon: Layers,
-            description: 'Canva, Figma, Notion, Excel, pitch deck templates.',
-            previewHint: 'Add screenshots, a finished example, or a short screen recording in Media za Bidhaa.',
+            description: 'Template za Canva, Figma, Notion, Excel, au pitch deck.',
+            previewHint: 'Weka screenshot, mfano uliokamilika, au screen recording fupi.',
             uploadHint: 'ZIP, FIG, SKETCH, XD, PPTX, XLSX, DOCX, PDF',
             accept: '.zip,.rar,.7z,.fig,.sketch,.xd,.ppt,.pptx,.xls,.xlsx,.doc,.docx,.pdf,.txt',
+            deliveryMode: 'upload',
         },
         {
             key: 'creative_asset',
-            label: 'Creative Asset',
+            label: 'Design Asset',
             icon: Palette,
-            description: 'Design files, presets, fonts, brand kits, 3D/video assets.',
-            previewHint: 'Add mockups, before/after previews, swatches, or rendered examples in Media za Bidhaa.',
+            description: 'Design files, presets, fonts, brand kit, au asset za video/3D.',
+            previewHint: 'Weka mockup, before/after, swatches, au mfano uliorenderiwa.',
             uploadHint: 'PSD, AI, EPS, SVG, presets, fonts, AEP, 3D files, ZIP',
             accept: '.zip,.rar,.7z,.psd,.ai,.eps,.svg,.ase,.abr,.pat,.atn,.xmp,.lrtemplate,.dng,.otf,.ttf,.woff,.woff2,.aep,.prproj,.fcpxml,.blend,.c4d,.obj,.fbx,.glb,.gltf',
+            deliveryMode: 'upload',
         },
         {
             key: 'software',
             label: 'Software / Code',
             icon: Code2,
-            description: 'Source code, scripts, plugins, configs.',
-            previewHint: 'Add screenshots, demo video, changelog, or setup result in Media za Bidhaa.',
+            description: 'Source code, scripts, plugins, config, au app files.',
+            previewHint: 'Weka screenshot, demo video, changelog, au setup result.',
             uploadHint: 'ZIP, 7Z, docs, config packs',
             accept: '.zip,.rar,.7z,.pdf,.txt,.doc,.docx',
+            deliveryMode: 'upload',
         },
         {
             key: 'document',
             label: 'Document Pack',
             icon: FileText,
             description: 'Contracts, spreadsheets, pitch decks, worksheets.',
-            previewHint: 'Add a cover, blurred sample page, or chart screenshot in Media za Bidhaa.',
+            previewHint: 'Weka cover, sample page iliyofichwa kidogo, au chart screenshot.',
             uploadHint: 'PDF, DOCX, XLSX, PPTX, ZIP',
             accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip',
+            deliveryMode: 'upload',
         },
         {
             key: 'custom_commission',
             label: 'Custom Work',
             icon: PenLine,
-            description: 'Custom beats, edits, logos, files, reports, or design work.',
-            previewHint: 'Add portfolio samples, past results, or a short process video in Media za Bidhaa.',
+            description: 'Logo, edit, beat, report, design, au kazi utakayomalizia kwa oda.',
+            previewHint: 'Weka portfolio samples, kazi za nyuma, au video fupi ya process yako.',
             uploadHint: 'No file now. Upload the final delivery from the customer order later.',
             accept: '',
+            deliveryMode: 'custom_delivery',
         },
     ];
     const selectedDigitalContentType = digitalContentTypes.find(item => item.key === digitalContentType) || digitalContentTypes[0];
+    const selectDigitalContentType = (item) => {
+        setDigitalContentType(item.key);
+        if (item.deliveryMode) {
+            setDigitalDeliveryMode(item.deliveryMode);
+        }
+    };
+    const selectDigitalDeliveryMode = (mode) => {
+        setDigitalDeliveryMode(mode);
+        if (mode === 'video_stream') setDigitalContentType('video');
+        if (mode === 'audio_stream') setDigitalContentType('audio');
+        if (mode === 'gallery_pack') setDigitalContentType('gallery');
+        if (mode === 'custom_delivery') setDigitalContentType('custom_commission');
+    };
     const menuSections = ['Breakfast', 'Lunch', 'Dinner', 'Drinks', 'Desserts', 'Snacks', 'Combos', 'Add-ons', 'Main menu'];
     const menuItemTypes = [
         { key: 'food', label: 'Food' },
@@ -5066,87 +5116,21 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             </div>
 
 
-                            {/* ─── DIGITAL: delivery mode toggle ─── */}
+                            {/* ─── DIGITAL: product kind and delivery ─── */}
                             {step === 'digital' && (
                                 <div className="space-y-3">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Jinsi ya Kupeleka Bidhaa kwa Mteja</label>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                        <button
-                                            onClick={() => setDigitalDeliveryMode('upload')}
-                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'upload'
-                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                : 'border-border text-muted-foreground hover:border-blue-200'
-                                                }`}
-                                        >
-                                            <FileUp className="h-5 w-5" />
-                                            <span className="text-[11px] font-bold">Single File</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setDigitalDeliveryMode('video_stream')}
-                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'video_stream'
-                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                : 'border-border text-muted-foreground hover:border-blue-200'
-                                                }`}
-                                        >
-                                            <PlayCircle className="h-5 w-5" />
-                                            <span className="text-[11px] font-bold">Video Stream</span>
-                                        </button>
-                                        <button
-                                            onClick={() => setDigitalDeliveryMode('link')}
-                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'link'
-                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                : 'border-border text-muted-foreground hover:border-blue-200'
-                                                }`}
-                                        >
-                                            <ExternalLink className="h-5 w-5" />
-                                            <span className="text-[11px] font-bold">External Link</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setDigitalDeliveryMode('audio_stream')}
-                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'audio_stream'
-                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                : 'border-border text-muted-foreground hover:border-blue-200'
-                                                }`}
-                                        >
-                                            <Music className="h-5 w-5" />
-                                            <span className="text-[11px] font-bold">Audio Stream</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setDigitalDeliveryMode('gallery_pack')}
-                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'gallery_pack'
-                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                : 'border-border text-muted-foreground hover:border-blue-200'
-                                                }`}
-                                        >
-                                            <Images className="h-5 w-5" />
-                                            <span className="text-[11px] font-bold">Gallery Pack</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setDigitalDeliveryMode('custom_delivery');
-                                                setDigitalContentType('custom_commission');
-                                            }}
-                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'custom_delivery'
-                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                : 'border-border text-muted-foreground hover:border-blue-200'
-                                                }`}
-                                        >
-                                            <PenLine className="h-5 w-5" />
-                                            <span className="text-[11px] font-bold">Custom Delivery</span>
-                                        </button>
-                                    </div>
-
                                     <div className="space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
                                         <div className="flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2">
                                                 <Palette className="h-4 w-4 text-blue-700" />
-                                                <label className="text-xs font-black text-blue-700 uppercase tracking-wider">
-                                                    Content label and preview
-                                                </label>
+                                                <div>
+                                                    <label className="text-xs font-black text-blue-700 uppercase tracking-wider">
+                                                        1. Unauza nini?
+                                                    </label>
+                                                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+                                                        Chagua aina inayofanana zaidi. Takeer itaweka namna rahisi ya kumpa mteja bidhaa hii.
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -5159,7 +5143,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     <button
                                                         key={item.key}
                                                         type="button"
-                                                        onClick={() => setDigitalContentType(item.key)}
+                                                        onClick={() => selectDigitalContentType(item)}
                                                         className={`min-h-[78px] rounded-2xl border px-3 py-3 text-left transition-all ${selected
                                                             ? 'border-blue-500 bg-white text-blue-700 shadow-sm ring-2 ring-blue-100'
                                                             : 'border-blue-100 bg-white/80 text-slate-600 hover:border-blue-300'
@@ -5183,7 +5167,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     {React.createElement(selectedDigitalContentType.icon, { className: 'h-4 w-4' })}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className="text-xs font-black uppercase tracking-wider text-blue-700">Preview guidance</p>
+                                                    <p className="text-xs font-black uppercase tracking-wider text-blue-700">Picha / preview ya kuuza bidhaa</p>
                                                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
                                                         {selectedDigitalContentType.previewHint}
                                                     </p>
@@ -5194,7 +5178,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                         {(digitalContentType === 'template_asset' || digitalContentType === 'creative_asset') && (
                                             <div className="grid sm:grid-cols-1 gap-3">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Usage license</label>
+                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Ruhusa ya matumizi</label>
                                                     <select
                                                         value={digitalUsageLicense}
                                                         onChange={(e) => setDigitalUsageLicense(e.target.value)}
@@ -5206,7 +5190,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                     </select>
                                                 </div>
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Buyer instructions</label>
+                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Maelekezo kwa mnunuzi</label>
                                                     <Textarea
                                                         value={digitalAccessInstructions}
                                                         onChange={(e) => setDigitalAccessInstructions(e.target.value)}
@@ -5216,6 +5200,85 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 </div>
                                             </div>
                                         )}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">2. Mteja atapokea vipi?</label>
+                                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                                                Tumechagua njia inayofaa kwa {selectedDigitalContentType.label}. Unaweza kubadilisha kama unahitaji.
+                                            </p>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => selectDigitalDeliveryMode('upload')}
+                                                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'upload'
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                    : 'border-border text-muted-foreground hover:border-blue-200'
+                                                    }`}
+                                            >
+                                                <FileUp className="h-5 w-5" />
+                                                <span className="text-[11px] font-bold">Pakia faili sasa</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => selectDigitalDeliveryMode('video_stream')}
+                                                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'video_stream'
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                    : 'border-border text-muted-foreground hover:border-blue-200'
+                                                    }`}
+                                            >
+                                                <PlayCircle className="h-5 w-5" />
+                                                <span className="text-[11px] font-bold">Video ndani ya Takeer</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => selectDigitalDeliveryMode('link')}
+                                                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'link'
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                    : 'border-border text-muted-foreground hover:border-blue-200'
+                                                    }`}
+                                            >
+                                                <ExternalLink className="h-5 w-5" />
+                                                <span className="text-[11px] font-bold">Nina link tayari</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => selectDigitalDeliveryMode('audio_stream')}
+                                                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'audio_stream'
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                    : 'border-border text-muted-foreground hover:border-blue-200'
+                                                    }`}
+                                            >
+                                                <Music className="h-5 w-5" />
+                                                <span className="text-[11px] font-bold">Audio ndani ya Takeer</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => selectDigitalDeliveryMode('gallery_pack')}
+                                                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'gallery_pack'
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                    : 'border-border text-muted-foreground hover:border-blue-200'
+                                                    }`}
+                                            >
+                                                <Images className="h-5 w-5" />
+                                                <span className="text-[11px] font-bold">Pack ya picha</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    selectDigitalDeliveryMode('custom_delivery');
+                                                }}
+                                                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${digitalDeliveryMode === 'custom_delivery'
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                    : 'border-border text-muted-foreground hover:border-blue-200'
+                                                    }`}
+                                            >
+                                                <PenLine className="h-5 w-5" />
+                                                <span className="text-[11px] font-bold">Nitamalizia baadae</span>
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Direct file upload (Single) */}
@@ -5838,11 +5901,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     <div className="flex items-center gap-2">
                                         <ShieldCheck className="h-4 w-4 text-blue-700" />
                                         <label className="text-xs font-black text-blue-700 uppercase tracking-wider">
-                                            Access Group (Optional)
+                                            Kikundi cha Ruhusa (Si lazima)
                                         </label>
                                     </div>
                                     <p className="text-[11px] text-blue-900/80">
-                                        Assign this download to a subscription or bundle so only entitled users can access it. You can still keep standalone price if you want.
+                                        Unganisha bidhaa hii na subscription au bundle ili wateja wenye ruhusa tu waipate. Bado unaweza kuweka bei ya kununua peke yake kama unataka.
                                     </p>
 
                                     <div className="flex p-1 bg-white rounded-xl border border-blue-100">
@@ -5880,9 +5943,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
 
                                     <div className="grid gap-2 max-h-44 overflow-y-auto pr-1">
                                         {promotablesLoading ? (
-                                            <p className="text-xs text-blue-700/70 py-2">Loading access groups...</p>
+                                            <p className="text-xs text-blue-700/70 py-2">Inapakia vikundi vya ruhusa...</p>
                                         ) : (digitalAccessTab === 'plan' ? promotables.plans : promotables.bundles).length === 0 ? (
-                                            <p className="text-xs text-blue-700/70 py-2 italic">No {digitalAccessTab === 'plan' ? 'subscriptions' : 'bundles'} found.</p>
+                                            <p className="text-xs text-blue-700/70 py-2 italic">
+                                                {digitalAccessTab === 'plan' ? 'Hujatengeneza Subscriptions.' : 'Hujatengeneza Bundles.'}
+                                            </p>
                                         ) : (
                                             (digitalAccessTab === 'plan' ? promotables.plans : promotables.bundles).map((group) => (
                                                 <button

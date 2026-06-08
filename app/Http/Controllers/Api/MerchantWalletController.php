@@ -9,9 +9,9 @@ use App\Models\Order;
 use App\Models\Transaction;
 use App\Models\WithdrawalRequest;
 use App\Services\CurrencyConversionService;
-use App\Services\MoneyQuoteService;
 use App\Services\PaymentChannelRouter;
 use App\Services\StepUpVerificationService;
+use App\Services\WithdrawalQuoteService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -202,11 +202,18 @@ class MerchantWalletController extends Controller
 
     private function mapWithdrawal(WithdrawalRequest $withdrawal): array
     {
+        $snapshot = $withdrawal->payout_snapshot ?: [];
+
         return [
             'id' => $withdrawal->id,
             'amount' => (float) $withdrawal->amount,
             'merchant_amount' => $withdrawal->merchant_amount !== null ? (float) $withdrawal->merchant_amount : (float) $withdrawal->amount,
             'payout_amount' => $withdrawal->payout_amount !== null ? (float) $withdrawal->payout_amount : (float) $withdrawal->amount,
+            'wallet_debit_amount' => (float) ($snapshot['wallet_debit_amount'] ?? 0),
+            'withdrawal_fee_amount' => (float) ($snapshot['merchant_fee_amount'] ?? 0),
+            'withdrawal_fee_currency_code' => $snapshot['merchant_fee_currency_code'] ?? null,
+            'provider_cost_amount' => (float) ($snapshot['provider_cost_amount'] ?? 0),
+            'provider_cost_currency_code' => $snapshot['provider_cost_currency_code'] ?? null,
             'merchant_currency_code' => $withdrawal->merchant_currency_code,
             'payout_currency_code' => $withdrawal->payout_currency_code,
             'fx_rate_merchant_to_payout' => $withdrawal->fx_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_rate_merchant_to_payout : null,
@@ -301,18 +308,14 @@ class MerchantWalletController extends Controller
                 $validated['merchant_payout_credential_id'] ?? null
             );
             $payoutCurrencyCode = $channel['currency_code'];
-            if ($limitError = $this->withdrawalLimitError((float) $validated['amount'], $merchantCurrencyCode, $channel)) {
+            $channel['fx_margin_bps'] = (int) ($channel['fx_margin_bps'] ?? $this->withdrawalFxMarginBps((string) $channel['method']));
+            $quote = app(WithdrawalQuoteService::class)->quote($merchant, (float) $validated['amount'], $channel);
+
+            if ($limitError = app(WithdrawalQuoteService::class)->limitError($quote, $channel)) {
                 return response()->json(['message' => $limitError], 422);
             }
 
-            $moneySnapshot = app(MoneyQuoteService::class)->payoutQuote(
-                (float) $validated['amount'],
-                $merchantCurrencyCode,
-                $payoutCurrencyCode,
-                (int) ($channel['fx_margin_bps'] ?? $this->withdrawalFxMarginBps((string) $channel['method'])),
-            );
-
-            return response()->json($this->withdrawalQuotePayload($moneySnapshot, $channel));
+            return response()->json($this->withdrawalQuotePayload($quote, $channel));
         } catch (\Throwable $exception) {
             Log::warning('Withdrawal quote failed', [
                 'merchant_id' => $merchant->id,
@@ -373,19 +376,14 @@ class MerchantWalletController extends Controller
         $method = $channel['method'];
         $payoutCurrencyCode = $channel['currency_code'];
 
-        if ($limitError = $this->withdrawalLimitError($amount, $merchantCurrencyCode, $channel)) {
+        $channel['fx_margin_bps'] = (int) ($channel['fx_margin_bps'] ?? $this->withdrawalFxMarginBps((string) $channel['method']));
+        $quote = app(WithdrawalQuoteService::class)->quote($merchant, $amount, $channel);
+
+        if ($limitError = app(WithdrawalQuoteService::class)->limitError($quote, $channel)) {
             return back()->withErrors([
                 'amount' => $limitError,
             ]);
         }
-
-        $moneySnapshot = app(MoneyQuoteService::class)->payoutQuote(
-            $amount,
-            $merchantCurrencyCode,
-            $payoutCurrencyCode,
-            (int) ($channel['fx_margin_bps'] ?? $this->withdrawalFxMarginBps((string) $channel['method'])),
-        );
-        $quote = $this->withdrawalQuotePayload($moneySnapshot, $channel);
 
         if (! $merchant->hasCompletedKyc()) {
             return back()->withErrors([
@@ -426,12 +424,14 @@ class MerchantWalletController extends Controller
             }
         }
 
-        if ($wallet->balance < $amount) {
+        $walletDebitAmount = (float) ($quote['wallet_debit_amount'] ?? $amount);
+
+        if ($wallet->balance < $walletDebitAmount) {
             return back()->withErrors(['amount' => 'Salio halitoshi kufanya muamala huu. (Insufficient balance)']);
         }
 
-        // Deduct the requested amount to prevent double spending
-        $wallet->balance -= $amount;
+        // Deduct the full wallet debit immediately to prevent double spending.
+        $wallet->balance -= $walletDebitAmount;
         $wallet->save();
 
         // Create the pending withdrawal request
@@ -442,20 +442,20 @@ class MerchantWalletController extends Controller
             'payment_provider_id' => $channel['provider_id'] ?? null,
             'payment_provider_channel_id' => $channel['id'] ?? null,
             'merchant_payout_credential_id' => $request->input('merchant_payout_credential_id') ?: null,
-            'amount' => $amount,
-            'merchant_currency_code' => $moneySnapshot['merchant_currency_code'],
-            'payout_currency_code' => $moneySnapshot['customer_currency_code'],
-            'fx_base_currency_code' => $moneySnapshot['fx_base_currency_code'],
-            'fx_rate_merchant_to_base' => $moneySnapshot['fx_rate_merchant_to_base'],
-            'fx_rate_payout_to_base' => $moneySnapshot['fx_rate_customer_to_base'],
+            'amount' => $walletDebitAmount,
+            'merchant_currency_code' => $quote['merchant_currency_code'],
+            'payout_currency_code' => $quote['payout_currency_code'],
+            'fx_base_currency_code' => $quote['money_snapshot']['fx_base_currency_code'],
+            'fx_rate_merchant_to_base' => $quote['money_snapshot']['fx_rate_merchant_to_base'],
+            'fx_rate_payout_to_base' => $quote['money_snapshot']['fx_rate_customer_to_base'],
             'fx_rate_merchant_to_payout' => $quote['effective_rate_merchant_to_payout'],
             'fx_market_rate_merchant_to_payout' => $quote['market_rate_merchant_to_payout'],
             'fx_effective_rate_merchant_to_payout' => $quote['effective_rate_merchant_to_payout'],
             'fx_spread_bps' => $quote['fx_spread_bps'],
             'fx_spread_amount' => $quote['fx_spread_amount'],
             'fx_spread_currency_code' => $quote['fx_spread_currency_code'],
-            'fx_rate_date' => $moneySnapshot['fx_rate_date'],
-            'merchant_amount' => $moneySnapshot['merchant_amount'],
+            'fx_rate_date' => $quote['fx_rate_date'],
+            'merchant_amount' => $quote['merchant_principal_amount'],
             'payout_amount' => $quote['payout_amount'],
             'payout_snapshot' => [
                 'method' => $method,
@@ -469,7 +469,10 @@ class MerchantWalletController extends Controller
                 'merchant_country_code' => $merchant->country?->iso_alpha2,
                 'market_rate_merchant_to_payout' => $quote['market_rate_merchant_to_payout'],
                 'effective_rate_merchant_to_payout' => $quote['effective_rate_merchant_to_payout'],
+                'merchant_principal_amount' => $quote['merchant_principal_amount'],
+                'wallet_debit_amount' => $quote['wallet_debit_amount'],
                 'payout_gross_amount' => $quote['payout_gross_amount'],
+                'payout_amount' => $quote['payout_amount'],
                 'fx_spread_bps' => $quote['fx_spread_bps'],
                 'fx_spread_amount' => $quote['fx_spread_amount'],
                 'fx_spread_currency_code' => $quote['fx_spread_currency_code'],
@@ -480,12 +483,23 @@ class MerchantWalletController extends Controller
                 'fee_percent_bps' => $quote['fee_percent_bps'],
                 'fee_min' => $quote['fee_min'],
                 'fee_max' => $quote['fee_max'],
+                'provider_cost_amount' => $quote['provider_cost_amount'],
+                'provider_cost_currency_code' => $quote['provider_cost_currency_code'],
+                'provider_cost_merchant_amount' => $quote['provider_cost_merchant_amount'],
+                'merchant_fee_amount' => $quote['merchant_fee_amount'],
+                'merchant_fee_currency_code' => $quote['merchant_fee_currency_code'],
                 'withdrawal_fee_amount' => $quote['withdrawal_fee_amount'],
                 'withdrawal_fee_currency_code' => $quote['withdrawal_fee_currency_code'],
+                'takeer_markup_amount' => $quote['takeer_markup_amount'],
+                'takeer_markup_currency_code' => $quote['takeer_markup_currency_code'],
+                'takeer_margin_amount' => $quote['takeer_margin_amount'],
+                'takeer_margin_currency_code' => $quote['takeer_margin_currency_code'],
+                'fee_strategy' => $quote['fee_strategy'],
+                'fee_policy_snapshot' => $quote['fee_policy_snapshot'],
                 'quote_note' => $quote['note'],
                 'created_at' => now()->toISOString(),
             ],
-            'money_quote_snapshot' => $moneySnapshot['money_quote_snapshot'] ?? null,
+            'money_quote_snapshot' => $quote['money_quote_snapshot'] ?? null,
             'status' => 'pending',
             'idempotency_key' => Str::uuid(),
         ]);
@@ -493,68 +507,48 @@ class MerchantWalletController extends Controller
         return redirect()->back()->with('success', 'Ombi lako limepokelewa na linafanyiwa kazi. (Withdrawal requested successfully)');
     }
 
-    private function withdrawalQuotePayload(array $moneySnapshot, array $channel): array
+    private function withdrawalQuotePayload(array $quote, array $channel): array
     {
-        $method = strtolower((string) ($channel['method'] ?? 'bank'));
-        $merchantAmount = (float) $moneySnapshot['merchant_amount'];
-        $payoutGrossAmount = (float) ($moneySnapshot['market_customer_amount'] ?? $moneySnapshot['customer_amount']);
-        $marketRate = (float) ($moneySnapshot['fx_market_rate_merchant_to_customer'] ?? $moneySnapshot['fx_rate_merchant_to_customer']);
-        $payoutCurrencyCode = (string) $moneySnapshot['customer_currency_code'];
-        $marginBps = (int) ($moneySnapshot['fx_spread_bps'] ?? 0);
-        $marginAmount = (float) ($moneySnapshot['fx_spread_amount'] ?? 0);
-        $feeBaseAmount = max((float) ($moneySnapshot['customer_amount'] ?? $payoutGrossAmount), 0);
-        $effectiveRate = (float) ($moneySnapshot['fx_effective_rate_merchant_to_customer'] ?? ($merchantAmount > 0 ? round($feeBaseAmount / $merchantAmount, 10) : $marketRate));
-        $withdrawalFeeAmount = $this->withdrawalFeeAmountForChannel($channel, $feeBaseAmount, $effectiveRate);
-        $payoutAmount = max(round($feeBaseAmount - $withdrawalFeeAmount, 2), 0);
-        $feeType = (string) ($channel['fee_type'] ?? 'fixed_plus_percent');
-
         return [
-            'merchant_amount' => $merchantAmount,
-            'merchant_currency_code' => $moneySnapshot['merchant_currency_code'],
+            'merchant_amount' => $quote['merchant_principal_amount'],
+            'merchant_principal_amount' => $quote['merchant_principal_amount'],
+            'wallet_debit_amount' => $quote['wallet_debit_amount'],
+            'merchant_currency_code' => $quote['merchant_currency_code'],
             'payout_channel_key' => $channel['key'] ?? null,
             'payout_channel_label' => $channel['label'] ?? null,
             'payout_provider' => $channel['provider'] ?? null,
-            'payout_method' => $method,
-            'payout_currency_code' => $payoutCurrencyCode,
-            'payout_gross_amount' => $payoutGrossAmount,
-            'payout_amount' => $payoutAmount,
-            'market_rate_merchant_to_payout' => $marketRate,
-            'effective_rate_merchant_to_payout' => $effectiveRate,
-            'fx_spread_bps' => $marginBps,
-            'fx_spread_amount' => $marginAmount,
-            'fx_spread_currency_code' => $payoutCurrencyCode,
-            'fx_margin_bps' => $marginBps,
-            'fx_margin_amount' => $marginAmount,
-            'fee_type' => $feeType,
+            'payout_method' => $quote['payout_method'],
+            'payout_currency_code' => $quote['payout_currency_code'],
+            'payout_gross_amount' => $quote['payout_gross_amount'],
+            'payout_amount' => $quote['payout_amount'],
+            'provider_cost_amount' => $quote['provider_cost_amount'],
+            'provider_cost_currency_code' => $quote['provider_cost_currency_code'],
+            'provider_cost_merchant_amount' => $quote['provider_cost_merchant_amount'],
+            'merchant_fee_amount' => $quote['merchant_fee_amount'],
+            'merchant_fee_currency_code' => $quote['merchant_fee_currency_code'],
+            'takeer_markup_amount' => $quote['takeer_markup_amount'],
+            'takeer_markup_currency_code' => $quote['takeer_markup_currency_code'],
+            'takeer_margin_amount' => $quote['takeer_margin_amount'],
+            'takeer_margin_currency_code' => $quote['takeer_margin_currency_code'],
+            'fee_strategy' => $quote['fee_strategy'],
+            'market_rate_merchant_to_payout' => $quote['market_rate_merchant_to_payout'],
+            'effective_rate_merchant_to_payout' => $quote['effective_rate_merchant_to_payout'],
+            'fx_spread_bps' => $quote['fx_spread_bps'],
+            'fx_spread_amount' => $quote['fx_spread_amount'],
+            'fx_spread_currency_code' => $quote['fx_spread_currency_code'],
+            'fx_margin_bps' => $quote['fx_margin_bps'],
+            'fx_margin_amount' => $quote['fx_margin_amount'],
+            'fee_type' => $quote['fee_type'],
             'fee_fixed' => (float) ($channel['fee_fixed'] ?? 0),
             'fee_percent_bps' => (int) ($channel['fee_percent_bps'] ?? 0),
             'fee_min' => (float) ($channel['fee_min'] ?? 0),
             'fee_max' => $channel['fee_max'] ?? null,
-            'withdrawal_fee_amount' => $withdrawalFeeAmount,
-            'withdrawal_fee_currency_code' => $payoutCurrencyCode,
-            'fx_rate_date' => $moneySnapshot['fx_rate_date'],
+            'withdrawal_fee_amount' => $quote['withdrawal_fee_amount'],
+            'withdrawal_fee_currency_code' => $quote['withdrawal_fee_currency_code'],
+            'fx_rate_date' => $quote['fx_rate_date'],
             'is_estimate' => true,
-            'note' => $method === 'paypal'
-                ? 'The payout partner may apply its own FX spread or final rate when the payout is processed.'
-                : 'Final payout can change if the payout channel charges a fee or applies its own FX rate.',
+            'note' => $quote['note'],
         ];
-    }
-
-    private function withdrawalLimitError(float $amount, string $currencyCode, array $channel): ?string
-    {
-        $limits = is_array($channel['limits'] ?? null) ? $channel['limits'] : [];
-        $minimum = $this->positiveLimitAmount($limits['min_withdrawal_amount'] ?? null);
-        $maximum = $this->positiveLimitAmount($limits['max_withdrawal_amount'] ?? null);
-
-        if ($minimum !== null && $amount < $minimum) {
-            return 'Kima cha chini cha kutoa kupitia ' . $this->publicPayoutChannelLabel($channel) . ' ni ' . $this->formatLimitMoney($minimum, $currencyCode) . '.';
-        }
-
-        if ($maximum !== null && $amount > $maximum) {
-            return 'Kiasi cha juu cha kutoa kupitia ' . $this->publicPayoutChannelLabel($channel) . ' ni ' . $this->formatLimitMoney($maximum, $currencyCode) . '.';
-        }
-
-        return null;
     }
 
     private function publicPayoutChannelLabel(array $channel): string
@@ -565,57 +559,12 @@ class MerchantWalletController extends Controller
         );
     }
 
-    private function positiveLimitAmount(mixed $value): ?float
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        $amount = (float) $value;
-
-        return $amount > 0 ? $amount : null;
-    }
-
-    private function formatLimitMoney(float $amount, string $currencyCode): string
-    {
-        $decimals = in_array(strtoupper($currencyCode), ['TZS', 'JPY', 'KRW'], true) ? 0 : 2;
-
-        return strtoupper($currencyCode) . ' ' . number_format($amount, $decimals);
-    }
-
     private function withdrawalFxMarginBps(string $method): int
     {
         $method = strtolower($method);
         $default = $method === 'paypal' ? 350 : 0;
 
         return max(0, (int) AdminSetting::get("withdrawal_fx_margin_bps_{$method}", AdminSetting::get('withdrawal_fx_margin_bps', $default)));
-    }
-
-    private function withdrawalFeeAmountForChannel(array $channel, float $payoutAmountAfterFx, float $merchantToPayoutRate): float
-    {
-        $feeType = (string) ($channel['fee_type'] ?? 'fixed_plus_percent');
-        $fixed = max(0, (float) ($channel['fee_fixed'] ?? 0)) * max($merchantToPayoutRate, 0);
-        $percentBps = max(0, min(10000, (int) ($channel['fee_percent_bps'] ?? 0)));
-
-        $fee = match ($feeType) {
-            'none' => 0,
-            'fixed' => $fixed,
-            'percent' => $payoutAmountAfterFx * ($percentBps / 10000),
-            default => $fixed + ($payoutAmountAfterFx * ($percentBps / 10000)),
-        };
-
-        $fee = round(max(0, $fee), 2);
-        $min = max(0, (float) ($channel['fee_min'] ?? 0)) * max($merchantToPayoutRate, 0);
-        $max = $channel['fee_max'] ?? null;
-
-        if ($fee > 0 && $min > 0) {
-            $fee = max($fee, $min);
-        }
-        if ($max !== null && $max !== '' && (float) $max >= 0) {
-            $fee = min($fee, (float) $max * max($merchantToPayoutRate, 0));
-        }
-
-        return round(min($fee, max(0, $payoutAmountAfterFx)), 2);
     }
 
     private function isKycApproved(?string $status): bool
