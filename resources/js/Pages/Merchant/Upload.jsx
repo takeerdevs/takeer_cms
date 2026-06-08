@@ -13,7 +13,8 @@ import {
     FileUp, Phone, MessageCircle, ExternalLink, File, CheckCircle, Loader2,
     Plus, Search, Trash2, Info, Store, ShieldCheck, PlayCircle, Music, Images, Palette,
     BookOpen, FileText, Code2, Layers, KeyRound, Copy, RotateCcw, Ban,
-    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap, Clock3, Ship
+    Utensils, BedDouble, Landmark, ClipboardList, CalendarClock, Car, GraduationCap, Clock3, Ship,
+    DownloadCloudIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -3999,7 +4000,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <img
                                     src={currentMerchant.avatar_url}
                                     alt={currentMerchant.display_name}
-                                    className="h-20 w-20 rounded-full object-cover ring-4 ring-brand-100 shadow-md"
+                                    className="h-20 w-20 rounded-full object-cover ring-4 ring-brand-100 shadow-md p-1.5"
                                 />
                             ) : (
                                 <div className="h-20 w-20 rounded-full bg-brand-50 flex items-center justify-center ring-4 ring-brand-100 shadow-md">
@@ -4030,7 +4031,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                 <ShoppingBag className="h-8 w-8 text-brand-600" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-foreground">{uploadModule === 'menu' ? 'Menu Item' : 'Bidhaa za Kushikika'}</h3>
+                                <h3 className="text-xl font-bold text-foreground">{uploadModule === 'menu' ? 'Menu Item' : 'Bidhaa ya Kushikika'}</h3>
                                 <p className="text-sm text-muted-foreground mt-1">{uploadModule === 'menu' ? 'Chakula, kinywaji, combo, add-on, au bidhaa ya mgahawa.' : 'Nguo, viatu, simu, n.k. (Inatumia AI na Hotspots)'}</p>
                             </div>
                             <ChevronRight className="h-6 w-6 ml-auto text-muted-foreground opacity-50 text-brand-600" />
@@ -4041,11 +4042,11 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                             className="group relative flex items-center gap-6 p-6 bg-white border border-border rounded-[1rem] hover:border-blue-500 hover:ring-4 hover:ring-blue-500/10 transition-all text-left shadow-sm"
                         >
                             <div className="h-16 w-16 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                                <Globe className="h-8 w-8 text-blue-600" />
+                                <DownloadCloudIcon className="h-8 w-8 text-blue-600" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-foreground">Digital / File</h3>
-                                <p className="text-sm text-muted-foreground mt-1">E-books, kozi, picha, au link ya kupakua.</p>
+                                <h3 className="text-xl font-bold text-foreground">Bidhaa ya Digitali (Downloads)</h3>
+                                <p className="text-sm text-muted-foreground mt-1">Vitabu, Video, Audio/Sauti, Picha, au Link ya kupakua.</p>
                             </div>
                             <ChevronRight className="h-6 w-6 ml-auto text-muted-foreground opacity-50 group-hover:text-blue-600" />
                         </button>
