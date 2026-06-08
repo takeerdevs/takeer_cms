@@ -152,6 +152,7 @@ class GatewayRegistry
     {
         // Driver class map — add new drivers here as you expand
         $driverMap = [
+            'selcom' => \App\Payments\Drivers\Selcom\SelcomGateway::class,
             'azampay' => \App\Payments\Drivers\AzamPay\AzamPayGateway::class,
             'flutterwave'   => \App\Payments\Drivers\Flutterwave\FlutterwaveGateway::class,
             // 'mpesa_ke'      => \App\Payments\Drivers\Mpesa\MpesaKeGateway::class,

@@ -25,6 +25,7 @@ use App\Models\UserAddress;
 use App\Payments\GatewayRegistry;
 use App\Services\EntitlementService;
 use App\Services\ForwarderShipmentService;
+use App\Services\MoneyQuoteService;
 use App\Services\OfferingGroupCheckoutResolver;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
@@ -322,11 +323,22 @@ class CheckoutController extends Controller
             ], 422);
         }
 
+        $merchantUnitPrice = $purchasable instanceof OfferingGroup
+            ? $totalPaid + $discountAmount
+            : ($purchasable instanceof Bundle && !empty($selectedBundleItems)
+                ? $totalPaid + $discountAmount
+                : ($serviceRequest ? (float) $serviceRequest->quoted_amount : $this->resolveBasePrice($purchasable, $selectedVariant, $servicePricingInputs)));
+        $moneySnapshot = $this->checkoutMoneyQuote((float) $totalPaid, (int) $purchasable->merchant_id, $countryCode);
+        $unitMoneySnapshot = $this->moneyAmountFromQuote($moneySnapshot, (float) $merchantUnitPrice);
+        $shippingMoneySnapshot = $this->moneyAmountFromQuote($moneySnapshot, (float) ($zone?->flat_rate_fee ?? 0));
+        $discountMoneySnapshot = $this->moneyAmountFromQuote($moneySnapshot, (float) $discountAmount);
+
         // ── Create pending Order ──────────────────────────────────────────────
         $transactionRef = 'TXN-' . Str::upper(Str::random(10));
+        $liveGatewayCheckout = (bool) env('LIVE_GATEWAY_CHECKOUT', false);
 
         try {
-            $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $purchasable, $totalPaid, $validated, $requestedQuantity, $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $selectedOfferingGroup, $zone, $deliveryType, $isForwarderCheckout, $isInquiry, $serviceRequest, $servicePricingInputs, $coupon, $discountAmount, $referralLink, $referralCommissionAmount, $groupSaleCampaign) {
+            $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $purchasable, $totalPaid, $merchantUnitPrice, $moneySnapshot, $unitMoneySnapshot, $shippingMoneySnapshot, $discountMoneySnapshot, $validated, $requestedQuantity, $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $selectedOfferingGroup, $zone, $deliveryType, $isForwarderCheckout, $isInquiry, $serviceRequest, $servicePricingInputs, $coupon, $discountAmount, $referralLink, $referralCommissionAmount, $groupSaleCampaign, $liveGatewayCheckout) {
                 $productInventoryReserved = false;
 
                 if ($product?->isPhysical()) {
@@ -487,12 +499,32 @@ class CheckoutController extends Controller
                         'package_contents' => $product->package_contents,
                         'package_content_items' => $product->package_content_items ?: [],
                     ] : null,
-                    'unit_price' => $purchasable instanceof OfferingGroup
-                        ? $totalPaid + $discountAmount
-                        : ($purchasable instanceof Bundle && !empty($selectedBundleItems)
-                        ? $totalPaid + $discountAmount
-                        : ($serviceRequest ? (float) $serviceRequest->quoted_amount : $this->resolveBasePrice($purchasable, $selectedVariant, $servicePricingInputs))),
+                    'unit_price' => $merchantUnitPrice,
                     'discount_amount' => $discountAmount,
+                    'merchant_currency_code' => $moneySnapshot['merchant_currency_code'],
+                    'customer_currency_code' => $moneySnapshot['customer_currency_code'],
+                    'fx_base_currency_code' => $moneySnapshot['fx_base_currency_code'],
+                    'fx_rate_merchant_to_base' => $moneySnapshot['fx_rate_merchant_to_base'],
+                    'fx_rate_customer_to_base' => $moneySnapshot['fx_rate_customer_to_base'],
+                    'fx_rate_merchant_to_customer' => $moneySnapshot['fx_rate_merchant_to_customer'],
+                    'fx_market_rate_merchant_to_customer' => $moneySnapshot['fx_market_rate_merchant_to_customer'],
+                    'fx_effective_rate_merchant_to_customer' => $moneySnapshot['fx_effective_rate_merchant_to_customer'],
+                    'fx_spread_bps' => $moneySnapshot['fx_spread_bps'],
+                    'fx_spread_amount' => $moneySnapshot['fx_spread_amount'],
+                    'fx_spread_currency_code' => $moneySnapshot['fx_spread_currency_code'],
+                    'fx_rate_date' => $moneySnapshot['fx_rate_date'],
+                    'merchant_unit_price' => $merchantUnitPrice,
+                    'customer_unit_price' => $unitMoneySnapshot['customer_amount'],
+                    'merchant_total_amount' => $totalPaid,
+                    'customer_total_amount' => $moneySnapshot['customer_amount'],
+                    'merchant_shipping_fee' => $zone?->flat_rate_fee !== null ? (float) $zone->flat_rate_fee : 0,
+                    'customer_shipping_fee' => $shippingMoneySnapshot['customer_amount'],
+                    'merchant_discount_amount' => $discountAmount,
+                    'customer_discount_amount' => $discountMoneySnapshot['customer_amount'],
+                    'payment_provider_id' => $moneySnapshot['payment_provider_id'],
+                    'payment_provider_channel_id' => $moneySnapshot['payment_provider_channel_id'],
+                    'payment_channel_snapshot' => $moneySnapshot['payment_channel_snapshot'],
+                    'money_quote_snapshot' => $moneySnapshot['money_quote_snapshot'],
                     'merchant_coupon_id' => $coupon?->id,
                     'coupon_code' => $coupon?->code,
                     'merchant_referral_link_id' => $referralLink?->id,
@@ -557,7 +589,7 @@ class CheckoutController extends Controller
                     $coupon->increment('times_used');
                 }
 
-                if (!$isInquiry) {
+                if (!$isInquiry && ! $liveGatewayCheckout) {
                     $isCustomDelivery = $product?->isDigital()
                         && ($product->digital_delivery_type ?? null) === 'custom_delivery';
                     $newOrder->update([
@@ -592,6 +624,61 @@ class CheckoutController extends Controller
         }
 
         $this->recordCheckoutAttribution($request, $order, $validated, $referralLink);
+
+        if (! $order->is_inquiry && $liveGatewayCheckout) {
+            $gatewayResult = $gateway->initiate($order->fresh(['buyer']), [
+                'payment_number' => $paymentPhone,
+                'buyer_name' => $order->buyer?->name,
+                'email' => $order->buyer?->email,
+                'order_id' => $order->transaction_ref,
+            ]);
+
+            if (! $gatewayResult->success) {
+                $order->releaseInventory();
+                $order->update(['payment_status' => 'failed']);
+
+                return response()->json([
+                    'message' => $gatewayResult->message,
+                    'error_code' => $gatewayResult->errorCode,
+                ], 422);
+            }
+
+            $order->update([
+                'gateway_ref' => $gatewayResult->gatewayRef,
+                'payment_channel_snapshot' => array_merge($order->payment_channel_snapshot ?: [], [
+                    'gateway_response' => $gatewayResult->raw,
+                    'gateway_requested_at' => now()->toISOString(),
+                ]),
+            ]);
+
+            if ($gatewayResult->raw['simulated'] ?? false) {
+                app(\App\Payments\PaymentCallbackProcessor::class)->handleSuccess(
+                    $order->fresh(['merchant', 'product']),
+                    (string) $gatewayResult->gatewayRef,
+                    $gateway->getName(),
+                );
+
+                $order = $order->fresh(['product']);
+            }
+
+            $responsePayload = [
+                'message' => ($gatewayResult->raw['simulated'] ?? false)
+                    ? 'Selcom simulation completed successfully.'
+                    : $gatewayResult->message,
+                'order' => OrderResource::make($order->fresh(['product'])),
+                'payment_pending' => ! ($gatewayResult->raw['simulated'] ?? false),
+            ];
+
+            if (!$request->user()) {
+                $buyer->tokens()->delete();
+                $responsePayload['token'] = $buyer->createToken('takeer-app')->plainTextToken;
+                Auth::login($buyer, true);
+                $responsePayload['user'] = clone (\App\Http\Resources\UserResource::make($buyer));
+            }
+
+            return response()->json($responsePayload);
+        }
+
         $this->sendDigitalAccessSmsIfPaid($order);
 
         $responsePayload = [
@@ -1945,14 +2032,18 @@ class CheckoutController extends Controller
             ? (float) $resolvedShippingZone->flat_rate_fee
             : 0.0;
         $quotedTotalPrice = round($totalPrice + $resolvedShippingFee, 2);
+        $countryCode = $this->gatewayRegistry->resolveCountry($request, $validated['account_phone'] ?? null);
+        $merchantId = (int) ($product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id);
+        $moneySnapshot = $this->checkoutMoneyQuote($quotedTotalPrice, $merchantId, $countryCode);
+        $unitMoneySnapshot = $this->moneyAmountFromQuote($moneySnapshot, $unitPrice);
+        $shippingMoneySnapshot = $this->moneyAmountFromQuote($moneySnapshot, $resolvedShippingFee);
         $resolvedDeliveryType = $isSelfPickup
             ? 'self_pickup'
             : ($isForwarderCheckout ? 'forwarder' : ($resolvedShippingZone?->delivery_type ?: $deliveryType));
         $inquiryStatus = ($isSelfPickup || $resolvedShippingZone) ? 'quoted' : 'pending';
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
 
-        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $isForwarderCheckout, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId) {
-            $merchantId = $product?->merchant_id ?? $bundle?->merchant_id ?? $offeringGroup?->merchant_id;
+        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $moneySnapshot, $unitMoneySnapshot, $shippingMoneySnapshot, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $isForwarderCheckout, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId, $merchantId, $countryCode) {
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
                 'user_address_id' => $validated['user_address_id'] ?? null,
@@ -1993,6 +2084,30 @@ class CheckoutController extends Controller
                 ] : null,
                 'unit_price' => $unitPrice,
                 'total_paid' => $quotedTotalPrice,
+                'merchant_currency_code' => $moneySnapshot['merchant_currency_code'],
+                'customer_currency_code' => $moneySnapshot['customer_currency_code'],
+                'fx_base_currency_code' => $moneySnapshot['fx_base_currency_code'],
+                'fx_rate_merchant_to_base' => $moneySnapshot['fx_rate_merchant_to_base'],
+                'fx_rate_customer_to_base' => $moneySnapshot['fx_rate_customer_to_base'],
+                'fx_rate_merchant_to_customer' => $moneySnapshot['fx_rate_merchant_to_customer'],
+                'fx_market_rate_merchant_to_customer' => $moneySnapshot['fx_market_rate_merchant_to_customer'],
+                'fx_effective_rate_merchant_to_customer' => $moneySnapshot['fx_effective_rate_merchant_to_customer'],
+                'fx_spread_bps' => $moneySnapshot['fx_spread_bps'],
+                'fx_spread_amount' => $moneySnapshot['fx_spread_amount'],
+                'fx_spread_currency_code' => $moneySnapshot['fx_spread_currency_code'],
+                'fx_rate_date' => $moneySnapshot['fx_rate_date'],
+                'merchant_unit_price' => $unitPrice,
+                'customer_unit_price' => $unitMoneySnapshot['customer_amount'],
+                'merchant_total_amount' => $quotedTotalPrice,
+                'customer_total_amount' => $moneySnapshot['customer_amount'],
+                'merchant_shipping_fee' => $resolvedShippingFee,
+                'customer_shipping_fee' => $shippingMoneySnapshot['customer_amount'],
+                'merchant_discount_amount' => 0,
+                'customer_discount_amount' => 0,
+                'payment_provider_id' => $moneySnapshot['payment_provider_id'],
+                'payment_provider_channel_id' => $moneySnapshot['payment_provider_channel_id'],
+                'payment_channel_snapshot' => $moneySnapshot['payment_channel_snapshot'],
+                'money_quote_snapshot' => $moneySnapshot['money_quote_snapshot'],
                 'agreement_snapshot' => $product && $product->isPhysical() && in_array($product->selling_style ?: 'retail', ['wholesale', 'both'], true) ? array_filter([
                     'order_mode' => 'b2b_quote',
                     'selling_style' => $product->selling_style,
@@ -2027,6 +2142,7 @@ class CheckoutController extends Controller
                 'transaction_ref' => $transactionRef,
                 'account_phone' => $validated['account_phone'],
                 'payment_phone' => $validated['account_phone'],
+                'country_code' => $countryCode,
                 'expires_at' => now()->addMinutes(30),
             ]);
 
@@ -2095,10 +2211,38 @@ class CheckoutController extends Controller
         try {
             $gateway = $this->gatewayRegistry->resolve($request, $paymentPhone);
             $countryCode = $this->gatewayRegistry->resolveCountry($request, $paymentPhone);
+            $moneySnapshot = $this->checkoutMoneyQuote((float) $order->total_paid, (int) $order->merchant_id, $countryCode);
+            $unitMoneySnapshot = $this->moneyAmountFromQuote($moneySnapshot, (float) ($order->unit_price ?? $order->total_paid));
+            $shippingMoneySnapshot = $this->moneyAmountFromQuote($moneySnapshot, (float) ($order->shipping_fee ?? 0));
+            $discountMoneySnapshot = $this->moneyAmountFromQuote($moneySnapshot, (float) ($order->discount_amount ?? 0));
 
             $order->update([
                 'payment_gateway' => $gateway->getName(),
                 'country_code' => $countryCode,
+                'merchant_currency_code' => $moneySnapshot['merchant_currency_code'],
+                'customer_currency_code' => $moneySnapshot['customer_currency_code'],
+                'fx_base_currency_code' => $moneySnapshot['fx_base_currency_code'],
+                'fx_rate_merchant_to_base' => $moneySnapshot['fx_rate_merchant_to_base'],
+                'fx_rate_customer_to_base' => $moneySnapshot['fx_rate_customer_to_base'],
+                'fx_rate_merchant_to_customer' => $moneySnapshot['fx_rate_merchant_to_customer'],
+                'fx_market_rate_merchant_to_customer' => $moneySnapshot['fx_market_rate_merchant_to_customer'],
+                'fx_effective_rate_merchant_to_customer' => $moneySnapshot['fx_effective_rate_merchant_to_customer'],
+                'fx_spread_bps' => $moneySnapshot['fx_spread_bps'],
+                'fx_spread_amount' => $moneySnapshot['fx_spread_amount'],
+                'fx_spread_currency_code' => $moneySnapshot['fx_spread_currency_code'],
+                'fx_rate_date' => $moneySnapshot['fx_rate_date'],
+                'merchant_unit_price' => $order->unit_price ?? $order->total_paid,
+                'customer_unit_price' => $unitMoneySnapshot['customer_amount'],
+                'merchant_total_amount' => $order->total_paid,
+                'customer_total_amount' => $moneySnapshot['customer_amount'],
+                'merchant_shipping_fee' => $order->shipping_fee ?? 0,
+                'customer_shipping_fee' => $shippingMoneySnapshot['customer_amount'],
+                'merchant_discount_amount' => $order->discount_amount ?? 0,
+                'customer_discount_amount' => $discountMoneySnapshot['customer_amount'],
+                'payment_provider_id' => $moneySnapshot['payment_provider_id'],
+                'payment_provider_channel_id' => $moneySnapshot['payment_provider_channel_id'],
+                'payment_channel_snapshot' => $moneySnapshot['payment_channel_snapshot'],
+                'money_quote_snapshot' => $moneySnapshot['money_quote_snapshot'],
             ]);
         } catch (RuntimeException $e) {
             return response()->json(['message' => 'Huduma ya malipo haipatikani kwa sasa.'], 422);
@@ -2106,9 +2250,10 @@ class CheckoutController extends Controller
 
         // Trigger gateway payment push
         try {
-            $response = $gateway->initiatePayment($order->total_paid, $paymentPhone, $order->transaction_ref, [
-                'full_name' => $order->buyer->name,
-                'email' => $order->buyer->email,
+            $response = $gateway->initiate($order->fresh(['buyer']), [
+                'payment_number' => $paymentPhone,
+                'buyer_name' => $order->buyer?->name,
+                'email' => $order->buyer?->email,
                 'order_id' => $order->id,
             ]);
 
@@ -2400,6 +2545,16 @@ class CheckoutController extends Controller
 
         $this->decrementLocationInventory($product->id, $order->variant_id, $requestedQuantity, $product->merchant_id);
         $order->forceFill(['inventory_reserved_at' => now()])->saveQuietly();
+    }
+
+    private function checkoutMoneyQuote(float $merchantAmount, int $merchantId, ?string $countryCode): array
+    {
+        return app(MoneyQuoteService::class)->checkoutQuote($merchantAmount, $merchantId, $countryCode);
+    }
+
+    private function moneyAmountFromQuote(array $quote, float $merchantAmount): array
+    {
+        return app(MoneyQuoteService::class)->amountFromQuote($quote, $merchantAmount);
     }
 
     private function decrementLocationInventory(int $productId, ?int $variantId, float $quantity, int $merchantId): void

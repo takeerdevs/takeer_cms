@@ -130,6 +130,19 @@ return [
         'base_url' => env('FLUTTERWAVE_BASE_URL', 'https://api.flutterwave.com/v3'),
     ],
 
+    'selcom' => [
+        'simulate' => env('SELCOM_SIMULATE', true),
+        'base_url' => env('SELCOM_BASE_URL', 'https://apigw.selcommobile.com'),
+        'api_key' => env('SELCOM_API_KEY'),
+        'api_secret' => env('SELCOM_API_SECRET'),
+        'vendor' => env('SELCOM_VENDOR'),
+        'vendor_pin' => env('SELCOM_VENDOR_PIN'),
+        'sender_account' => env('SELCOM_SENDER_ACCOUNT'),
+        'sender_name' => env('SELCOM_SENDER_NAME', env('APP_NAME', 'Takeer')),
+        'sender_msisdn' => env('SELCOM_SENDER_MSISDN'),
+        'callback_url' => env('SELCOM_PAYOUT_CALLBACK_URL', env('APP_URL') ? rtrim(env('APP_URL'), '/') . '/api/payments/selcom/payout-callback' : null),
+    ],
+
     'open_exchange_rates' => [
         'url' => env('OPEN_EXCHANGE_RATES_URL', 'https://openexchangerates.org/api/latest.json'),
         'key' => env('OPEN_EXCHANGE_RATES_KEY'),

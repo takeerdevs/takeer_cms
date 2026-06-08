@@ -8,6 +8,19 @@ import { toast } from 'sonner';
 
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
 
+function formatMoney(amount, currency = 'TZS') {
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+            maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+        }).format(Number(amount || 0));
+    } catch {
+        return `${currency} ${Number(amount || 0).toLocaleString()}`;
+    }
+}
+
 export default function AdminWithdrawals() {
     const [withdrawals, setWithdrawals] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -86,12 +99,32 @@ export default function AdminWithdrawals() {
                                         <div>
                                             <p className="font-bold text-slate-900">{w.user?.name ?? 'User'}</p>
                                             <p className="text-slate-500 text-xs">{w.user?.phone_number || 'No phone'}</p>
+                                            {w.merchant && (
+                                                <p className="text-slate-500 text-xs">{w.merchant.display_name || w.merchant.username}</p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <div className="text-right">
-                                            <p className="text-2xl font-black text-slate-900">TZS {Number(w.amount ?? 0).toLocaleString()}</p>
-                                            <p className="text-xs text-slate-500">#{w.id} • {new Date(w.created_at).toLocaleDateString('sw-TZ')}</p>
+                                            <p className="text-2xl font-black text-slate-900">{formatMoney(w.merchant_amount ?? w.amount, w.merchant_currency_code)}</p>
+                                            <p className="text-xs font-bold text-emerald-700">
+                                                Payout {formatMoney(w.payout_amount ?? w.amount, w.payout_currency_code)}
+                                            </p>
+                                            {(Number(w.payout_snapshot?.fx_margin_amount || 0) > 0 || Number(w.payout_snapshot?.withdrawal_fee_amount || 0) > 0) && (
+                                                <p className="text-[11px] font-semibold text-amber-700">
+                                                    Buffer {formatMoney(w.payout_snapshot?.fx_margin_amount || 0, w.payout_currency_code)}
+                                                    {' '}• Fee {formatMoney(w.payout_snapshot?.withdrawal_fee_amount || 0, w.payout_snapshot?.withdrawal_fee_currency_code || w.payout_currency_code)}
+                                                </p>
+                                            )}
+                                            {w.fx_rate_merchant_to_payout && (
+                                                <p className="text-[11px] text-slate-500">
+                                                    1 {w.merchant_currency_code} ≈ {Number(w.fx_rate_merchant_to_payout).toLocaleString(undefined, { maximumFractionDigits: 6 })} {w.payout_currency_code}
+                                                </p>
+                                            )}
+                                            <p className="text-xs text-slate-500">
+                                                #{w.id} • {new Date(w.created_at).toLocaleDateString('sw-TZ')}
+                                                {w.fx_rate_date ? ` • FX ${w.fx_rate_date}` : ''}
+                                            </p>
                                         </div>
                                         <Button
                                             className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"

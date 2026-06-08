@@ -61,6 +61,7 @@ export default function Profile({
     const isVerified = activeMerchant?.is_verified ?? false;
     const merchantSlug = activeMerchant?.username ?? '';
     const isBusinessMerchant = Boolean(activeMerchant && activeMerchant.type !== 'personal');
+    const businessCurrencyCode = creatorMonetization?.currency_code || activeMerchant?.currency?.code || 'TZS';
     const activePermissions = activeMerchantAccess?.permissions ?? activeMerchant?.permissions ?? [];
     const can = (permission) => activePermissions.includes('*') || activePermissions.includes(permission);
     const activeModules = activeMerchant?.active_modules || [];
@@ -199,12 +200,18 @@ export default function Profile({
         });
     };
 
-    const formatMoney = (amount) => {
-        return new Intl.NumberFormat('en-TZ', {
-            style: 'currency',
-            currency: 'TZS',
-            minimumFractionDigits: 0,
-        }).format(amount);
+    const formatMoney = (amount, currency = businessCurrencyCode) => {
+        const code = currency || businessCurrencyCode;
+        try {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: code,
+                minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(code) ? 0 : 2,
+                maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(code) ? 0 : 2,
+            }).format(Number(amount || 0));
+        } catch {
+            return `${code} ${Number(amount || 0).toLocaleString()}`;
+        }
     };
 
     const lookupOrderCheckup = async (e) => {
@@ -581,7 +588,7 @@ export default function Profile({
                     </DialogContent>
                 </Dialog>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                     <div className="lg:col-span-12 space-y-6">
 
                         {isVerified ? (
@@ -606,7 +613,7 @@ export default function Profile({
                                             </div>
                                         </CardHeader>
                                         <CardContent className="min-w-0 space-y-4">
-                                            <div className="grid min-w-0 gap-3 sm:grid-cols-3">
+                                            <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                                                 <MiniMetric label="Revenue" value={formatMoney(creatorMonetization.total_revenue || 0)} icon={BarChart3} tone="brand" />
                                                 <MiniMetric label="Orders" value={Number(creatorMonetization.total_orders || 0).toLocaleString()} icon={ShoppingBag} tone="amber" />
                                                 <MiniMetric
@@ -618,13 +625,13 @@ export default function Profile({
                                                     actionLabel="View subscribers"
                                                 />
                                             </div>
-                                            <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-4">
+                                            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                                                 <MiniMetric label="Released" value={formatMoney(creatorMonetization.released_revenue || 0)} icon={FileCheck} tone="emerald" compact />
                                                 <MiniMetric label="Pending" value={formatMoney(creatorMonetization.pending_revenue || 0)} icon={Clock} tone="orange" compact />
                                                 <MiniMetric label="Est. net" value={formatMoney(creatorMonetization.estimated_net || 0)} icon={Wallet} tone="slate" compact />
                                                 <MiniMetric label="Change" value={`${Number(creatorMonetization.revenue_change_percent || 0).toLocaleString()}%`} icon={TrendingUp} tone="blue" compact />
                                             </div>
-                                            <div className="grid min-w-0 gap-3 md:grid-cols-3">
+                                            <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                                 <PayoutMetric
                                                     label="Available payout"
                                                     value={formatMoney(creatorMonetization.payouts?.available_balance || 0)}
@@ -637,7 +644,7 @@ export default function Profile({
                                                 <PayoutMetric label="Held / escrow" value={formatMoney(creatorMonetization.payouts?.held_balance || 0)} icon={ShieldCheck} tone="blue" />
                                                 <PayoutMetric label="Pending withdrawals" value={formatMoney(creatorMonetization.payouts?.pending_withdrawals || 0)} icon={Banknote} tone="amber" />
                                             </div>
-                                            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                                            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
                                                 <div className="min-w-0 rounded-2xl border border-white bg-white/80 p-3">
                                                     <div className="flex items-center justify-between gap-3 mb-3">
                                                         <div>
@@ -683,8 +690,8 @@ export default function Profile({
                                     </Card>
                                 )}
 
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                    <div className="lg:col-span-1 space-y-6">
+                                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                                    <div className="xl:col-span-1 space-y-6">
                                         <div className="space-y-3">
                                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Actions</h3>
                                             <div className="grid grid-cols-2 gap-3">
@@ -772,7 +779,7 @@ export default function Profile({
                                         </Card>
                                     </div>
 
-                                    <div className="lg:col-span-2 space-y-6">
+                                    <div className="xl:col-span-2 space-y-6">
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between px-1">
                                                 <div>
@@ -872,7 +879,7 @@ export default function Profile({
                                                                         </div>
                                                                     </div>
                                                                     <p className="font-bold text-slate-900 text-lg">
-                                                                        {formatMoney(order.amount || 0)}
+                                                                        {formatMoney(order.amount || 0, order.currency_code || businessCurrencyCode)}
                                                                     </p>
                                                                 </Link>
                                                             </CardContent>

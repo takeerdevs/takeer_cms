@@ -33,6 +33,8 @@ export default function PlatformWallet() {
     const transactions = data?.transactions?.data || [];
     const nativeCurrencyTotals = data?.native_currency_totals || [];
     const countryTotals = data?.country_totals || [];
+    const fxSpreadTotals = data?.fx_spread_totals || [];
+    const recentFxQuotes = data?.recent_fx_quotes || [];
     const meta = data?.transactions || {};
     const baseCurrency = metrics.base_currency_code || 'USD';
 
@@ -51,6 +53,11 @@ export default function PlatformWallet() {
             minute: '2-digit',
         }).format(new Date(value))
         : '-';
+
+    const formatRate = (value) => Number(value || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 10,
+    });
 
     return (
         <AdminLayout title="Platform Wallet">
@@ -102,6 +109,13 @@ export default function PlatformWallet() {
                         icon={ShieldCheck}
                         tone="text-amber-700"
                     />
+                    <MetricCard
+                        title={`FX Spread (${baseCurrency})`}
+                        value={formatMoney(metrics.total_fx_spread)}
+                        hint={`Pay-in ${formatMoney(metrics.payin_fx_spread)} · Payout ${formatMoney(metrics.payout_fx_spread)}`}
+                        icon={Globe2}
+                        tone="text-cyan-700"
+                    />
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -141,6 +155,64 @@ export default function PlatformWallet() {
                             </>
                         )}
                     />
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <BreakdownPanel
+                        title="FX Spread Totals"
+                        description="Spread is tracked as platform FX revenue/risk buffer, separate from normal fees."
+                        rows={fxSpreadTotals}
+                        emptyText="No FX spread recorded yet."
+                        renderRow={(row) => (
+                            <>
+                                <div>
+                                    <p className="text-sm font-black text-slate-900">{row.source === 'payout' ? 'Payout' : 'Pay-in'} · {row.currency_code}</p>
+                                    <p className="text-xs text-slate-500">{Number(row.quote_count || 0).toLocaleString()} quoted records</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm font-black text-cyan-700">{formatMoney(row.amount, row.currency_code)}</p>
+                                    <p className="text-xs text-slate-500 font-bold">FX buffer</p>
+                                </div>
+                            </>
+                        )}
+                    />
+
+                    <Card className="bg-white border-slate-200 shadow-sm">
+                        <CardContent className="p-5">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Recent FX Quote Audit</p>
+                                    <p className="text-xs text-slate-500 mt-1">Market rate, effective rate, and spread are retained per monetary event.</p>
+                                </div>
+                                <Globe2 className="h-5 w-5 text-cyan-700 shrink-0" />
+                            </div>
+                            <div className="mt-4 divide-y divide-slate-100">
+                                {recentFxQuotes.length === 0 ? (
+                                    <p className="py-5 text-sm text-slate-500">No FX quote snapshots yet.</p>
+                                ) : recentFxQuotes.map((quote) => (
+                                    <div key={`${quote.source}-${quote.id}`} className="py-3 flex items-start justify-between gap-4">
+                                        <div>
+                                            <p className="text-sm font-black text-slate-900">
+                                                {quote.source === 'payout' ? 'Payout' : 'Pay-in'} #{quote.id}
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                {quote.from_currency_code} → {quote.to_currency_code} · {quote.merchant?.name || 'Merchant'}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 mt-1">
+                                                Market {formatRate(quote.market_rate)} · Effective {formatRate(quote.effective_rate)} · {formatDate(quote.created_at)}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-black text-cyan-700">
+                                                {formatMoney(quote.fx_spread_amount, quote.fx_spread_currency_code)}
+                                            </p>
+                                            <p className="text-xs text-slate-500 font-bold">{Number(quote.fx_spread_bps || 0).toLocaleString()} bps</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">

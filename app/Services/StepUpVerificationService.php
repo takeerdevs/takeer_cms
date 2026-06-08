@@ -60,7 +60,7 @@ class StepUpVerificationService
         ];
     }
 
-    public function verify(Request $request, string $purpose, string $code): bool
+    public function verify(Request $request, string $purpose, string $code, bool $markSession = true, int $totpWindow = 1): bool
     {
         $user = $request->user();
         if (! $user) {
@@ -68,8 +68,10 @@ class StepUpVerificationService
         }
 
         if ($user->hasEnabledTotp()) {
-            if ($this->totpService->verify($user, $code) || $this->totpService->consumeRecoveryCode($user, $code)) {
-                $this->markVerified($request, $purpose);
+            if ($this->totpService->verify($user, $code, null, $totpWindow) || $this->totpService->consumeRecoveryCode($user, $code)) {
+                if ($markSession) {
+                    $this->markVerified($request, $purpose);
+                }
                 return true;
             }
 
@@ -91,7 +93,9 @@ class StepUpVerificationService
 
         Cache::forget($cacheKey);
         RateLimiter::clear($verifyKey);
-        $this->markVerified($request, $purpose);
+        if ($markSession) {
+            $this->markVerified($request, $purpose);
+        }
 
         return true;
     }

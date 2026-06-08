@@ -33,6 +33,7 @@ export default function Overview({ merchantUsername }) {
     const catalog = data?.catalog || {};
     const operations = data?.operations || {};
     const learning = data?.learning || {};
+    const currencyCode = data?.currency_code || 'TZS';
 
     return (
         <AppLayout>
@@ -63,7 +64,7 @@ export default function Overview({ merchantUsername }) {
                 ) : (
                     <>
                         <div className="grid gap-3 md:grid-cols-4">
-                            <Metric icon={BarChart3} label="Revenue" value={money(summary.revenue)} />
+                            <Metric icon={BarChart3} label="Revenue" value={money(summary.revenue, currencyCode)} />
                             <Metric icon={ShoppingBag} label="Paid orders" value={summary.paid_orders ?? 0} />
                             <Metric icon={Users} label="Customers" value={summary.customers ?? 0} />
                             <Metric icon={Users} label="Followers" value={summary.followers ?? 0} hint={`+${summary.new_followers ?? 0} in period`} />
@@ -83,16 +84,16 @@ export default function Overview({ merchantUsername }) {
                                 ['Pending orders', operations.pending_orders],
                                 ['Pending service requests', operations.pending_service_requests],
                                 ['Active staff', operations.active_staff],
-                                ['Bookkeeping income', money(operations.bookkeeping_income)],
-                                ['Bookkeeping expenses', money(operations.bookkeeping_expenses)],
+                                ['Bookkeeping income', money(operations.bookkeeping_income, currencyCode)],
+                                ['Bookkeeping expenses', money(operations.bookkeeping_expenses, currencyCode)],
                                 ['Pending review', operations.bookkeeping_pending_review],
                             ]} />
                             <ReportCard title="Learning & Members" icon={BookOpenText} rows={[
                                 ['Enrollments', learning.enrollments],
                                 ['Active members', learning.active_members],
                                 ['Service requests', summary.service_requests],
-                                ['Average order value', money(summary.average_order_value)],
-                                ['Bookkeeping profit', money(summary.bookkeeping_profit)],
+                                ['Average order value', money(summary.average_order_value, currencyCode)],
+                                ['Bookkeeping profit', money(summary.bookkeeping_profit, currencyCode)],
                             ]} />
                         </div>
 
@@ -109,7 +110,7 @@ export default function Overview({ merchantUsername }) {
                                                     <p className="font-black">{row.label}</p>
                                                     <p className="text-xs text-muted-foreground">{row.orders} orders</p>
                                                 </div>
-                                                <p className="font-black">{money(row.revenue)}</p>
+                                                <p className="font-black">{money(row.revenue, currencyCode)}</p>
                                             </div>
                                         </div>
                                     ))}
@@ -124,7 +125,7 @@ export default function Overview({ merchantUsername }) {
                                     ) : data.recent_activity.map((item, index) => (
                                         <div key={index} className="rounded-lg bg-muted/40 p-3">
                                             <p className="font-semibold">{item.label}</p>
-                                            <p className="text-xs text-muted-foreground">{item.status} · {money(item.amount)} · {formatDate(item.created_at)}</p>
+                                            <p className="text-xs text-muted-foreground">{item.status} · {money(item.amount, currencyCode)} · {formatDate(item.created_at)}</p>
                                         </div>
                                     ))}
                                 </CardContent>
@@ -163,8 +164,17 @@ function ReportCard({ title, icon: Icon, rows }) {
     );
 }
 
-function money(value) {
-    return `TZS ${Number(value || 0).toLocaleString()}`;
+function money(value, currency = 'TZS') {
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+            maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+        }).format(Number(value || 0));
+    } catch {
+        return `${currency} ${Number(value || 0).toLocaleString()}`;
+    }
 }
 
 function formatDate(value) {

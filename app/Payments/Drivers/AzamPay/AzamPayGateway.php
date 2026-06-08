@@ -89,12 +89,15 @@ class AzamPayGateway implements PaymentGatewayInterface
         $msisdn       = $this->toMsisdnFormat($phone);      // "255767692816"
         $provider     = $this->detectProvider($phone);      // Detect from original or standardized input
         $externalId   = $order->transaction_ref;             // Our "TXN-XXXXXXXX"
+        $amount = (int) round((float) ($order->customer_total_amount ?? $order->total_paid));
+        $currency = $order->customer_currency_code ?: 'TZS';
 
         Log::info('AzamPay: Initiating MNO checkout', [
             'order_id'   => $order->id,
             'provider'   => $provider,
             'phone'      => $msisdn,
-            'amount'     => (string) intval($order->total_paid),
+            'amount'     => (string) $amount,
+            'currency'   => $currency,
             'externalId' => $externalId,
         ]);
 
@@ -105,8 +108,8 @@ class AzamPayGateway implements PaymentGatewayInterface
                 ->withHeaders(['X-API-Key' => $this->apiKey])
                 ->post("{$this->checkoutBaseUrl}/azampay/mno/checkout", [
                     'accountNumber' => (string) $msisdn,
-                    'amount'        => (int) $order->total_paid,
-                    'currency'      => 'TZS',
+                    'amount'        => $amount,
+                    'currency'      => $currency,
                     'externalId'    => (string) $externalId,
                     'provider'      => (string) $provider,
                     'additionalProperties' => [
@@ -139,8 +142,8 @@ class AzamPayGateway implements PaymentGatewayInterface
                     ->withHeaders(['X-API-Key' => $this->apiKey])
                     ->post("{$this->checkoutBaseUrl}/azampay/mno/checkout", [
                         'accountNumber' => $msisdn,
-                        'amount'        => (string) intval($order->total_paid),
-                        'currency'      => 'TZS',
+                        'amount'        => (string) $amount,
+                        'currency'      => $currency,
                         'externalId'    => $externalId,
                         'provider'      => $provider,
                     ]);

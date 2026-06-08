@@ -908,6 +908,13 @@ Route::prefix('auth')->group(function () {
     Route::post('/session/bootstrap', [AuthController::class, 'bootstrapSession'])->middleware('auth:sanctum');
 });
 
+Route::post('/api/payments/selcom/payin-callback', [\App\Http\Controllers\Api\Payments\SelcomCallbackController::class, 'payin'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
+    ->name('payments.selcom.payin-callback');
+Route::post('/api/payments/selcom/payout-callback', [\App\Http\Controllers\Api\Payments\SelcomCallbackController::class, 'payout'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
+    ->name('payments.selcom.payout-callback');
+
 // ─── GOOGLE OAUTH ───────────────────────────────────────────────────────────
 Route::get('/auth/google/redirect', function () {
     return \Laravel\Socialite\Facades\Socialite::driver('google')->redirect();
@@ -1131,8 +1138,11 @@ Route::middleware('auth')->group(function () {
             ];
         }
 
+        $merchantCurrencyCode = 'TZS';
         $creatorMonetization = null;
         if ($activeMerchant) {
+            $activeMerchant->loadMissing('currency');
+            $merchantCurrencyCode = $activeMerchant->currency?->code ?: 'TZS';
             $paidOrders = $activeMerchant->orders()
                 ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
                 ->where('created_at', '>=', now()->subDays(30))
@@ -1234,6 +1244,7 @@ Route::middleware('auth')->group(function () {
 
             $creatorMonetization = [
                 'window' => 'Last 30 days',
+                'currency_code' => $merchantCurrencyCode,
                 'total_revenue' => $totalRevenue,
                 'total_orders' => $paidOrders->count(),
                 'active_members' => $activeMembers,
@@ -1290,11 +1301,12 @@ Route::middleware('auth')->group(function () {
                 ->latest()
                 ->take(5)
                 ->get()
-                ->map(function($order) use ($user) {
+                ->map(function($order) use ($user, $merchantCurrencyCode) {
                     $display = $user->resolveOrderDisplay($order);
                     return [
                         'id' => $order->id,
                         'amount' => (float) $order->total_paid,
+                        'currency_code' => $merchantCurrencyCode,
                         'status' => $order->payment_status,
                         'created_at' => $order->created_at?->toISOString(),
                         'display_title' => $display['title'],
@@ -1830,6 +1842,11 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/wallet', [\App\Http\Controllers\Api\MerchantWalletController::class, 'show'])->middleware('merchant_permission:wallet.view')->name('merchant.wallet');
         Route::get('/wallet/ledger', [\App\Http\Controllers\Api\MerchantWalletController::class, 'showLedger'])->middleware('merchant_permission:wallet.ledger')->name('merchant.wallet.ledger');
+        Route::get('/wallet/payout-credentials', [\App\Http\Controllers\Api\MerchantPayoutCredentialController::class, 'index'])->middleware('merchant_permission:wallet.view');
+        Route::post('/wallet/payout-credentials', [\App\Http\Controllers\Api\MerchantPayoutCredentialController::class, 'store'])->middleware('merchant_permission:wallet.withdraw');
+        Route::put('/wallet/payout-credentials/{credential}', [\App\Http\Controllers\Api\MerchantPayoutCredentialController::class, 'update'])->middleware('merchant_permission:wallet.withdraw');
+        Route::delete('/wallet/payout-credentials/{credential}', [\App\Http\Controllers\Api\MerchantPayoutCredentialController::class, 'destroy'])->middleware('merchant_permission:wallet.withdraw');
+        Route::post('/wallet/withdraw/quote', [\App\Http\Controllers\Api\MerchantWalletController::class, 'quoteWithdrawal'])->middleware('merchant_permission:wallet.withdraw')->name('merchant.wallet.withdraw.quote');
         Route::post('/wallet/withdraw', [\App\Http\Controllers\Api\MerchantWalletController::class, 'requestWithdrawal'])->middleware('merchant_permission:wallet.withdraw')->name('merchant.wallet.withdraw');
         Route::get('/platform-subscriptions/retail-operations', function (Merchant $merchant) {
             abort_unless($merchant->isRetailEligible(), 403, 'Retail Operations is only available for verified business accounts with completed business KYC.');
@@ -2326,6 +2343,12 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
         Route::get('/settings', [AdminSettingsController::class, 'index']);
         Route::put('/settings', [AdminSettingsController::class, 'update']);
+        Route::get('/payment-operations', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'index']);
+        Route::put('/payment-operations/providers/{provider}', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'updateProvider']);
+        Route::put('/payment-operations/countries/{country}', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'updateCountry']);
+        Route::put('/payment-operations/channels/{channel}', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'updateChannel']);
+        Route::post('/payment-operations/channels/{channel}/incidents', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'storeIncident']);
+        Route::post('/payment-operations/incidents/{incident}/resolve', [\App\Http\Controllers\Api\AdminPaymentOperationsController::class, 'resolveIncident']);
 
         Route::get('/users', [AdminSettingsController::class, 'users']);
         Route::post('/users/{user}/toggle-role', [AdminSettingsController::class, 'toggleRole']);

@@ -5,6 +5,7 @@ import useSWRInfinite from 'swr/infinite';
 import { BadgeCheck, ChevronRight, DownloadCloud, Image, ImagePlus, Loader2, Music, PenLine, Play, Plus, ShieldCheck, ShoppingBag, Sparkles, Store } from 'lucide-react';
 import PostCard from '@/Components/PostCard';
 import { DiscoveryRailSection, useDiscoveryRails } from '@/Components/DiscoveryRails';
+import { productCardPriceLabel } from '@/lib/productUnits';
 
 const fetcher = async (url) => {
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -280,7 +281,7 @@ function FeedRightRail({ rails = [], posts = [], profile = null, isAuthenticated
                                     </div>
                                     <div className="min-w-0">
                                         <p className="truncate text-sm font-bold text-slate-950 group-hover:text-brand-700">{item.title || item.name}</p>
-                                        <p className="truncate text-xs font-semibold text-brand-600">{item.checkout_price || item.price ? `TZS ${Number(item.checkout_price || item.price).toLocaleString()}` : 'Tazama ofa'}</p>
+                                        <p className="truncate text-xs font-semibold text-brand-600">{item.checkout_price || item.price ? productCardPriceLabel(item) : 'Tazama ofa'}</p>
                                     </div>
                                 </Link>
                             ))}
@@ -435,7 +436,7 @@ function digitalProductIcon(product = {}) {
 
 function priceLabel(item = {}) {
     const price = Number(item.checkout_price ?? item.discounted_price ?? item.price ?? 0);
-    return price > 0 ? `TZS ${price.toLocaleString()}` : 'Tazama bei';
+    return price > 0 ? productCardPriceLabel(item) : 'Tazama bei';
 }
 
 function merchantName(merchant = {}) {

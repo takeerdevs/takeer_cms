@@ -710,6 +710,22 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
         : 1;
     const physicalBaseMultiplier = activeProduct?.type === 'physical' ? (requestedPhysicalQuantity / sellableQuantity) : 1;
     const basePrice = (rawBasePrice * serviceBaseMultiplier * physicalBaseMultiplier) + (!hasExplicitCheckoutPrice && activeProduct?.type === 'service' ? checkoutIncludedChargesTotal : 0);
+    const displayCurrencyCode = activeProduct?.display_pricing?.customer_currency_code || activeProduct?.currency_code || activeProduct?.currency?.code || 'TZS';
+    const displayFxRate = Number(activeProduct?.display_pricing?.fx_rate_merchant_to_customer || 1);
+    const displayAmount = (merchantAmount) => Number(merchantAmount || 0) * displayFxRate;
+    const formatCheckoutMoney = (amount) => {
+        const numeric = Number(amount || 0);
+        try {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: displayCurrencyCode,
+                minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(displayCurrencyCode) ? 0 : 2,
+                maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(displayCurrencyCode) ? 0 : 2,
+            }).format(numeric);
+        } catch {
+            return `${displayCurrencyCode} ${numeric.toLocaleString()}`;
+        }
+    };
     const isPhysicalProduct = (itemType === 'product' && activeProduct?.type === 'physical')
         || (['bundle', 'offering_group'].includes(itemType) && activeProduct?.has_physical_items);
     const serviceMode = activeProduct?.service_mode || (
@@ -912,7 +928,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const isInternationalDelivery = activeShippingZone?.coverage_scope === 'international';
     const isCountrywideDelivery = activeShippingZone?.coverage_scope === 'countrywide';
     const matchedShippingFeeLabel = Number(activeShippingZone?.flat_rate_fee || 0) > 0
-        ? `Fee TZS ${Number(activeShippingZone.flat_rate_fee || 0).toLocaleString()}`
+        ? `Fee ${formatCheckoutMoney(displayAmount(activeShippingZone.flat_rate_fee || 0))}`
         : (isIntercityDelivery ? 'Shipping fee will be confirmed in order chat' : 'Free shipping');
     const intercityDestinationLabel = isInternationalDelivery
         ? (activeShippingZone?.destination_country || activeShippingZone?.zone_name)
@@ -1360,7 +1376,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                                     <div className={`px-2 py-1.5 ${isSelected ? 'bg-brand-50' : 'bg-white'}`}>
                                                                         <p className="text-xs font-bold truncate">{option}</p>
                                                                         {previewVariant?.price !== null && previewVariant?.price !== undefined && (
-                                                                            <p className="text-[11px] text-slate-600">TZS {Number(previewVariant.price || 0).toLocaleString()}</p>
+                                                                            <p className="text-[11px] text-slate-600">{formatCheckoutMoney(displayAmount(previewVariant.price || 0))}</p>
                                                                         )}
                                                                     </div>
                                                                 </button>
@@ -1678,10 +1694,10 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                     </div>
                                     <div className="text-right">
                                         <span className="text-[10px] font-black uppercase tracking-widest text-brand-400">Jumla</span>
-                                        <p className="text-xl font-[900] text-brand-900">TZS {price.toLocaleString()}</p>
+                                        <p className="text-xl font-[900] text-brand-900">{formatCheckoutMoney(displayAmount(price))}</p>
                                         {checkoutIncludedChargesTotal > 0 && activeProduct?.type === 'service' && (
                                             <p className="text-[10px] font-bold text-emerald-700">
-                                                Includes TZS {checkoutIncludedChargesTotal.toLocaleString()} extras
+                                                Includes {formatCheckoutMoney(displayAmount(checkoutIncludedChargesTotal))} extras
                                             </p>
                                         )}
                                     </div>

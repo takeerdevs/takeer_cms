@@ -32,6 +32,8 @@ class MerchantBusinessOverviewController extends Controller
         $days = (int) ($validated['days'] ?? 30);
         $from = CarbonImmutable::now()->subDays($days - 1)->startOfDay();
         $now = now();
+        $merchant->loadMissing('currency');
+        $currencyCode = $merchant->currency?->code ?: 'TZS';
 
         $paidStatuses = ['escrow_locked', 'resolved_merchant_paid', 'held', 'paid'];
         $orders = Order::query()
@@ -101,6 +103,7 @@ class MerchantBusinessOverviewController extends Controller
                 'from' => $from->toISOString(),
                 'to' => $now->toISOString(),
             ],
+            'currency_code' => $currencyCode,
             'summary' => [
                 'revenue' => (float) $paidOrders->sum(fn (Order $order) => (float) $order->total_paid),
                 'orders' => $orders->count(),

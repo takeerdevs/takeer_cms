@@ -180,6 +180,11 @@ class Merchant extends Model
         return $this->hasMany(WithdrawalRequest::class, 'merchant_id');
     }
 
+    public function payoutCredentials(): HasMany
+    {
+        return $this->hasMany(MerchantPayoutCredential::class);
+    }
+
     /**
      * Get the posts for the merchant profile.
      */

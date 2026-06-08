@@ -39,7 +39,7 @@ class TotpService
         ];
     }
 
-    public function verify(User $user, string $code, ?string $secret = null): bool
+    public function verify(User $user, string $code, ?string $secret = null, int $window = 1): bool
     {
         $normalized = preg_replace('/\D/', '', $code);
         if (strlen((string) $normalized) !== self::DIGITS) {
@@ -52,8 +52,9 @@ class TotpService
         }
 
         $counter = intdiv(time(), self::PERIOD);
-        foreach ([-1, 0, 1] as $window) {
-            if (hash_equals($this->code($secret, $counter + $window), (string) $normalized)) {
+        $window = max(0, min(2, $window));
+        foreach (range(-$window, $window) as $offset) {
+            if (hash_equals($this->code($secret, $counter + $offset), (string) $normalized)) {
                 return true;
             }
         }

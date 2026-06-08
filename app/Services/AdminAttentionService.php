@@ -85,7 +85,7 @@ class AdminAttentionService
     private function pendingWithdrawals(): Collection
     {
         return WithdrawalRequest::query()
-            ->with('user:id,name,phone_number')
+            ->with(['user:id,name,phone_number', 'merchant.currency:id,code'])
             ->where('status', 'pending')
             ->latest()
             ->limit(20)
@@ -96,11 +96,24 @@ class AdminAttentionService
                 source: 'Withdrawals',
                 severity: 'high',
                 title: 'Merchant withdrawal waiting approval',
-                body: trim(($withdrawal->user?->name ?: 'Merchant') . ' requested ' . number_format((float) $withdrawal->amount)),
+                body: trim(($withdrawal->user?->name ?: 'Merchant') . ' requested ' . $this->withdrawalAmountLabel($withdrawal)),
                 href: '/admin/withdrawals',
                 action: 'Review payout',
                 occurredAt: $withdrawal->created_at?->toISOString(),
             ));
+    }
+
+    private function withdrawalAmountLabel(WithdrawalRequest $withdrawal): string
+    {
+        $merchantCurrency = $withdrawal->merchant_currency_code ?: $withdrawal->merchant?->currency?->code ?: 'TZS';
+        $merchantAmount = $withdrawal->merchant_amount !== null ? (float) $withdrawal->merchant_amount : (float) $withdrawal->amount;
+        $label = $merchantCurrency . ' ' . number_format($merchantAmount, 2);
+
+        if ($withdrawal->payout_currency_code && $withdrawal->payout_currency_code !== $merchantCurrency) {
+            $label .= ' payout ' . $withdrawal->payout_currency_code . ' ' . number_format((float) ($withdrawal->payout_amount ?? $withdrawal->amount), 2);
+        }
+
+        return $label;
     }
 
     private function pendingMerchantKyc(): Collection

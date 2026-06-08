@@ -27,6 +27,7 @@ use App\Models\WithdrawalRequest;
 use App\Services\PlatformNotificationService;
 use App\Services\AdminAttentionService;
 use App\Services\PayoutPolicyService;
+use App\Services\SelcomPayoutService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -436,18 +437,30 @@ class AdminController extends Controller
         }
     }
 
-    /**
-     * Admin approves a standard M-Pesa withdrawal.
-     */
-    public function approveWithdrawal(Request $request, WithdrawalRequest $withdrawal): JsonResponse
+    public function approveWithdrawal(Request $request, WithdrawalRequest $withdrawal, SelcomPayoutService $selcomPayouts): JsonResponse
     {
         if ($withdrawal->status !== 'pending') {
             return response()->json(['message' => 'This withdrawal request has already been handled.'], 400);
         }
 
+        if ($selcomPayouts->shouldHandle($withdrawal)) {
+            $result = $selcomPayouts->submit($withdrawal);
+
+            if (! $result->success) {
+                return response()->json([
+                    'message' => $result->message,
+                    'error_code' => $result->errorCode,
+                ], 422);
+            }
+
+            return response()->json([
+                'message' => 'Withdrawal submitted to Selcom for processing.',
+                'gateway_ref' => $result->gatewayRef,
+            ]);
+        }
+
         DB::transaction(function () use ($withdrawal) {
             $withdrawal->update(['status' => 'approved']);
-            // M-Pesa B2C API trigger would go here to send funds to user's phone
         });
 
         return response()->json(['message' => 'Withdrawal approved successfully.']);

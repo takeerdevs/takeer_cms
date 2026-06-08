@@ -8,10 +8,11 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose
 } from '@/Components/ui/Dialog';
 import {
-    HardDrive, Wallet, ArrowLeft, ArrowUpRight, ArrowDownLeft, Store, ShieldCheck, HelpCircle, History, Clock, FileCheck, Loader2
+    CreditCard, HardDrive, Wallet, ArrowLeft, ArrowUpRight, Plus, Store, ShieldCheck, History, FileCheck, Loader2, Pencil, Trash2
 } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { useMerchantPermissions } from '@/lib/merchantPermissions';
+import { toast } from 'sonner';
 
 export default function MerchantWallet({ merchantUsername, merchantName, wallet, merchant, retailEligible = false, initialLedgerType = null, ledgerMode = false }) {
     const { auth, flash, errors: pageErrors } = usePage().props;
@@ -23,10 +24,52 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
     const [verificationCodeSent, setVerificationCodeSent] = useState(false);
     const [sendingVerificationCode, setSendingVerificationCode] = useState(false);
     const [verificationMessage, setVerificationMessage] = useState('');
+    const [withdrawalQuote, setWithdrawalQuote] = useState(null);
+    const [quoteLoading, setQuoteLoading] = useState(false);
+    const [quoteError, setQuoteError] = useState('');
     const { can } = useMerchantPermissions(merchantUsername);
     const canWithdraw = can('wallet.withdraw');
     const canUpdateSettings = can('settings.update');
     const hasTotpEnabled = Boolean(auth?.user?.two_factor_enabled);
+    const businessCurrencyCode = wallet?.currency_code || wallet?.currency?.code || 'TZS';
+    const payoutChannels = Array.isArray(wallet?.payout_channels) && wallet.payout_channels.length
+        ? wallet.payout_channels
+        : [{
+            key: `fallback_bank_${businessCurrencyCode.toLowerCase()}`,
+            label: 'Bank payout',
+            provider: 'manual',
+            method: 'bank',
+            currency_code: businessCurrencyCode,
+        }];
+    const payoutCurrencies = Array.isArray(wallet?.payout_currencies) && wallet.payout_currencies.length
+        ? wallet.payout_currencies
+        : payoutChannels.map((channel) => ({ code: channel.currency_code, name: channel.label }));
+    const [payoutCredentialItems, setPayoutCredentialItems] = useState(() => Array.isArray(wallet?.payout_credentials) ? wallet.payout_credentials : []);
+    const payoutCredentials = payoutCredentialItems;
+    const defaultPayoutCredential = payoutCredentials.find((credential) => credential.is_default) || payoutCredentials[0] || null;
+    const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false);
+    const [editingCredential, setEditingCredential] = useState(null);
+    const [deletingCredential, setDeletingCredential] = useState(null);
+    const [deleteVerificationCode, setDeleteVerificationCode] = useState('');
+    const [deleteCredentialErrors, setDeleteCredentialErrors] = useState({});
+    const [deleteCredentialSaving, setDeleteCredentialSaving] = useState(false);
+    const [deleteCredentialCodeSent, setDeleteCredentialCodeSent] = useState(false);
+    const [credentialSaving, setCredentialSaving] = useState(false);
+    const [credentialCodeSent, setCredentialCodeSent] = useState(false);
+    const [credentialErrors, setCredentialErrors] = useState({});
+    const [credentialForm, setCredentialForm] = useState({
+        payment_provider_channel_id: payoutChannels.find((channel) => channel.id)?.id || '',
+        currency_code: payoutChannels.find((channel) => channel.id)?.currency_code || businessCurrencyCode,
+        details: {},
+        is_default: true,
+        verification_code: '',
+    });
+    const selectedCredentialChannel = payoutChannels.find((channel) => String(channel.id) === String(credentialForm.payment_provider_channel_id))
+        || payoutChannels.find((channel) => channel.id)
+        || null;
+    const credentialChannelCurrencies = Array.isArray(selectedCredentialChannel?.currencies) && selectedCredentialChannel.currencies.length
+        ? selectedCredentialChannel.currencies
+        : [selectedCredentialChannel?.currency_code || businessCurrencyCode];
 
     const storageUsedMb = merchant?.storage_used_mb || 0;
     const storageLimitMb = merchant?.storage_limit_mb || 500;
@@ -38,11 +81,28 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
         : [null, 'escrow', 'wallet-entry', 'withdrawal'];
     const effectiveLedgerType = allowedLedgerTypes.includes(ledgerType) ? ledgerType : null;
 
-    const { data, setData, post, processing, errors, reset, clearErrors } = useForm({
+    const { data, setData, post, processing, errors, reset, clearErrors, transform } = useForm({
         amount: '',
-        method: 'mobile_money',
+        payout_channel_key: payoutChannels[0]?.key || '',
+        method: payoutChannels[0]?.method || 'bank',
+        payout_currency_code: payoutChannels[0]?.currency_code || businessCurrencyCode,
+        merchant_payout_credential_id: '',
         verification_code: '',
     });
+    const selectedPayoutChannel = payoutChannels.find((channel) => channel.key === data.payout_channel_key) || payoutChannels[0];
+    const selectedPayoutCredential = payoutCredentials.find((credential) => String(credential.id) === String(data.merchant_payout_credential_id));
+    const selectedPayoutCurrency = payoutCurrencies.find((currency) => currency.code === (selectedPayoutChannel?.currency_code || data.payout_currency_code)) || payoutCurrencies[0];
+    const selectedChannelCurrencies = Array.isArray(selectedPayoutChannel?.currencies) && selectedPayoutChannel.currencies.length
+        ? selectedPayoutChannel.currencies
+        : [selectedPayoutChannel?.currency_code || businessCurrencyCode];
+    const selectedPayoutCredentialCurrencyCode = selectedPayoutCredential?.currency_code || '';
+    const hasFixedPayoutCredentialCurrency = Boolean(selectedPayoutCredentialCurrencyCode);
+    const effectivePayoutCurrencyCode = hasFixedPayoutCredentialCurrency
+        ? selectedPayoutCredentialCurrencyCode
+        : selectedChannelCurrencies.includes(data.payout_currency_code)
+            ? data.payout_currency_code
+            : (selectedPayoutChannel?.currency_code || selectedPayoutCurrency?.code || businessCurrencyCode);
+    const canChoosePayoutCurrency = !hasFixedPayoutCredentialCurrency && selectedChannelCurrencies.length > 1;
 
     const isSalesLedger = ['escrow', 'non-escrow', 'credit'].includes(effectiveLedgerType);
     const isWalletEntryLedger = effectiveLedgerType === 'wallet-entry';
@@ -62,6 +122,64 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
             setIsWithdrawModalOpen(true);
         }
     }, [canWithdraw, ledgerMode, merchantUsername]);
+
+    useEffect(() => {
+        setPayoutCredentialItems(Array.isArray(wallet?.payout_credentials) ? wallet.payout_credentials : []);
+    }, [wallet?.payout_credentials]);
+
+    useEffect(() => {
+        if (!isWithdrawModalOpen || data.merchant_payout_credential_id || !defaultPayoutCredential) {
+            return;
+        }
+
+        const credentialChannel = defaultPayoutCredential.channel;
+        setData({
+            ...data,
+            merchant_payout_credential_id: String(defaultPayoutCredential.id),
+            payout_channel_key: credentialChannel?.key || data.payout_channel_key,
+            method: credentialChannel?.method || data.method,
+            payout_currency_code: defaultPayoutCredential.currency_code || credentialChannel?.currency_code || data.payout_currency_code,
+        });
+    }, [isWithdrawModalOpen, defaultPayoutCredential?.id]);
+
+    useEffect(() => {
+        if (!isWithdrawModalOpen || !payoutCredentials.length || !data.amount || Number(data.amount) <= 0 || Number(data.amount) > wallet.balance) {
+            setWithdrawalQuote(null);
+            setQuoteError('');
+            setQuoteLoading(false);
+            return;
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(async () => {
+            setQuoteLoading(true);
+            setQuoteError('');
+
+            try {
+                const res = await window.axios.post(`/merchant/${merchantUsername}/wallet/withdraw/quote`, {
+                    amount: data.amount,
+                    payout_channel_key: selectedPayoutChannel?.key || data.payout_channel_key,
+                    method: data.method,
+                    payout_currency_code: effectivePayoutCurrencyCode,
+                    merchant_payout_credential_id: data.merchant_payout_credential_id || null,
+                }, {
+                    signal: controller.signal,
+                });
+                setWithdrawalQuote(res.data);
+            } catch (error) {
+                if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') return;
+                setWithdrawalQuote(null);
+                setQuoteError(error.response?.data?.message || 'Imeshindwa kupata makadirio ya payout.');
+            } finally {
+                setQuoteLoading(false);
+            }
+        }, 300);
+
+        return () => {
+            clearTimeout(timeout);
+            controller.abort();
+        };
+    }, [isWithdrawModalOpen, payoutCredentials.length, data.amount, data.method, data.payout_channel_key, data.merchant_payout_credential_id, selectedPayoutChannel?.key, effectivePayoutCurrencyCode, merchantUsername, wallet.balance]);
 
     const fetchHistory = async (page = null) => {
         setLoading(true);
@@ -83,6 +201,10 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
     const handleWithdraw = (e) => {
         e.preventDefault();
         if (!canWithdraw) return;
+        transform((payload) => ({
+            ...payload,
+            payout_currency_code: effectivePayoutCurrencyCode,
+        }));
         post(`/merchant/${merchantUsername}/wallet/withdraw`, {
             onSuccess: () => {
                 reset();
@@ -114,6 +236,197 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
         }
     };
 
+    const openCredentialModal = () => {
+        const firstChannel = payoutChannels.find((channel) => channel.id) || null;
+        setEditingCredential(null);
+        setCredentialErrors({});
+        setCredentialCodeSent(false);
+        setCredentialForm({
+            payment_provider_channel_id: firstChannel?.id || '',
+            currency_code: firstChannel?.currency_code || businessCurrencyCode,
+            details: {},
+            is_default: payoutCredentials.length === 0,
+            verification_code: '',
+        });
+        setIsCredentialModalOpen(true);
+    };
+
+    const credentialDetailsForEdit = (credential) => {
+        const savedDetails = credential.details && typeof credential.details === 'object'
+            ? credential.details
+            : {};
+        const maskedDetails = credential.details_masked && typeof credential.details_masked === 'object'
+            ? credential.details_masked
+            : {};
+        const hydratedDetails = { ...maskedDetails, ...savedDetails };
+        if ((!hydratedDetails.first_name || !hydratedDetails.last_name) && maskedDetails.name) {
+            const [firstName = '', ...lastNameParts] = String(maskedDetails.name).trim().split(/\s+/);
+            hydratedDetails.first_name = hydratedDetails.first_name || firstName;
+            hydratedDetails.last_name = hydratedDetails.last_name || lastNameParts.join(' ');
+        }
+
+        return hydratedDetails;
+    };
+
+    const openEditCredentialModal = async (credential) => {
+        let currentCredential = credential;
+        try {
+            const res = await window.axios.get(`/merchant/${merchantUsername}/wallet/payout-credentials`);
+            const freshCredentials = Array.isArray(res.data?.credentials) ? res.data.credentials : [];
+            if (freshCredentials.length) {
+                setPayoutCredentialItems(freshCredentials);
+                currentCredential = freshCredentials.find((item) => String(item.id) === String(credential.id)) || credential;
+            }
+        } catch (error) {
+            // Use the credential already rendered on the page if a refresh is not available.
+        }
+
+        const channel = currentCredential.channel || payoutChannels.find((item) => String(item.id) === String(currentCredential.payment_provider_channel_id)) || null;
+        setEditingCredential(currentCredential);
+        setCredentialErrors({});
+        setCredentialCodeSent(false);
+        setCredentialForm({
+            payment_provider_channel_id: channel?.id || '',
+            currency_code: currentCredential.currency_code || channel?.currency_code || businessCurrencyCode,
+            details: credentialDetailsForEdit(currentCredential),
+            is_default: Boolean(currentCredential.is_default),
+            verification_code: '',
+        });
+        setIsCredentialModalOpen(true);
+    };
+
+    const setCredentialDetail = (key, value) => {
+        setCredentialForm((prev) => ({
+            ...prev,
+            details: {
+                ...prev.details,
+                [key]: value,
+            },
+        }));
+    };
+
+    const sendCredentialVerificationCode = async () => {
+        setCredentialErrors({});
+        try {
+            const res = await window.axios.post('/auth/2fa/send', {
+                purpose: 'merchant_payout_credential',
+            });
+            setCredentialCodeSent(true);
+            toast.success(res.data?.message || 'Verification code sent.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to send verification code.');
+        }
+    };
+
+    const savePayoutCredential = async (event) => {
+        event.preventDefault();
+        if (!selectedCredentialChannel?.id) {
+            setCredentialErrors({ payment_provider_channel_id: 'No payout channel is available for this business country yet.' });
+            return;
+        }
+        if (!String(credentialForm.verification_code || '').trim()) {
+            setCredentialErrors({ verification_code: 'Verification code is required to save payout credentials.' });
+            return;
+        }
+
+        setCredentialSaving(true);
+        setCredentialErrors({});
+
+        try {
+            const payload = {
+                ...credentialForm,
+                payment_provider_channel_id: selectedCredentialChannel.id,
+                currency_code: credentialForm.currency_code || credentialChannelCurrencies[0] || businessCurrencyCode,
+            };
+            const url = editingCredential
+                ? `/merchant/${merchantUsername}/wallet/payout-credentials/${editingCredential.id}`
+                : `/merchant/${merchantUsername}/wallet/payout-credentials`;
+            const res = editingCredential
+                ? await window.axios.put(url, payload)
+                : await window.axios.post(url, payload);
+            const saved = res.data?.credential;
+            if (saved) {
+                setPayoutCredentialItems((prev) => {
+                    const withoutSaved = prev.filter((credential) => credential.id !== saved.id);
+                    return [saved, ...withoutSaved];
+                });
+                setData({
+                    ...data,
+                    merchant_payout_credential_id: saved.id,
+                    payout_channel_key: saved.channel?.key || data.payout_channel_key,
+                    method: saved.method || data.method,
+                    payout_currency_code: saved.currency_code || data.payout_currency_code,
+                });
+            }
+            toast.success(res.data?.message || 'Payout credential saved.');
+            setIsCredentialModalOpen(false);
+            setEditingCredential(null);
+        } catch (error) {
+            const responseErrors = error.response?.data?.errors || {};
+            setCredentialErrors(responseErrors);
+            toast.error(error.response?.data?.message || 'Failed to save payout credential.');
+        } finally {
+            setCredentialSaving(false);
+        }
+    };
+
+    const openDeleteCredentialModal = (credential) => {
+        setDeletingCredential(credential);
+        setDeleteVerificationCode('');
+        setDeleteCredentialErrors({});
+        setDeleteCredentialCodeSent(false);
+    };
+
+    const sendDeleteCredentialVerificationCode = async () => {
+        setDeleteCredentialErrors({});
+        try {
+            const res = await window.axios.post('/auth/2fa/send', {
+                purpose: 'merchant_payout_credential',
+            });
+            setDeleteCredentialCodeSent(true);
+            toast.success(res.data?.message || 'Verification code sent.');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to send verification code.');
+        }
+    };
+
+    const deletePayoutCredential = async (event) => {
+        event.preventDefault();
+        if (!deletingCredential) return;
+        if (!String(deleteVerificationCode || '').trim()) {
+            setDeleteCredentialErrors({ verification_code: 'Verification code is required to remove payout credentials.' });
+            return;
+        }
+
+        setDeleteCredentialSaving(true);
+        setDeleteCredentialErrors({});
+
+        try {
+            const res = await window.axios.delete(`/merchant/${merchantUsername}/wallet/payout-credentials/${deletingCredential.id}`, {
+                data: {
+                    verification_code: deleteVerificationCode,
+                },
+            });
+            setPayoutCredentialItems((prev) => prev.filter((credential) => credential.id !== deletingCredential.id));
+            if (String(data.merchant_payout_credential_id) === String(deletingCredential.id)) {
+                setData({
+                    ...data,
+                    merchant_payout_credential_id: '',
+                });
+            }
+            toast.success(res.data?.message || 'Payout credential removed.');
+            setDeletingCredential(null);
+            setDeleteVerificationCode('');
+        } catch (error) {
+            setDeleteCredentialErrors(error.response?.data?.errors || {
+                verification_code: error.response?.data?.message || 'Failed to remove payout credential.',
+            });
+            toast.error(error.response?.data?.message || 'Failed to remove payout credential.');
+        } finally {
+            setDeleteCredentialSaving(false);
+        }
+    };
+
     const goToLedger = (type = null, page = 1) => {
         const nextType = allowedLedgerTypes.includes(type) ? type : null;
         const params = new URLSearchParams();
@@ -126,12 +439,30 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
         });
     };
 
-    const formatMoney = (amount) => {
-        return new Intl.NumberFormat('en-TZ', {
-            style: 'currency',
-            currency: 'TZS',
-            minimumFractionDigits: 0,
-        }).format(amount);
+    const formatMoney = (amount, currency = businessCurrencyCode) => {
+        const code = currency || businessCurrencyCode;
+        try {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: code,
+                minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(code) ? 0 : 2,
+                maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(code) ? 0 : 2,
+            }).format(Number(amount || 0));
+        } catch {
+            return `${code} ${Number(amount || 0).toLocaleString()}`;
+        }
+    };
+
+    const formatFxRate = (rate) => {
+        const value = Number(rate || 0);
+        if (!Number.isFinite(value)) return '0';
+        if (value === 0) return '0';
+
+        const absolute = Math.abs(value);
+        return value.toLocaleString(undefined, {
+            minimumFractionDigits: absolute > 0 && absolute < 0.01 ? 6 : 0,
+            maximumFractionDigits: absolute < 0.000001 ? 12 : (absolute < 1 ? 8 : 6),
+        });
     };
 
     const formatDate = (dateStr) => {
@@ -319,6 +650,69 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                     </Card>
                 </div>
 
+                {canWithdraw && (
+                    <Card className="border-border bg-white shadow-sm">
+                        <CardContent className="p-4">
+                            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <CreditCard className="h-5 w-5 text-brand-600" />
+                                        <h2 className="text-base font-black text-slate-950">Payout Accounts</h2>
+                                    </div>
+                                    <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                                        Save mobile money or bank details before requesting payouts.
+                                    </p>
+                                </div>
+                                <Button type="button" className="h-10 rounded-xl font-bold" onClick={openCredentialModal}>
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Add Account
+                                </Button>
+                            </div>
+                            <div className="mt-4 grid gap-2 md:grid-cols-2">
+                                {payoutCredentials.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-muted-foreground">
+                                        No payout account saved yet.
+                                    </div>
+                                ) : payoutCredentials.map((credential) => (
+                                    <div key={credential.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="text-sm font-black text-slate-900">{credential.label}</p>
+                                            {credential.is_default && (
+                                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-700">Default</span>
+                                            )}
+                                        </div>
+                                        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                            <p className="text-xs font-semibold text-muted-foreground">
+                                                {String(credential.method || '').replaceAll('_', ' ')} · {credential.currency_code}
+                                            </p>
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="h-8 rounded-lg px-2 text-xs font-bold"
+                                                    onClick={() => openEditCredentialModal(credential)}
+                                                >
+                                                    <Pencil className="mr-1 h-3.5 w-3.5" />
+                                                    Edit
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="h-8 rounded-lg border-red-200 px-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                                                    onClick={() => openDeleteCredentialModal(credential)}
+                                                >
+                                                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                                                    Remove
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Ledger / History Tabs */}
                 <div className="space-y-4">
                     <div className="flex flex-col gap-4 rounded-2xl border border-border bg-white p-4 shadow-sm">
@@ -478,7 +872,12 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                                                 </span>
                                                             </td>
                                                             <td className="p-4 text-right">
-                                                                <p className="text-lg font-black">{formatMoney(item.amount)}</p>
+                                                                <p className="text-lg font-black">{formatMoney(item.merchant_amount ?? item.amount, item.merchant_currency_code || businessCurrencyCode)}</p>
+                                                                {item.payout_currency_code && item.payout_currency_code !== (item.merchant_currency_code || businessCurrencyCode) && (
+                                                                    <p className="text-[10px] font-bold text-muted-foreground mt-0.5">
+                                                                        Pays {formatMoney(item.payout_amount ?? item.amount, item.payout_currency_code)}
+                                                                    </p>
+                                                                )}
                                                             </td>
                                                         </>
                                                     ) : (() => {
@@ -512,7 +911,16 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                                                                     </span>
                                                                 </td>
                                                                 <td className="p-4 text-right">
-                                                                    <p className="text-sm font-black">{formatMoney(item.amount)}</p>
+                                                                    <p className="text-sm font-black">
+                                                                        {item.type === 'withdrawal'
+                                                                            ? formatMoney(item.merchant_amount ?? item.amount, item.merchant_currency_code || businessCurrencyCode)
+                                                                            : formatMoney(item.amount)}
+                                                                    </p>
+                                                                    {item.type === 'withdrawal' && item.payout_currency_code && item.payout_currency_code !== (item.merchant_currency_code || businessCurrencyCode) && (
+                                                                        <p className="text-[10px] font-bold text-muted-foreground mt-0.5">
+                                                                            Pays {formatMoney(item.payout_amount ?? item.amount, item.payout_currency_code)}
+                                                                        </p>
+                                                                    )}
                                                                     {item.outstanding_amount > 0 && (
                                                                         <p className="text-[10px] font-black text-amber-600 mt-0.5">
                                                                             Due: {formatMoney(item.outstanding_amount)}
@@ -567,54 +975,160 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                     setData('verification_code', '');
                     setVerificationCodeSent(false);
                     setVerificationMessage('');
+                    setWithdrawalQuote(null);
+                    setQuoteError('');
                 }
             }}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Kutoa Pesa (Withdraw)</DialogTitle>
                         <DialogDescription>
-                            Chagua njia na kiasi unachotaka kutoa. Kima cha chini ni <span className="font-bold text-foreground">TZS 5,000</span>.
+                            Chagua njia na kiasi cha kutoa kutoka wallet yako ya <span className="font-bold text-foreground">{businessCurrencyCode}</span>.
                         </DialogDescription>
                     </DialogHeader>
 
                     <form onSubmit={handleWithdraw} className="space-y-6 py-2">
                         <div className="space-y-2.5">
-                            <label className="text-sm font-semibold">Kiasi (TZS)</label>
-                            <Input
-                                type="number"
-                                required
-                                min="5000"
-                                max={wallet.balance}
-                                placeholder="Mf. 10000"
-                                className="h-12 text-lg font-bold"
-                                value={data.amount}
-                                onChange={e => setData('amount', e.target.value)}
-                            />
-                            <div className="flex justify-between text-xs font-medium text-muted-foreground">
-                                <span>Salio Lililopo: {formatMoney(wallet.balance)}</span>
-                                {data.amount && parseInt(data.amount) > wallet.balance && (
+                            <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,0.95fr)] sm:items-center">
+                                <label className="text-sm font-semibold sm:text-base">Kiasi cha kutoa ({businessCurrencyCode})</label>
+                                <Input
+                                    type="number"
+                                    required
+                                    min="0.01"
+                                    step="0.01"
+                                    max={wallet.balance}
+                                    placeholder="Mf. 100.00"
+                                    className="h-12 text-lg font-bold sm:text-right"
+                                    value={data.amount}
+                                    onChange={e => setData('amount', e.target.value)}
+                                />
+                            </div>
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>Salio Lililopo: <span className="font-bold text-foreground">{formatMoney(wallet.balance)}</span></span>
+                                {data.amount && Number(data.amount) > wallet.balance && (
                                     <span className="text-red-500">Salio halitoshi</span>
                                 )}
                             </div>
                             {errors.amount && <p className="text-sm text-red-500 mt-1 font-medium">{errors.amount}</p>}
                         </div>
 
-                        <div className="space-y-2.5">
-                            <label className="text-sm font-semibold">Njia ya Malipo</label>
-                            <select
-                                className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                value={data.method}
-                                onChange={e => setData('method', e.target.value)}
-                            >
-                                <option value="mobile_money">Mobile Money (M-Pesa, Tigo Pesa, n.k)</option>
-                                <option value="bank">Akaunti ya Benki</option>
-                                <option value="paypal">PayPal</option>
-                            </select>
-                            <p className="text-xs text-muted-foreground">
-                                Njia za malipo zinaweza kusetiwa katika ukurasa wako wa mipangilio.
-                            </p>
-                            {errors.method && <p className="text-sm text-red-500 mt-1 font-medium">{errors.method}</p>}
-                        </div>
+                        {payoutCredentials.length > 0 ? (
+                            <div className="space-y-2.5">
+                                <label className="text-sm font-semibold">Payout account</label>
+                                <select
+                                    className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    value={data.merchant_payout_credential_id}
+                                    onChange={e => {
+                                        const credential = payoutCredentials.find((item) => String(item.id) === String(e.target.value));
+                                        const credentialChannel = credential?.channel;
+                                        setData({
+                                            ...data,
+                                            merchant_payout_credential_id: e.target.value,
+                                            payout_channel_key: credentialChannel?.key || data.payout_channel_key,
+                                            method: credentialChannel?.method || data.method,
+                                            payout_currency_code: credential?.currency_code || credentialChannel?.currency_code || data.payout_currency_code,
+                                        });
+                                    }}
+                                >
+                                    {payoutCredentials.map((credential) => (
+                                        <option key={credential.id} value={credential.id}>
+                                            {credential.label} - {credential.currency_code}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs leading-5 text-muted-foreground">
+                                    Wallet itakatwa {businessCurrencyCode}; payout itatumwa kwa {effectivePayoutCurrencyCode}.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                <p className="text-sm font-black text-amber-950">Add a payout account first</p>
+                                <p className="mt-1 text-xs font-semibold leading-5 text-amber-900">
+                                    Weka akaunti ya kupokea pesa ili tuweze kuchagua payout route sahihi nyuma ya pazia.
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="mt-3 h-10 rounded-xl border-amber-300 bg-white font-bold text-amber-950 hover:bg-amber-100"
+                                    onClick={() => {
+                                        setIsWithdrawModalOpen(false);
+                                        openCredentialModal();
+                                    }}
+                                >
+                                    Add payout account
+                                </Button>
+                            </div>
+                        )}
+
+                        {canChoosePayoutCurrency && (
+                            <div className="space-y-2.5">
+                                <label className="text-sm font-semibold">Payout currency</label>
+                                <select
+                                    className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    value={effectivePayoutCurrencyCode}
+                                    onChange={(e) => setData('payout_currency_code', e.target.value)}
+                                >
+                                    {selectedChannelCurrencies.map((currency) => (
+                                        <option key={currency} value={currency}>{currency}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {(data.amount && Number(data.amount) > 0) && (
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Payout estimate</p>
+                                    {quoteLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                                </div>
+                                {quoteError ? (
+                                    <p className="mt-3 text-xs font-bold text-red-600">{quoteError}</p>
+                                ) : withdrawalQuote ? (() => {
+                                    const convertedAmount = Number(withdrawalQuote.merchant_amount || 0) * Number(withdrawalQuote.effective_rate_merchant_to_payout || 0);
+                                    const hasWithdrawalFee = Number(withdrawalQuote.withdrawal_fee_amount || 0) > 0;
+                                    const hasFxSpread = Number(withdrawalQuote.fx_margin_bps || 0) > 0;
+
+                                    return (
+                                        <div className="mt-3 space-y-2">
+                                            <div className="flex items-start justify-between gap-3 text-xs font-semibold text-slate-700">
+                                                <div>
+                                                    <span>Wallet debit</span>
+                                                    <p className="mt-0.5 text-[10px] font-bold text-muted-foreground">
+                                                        {formatMoney(withdrawalQuote.merchant_amount, withdrawalQuote.merchant_currency_code)}
+                                                    </p>
+                                                </div>
+                                                <span className="text-right font-black text-slate-900">
+                                                    {formatMoney(convertedAmount, withdrawalQuote.payout_currency_code)}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-start justify-between gap-3 text-xs font-semibold text-slate-600">
+                                                <span>Exchange rate{hasFxSpread ? ' (includes spread)' : ''}</span>
+                                                <span className="text-right">
+                                                    1 {withdrawalQuote.merchant_currency_code} ≈ {formatFxRate(withdrawalQuote.effective_rate_merchant_to_payout)} {withdrawalQuote.payout_currency_code}
+                                                </span>
+                                            </div>
+                                            {hasWithdrawalFee && (
+                                                <div className="flex items-center justify-between gap-3 text-xs font-semibold text-amber-700">
+                                                    <span>Withdrawal fee</span>
+                                                    <span>-{formatMoney(withdrawalQuote.withdrawal_fee_amount, withdrawalQuote.withdrawal_fee_currency_code || withdrawalQuote.payout_currency_code)}</span>
+                                                </div>
+                                            )}
+                                            <div className="border-t border-slate-200 pt-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="text-sm font-black text-slate-950">Estimated receive</span>
+                                                    <span className="text-lg font-black text-brand-700">{formatMoney(withdrawalQuote.payout_amount, withdrawalQuote.payout_currency_code)}</span>
+                                                </div>
+                                                <p className="mt-1 text-[11px] font-semibold leading-5 text-muted-foreground">
+                                                    {withdrawalQuote.note}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })() : (
+                                    <p className="mt-3 text-xs font-semibold text-muted-foreground">Makadirio yataonekana baada ya kuweka kiasi.</p>
+                                )}
+                            </div>
+                        )}
 
                         <div className="rounded-2xl border border-brand-100 bg-brand-50/50 p-4">
                             <div className="flex items-start gap-3">
@@ -665,8 +1179,213 @@ export default function MerchantWallet({ merchantUsername, merchantName, wallet,
                             <Button type="button" variant="outline" className="w-full sm:w-auto h-11" onClick={() => setIsWithdrawModalOpen(false)}>
                                 Ghairi
                             </Button>
-                            <Button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 h-11 font-bold" disabled={processing || !data.amount || parseInt(data.amount) < 5000 || parseInt(data.amount) > wallet.balance}>
+                            <Button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 h-11 font-bold" disabled={processing || !payoutCredentials.length || !data.amount || Number(data.amount) <= 0 || Number(data.amount) > wallet.balance}>
                                 {processing ? 'Tafadhali subiri...' : 'Tuma Ombi la Pesa'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={canWithdraw && isCredentialModalOpen} onOpenChange={(open) => {
+                setIsCredentialModalOpen(open);
+                if (!open) {
+                    setCredentialErrors({});
+                    setCredentialCodeSent(false);
+                    setEditingCredential(null);
+                }
+            }}>
+                <DialogContent className="sm:max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle>{editingCredential ? 'Edit payout account' : 'Add payout account'}</DialogTitle>
+                        <DialogDescription>
+                            {editingCredential
+                                ? 'Re-enter the account details, then verify this change before saving.'
+                                : 'Details must match the account holder. We will verify this change before saving.'}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={savePayoutCredential} className="space-y-5 py-2">
+                        <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold">Payout channel</label>
+                                <select
+                                    className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={credentialForm.payment_provider_channel_id}
+                                    onChange={(event) => {
+                                        const nextChannel = payoutChannels.find((channel) => String(channel.id) === String(event.target.value));
+                                        setCredentialForm((prev) => ({
+                                            ...prev,
+                                            payment_provider_channel_id: event.target.value,
+                                            currency_code: nextChannel?.currency_code || businessCurrencyCode,
+                                            details: {},
+                                        }));
+                                    }}
+                                >
+                                    {payoutChannels.filter((channel) => channel.id).map((channel) => (
+                                        <option key={channel.id} value={channel.id}>
+                                            {channel.label} · {(channel.currencies || [channel.currency_code]).join(', ')}
+                                        </option>
+                                    ))}
+                                </select>
+                                {credentialErrors.payment_provider_channel_id && <p className="text-xs font-bold text-red-500">{credentialErrors.payment_provider_channel_id}</p>}
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold">Currency</label>
+                                <select
+                                    className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={credentialForm.currency_code}
+                                    onChange={(event) => setCredentialForm((prev) => ({ ...prev, currency_code: event.target.value }))}
+                                >
+                                    {credentialChannelCurrencies.map((currency) => (
+                                        <option key={currency} value={currency}>{currency}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            {(selectedCredentialChannel?.required_fields_schema || []).map((field) => {
+                                const options = field.type === 'bank_select'
+                                    ? (selectedCredentialChannel?.supported_banks || [])
+                                    : (field.options || []);
+                                const value = credentialForm.details[field.key] || '';
+
+                                return (
+                                    <div key={field.key} className="space-y-2">
+                                        <label className="text-sm font-semibold">{field.label}</label>
+                                        {field.type === 'select' || field.type === 'bank_select' ? (
+                                            <select
+                                                className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                value={value}
+                                                onChange={(event) => setCredentialDetail(field.key, event.target.value)}
+                                                required={Boolean(field.required)}
+                                            >
+                                                <option value="">Select {String(field.label || '').toLowerCase()}</option>
+                                                {options.map((option) => {
+                                                    const optionValue = option.code || option.key || option.provider_code || option.name;
+                                                    return (
+                                                        <option key={optionValue} value={optionValue}>
+                                                            {option.name || optionValue}
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
+                                        ) : (
+                                            <Input
+                                                type={field.type === 'phone' ? 'tel' : 'text'}
+                                                value={value}
+                                                onChange={(event) => setCredentialDetail(field.key, event.target.value)}
+                                                required={Boolean(field.required)}
+                                            />
+                                        )}
+                                        {credentialErrors[`details.${field.key}`] && (
+                                            <p className="text-xs font-bold text-red-500">{credentialErrors[`details.${field.key}`]}</p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                            <input
+                                type="checkbox"
+                                checked={Boolean(credentialForm.is_default)}
+                                onChange={(event) => setCredentialForm((prev) => ({ ...prev, is_default: event.target.checked }))}
+                            />
+                            Use as default payout account
+                        </label>
+
+                        <div className="rounded-2xl border border-brand-100 bg-brand-50/50 p-4">
+                            <p className="text-sm font-black text-foreground">Security verification</p>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
+                                {hasTotpEnabled ? 'Use your authenticator code.' : 'Send a one-time code to your phone before saving.'}
+                            </p>
+                            <div className="mt-3 flex gap-2">
+                                <Input
+                                    inputMode="numeric"
+                                    placeholder="000000"
+                                    className="h-11 text-center text-lg font-black tracking-[0.25em]"
+                                    value={credentialForm.verification_code}
+                                    onChange={(event) => setCredentialForm((prev) => ({
+                                        ...prev,
+                                        verification_code: hasTotpEnabled
+                                            ? event.target.value.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 32)
+                                            : event.target.value.replace(/\D/g, '').slice(0, 6),
+                                    }))}
+                                />
+                                {!hasTotpEnabled && (
+                                    <Button type="button" variant="outline" className="h-11 shrink-0 rounded-xl font-bold" onClick={sendCredentialVerificationCode}>
+                                        {credentialCodeSent ? 'Send again' : 'Send code'}
+                                    </Button>
+                                )}
+                            </div>
+                            {credentialErrors.verification_code && <p className="mt-2 text-xs font-bold text-red-500">{credentialErrors.verification_code}</p>}
+                        </div>
+
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button type="button" variant="outline" className="h-11" onClick={() => setIsCredentialModalOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" className="h-11 bg-brand-600 font-bold hover:bg-brand-700" disabled={credentialSaving || !selectedCredentialChannel?.id || !String(credentialForm.verification_code || '').trim()}>
+                                {credentialSaving ? 'Saving...' : (editingCredential ? 'Update account' : 'Save account')}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={canWithdraw && Boolean(deletingCredential)} onOpenChange={(open) => {
+                if (!open) {
+                    setDeletingCredential(null);
+                    setDeleteVerificationCode('');
+                    setDeleteCredentialErrors({});
+                    setDeleteCredentialCodeSent(false);
+                }
+            }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Remove payout account</DialogTitle>
+                        <DialogDescription>
+                            This disables {deletingCredential?.label || 'this payout account'} after security verification.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={deletePayoutCredential} className="space-y-5 py-2">
+                        <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                            <p className="text-sm font-black text-red-950">Security verification required</p>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-red-800">
+                                {hasTotpEnabled ? 'Use your authenticator code to remove this payout account.' : 'Send a one-time code to your phone before removing this payout account.'}
+                            </p>
+                            <div className="mt-3 flex gap-2">
+                                <Input
+                                    inputMode="numeric"
+                                    placeholder="000000"
+                                    className="h-11 text-center text-lg font-black tracking-[0.25em]"
+                                    value={deleteVerificationCode}
+                                    onChange={(event) => setDeleteVerificationCode(
+                                        hasTotpEnabled
+                                            ? event.target.value.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 32)
+                                            : event.target.value.replace(/\D/g, '').slice(0, 6)
+                                    )}
+                                />
+                                {!hasTotpEnabled && (
+                                    <Button type="button" variant="outline" className="h-11 shrink-0 rounded-xl bg-white font-bold" onClick={sendDeleteCredentialVerificationCode}>
+                                        {deleteCredentialCodeSent ? 'Send again' : 'Send code'}
+                                    </Button>
+                                )}
+                            </div>
+                            {deleteCredentialErrors.verification_code && (
+                                <p className="mt-2 text-xs font-bold text-red-600">{deleteCredentialErrors.verification_code}</p>
+                            )}
+                        </div>
+
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button type="button" variant="outline" className="h-11" onClick={() => setDeletingCredential(null)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" className="h-11 bg-red-600 font-bold hover:bg-red-700" disabled={deleteCredentialSaving || !String(deleteVerificationCode || '').trim()}>
+                                {deleteCredentialSaving ? 'Removing...' : 'Remove account'}
                             </Button>
                         </DialogFooter>
                     </form>

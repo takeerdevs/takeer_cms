@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Payments\Drivers\AzamPay\AzamPayGateway;
 use App\Payments\Drivers\AzamPay\AzamPayTokenService;
+use App\Payments\Drivers\Selcom\SelcomClient;
+use App\Payments\Drivers\Selcom\SelcomGateway;
 use App\Observers\MerchantAuditObserver;
 use Illuminate\Support\ServiceProvider;
 
@@ -29,6 +31,24 @@ class AppServiceProvider extends ServiceProvider
                 tokenService:    $app->make(AzamPayTokenService::class),
                 checkoutBaseUrl: config('services.azampay.checkout_base_url'),
                 apiKey:          config('services.azampay.token'),
+            );
+        });
+
+        $this->app->singleton(SelcomClient::class, function () {
+            return new SelcomClient(
+                baseUrl: (string) config('services.selcom.base_url'),
+                apiKey: (string) config('services.selcom.api_key'),
+                apiSecret: (string) config('services.selcom.api_secret'),
+            );
+        });
+
+        $this->app->singleton(SelcomGateway::class, function ($app) {
+            return new SelcomGateway(
+                client: $app->make(SelcomClient::class),
+                displayDirectory: $app->make(\App\Services\PaymentDisplayDirectory::class),
+                vendor: (string) config('services.selcom.vendor'),
+                callbackUrl: (string) config('services.selcom.callback_url'),
+                simulate: (bool) config('services.selcom.simulate'),
             );
         });
 

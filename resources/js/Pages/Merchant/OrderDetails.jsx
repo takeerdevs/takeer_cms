@@ -44,6 +44,19 @@ import { useMerchantPermissions } from '@/lib/merchantPermissions';
 import axios from 'axios';
 import { toast } from 'sonner';
 
+function formatMoney(amount, currency = 'TZS') {
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+            maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+        }).format(Number(amount || 0));
+    } catch {
+        return `${currency} ${Number(amount || 0).toLocaleString()}`;
+    }
+}
+
 function maskPhone(value) {
     const digits = String(value || '').replace(/\D/g, '');
     if (!digits) return '';
@@ -68,7 +81,7 @@ function typeMeta(kind) {
     return map[kind] || map.post_content;
 }
 
-function OfferingGroupLines({ lines = [] }) {
+function OfferingGroupLines({ lines = [], currency = 'TZS' }) {
     if (!Array.isArray(lines) || lines.length === 0) return null;
 
     return (
@@ -96,7 +109,7 @@ function OfferingGroupLines({ lines = [] }) {
                                 </div>
                             </div>
                             <div className="shrink-0 text-right">
-                                <p className="text-sm font-black text-brand-700">TZS {Number(line.line_total || 0).toLocaleString()}</p>
+                                <p className="text-sm font-black text-brand-700">{formatMoney(line.line_total || 0, currency)}</p>
                                 <p className="text-[11px] font-bold text-muted-foreground">Qty {Number(line.quantity || 1).toLocaleString()}</p>
                             </div>
                         </div>
@@ -112,7 +125,7 @@ function OfferingGroupLines({ lines = [] }) {
                                     </div>
                                     {addOnsTotal > 0 && (
                                         <p className="shrink-0 text-xs font-black text-emerald-700">
-                                            + TZS {addOnsTotal.toLocaleString()}
+                                            + {formatMoney(addOnsTotal, currency)}
                                         </p>
                                     )}
                                 </div>
@@ -121,7 +134,7 @@ function OfferingGroupLines({ lines = [] }) {
 
                         {Array.isArray(line.child_lines) && line.child_lines.length > 0 && (
                             <div className="mt-3 border-l-2 border-slate-100 pl-3">
-                                <OfferingGroupLines lines={line.child_lines} />
+                                <OfferingGroupLines lines={line.child_lines} currency={currency} />
                             </div>
                         )}
                     </div>
@@ -552,6 +565,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const kind = typeMeta(order?.display_kind);
     const status = statusMeta(order?.payment_status, !!order?.is_escrow_order);
     const paymentState = paymentOverview(order);
+    const currencyCode = order?.merchant_currency_code || order?.merchant?.currency?.code || 'TZS';
     const KindIcon = kind.icon;
 
     const flowCopy = useMemo(() => {
@@ -1012,7 +1026,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </p>
                                 </div>
                                 <p className="text-3xl md:text-4xl font-black text-brand-600 shrink-0">
-                                    TZS {Number(order.total_paid || 0).toLocaleString()}
+                                    {formatMoney(order.total_paid || 0, currencyCode)}
                                 </p>
                             </CardContent>
                         </Card>
@@ -1051,7 +1065,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <p><span className="text-muted-foreground">Order Ref:</span> <span className="font-semibold">{isPos ? `#POS-${order.public_id}` : (order.transaction_ref || `#${order.id}`)}</span></p>
                                     <p><span className="text-muted-foreground">Kiasi:</span> <span className="font-semibold">{orderQuantityLabel(order)}</span></p>
                                     <p><span className="text-muted-foreground">Bei moja:</span> <span className="font-semibold">{orderUnitPriceLabel(order)}</span></p>
-                                    <p><span className="text-muted-foreground">Jumla:</span> <span className="font-semibold">TZS {Number(order.total_paid || 0).toLocaleString()}</span></p>
+                                    <p><span className="text-muted-foreground">Jumla:</span> <span className="font-semibold">{formatMoney(order.total_paid || 0, currencyCode)}</span></p>
                                     <p><span className="text-muted-foreground">Payment phone:</span> <span className="font-semibold">{maskPhone(order.payment_phone)}</span></p>
                                     <p><span className="text-muted-foreground">Account phone:</span> <span className="font-semibold">{maskPhone(order.account_phone)}</span></p>
                                 </CardContent>
@@ -1077,10 +1091,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             </div>
                                             <div className="rounded-xl bg-white p-3">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Subtotal</p>
-                                                <p className="mt-1 font-black text-slate-950">TZS {Number(order.offering_group_selection?.subtotal || 0).toLocaleString()}</p>
+                                                <p className="mt-1 font-black text-slate-950">{formatMoney(order.offering_group_selection?.subtotal || 0, currencyCode)}</p>
                                             </div>
                                         </div>
-                                        <OfferingGroupLines lines={order.offering_group_selection.lines} />
+                                        <OfferingGroupLines lines={order.offering_group_selection.lines} currency={currencyCode} />
                                     </CardContent>
                                 </Card>
                             )}
@@ -1273,7 +1287,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     {isB2BOrder && (
                                                         <div>
                                                             <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">
-                                                                Unit Price (TZS)
+                                                                Unit Price ({currencyCode})
                                                             </label>
                                                             <Input
                                                                 type="number"
@@ -1288,7 +1302,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     )}
                                                     <div>
                                                         <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 block ml-1">
-                                                            {order.shipping_fee !== null && order.shipping_fee !== undefined ? 'Update Shipping Fee (TZS)' : 'Enter Shipping Fee (TZS)'}
+                                                            {order.shipping_fee !== null && order.shipping_fee !== undefined ? `Update Shipping Fee (${currencyCode})` : `Enter Shipping Fee (${currencyCode})`}
                                                         </label>
                                                         <Input
                                                             type="number"
@@ -1345,15 +1359,15 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
                                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
                                                         <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Current shipping</p>
-                                                        <p className="text-sm font-black text-slate-950">TZS {Number(order.shipping_fee || 0).toLocaleString()}</p>
+                                                        <p className="text-sm font-black text-slate-950">{formatMoney(order.shipping_fee || 0, currencyCode)}</p>
                                                     </div>
                                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
                                                         <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Items total</p>
-                                                        <p className="text-sm font-black text-slate-950">TZS {Number((order.total_paid || 0) - (order.shipping_fee || 0)).toLocaleString()}</p>
+                                                        <p className="text-sm font-black text-slate-950">{formatMoney((order.total_paid || 0) - (order.shipping_fee || 0), currencyCode)}</p>
                                                     </div>
                                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
                                                         <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Customer total</p>
-                                                        <p className="text-sm font-black text-brand-700">TZS {Number(order.total_paid || 0).toLocaleString()}</p>
+                                                        <p className="text-sm font-black text-brand-700">{formatMoney(order.total_paid || 0, currencyCode)}</p>
                                                     </div>
                                                 </div>
                                             </form>
@@ -1381,7 +1395,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <div className="p-4 rounded-xl bg-green-50 border border-green-100 flex items-center justify-between">
                                                 <div>
                                                     <p className="text-[10px] font-black uppercase text-green-700 mb-1">Gharama uliyoweka:</p>
-                                                    <p className="text-lg font-black text-green-600">TZS {Number(order.shipping_fee || 0).toLocaleString()}</p>
+                                                    <p className="text-lg font-black text-green-600">{formatMoney(order.shipping_fee || 0, currencyCode)}</p>
                                                 </div>
                                                 <div className="text-right">
                                                     <p className="text-[10px] font-black uppercase text-green-700 mb-1">Hali ya Inquiry:</p>
@@ -1431,15 +1445,15 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <div className="grid min-w-full gap-2 sm:grid-cols-3 md:min-w-[420px]">
                                                 <div className="rounded-2xl bg-white/75 px-4 py-3">
                                                     <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Total</p>
-                                                    <p className="mt-1 text-lg font-black text-slate-950">TZS {paymentState.total.toLocaleString()}</p>
+                                                    <p className="mt-1 text-lg font-black text-slate-950">{formatMoney(paymentState.total, currencyCode)}</p>
                                                 </div>
                                                 <div className="rounded-2xl bg-white/75 px-4 py-3">
                                                     <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Paid</p>
-                                                    <p className="mt-1 text-lg font-black text-emerald-700">TZS {paymentState.paid.toLocaleString()}</p>
+                                                    <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(paymentState.paid, currencyCode)}</p>
                                                 </div>
                                                 <div className="rounded-2xl bg-white/75 px-4 py-3">
                                                     <p className="text-[9px] font-black uppercase tracking-widest opacity-60">Left</p>
-                                                    <p className="mt-1 text-lg font-black text-amber-700">TZS {paymentState.left.toLocaleString()}</p>
+                                                    <p className="mt-1 text-lg font-black text-amber-700">{formatMoney(paymentState.left, currencyCode)}</p>
                                                 </div>
                                             </div>
                                         </div>

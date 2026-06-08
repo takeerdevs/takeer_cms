@@ -38,14 +38,20 @@ return [
     */
     'TZ' => [
         [
-            'driver'   => 'flutterwave',
+            'driver'   => 'selcom',
             'priority' => 1,
+            'enabled'  => env('SELCOM_GATEWAY_ENABLED', false),
+            'label'    => 'Selcom',
+        ],
+        [
+            'driver'   => 'flutterwave',
+            'priority' => 2,
             'enabled'  => true,
             'label'    => 'Flutterwave (Mobile Money)',
         ],
         [
             'driver'   => 'azampay',
-            'priority' => 2,
+            'priority' => 3,
             'enabled'  => true,
             'label'    => 'AzamPay',
         ],

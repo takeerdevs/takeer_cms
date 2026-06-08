@@ -34,6 +34,19 @@ const tabs = [
     { key: 'disputed', label: 'Migogoro', icon: XCircle },
 ];
 
+function formatMoney(amount, currency = 'TZS') {
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+            maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+        }).format(Number(amount || 0));
+    } catch {
+        return `${currency} ${Number(amount || 0).toLocaleString()}`;
+    }
+}
+
 export default function MerchantOrders({ merchantUsername, merchantName }) {
     const { auth } = usePage().props;
     const merchantSlug = merchantUsername || auth?.user?.merchant_profiles?.[0]?.username || '';
@@ -299,7 +312,7 @@ function OrderCard({ order, merchantUsername }) {
                 <div className="flex sm:flex-col items-center sm:items-end justify-between gap-3 sm:gap-2 mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 sm:border-l sm:pl-6 border-dashed">
                     <div className="text-left sm:text-right">
                         <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">Total Paid</p>
-                        <p className="text-xl font-black text-brand-600">TZS {Number(order.total_paid || 0).toLocaleString()}</p>
+                        <p className="text-xl font-black text-brand-600">{formatMoney(order.total_paid || 0, order.merchant_currency_code || 'TZS')}</p>
                     </div>
                     <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full bg-brand-50 text-brand-600 hover:bg-brand-100 hover:text-brand-700">
                         <ChevronRight className="h-5 w-5" />

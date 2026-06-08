@@ -26,14 +26,16 @@ class FlutterwaveGateway implements PaymentGatewayInterface
     {
         $phone = $payload['payment_number'] ?? $order->buyer->phone_number;
         $phone = ltrim($phone, '+');
+        $amount = (float) ($order->customer_total_amount ?? $order->total_paid);
+        $currency = $order->customer_currency_code ?: 'TZS';
 
         try {
             // Using v3 charges API
             $response = Http::withToken($this->secretKey)
                 ->timeout(15)
                 ->post("{$this->baseUrl}/charges?type=mobile_money_tanzania", [
-                    'amount'       => (float) $order->total_paid,
-                    'currency'     => 'TZS',
+                    'amount'       => $amount,
+                    'currency'     => $currency,
                     'email'        => $order->buyer->email ?? "guest_{$order->buyer_id}@takeer.com",
                     'tx_ref'       => $order->transaction_ref,
                     'phone_number' => $phone,

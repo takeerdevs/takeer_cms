@@ -3,7 +3,9 @@
 namespace App\Http\Resources;
 
 use App\Models\MerchantGroupSaleCampaign;
+use App\Services\CurrencyConversionService;
 use App\Services\EntitlementService;
+use App\Services\MoneyQuoteService;
 use App\Support\ServiceTemplateRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -13,7 +15,11 @@ class ProductResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $this->loadMissing(['createdByUser:id,name', 'createdByStaff:id,display_name,job_title,user_id']);
+        $this->loadMissing([
+            'createdByUser:id,name',
+            'createdByStaff:id,display_name,job_title,user_id',
+            'merchant.currency:id,code,name,symbol,symbol_position',
+        ]);
 
         $rawDelivery = (string) ($this->download_link ?: $this->url ?: '');
         $isExternal = preg_match('/^https?:\/\//i', $rawDelivery) === 1;
@@ -231,6 +237,22 @@ class ProductResource extends JsonResource
                 ->values()
                 ->all()
             : [];
+        $merchantCurrency = $this->merchant?->currency;
+        $merchantCurrencyCode = $merchantCurrency?->code ?: 'TZS';
+        $customerCountryCode = $this->customerCountryCode($request);
+        $customerCurrencyCode = $this->customerCurrencyCode($request) ?: $merchantCurrencyCode;
+        $checkoutPrice = $this->getAttribute('checkout_price') !== null ? (float) $this->getAttribute('checkout_price') : null;
+        $displayPricing = $this->displayPricing(
+            merchantCurrencyCode: $merchantCurrencyCode,
+            customerCurrencyCode: $customerCurrencyCode,
+            customerCountryCode: $customerCountryCode,
+            prices: [
+                'price' => (float) $this->price,
+                'checkout_price' => $checkoutPrice,
+                'compare_at_price' => $this->compare_at_price !== null ? (float) $this->compare_at_price : null,
+                'discounted_price' => (float) $this->discounted_price,
+            ],
+        );
 
         return [
             'id' => $this->id,
@@ -253,7 +275,15 @@ class ProductResource extends JsonResource
             'group_sale_goal_quantity' => $this->group_sale_goal_quantity !== null ? (int) $this->group_sale_goal_quantity : null,
             'group_sale_deadline' => $this->group_sale_deadline?->toDateString(),
             'price' => (float) $this->price,
-            'checkout_price' => $this->getAttribute('checkout_price') !== null ? (float) $this->getAttribute('checkout_price') : null,
+            'checkout_price' => $checkoutPrice,
+            'currency_code' => $merchantCurrencyCode,
+            'currency' => $merchantCurrency ? [
+                'code' => $merchantCurrency->code,
+                'name' => $merchantCurrency->name,
+                'symbol' => $merchantCurrency->symbol,
+                'symbol_position' => $merchantCurrency->symbol_position,
+            ] : null,
+            'display_pricing' => $displayPricing,
             'group_sale_offer' => $groupSaleOffer,
             'compare_at_price' => $this->compare_at_price !== null ? (float) $this->compare_at_price : null,
             'discounted_price' => (float) $this->discounted_price,
@@ -823,6 +853,47 @@ class ProductResource extends JsonResource
         return [
             'average' => $count > 0 ? round((float) (clone $query)->avg('rating'), 1) : null,
             'count' => $count,
+        ];
+    }
+
+    private function customerCurrencyCode(Request $request): ?string
+    {
+        $countryCode = $this->customerCountryCode($request);
+
+        if (! $countryCode) {
+            return null;
+        }
+
+        return app(CurrencyConversionService::class)->customerCurrencyCode((string) $countryCode);
+    }
+
+    private function customerCountryCode(Request $request): ?string
+    {
+        return $request->input('customer_country_iso2')
+            ?: $request->input('country_iso2')
+            ?: $request->session()->get('user_session_country.iso_alpha2');
+    }
+
+    private function displayPricing(string $merchantCurrencyCode, string $customerCurrencyCode, ?string $customerCountryCode, array $prices): array
+    {
+        $quoteService = app(MoneyQuoteService::class);
+        $sample = $customerCountryCode
+            ? $quoteService->checkoutQuote(1, (int) $this->merchant_id, $customerCountryCode)
+            : $quoteService->quote(1, $merchantCurrencyCode, $customerCurrencyCode, 'payin');
+
+        return [
+            'merchant_currency_code' => $merchantCurrencyCode,
+            'customer_currency_code' => $customerCurrencyCode,
+            'fx_rate_merchant_to_customer' => $sample['fx_rate_merchant_to_customer'],
+            'fx_market_rate_merchant_to_customer' => $sample['fx_market_rate_merchant_to_customer'] ?? $sample['fx_rate_merchant_to_customer'],
+            'fx_effective_rate_merchant_to_customer' => $sample['fx_effective_rate_merchant_to_customer'] ?? $sample['fx_rate_merchant_to_customer'],
+            'fx_spread_bps' => $sample['fx_spread_bps'] ?? 0,
+            'fx_rate_date' => $sample['fx_rate_date'],
+            'amounts' => collect($prices)
+                ->map(fn ($amount) => $amount !== null
+                    ? $quoteService->amountFromQuote($sample, (float) $amount)['customer_amount']
+                    : null)
+                ->all(),
         ];
     }
 }

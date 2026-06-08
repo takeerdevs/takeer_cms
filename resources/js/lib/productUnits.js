@@ -23,23 +23,23 @@ export function productPackageContentLabel(product) {
 }
 
 export function productPriceLabel(product, amount = null) {
-    const price = Number(amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
+    const price = displayMoneyAmount(product, amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
     const unitLabel = productUnitLabel(product);
 
-    return `TZS ${price.toLocaleString()}${unitLabel ? ` / ${unitLabel}` : ''}`;
+    return `${formatProductMoney(product, price)}${unitLabel ? ` / ${unitLabel}` : ''}`;
 }
 
 export function productPriceRangeLabel(product, minAmount, maxAmount) {
     const unitLabel = productUnitLabel(product);
-    const min = Number(minAmount || 0).toLocaleString();
-    const max = Number(maxAmount || 0).toLocaleString();
+    const min = formatProductMoney(product, displayMoneyAmount(product, minAmount || 0));
+    const max = formatProductMoney(product, displayMoneyAmount(product, maxAmount || 0));
 
-    return `TZS ${min} - ${max}${unitLabel ? ` / ${unitLabel}` : ''}`;
+    return `${min} - ${max}${unitLabel ? ` / ${unitLabel}` : ''}`;
 }
 
 export function productCardPriceLabel(product, amount = null) {
-    const price = Number(amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
-    return `TZS ${price.toLocaleString()}`;
+    const price = displayMoneyAmount(product, amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
+    return formatProductMoney(product, price);
 }
 
 export function productCompactPriceLabel(product, amount = null) {
@@ -55,13 +55,13 @@ export function productCompactPriceLabel(product, amount = null) {
             const max = Math.max(...optionPrices);
 
             return min === max
-                ? `TZS ${compactCurrencyAmount(min)}`
-                : `TZS ${compactCurrencyAmount(min)} - ${compactCurrencyAmount(max)}`;
+                ? formatProductMoney(product, displayMoneyAmount(product, min), true)
+                : `${formatProductMoney(product, displayMoneyAmount(product, min), true)} - ${formatProductMoney(product, displayMoneyAmount(product, max), true)}`;
         }
     }
 
-    const price = Number(amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
-    return `TZS ${compactCurrencyAmount(price)}`;
+    const price = displayMoneyAmount(product, amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
+    return formatProductMoney(product, price, true);
 }
 
 export function productRailPriceLabel(product, amount = null, compact = false) {
@@ -78,17 +78,16 @@ export function productRailPriceLabel(product, amount = null, compact = false) {
 
             if (min !== max) {
                 const shouldCompactRange = min >= 1000 && max >= 1000;
-                const format = shouldCompactRange ? compactCurrencyAmount : formatFullAmount;
 
-                return `TZS ${format(min)} - ${format(max)}`;
+                return `${formatProductMoney(product, displayMoneyAmount(product, min), shouldCompactRange)} - ${formatProductMoney(product, displayMoneyAmount(product, max), shouldCompactRange)}`;
             }
 
-            return `TZS ${formatRailSingleAmount(min)}`;
+            return formatProductMoney(product, displayMoneyAmount(product, min), true);
         }
     }
 
-    const price = Number(amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
-    return `TZS ${formatRailSingleAmount(price)}`;
+    const price = displayMoneyAmount(product, amount ?? product?.checkout_price ?? product?.discounted_price ?? product?.price ?? 0);
+    return formatProductMoney(product, price, compact);
 }
 
 export function productStockLabel(product, stock = null) {
@@ -133,11 +132,62 @@ export function orderPackageCount(order) {
 export function orderUnitPriceLabel(order) {
     const price = Number(order?.unit_price || 0);
     const snapshot = order?.unit_snapshot;
-    if (!snapshot) return `TZS ${price.toLocaleString()}`;
+    const currency = order?.merchant_currency_code || order?.currency_code || order?.merchant?.currency?.code || 'TZS';
+    const formattedPrice = formatMoney(price, currency);
+    if (!snapshot) return formattedPrice;
 
     const unitLabel = snapshotUnitLabel(snapshot);
 
-    return `TZS ${price.toLocaleString()} / ${unitLabel}`;
+    return `${formattedPrice} / ${unitLabel}`;
+}
+
+function displayMoneyAmount(product, amount) {
+    const directAmount = product?.display_pricing?.amounts;
+    if (amount === product?.checkout_price && directAmount?.checkout_price !== undefined && directAmount?.checkout_price !== null) {
+        return Number(directAmount.checkout_price);
+    }
+    if (amount === product?.discounted_price && directAmount?.discounted_price !== undefined && directAmount?.discounted_price !== null) {
+        return Number(directAmount.discounted_price);
+    }
+    if (amount === product?.price && directAmount?.price !== undefined && directAmount?.price !== null) {
+        return Number(directAmount.price);
+    }
+
+    return Number(amount || 0) * Number(product?.display_pricing?.fx_rate_merchant_to_customer || 1);
+}
+
+function formatProductMoney(product, amount, compact = false) {
+    const currency = product?.display_pricing?.customer_currency_code || product?.currency_code || product?.currency?.code || 'TZS';
+    const number = Number(amount || 0);
+    if (compact) {
+        return `${currency} ${compactCurrencyAmount(number)}`;
+    }
+
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+            maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+        }).format(number);
+    } catch {
+        return `${currency} ${number.toLocaleString()}`;
+    }
+}
+
+function formatMoney(amount, currency = 'TZS') {
+    const number = Number(amount || 0);
+
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+            maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(currency) ? 0 : 2,
+        }).format(number);
+    } catch {
+        return `${currency} ${number.toLocaleString()}`;
+    }
 }
 
 function snapshotUnitLabel(snapshot) {

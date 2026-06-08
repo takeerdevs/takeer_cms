@@ -31,6 +31,26 @@ class Order extends Model
         'unit_snapshot',
         'unit_price',
         'total_paid',
+        'merchant_currency_code',
+        'customer_currency_code',
+        'fx_base_currency_code',
+        'fx_rate_merchant_to_base',
+        'fx_rate_customer_to_base',
+        'fx_rate_merchant_to_customer',
+        'fx_market_rate_merchant_to_customer',
+        'fx_effective_rate_merchant_to_customer',
+        'fx_spread_bps',
+        'fx_spread_amount',
+        'fx_spread_currency_code',
+        'fx_rate_date',
+        'merchant_unit_price',
+        'customer_unit_price',
+        'merchant_total_amount',
+        'customer_total_amount',
+        'merchant_shipping_fee',
+        'customer_shipping_fee',
+        'merchant_discount_amount',
+        'customer_discount_amount',
         'payment_status',
         'merchant_dispatch_video_url',
         'transaction_ref',
@@ -52,6 +72,10 @@ class Order extends Model
         'referral_reward_snapshot',
         // Payment gateway tracking (multi-country / multi-gateway)
         'payment_gateway', // e.g. 'azampay', 'mpesa_ke'
+        'payment_provider_id',
+        'payment_provider_channel_id',
+        'payment_channel_snapshot',
+        'money_quote_snapshot',
         'country_code',    // ISO 3166-1 alpha-2, e.g. 'TZ', 'KE'
         'gateway_ref',     // Gateway's own transaction ID for reconciliation
         'extra_items',     // Suggested items added during chat
@@ -111,6 +135,22 @@ class Order extends Model
             'unit_price' => 'decimal:2',
             'shipping_fee' => 'decimal:2',
             'discount_amount' => 'decimal:2',
+            'fx_rate_merchant_to_base' => 'decimal:10',
+            'fx_rate_customer_to_base' => 'decimal:10',
+            'fx_rate_merchant_to_customer' => 'decimal:10',
+            'fx_market_rate_merchant_to_customer' => 'decimal:10',
+            'fx_effective_rate_merchant_to_customer' => 'decimal:10',
+            'fx_spread_bps' => 'integer',
+            'fx_spread_amount' => 'decimal:2',
+            'fx_rate_date' => 'date',
+            'merchant_unit_price' => 'decimal:2',
+            'customer_unit_price' => 'decimal:2',
+            'merchant_total_amount' => 'decimal:2',
+            'customer_total_amount' => 'decimal:2',
+            'merchant_shipping_fee' => 'decimal:2',
+            'customer_shipping_fee' => 'decimal:2',
+            'merchant_discount_amount' => 'decimal:2',
+            'customer_discount_amount' => 'decimal:2',
             'referral_commission_amount' => 'decimal:2',
             'referral_reward_snapshot' => 'array',
             'total_paid' => 'decimal:2',
@@ -123,6 +163,8 @@ class Order extends Model
             'cancelled_at' => 'datetime',
             'paid_out_at' => 'datetime',
             'is_inquiry' => 'boolean',
+            'payment_channel_snapshot' => 'array',
+            'money_quote_snapshot' => 'array',
             'extra_items' => 'array',
             'expires_at' => 'datetime',
             'referral_commission_paid_at' => 'datetime',
@@ -251,6 +293,16 @@ class Order extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class, 'merchant_id');
+    }
+
+    public function paymentProvider(): BelongsTo
+    {
+        return $this->belongsTo(PaymentProvider::class, 'payment_provider_id');
+    }
+
+    public function paymentProviderChannel(): BelongsTo
+    {
+        return $this->belongsTo(PaymentProviderChannel::class, 'payment_provider_channel_id');
     }
 
     public function product(): BelongsTo

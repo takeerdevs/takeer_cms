@@ -48,6 +48,8 @@ class MerchantOrderController extends Controller
     public function index(Request $request, Merchant $merchant): JsonResponse
     {
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
+        $merchant->loadMissing('currency');
+        $merchantCurrencyCode = $merchant->currency?->code ?: 'TZS';
 
         $query = Order::with(['buyer', 'product.unitType', 'variant', 'returnRequest'])
             ->where('merchant_id', $merchant->id)
@@ -70,7 +72,7 @@ class MerchantOrderController extends Controller
         }
 
         $orders = $query->paginate($perPage);
-        $orders->getCollection()->transform(function (Order $order) {
+        $orders->getCollection()->transform(function (Order $order) use ($merchantCurrencyCode) {
             $display = $this->resolveDisplay($order);
 
             return [
@@ -82,6 +84,9 @@ class MerchantOrderController extends Controller
                 'requested_quantity' => $order->requested_quantity !== null ? (float) $order->requested_quantity : (float) $order->quantity,
                 'unit_snapshot' => $order->unit_snapshot,
                 'total_paid' => $order->total_paid,
+                'merchant_currency_code' => $order->merchant_currency_code ?: $merchantCurrencyCode,
+                'customer_currency_code' => $order->customer_currency_code,
+                'customer_total_amount' => $order->customer_total_amount !== null ? (float) $order->customer_total_amount : null,
                 'created_at' => $order->created_at?->toISOString(),
                 'purchasable_type' => $order->purchasable_type,
                 'purchasable_id' => $order->purchasable_id,
@@ -257,6 +262,8 @@ class MerchantOrderController extends Controller
         abort_unless($merchant->user_id === $request->user()->id, 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
 
+        $merchant->loadMissing('currency');
+        $merchantCurrencyCode = $merchant->currency?->code ?: 'TZS';
         $order->load(['buyer', 'product.unitType', 'variant', 'delivery.shippingZone', 'delivery.events.actor', 'merchant.locations', 'dispute', 'review', 'returnRequest']);
         $forwarderShipment = $order->delivery?->delivery_type === 'forwarder'
             ? app(ForwarderShipmentService::class)->createForTakeerOrder($order, $order->user_address_id)
@@ -273,6 +280,9 @@ class MerchantOrderController extends Controller
             'unit_snapshot' => $order->unit_snapshot,
             'unit_price' => $order->unit_price,
             'total_paid' => $order->total_paid,
+            'merchant_currency_code' => $order->merchant_currency_code ?: $merchantCurrencyCode,
+            'customer_currency_code' => $order->customer_currency_code,
+            'customer_total_amount' => $order->customer_total_amount !== null ? (float) $order->customer_total_amount : null,
             'created_at' => $order->created_at?->toISOString(),
             'purchasable_type' => $order->purchasable_type,
             'purchasable_id' => $order->purchasable_id,
@@ -1314,7 +1324,7 @@ class MerchantOrderController extends Controller
     public function provideQuote(Request $request, Order $order): JsonResponse
     {
         $user = $request->user();
-        $order->loadMissing(['merchant', 'buyer', 'product', 'delivery']);
+        $order->loadMissing(['merchant.currency', 'buyer', 'product', 'delivery']);
         if (!$order->merchant || !MerchantPermissions::can($user, $order->merchant, 'orders.update')) {
             abort(403, 'Unauthorized.');
         }
@@ -1395,11 +1405,13 @@ class MerchantOrderController extends Controller
 
         $customMessage = trim((string) ($validated['message'] ?? ''));
         $shippingChanged = !$isServiceOrder && $previousShippingFee !== null && abs($previousShippingFee - $shippingFee) >= 0.01;
+        $currencyCode = $order->merchant_currency_code ?: $order->merchant?->currency?->code ?: 'TZS';
+        $formatQuoteMoney = fn (float $amount): string => $currencyCode . ' ' . number_format($amount, in_array($currencyCode, ['TZS', 'JPY', 'KRW'], true) ? 0 : 2);
         $body = $customMessage !== '' ? $customMessage : ($isServiceOrder
-            ? "Nimetuma offer ya huduma: TZS " . number_format($totalPaid) . ". Tafadhali fanya malipo kukamilisha booking."
+            ? "Nimetuma offer ya huduma: " . $formatQuoteMoney($totalPaid) . ". Tafadhali fanya malipo kukamilisha booking."
             : ($shippingChanged
-                ? "Nimesasisha gharama ya usafiri kutoka TZS " . number_format($previousShippingFee) . " kwenda TZS " . number_format($shippingFee) . ". Jumla mpya ni TZS " . number_format($totalPaid) . "."
-                : "Nimesasisha bei. Bei ya bidhaa: TZS " . number_format($unitPrice) . ", Gharama ya usafiri: TZS " . number_format($shippingFee) . ". Tafadhali fanya malipo kukamilisha agizo."));
+                ? "Nimesasisha gharama ya usafiri kutoka " . $formatQuoteMoney($previousShippingFee) . " kwenda " . $formatQuoteMoney($shippingFee) . ". Jumla mpya ni " . $formatQuoteMoney($totalPaid) . "."
+                : "Nimesasisha bei. Bei ya bidhaa: " . $formatQuoteMoney($unitPrice) . ", Gharama ya usafiri: " . $formatQuoteMoney($shippingFee) . ". Tafadhali fanya malipo kukamilisha agizo."));
 
         $message = $order->messages()->create([
             'sender_id' => $user->id,

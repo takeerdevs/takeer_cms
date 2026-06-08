@@ -33,6 +33,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const merchantProfile = auth?.user?.merchant_profiles?.find(p => p.username === merchantUsername)
         || auth?.user?.merchant_profiles?.[0];
     const merchantSlug = merchantUsername || merchantProfile?.username || '';
+    const businessCurrencyCode = merchantProfile?.currency?.code || merchantProfile?.currency_code || summary.currency_code || 'TZS';
     const isVerified = merchantProfile?.is_verified ?? false;
     const activeModules = merchantProfile?.active_modules || [];
     const commerceModes = merchantProfile?.business_profile?.commerce_modes || [];
@@ -42,6 +43,20 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
     const hasModule = (module) => activeModules.includes(module);
     const hasMode = (mode) => commerceModes.includes(mode);
     const usesConfiguredSetup = activeModules.length > 0 || commerceModes.length > 0;
+    const formatMoney = (amount, currency = businessCurrencyCode) => {
+        const code = currency || 'TZS';
+
+        try {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: code,
+                minimumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(code) ? 0 : 2,
+                maximumFractionDigits: ['TZS', 'JPY', 'KRW'].includes(code) ? 0 : 2,
+            }).format(Number(amount || 0));
+        } catch {
+            return `${code} ${Number(amount || 0).toLocaleString()}`;
+        }
+    };
 
     const statusBadge = (status) => {
         const map = {
@@ -330,7 +345,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                     <Wallet className="h-4 w-4 opacity-80" />
                                     <p className="text-xs font-medium opacity-80 uppercase tracking-wider">Salio</p>
                                 </div>
-                                <p className="text-2xl font-black">TZS {summary.wallet_balance.toLocaleString()}</p>
+                                <p className="text-2xl font-black">{formatMoney(summary.wallet_balance)}</p>
                             </CardContent>
                         </Card>
                         <Card
@@ -342,7 +357,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                     <ShieldCheck className="h-4 w-4 text-amber-600" />
                                     <p className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wider">Escrow</p>
                                 </div>
-                                <p className="text-2xl font-black text-amber-700 dark:text-amber-400">TZS {summary.frozen_balance.toLocaleString()}</p>
+                                <p className="text-2xl font-black text-amber-700 dark:text-amber-400">{formatMoney(summary.frozen_balance)}</p>
                             </CardContent>
                         </Card>
                     </div>
@@ -525,7 +540,7 @@ export default function MerchantDashboard({ merchantUsername, merchantName }) {
                                                 </div>
                                                 <div className="text-right shrink-0">
                                                     <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Price</p>
-                                                    <p className="font-black text-brand-600 text-lg md:text-2xl">TZS {Number(order.amount || 0).toLocaleString()}</p>
+                                                    <p className="font-black text-brand-600 text-lg md:text-2xl">{formatMoney(order.amount || 0, order.currency_code || businessCurrencyCode)}</p>
                                                 </div>
                                             </div>
                                         </CardContent>

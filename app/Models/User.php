@@ -76,12 +76,14 @@ class User extends Authenticatable
     {
         if (!$this->is_merchant) return [];
 
+        $merchant = $this->merchantProfiles()->with('currency')->first();
         $wallet = $this->wallet;
         $productIds = $this->products()->pluck('products.id');
         
         return [
             'wallet_balance' => (float) ($wallet->balance ?? 0),
             'frozen_balance' => (float) ($wallet->frozen_balance ?? 0),
+            'currency_code' => $merchant?->currency?->code ?: 'TZS',
             'total_products' => $this->products()->count(),
             'orders_today'   => Order::whereIn('product_id', $productIds)
                                     ->whereDate('created_at', now()->today())
@@ -105,18 +107,20 @@ class User extends Authenticatable
         $merchantIds = $this->merchantProfiles()->pluck('id');
 
         return Order::whereIn('merchant_id', $merchantIds)
-            ->with(['product:id,title,type,url,download_link', 'product.images'])
+            ->with(['merchant.currency:id,code', 'product:id,title,type,url,download_link', 'product.images'])
             ->latest()
             ->take(5)
             ->get()
             ->map(function($order) {
                 $display = $this->resolveOrderDisplay($order);
+                $currencyCode = $order->merchant_currency_code ?: $order->merchant?->currency?->code ?: 'TZS';
 
                 return [
                     'id' => $order->id,
                     'public_id' => $order->public_id,
                     'source' => $order->source,
                     'amount' => (float) $order->total_paid,
+                    'currency_code' => $currencyCode,
                     'status' => $order->payment_status,
                     'created_at' => $order->created_at?->toISOString(),
                     'display_title' => $display['title'],

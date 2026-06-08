@@ -350,7 +350,6 @@ export default function OfferingGroups({ merchantUsername }) {
             <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 md:p-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                        <p className="text-xs font-black uppercase tracking-wider text-brand-600">Commerce builder</p>
                         <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Offering Groups</h1>
                         <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
                             Build menus, packages, itineraries, and nested offerings from products, services, and other groups.
@@ -641,19 +640,19 @@ export default function OfferingGroups({ merchantUsername }) {
                                                     return (
                                                         <div key={`${item.item_type}-${item.item_id}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
                                                             <div className="flex items-start justify-between gap-3">
-                                                        <div className="flex min-w-0 items-start gap-3">
-                                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
-                                                                {item.image_url ? (
-                                                                    <img src={item.image_url} alt="" className="h-full w-full object-cover" />
-                                                                ) : (
-                                                                    <ImageIcon className="h-5 w-5" />
-                                                                )}
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <p className="truncate text-sm font-black text-slate-950">{item.title || 'Untitled item'}</p>
-                                                                <p className="mt-1 text-xs font-semibold text-slate-500">{item.item_type.replace('_', ' ')} · {item.kind || 'item'}</p>
-                                                            </div>
-                                                        </div>
+                                                                <div className="flex min-w-0 items-start gap-3">
+                                                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
+                                                                        {item.image_url ? (
+                                                                            <img src={item.image_url} alt="" className="h-full w-full object-cover" />
+                                                                        ) : (
+                                                                            <ImageIcon className="h-5 w-5" />
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <p className="truncate text-sm font-black text-slate-950">{item.title || 'Untitled item'}</p>
+                                                                        <p className="mt-1 text-xs font-semibold text-slate-500">{item.item_type.replace('_', ' ')} · {item.kind || 'item'}</p>
+                                                                    </div>
+                                                                </div>
                                                                 <div className="flex items-center gap-1">
                                                                     <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30" onClick={() => moveItem(index, -1)} disabled={index === 0}>
                                                                         <ArrowUp className="h-4 w-4" />

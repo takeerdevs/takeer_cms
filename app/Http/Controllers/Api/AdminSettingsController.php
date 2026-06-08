@@ -5,14 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AdminSetting;
 use App\Models\Order;
+use App\Models\PaymentProviderChannel;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use App\Models\Dispute;
 use App\Services\PayoutPolicyService;
+use App\Services\PaymentProviderCatalogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class AdminSettingsController extends Controller
 {
@@ -43,7 +46,31 @@ class AdminSettingsController extends Controller
             'retail_trial_days' => '0',
             'analytics_retention_days' => '365',
             'analytics_exclude_admins' => '1',
+            'withdrawal_payout_channels' => json_encode($this->defaultWithdrawalPayoutChannels()),
+            'withdrawal_fx_margin_bps' => '0',
+            'withdrawal_fx_margin_bps_paypal' => '350',
+            'withdrawal_fx_margin_bps_bank' => '0',
+            'withdrawal_fx_margin_bps_mobile_money' => '0',
+            'withdrawal_fee_fixed_paypal_usd' => '0',
+            'withdrawal_fee_fixed_bank_usd' => '0',
+            'withdrawal_fee_fixed_bank_tzs' => '0',
+            'withdrawal_fee_fixed_mobile_money_tzs' => '0',
         ], $payoutPolicy->defaultSettings(), AdminSetting::allAsMap());
+
+        if (Schema::hasTable('payment_provider_channels')) {
+            app(PaymentProviderCatalogService::class)->ensureDefaults();
+            $settings['withdrawal_payout_channels'] = json_encode(
+                PaymentProviderChannel::query()
+                    ->with('provider')
+                    ->where('direction', 'payout')
+                    ->orderBy('country_code')
+                    ->orderBy('priority')
+                    ->get()
+                    ->map(fn (PaymentProviderChannel $channel) => $this->payoutChannelSettingRow($channel))
+                    ->values()
+                    ->all()
+            );
+        }
 
         // Mask secret keys for display (show last 4 chars only)
         foreach (['openrouter_api_key', 'gemini_api_key'] as $keyField) {
@@ -103,6 +130,15 @@ class AdminSettingsController extends Controller
             'retail_trial_days',
             'analytics_retention_days',
             'analytics_exclude_admins',
+            'withdrawal_payout_channels',
+            'withdrawal_fx_margin_bps',
+            'withdrawal_fx_margin_bps_paypal',
+            'withdrawal_fx_margin_bps_bank',
+            'withdrawal_fx_margin_bps_mobile_money',
+            'withdrawal_fee_fixed_paypal_usd',
+            'withdrawal_fee_fixed_bank_usd',
+            'withdrawal_fee_fixed_bank_tzs',
+            'withdrawal_fee_fixed_mobile_money_tzs',
             ...array_keys($payoutPolicy->defaultSettings()),
         ];
 
@@ -130,6 +166,20 @@ class AdminSettingsController extends Controller
                 if ($key === 'analytics_exclude_admins') {
                     $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
                 }
+                if ($key === 'withdrawal_payout_channels') {
+                    $channels = $this->sanitizeWithdrawalPayoutChannels($value);
+                    $value = json_encode($channels);
+                    if (Schema::hasTable('payment_provider_channels')) {
+                        app(PaymentProviderCatalogService::class)->ensureDefaults();
+                        $this->syncWithdrawalPayoutChannels($channels);
+                    }
+                }
+                if (str_starts_with($key, 'withdrawal_fx_margin_bps')) {
+                    $value = (string) max(0, min(5000, (int) $value));
+                }
+                if (str_starts_with($key, 'withdrawal_fee_fixed_')) {
+                    $value = (string) max(0, round((float) $value, 2));
+                }
                 if (str_starts_with($key, 'payout_policy_')) {
                     $value = in_array($value, PayoutPolicyService::ACTIVE_MODES, true)
                         ? $value
@@ -151,6 +201,165 @@ class AdminSettingsController extends Controller
         }
 
         return response()->json(['message' => 'Settings saved successfully.']);
+    }
+
+    private function defaultWithdrawalPayoutChannels(): array
+    {
+        return [
+            [
+                'key' => 'tz_selcom_mobile_money_tzs',
+                'label' => 'Selcom Mobile Money',
+                'country_code' => 'TZ',
+                'provider' => 'selcom',
+                'method' => 'mobile_money',
+                'currency_code' => 'TZS',
+                'enabled' => true,
+                'fx_margin_bps' => 0,
+                'fee_type' => 'fixed_plus_percent',
+                'fee_fixed' => 0,
+                'fee_percent_bps' => 0,
+                'fee_min' => 0,
+                'fee_max' => null,
+            ],
+            [
+                'key' => 'tz_selcom_bank_tzs',
+                'label' => 'Selcom Bank Transfer',
+                'country_code' => 'TZ',
+                'provider' => 'selcom',
+                'method' => 'bank',
+                'currency_code' => 'TZS',
+                'enabled' => true,
+                'fx_margin_bps' => 0,
+                'fee_type' => 'fixed_plus_percent',
+                'fee_fixed' => 0,
+                'fee_percent_bps' => 0,
+                'fee_min' => 0,
+                'fee_max' => null,
+            ],
+        ];
+    }
+
+    private function sanitizeWithdrawalPayoutChannels(mixed $value): array
+    {
+        $channels = is_string($value) ? json_decode($value, true) : $value;
+        if (! is_array($channels)) {
+            return $this->defaultWithdrawalPayoutChannels();
+        }
+
+        return collect($channels)
+            ->filter(fn ($channel) => is_array($channel))
+            ->map(fn (array $channel) => $this->sanitizeWithdrawalPayoutChannel($channel))
+            ->filter(fn (array $channel) => $channel['label'] !== '' && $channel['currency_code'] !== '')
+            ->values()
+            ->all();
+    }
+
+    private function sanitizeWithdrawalPayoutChannel(array $channel): array
+    {
+        $countryCode = strtoupper(substr((string) ($channel['country_code'] ?? '*'), 0, 2)) ?: '*';
+        $provider = strtolower(preg_replace('/[^a-z0-9_]+/i', '_', (string) ($channel['provider'] ?? 'manual')));
+        $method = strtolower(preg_replace('/[^a-z0-9_]+/i', '_', (string) ($channel['method'] ?? 'bank')));
+        $currencyCode = strtoupper(substr((string) ($channel['currency_code'] ?? ''), 0, 3));
+        $key = strtolower(preg_replace('/[^a-z0-9_]+/i', '_', (string) ($channel['key'] ?? '')));
+
+        if ($key === '' || $key === '_') {
+            $key = strtolower(trim("{$countryCode}_{$provider}_{$method}_{$currencyCode}", '_'));
+        }
+
+        $feeType = (string) ($channel['fee_type'] ?? 'fixed_plus_percent');
+        if (! in_array($feeType, ['none', 'fixed', 'percent', 'fixed_plus_percent'], true)) {
+            $feeType = 'fixed_plus_percent';
+        }
+
+        $feeMax = $channel['fee_max'] ?? null;
+        $feeMax = $feeMax === '' || $feeMax === null ? null : max(0, round((float) $feeMax, 2));
+
+        return [
+            'id' => isset($channel['id']) ? (int) $channel['id'] : null,
+            'key' => $key,
+            'label' => trim((string) ($channel['label'] ?? '')),
+            'country_code' => $countryCode,
+            'provider' => $provider ?: 'manual',
+            'provider_id' => isset($channel['provider_id']) ? (int) $channel['provider_id'] : null,
+            'method' => $method ?: 'bank',
+            'currency_code' => $currencyCode,
+            'currencies' => collect($channel['currencies'] ?? [$currencyCode])
+                ->map(fn ($code) => strtoupper(substr((string) $code, 0, 3)))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all(),
+            'enabled' => filter_var($channel['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
+            'fx_margin_bps' => max(0, min(5000, (int) ($channel['fx_margin_bps'] ?? 0))),
+            'fee_type' => $feeType,
+            'fee_fixed' => max(0, round((float) ($channel['fee_fixed'] ?? 0), 2)),
+            'fee_percent_bps' => max(0, min(10000, (int) ($channel['fee_percent_bps'] ?? 0))),
+            'fee_min' => max(0, round((float) ($channel['fee_min'] ?? 0), 2)),
+            'fee_max' => $feeMax,
+        ];
+    }
+
+    private function payoutChannelSettingRow(PaymentProviderChannel $channel): array
+    {
+        $currencies = $channel->currencies ?: ['TZS'];
+
+        return [
+            'id' => $channel->id,
+            'key' => $channel->key,
+            'label' => $channel->name,
+            'country_code' => $channel->country_code,
+            'provider' => $channel->provider?->key ?: 'manual',
+            'provider_id' => $channel->payment_provider_id,
+            'method' => $channel->method,
+            'currency_code' => $currencies[0] ?? 'TZS',
+            'currencies' => $currencies,
+            'enabled' => $channel->status !== 'disabled',
+            'status' => $channel->status,
+            'fx_margin_bps' => (int) $channel->fx_margin_bps,
+            'fee_type' => $channel->fee_type,
+            'fee_fixed' => (float) $channel->fee_fixed,
+            'fee_percent_bps' => (int) $channel->fee_percent_bps,
+            'fee_min' => (float) $channel->fee_min,
+            'fee_max' => $channel->fee_max !== null ? (float) $channel->fee_max : null,
+        ];
+    }
+
+    private function syncWithdrawalPayoutChannels(array $channels): void
+    {
+        foreach ($channels as $channel) {
+            if (empty($channel['id']) && empty($channel['provider_id'])) {
+                continue;
+            }
+
+            $record = ! empty($channel['id'])
+                ? PaymentProviderChannel::query()->find($channel['id'])
+                : null;
+
+            if (! $record && ! empty($channel['provider_id'])) {
+                $record = PaymentProviderChannel::query()->firstOrNew(['key' => $channel['key']]);
+                $record->payment_provider_id = (int) $channel['provider_id'];
+            }
+
+            if (! $record) {
+                continue;
+            }
+
+            $record->fill([
+                'key' => $channel['key'],
+                'country_code' => $channel['country_code'],
+                'direction' => 'payout',
+                'method' => $channel['method'],
+                'name' => $channel['label'],
+                'currencies' => $channel['currencies'] ?: [$channel['currency_code']],
+                'status' => $channel['enabled'] ? ($channel['status'] ?? 'enabled') : 'disabled',
+                'fee_type' => $channel['fee_type'],
+                'fee_fixed' => $channel['fee_fixed'],
+                'fee_percent_bps' => $channel['fee_percent_bps'],
+                'fee_min' => $channel['fee_min'],
+                'fee_max' => $channel['fee_max'],
+                'fx_margin_bps' => $channel['fx_margin_bps'],
+            ])->save();
+        }
     }
 
     /**
@@ -219,10 +428,36 @@ class AdminSettingsController extends Controller
      */
     public function withdrawals(): JsonResponse
     {
-        $withdrawals = WithdrawalRequest::with('user:id,name,phone_number')
+        $withdrawals = WithdrawalRequest::with(['user:id,name,phone_number', 'merchant:id,display_name,username,currency_id', 'merchant.currency:id,code'])
             ->where('status', 'pending')
             ->latest()
-            ->get();
+            ->get()
+            ->map(fn (WithdrawalRequest $withdrawal) => [
+                'id' => $withdrawal->id,
+                'amount' => (float) $withdrawal->amount,
+                'merchant_amount' => $withdrawal->merchant_amount !== null ? (float) $withdrawal->merchant_amount : (float) $withdrawal->amount,
+                'payout_amount' => $withdrawal->payout_amount !== null ? (float) $withdrawal->payout_amount : (float) $withdrawal->amount,
+                'merchant_currency_code' => $withdrawal->merchant_currency_code ?: $withdrawal->merchant?->currency?->code ?: 'TZS',
+                'payout_currency_code' => $withdrawal->payout_currency_code ?: $withdrawal->merchant_currency_code ?: $withdrawal->merchant?->currency?->code ?: 'TZS',
+                'fx_rate_merchant_to_payout' => $withdrawal->fx_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_rate_merchant_to_payout : null,
+                'fx_market_rate_merchant_to_payout' => $withdrawal->fx_market_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_market_rate_merchant_to_payout : null,
+                'fx_effective_rate_merchant_to_payout' => $withdrawal->fx_effective_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_effective_rate_merchant_to_payout : null,
+                'fx_spread_bps' => (int) $withdrawal->fx_spread_bps,
+                'fx_spread_amount' => $withdrawal->fx_spread_amount !== null ? (float) $withdrawal->fx_spread_amount : 0,
+                'fx_spread_currency_code' => $withdrawal->fx_spread_currency_code,
+                'fx_rate_date' => $withdrawal->fx_rate_date?->toDateString(),
+                'payout_snapshot' => $withdrawal->payout_snapshot ?: [],
+                'money_quote_snapshot' => $withdrawal->money_quote_snapshot ?: [],
+                'method' => $withdrawal->method,
+                'status' => $withdrawal->status,
+                'created_at' => $withdrawal->created_at?->toISOString(),
+                'user' => $withdrawal->user,
+                'merchant' => $withdrawal->merchant ? [
+                    'id' => $withdrawal->merchant->id,
+                    'display_name' => $withdrawal->merchant->display_name,
+                    'username' => $withdrawal->merchant->username,
+                ] : null,
+            ]);
 
         return response()->json(['withdrawals' => $withdrawals]);
     }
@@ -255,6 +490,118 @@ class AdminSettingsController extends Controller
             ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
             ->selectRaw($baseFeeSql)
             ->value('total');
+
+        $hasOrderFxAudit = Schema::hasColumn('orders', 'fx_spread_amount');
+        $hasWithdrawalFxAudit = Schema::hasColumn('withdrawal_requests', 'fx_spread_amount');
+        $orderFxSpreadBase = $hasOrderFxAudit
+            ? (float) Order::query()
+                ->where('fx_spread_amount', '>', 0)
+                ->selectRaw('COALESCE(SUM(CASE WHEN fx_rate_customer_to_base > 0 THEN fx_spread_amount / fx_rate_customer_to_base ELSE 0 END), 0) as total')
+                ->value('total')
+            : 0.0;
+        $withdrawalFxSpreadBase = $hasWithdrawalFxAudit
+            ? (float) WithdrawalRequest::query()
+                ->where('fx_spread_amount', '>', 0)
+                ->selectRaw('COALESCE(SUM(CASE WHEN fx_rate_payout_to_base > 0 THEN fx_spread_amount / fx_rate_payout_to_base ELSE 0 END), 0) as total')
+                ->value('total')
+            : 0.0;
+
+        $fxSpreadTotals = collect();
+        if ($hasOrderFxAudit) {
+            $fxSpreadTotals = $fxSpreadTotals->merge(
+                Order::query()
+                    ->where('fx_spread_amount', '>', 0)
+                    ->selectRaw("COALESCE(fx_spread_currency_code, customer_currency_code, 'TZS') as currency_code")
+                    ->selectRaw('COALESCE(SUM(fx_spread_amount), 0) as amount')
+                    ->selectRaw('COUNT(*) as quote_count')
+                    ->groupBy(DB::raw("COALESCE(fx_spread_currency_code, customer_currency_code, 'TZS')"))
+                    ->get()
+                    ->map(fn ($row) => [
+                        'source' => 'payin',
+                        'currency_code' => $row->currency_code,
+                        'amount' => (float) $row->amount,
+                        'quote_count' => (int) $row->quote_count,
+                    ])
+            );
+        }
+        if ($hasWithdrawalFxAudit) {
+            $fxSpreadTotals = $fxSpreadTotals->merge(
+                WithdrawalRequest::query()
+                    ->where('fx_spread_amount', '>', 0)
+                    ->selectRaw("COALESCE(fx_spread_currency_code, payout_currency_code, 'TZS') as currency_code")
+                    ->selectRaw('COALESCE(SUM(fx_spread_amount), 0) as amount')
+                    ->selectRaw('COUNT(*) as quote_count')
+                    ->groupBy(DB::raw("COALESCE(fx_spread_currency_code, payout_currency_code, 'TZS')"))
+                    ->get()
+                    ->map(fn ($row) => [
+                        'source' => 'payout',
+                        'currency_code' => $row->currency_code,
+                        'amount' => (float) $row->amount,
+                        'quote_count' => (int) $row->quote_count,
+                    ])
+            );
+        }
+        $fxSpreadTotals = $fxSpreadTotals->values();
+
+        $recentFxQuotes = collect();
+        if ($hasOrderFxAudit) {
+            $recentFxQuotes = $recentFxQuotes->merge(
+                Order::query()
+                    ->with(['merchant:id,display_name,username'])
+                    ->where('fx_spread_amount', '>', 0)
+                    ->latest()
+                    ->limit(10)
+                    ->get()
+                    ->map(fn (Order $order) => [
+                        'id' => $order->id,
+                        'source' => 'payin',
+                        'reference' => $order->transaction_ref,
+                        'merchant' => $order->merchant ? [
+                            'name' => $order->merchant->display_name,
+                            'username' => $order->merchant->username,
+                        ] : null,
+                        'from_currency_code' => $order->merchant_currency_code ?: 'TZS',
+                        'to_currency_code' => $order->customer_currency_code ?: $order->fx_spread_currency_code ?: 'TZS',
+                        'market_rate' => $order->fx_market_rate_merchant_to_customer !== null ? (float) $order->fx_market_rate_merchant_to_customer : null,
+                        'effective_rate' => $order->fx_effective_rate_merchant_to_customer !== null ? (float) $order->fx_effective_rate_merchant_to_customer : (float) $order->fx_rate_merchant_to_customer,
+                        'fx_spread_bps' => (int) $order->fx_spread_bps,
+                        'fx_spread_amount' => (float) $order->fx_spread_amount,
+                        'fx_spread_currency_code' => $order->fx_spread_currency_code ?: $order->customer_currency_code ?: 'TZS',
+                        'created_at' => $order->created_at?->toIso8601String(),
+                    ])
+            );
+        }
+        if ($hasWithdrawalFxAudit) {
+            $recentFxQuotes = $recentFxQuotes->merge(
+                WithdrawalRequest::query()
+                    ->with(['merchant:id,display_name,username'])
+                    ->where('fx_spread_amount', '>', 0)
+                    ->latest()
+                    ->limit(10)
+                    ->get()
+                    ->map(fn (WithdrawalRequest $withdrawal) => [
+                        'id' => $withdrawal->id,
+                        'source' => 'payout',
+                        'reference' => $withdrawal->idempotency_key,
+                        'merchant' => $withdrawal->merchant ? [
+                            'name' => $withdrawal->merchant->display_name,
+                            'username' => $withdrawal->merchant->username,
+                        ] : null,
+                        'from_currency_code' => $withdrawal->merchant_currency_code ?: 'TZS',
+                        'to_currency_code' => $withdrawal->payout_currency_code ?: $withdrawal->fx_spread_currency_code ?: 'TZS',
+                        'market_rate' => $withdrawal->fx_market_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_market_rate_merchant_to_payout : null,
+                        'effective_rate' => $withdrawal->fx_effective_rate_merchant_to_payout !== null ? (float) $withdrawal->fx_effective_rate_merchant_to_payout : (float) $withdrawal->fx_rate_merchant_to_payout,
+                        'fx_spread_bps' => (int) $withdrawal->fx_spread_bps,
+                        'fx_spread_amount' => (float) $withdrawal->fx_spread_amount,
+                        'fx_spread_currency_code' => $withdrawal->fx_spread_currency_code ?: $withdrawal->payout_currency_code ?: 'TZS',
+                        'created_at' => $withdrawal->created_at?->toIso8601String(),
+                    ])
+            );
+        }
+        $recentFxQuotes = $recentFxQuotes
+            ->sortByDesc('created_at')
+            ->take(12)
+            ->values();
 
         $nativeCurrencyTotals = (clone $revenueQuery)
             ->selectRaw('currency_code')
@@ -358,6 +705,9 @@ class AdminSettingsController extends Controller
                 'total_takeer_fees' => $totalTakeerFees,
                 'today_takeer_fees' => $todayTakeerFees,
                 'this_month_takeer_fees' => $thisMonthTakeerFees,
+                'total_fx_spread' => round($orderFxSpreadBase + $withdrawalFxSpreadBase, 2),
+                'payin_fx_spread' => round($orderFxSpreadBase, 2),
+                'payout_fx_spread' => round($withdrawalFxSpreadBase, 2),
                 'total_net_to_merchants' => $totalNetToMerchants,
                 'pending_withdrawals' => (float) WithdrawalRequest::where('status', 'pending')->sum('amount'),
                 'total_transactions' => Transaction::count(),
@@ -368,6 +718,8 @@ class AdminSettingsController extends Controller
             ],
             'native_currency_totals' => $nativeCurrencyTotals,
             'country_totals' => $countryTotals,
+            'fx_spread_totals' => $fxSpreadTotals,
+            'recent_fx_quotes' => $recentFxQuotes,
             'transactions' => $transactions,
         ]);
     }
