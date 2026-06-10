@@ -7,6 +7,8 @@ use App\Models\Order;
 use App\Models\WithdrawalRequest;
 use App\Payments\Drivers\Selcom\SelcomGateway;
 use App\Payments\PaymentCallbackProcessor;
+use App\Services\ProviderTreasuryService;
+use App\Services\WithdrawalFailureRecoveryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -62,8 +64,11 @@ class SelcomCallbackController extends Controller
 
         if ($event->isSuccessful()) {
             $withdrawal->update(['status' => 'approved', 'payout_snapshot' => $snapshot]);
+            app(ProviderTreasuryService::class)->captureWithdrawal($withdrawal->fresh());
         } elseif ($event->isFailed()) {
             $withdrawal->update(['status' => 'failed', 'payout_snapshot' => $snapshot]);
+            app(ProviderTreasuryService::class)->releaseWithdrawal($withdrawal->fresh());
+            app(WithdrawalFailureRecoveryService::class)->refundWalletDebit($withdrawal->fresh());
         } else {
             $withdrawal->update(['payout_snapshot' => $snapshot]);
         }

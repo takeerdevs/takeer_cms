@@ -67,6 +67,11 @@ class PaymentProviderChannel extends Model
         return $this->hasMany(PaymentChannelIncident::class);
     }
 
+    public function treasuryAccounts(): HasMany
+    {
+        return $this->hasMany(ProviderTreasuryAccount::class, 'payment_provider_channel_id');
+    }
+
     public function isAvailable(): bool
     {
         return $this->status === 'enabled' && $this->provider?->isAvailable();

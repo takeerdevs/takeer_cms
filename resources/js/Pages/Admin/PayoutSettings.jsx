@@ -28,8 +28,24 @@ const PAYOUT_MODES = {
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
 
 const formatBps = (value) => `${(Number(value || 0) / 100).toFixed(2)}%`;
+const formatPlain = (value) => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const numberOrNull = (value) => value === '' || value === null || value === undefined ? null : Number(value);
 const integerOrZero = (value) => Number.parseInt(value || 0, 10) || 0;
+const channelTreasuryAccounts = (channel) => {
+    const currencies = Array.isArray(channel.currencies) && channel.currencies.length > 0
+        ? channel.currencies
+        : [channel.currency_code].filter(Boolean);
+    const existing = channel.treasury_accounts || [];
+
+    return currencies.map((currencyCode) => existing.find((account) => account.currency_code === currencyCode) || {
+        currency_code: currencyCode,
+        balance_amount: 0,
+        reserved_amount: 0,
+        minimum_available_amount: 0,
+        status: 'active',
+        is_unsaved: true,
+    });
+};
 
 export default function PayoutSettings() {
     const [settings, setSettings] = useState({});
@@ -99,6 +115,17 @@ export default function PayoutSettings() {
         });
     };
 
+    const patchOpsTreasuryState = (provider, channel, currencyCode, updates) => {
+        const existing = channel.treasury_accounts || [];
+        const account = existing.find((item) => item.currency_code === currencyCode) || { currency_code: currencyCode, status: 'active' };
+        const next = [
+            ...existing.filter((item) => item.currency_code !== currencyCode),
+            { ...account, ...updates, currency_code: currencyCode },
+        ];
+
+        patchOpsChannelState(provider.id, channel.id, { treasury_accounts: next });
+    };
+
     const channelSavePayload = (channel) => {
         const payload = {
             status: channel.status || 'enabled',
@@ -116,6 +143,12 @@ export default function PayoutSettings() {
                 min_withdrawal_amount: numberOrNull(channel.limits?.min_withdrawal_amount),
                 max_withdrawal_amount: numberOrNull(channel.limits?.max_withdrawal_amount),
             };
+            payload.treasury_accounts = channelTreasuryAccounts(channel).map((account) => ({
+                currency_code: account.currency_code,
+                balance_amount: numberOrNull(account.balance_amount) ?? 0,
+                minimum_available_amount: numberOrNull(account.minimum_available_amount) ?? 0,
+                status: account.status || 'active',
+            }));
         }
 
         return payload;
@@ -398,36 +431,108 @@ export default function PayoutSettings() {
                                                     </div>
 
                                                     {channel.direction === 'payout' && (
-                                                        <div className="mt-3 rounded-xl border border-slate-100 bg-white p-3">
-                                                            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Withdrawal limits</p>
-                                                                <p className="text-[10px] font-bold text-slate-500">Payout/channel currency</p>
+                                                        <div className="mt-3 space-y-3">
+                                                            <div className="rounded-xl border border-slate-100 bg-white p-3">
+                                                                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Withdrawal limits</p>
+                                                                    <p className="text-[10px] font-bold text-slate-500">Payout/channel currency</p>
+                                                                </div>
+                                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                                    <label className="space-y-1.5">
+                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Min withdrawal</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            min="0"
+                                                                            step="0.01"
+                                                                            title="Minimum provider payout amount through this channel, in the payout/channel currency."
+                                                                            className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
+                                                                            value={channel.limits?.min_withdrawal_amount ?? ''}
+                                                                            onChange={(e) => patchOpsChannelLimitState(provider, channel, 'min_withdrawal_amount', e.target.value)}
+                                                                        />
+                                                                    </label>
+                                                                    <label className="space-y-1.5">
+                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Max withdrawal</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            min="0"
+                                                                            step="0.01"
+                                                                            title="Optional maximum provider payout amount through this channel, in the payout/channel currency."
+                                                                            className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
+                                                                            value={channel.limits?.max_withdrawal_amount ?? ''}
+                                                                            onChange={(e) => patchOpsChannelLimitState(provider, channel, 'max_withdrawal_amount', e.target.value)}
+                                                                        />
+                                                                    </label>
+                                                                </div>
                                                             </div>
-                                                            <div className="grid gap-3 sm:grid-cols-2">
-                                                                <label className="space-y-1.5">
-                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Min withdrawal</span>
-                                                                    <input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        step="0.01"
-                                                                        title="Minimum provider payout amount through this channel, in the payout/channel currency."
-                                                                        className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
-                                                                        value={channel.limits?.min_withdrawal_amount ?? ''}
-                                                                        onChange={(e) => patchOpsChannelLimitState(provider, channel, 'min_withdrawal_amount', e.target.value)}
-                                                                    />
-                                                                </label>
-                                                                <label className="space-y-1.5">
-                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Max withdrawal</span>
-                                                                    <input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        step="0.01"
-                                                                        title="Optional maximum provider payout amount through this channel, in the payout/channel currency."
-                                                                        className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
-                                                                        value={channel.limits?.max_withdrawal_amount ?? ''}
-                                                                        onChange={(e) => patchOpsChannelLimitState(provider, channel, 'max_withdrawal_amount', e.target.value)}
-                                                                    />
-                                                                </label>
+
+                                                            <div className="rounded-xl border border-sky-100 bg-sky-50 p-3">
+                                                                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Provider liquidity</p>
+                                                                    <p className="text-[10px] font-bold text-slate-500">Available = balance - reserved - buffer</p>
+                                                                </div>
+                                                                <div className="space-y-3">
+                                                                    {channelTreasuryAccounts(channel).map((account) => {
+                                                                        const available = Math.max(0, Number(account.balance_amount || 0) - Number(account.reserved_amount || 0) - Number(account.minimum_available_amount || 0));
+
+                                                                        return (
+                                                                            <div key={account.currency_code} className="rounded-xl border border-sky-100 bg-white p-3">
+                                                                                <div className="mb-2 flex items-center justify-between gap-3">
+                                                                                    <p className="text-sm font-black text-slate-900">{account.currency_code}</p>
+                                                                                    <div className="text-right">
+                                                                                        <p className="text-[11px] font-black text-sky-700">Available {formatPlain(available)}</p>
+                                                                                        {account.is_unsaved && (
+                                                                                            <p className="text-[10px] font-bold text-amber-700">Save provider to activate</p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="grid gap-3 sm:grid-cols-4">
+                                                                                    <label className="space-y-1.5">
+                                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Balance</span>
+                                                                                        <input
+                                                                                            type="number"
+                                                                                            min="0"
+                                                                                            step="0.01"
+                                                                                            className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
+                                                                                            value={account.balance_amount ?? 0}
+                                                                                            onChange={(e) => patchOpsTreasuryState(provider, channel, account.currency_code, { balance_amount: e.target.value })}
+                                                                                        />
+                                                                                    </label>
+                                                                                    <label className="space-y-1.5">
+                                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Reserved</span>
+                                                                                        <input
+                                                                                            type="number"
+                                                                                            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-500"
+                                                                                            value={account.reserved_amount ?? 0}
+                                                                                            disabled
+                                                                                        />
+                                                                                    </label>
+                                                                                    <label className="space-y-1.5">
+                                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Buffer</span>
+                                                                                        <input
+                                                                                            type="number"
+                                                                                            min="0"
+                                                                                            step="0.01"
+                                                                                            className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
+                                                                                            value={account.minimum_available_amount ?? 0}
+                                                                                            onChange={(e) => patchOpsTreasuryState(provider, channel, account.currency_code, { minimum_available_amount: e.target.value })}
+                                                                                        />
+                                                                                    </label>
+                                                                                    <label className="space-y-1.5">
+                                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Treasury</span>
+                                                                                        <select
+                                                                                            className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900"
+                                                                                            value={account.status || 'active'}
+                                                                                            onChange={(e) => patchOpsTreasuryState(provider, channel, account.currency_code, { status: e.target.value })}
+                                                                                        >
+                                                                                            <option value="active">Active</option>
+                                                                                            <option value="paused">Paused</option>
+                                                                                        </select>
+                                                                                    </label>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     )}

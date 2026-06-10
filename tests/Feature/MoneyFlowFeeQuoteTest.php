@@ -7,10 +7,16 @@ use App\Models\Currency;
 use App\Models\FeePolicy;
 use App\Models\Merchant;
 use App\Models\Order;
+use App\Models\PaymentProvider;
+use App\Models\PaymentProviderChannel;
+use App\Models\ProviderTreasuryAccount;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Models\WithdrawalRequest;
 use App\Services\FeePolicyService;
+use App\Services\ProviderTreasuryService;
 use App\Services\WithdrawalAccountingService;
+use App\Services\WithdrawalFailureRecoveryService;
 use App\Services\WithdrawalQuoteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -236,6 +242,228 @@ class MoneyFlowFeeQuoteTest extends TestCase
         $this->assertSame(1, \App\Models\Transaction::where('type', 'withdrawal')->count());
     }
 
+    public function test_provider_treasury_blocks_cross_currency_withdrawal_when_payout_liquidity_is_missing(): void
+    {
+        $merchant = $this->merchant('USD');
+        $channel = $this->providerPayoutChannel(['currencies' => ['TZS']]);
+        $quote = app(WithdrawalQuoteService::class)->quote($merchant, 10, $this->payoutChannel([
+            'id' => $channel->id,
+            'provider_id' => $channel->payment_provider_id,
+            'key' => $channel->key,
+            'currency_code' => 'TZS',
+            'fee_fixed' => 500,
+        ]));
+
+        $liquidity = app(ProviderTreasuryService::class)->quoteLiquidity($quote, [
+            'id' => $channel->id,
+            'provider_id' => $channel->payment_provider_id,
+            'currency_code' => 'TZS',
+        ]);
+
+        $this->assertFalse($liquidity['is_available']);
+        $this->assertSame('missing_treasury_account', $liquidity['reason']);
+
+        ProviderTreasuryAccount::create([
+            'payment_provider_id' => $channel->payment_provider_id,
+            'payment_provider_channel_id' => $channel->id,
+            'provider_key' => 'selcom',
+            'provider_channel_key' => $channel->key,
+            'country_code' => 'TZ',
+            'method' => 'mobile_money',
+            'currency_code' => 'TZS',
+            'balance_amount' => 25000,
+            'reserved_amount' => 0,
+            'status' => 'active',
+        ]);
+
+        $liquidity = app(ProviderTreasuryService::class)->quoteLiquidity($quote, [
+            'id' => $channel->id,
+            'provider_id' => $channel->payment_provider_id,
+            'currency_code' => 'TZS',
+        ]);
+
+        $this->assertFalse($liquidity['is_available']);
+        $this->assertSame('insufficient_provider_liquidity', $liquidity['reason']);
+        $this->assertSame(25500.0, $liquidity['required_amount']);
+    }
+
+    public function test_merchant_withdrawal_request_is_blocked_when_provider_liquidity_is_missing(): void
+    {
+        $merchant = $this->merchant('TZS');
+        $merchant->update([
+            'is_verified' => true,
+            'kyc_status' => 'verified',
+        ]);
+        $channel = $this->providerPayoutChannel([
+            'currencies' => ['TZS'],
+            'fee_fixed' => 150,
+        ]);
+        Wallet::create([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'balance' => 20000,
+            'frozen_balance' => 0,
+        ]);
+
+        $this->actingAs($merchant->user)
+            ->withSession(['step_up_verified_at.merchant_wallet_withdrawal' => now()->timestamp])
+            ->from("/merchant/{$merchant->username}/wallet")
+            ->post("/merchant/{$merchant->username}/wallet/withdraw", [
+                'amount' => 5000,
+                'method' => 'mobile_money',
+                'payout_channel_key' => $channel->key,
+                'payout_currency_code' => 'TZS',
+            ])
+            ->assertRedirect("/merchant/{$merchant->username}/wallet")
+            ->assertSessionHasErrors('amount');
+
+        $this->assertSame(0, WithdrawalRequest::query()->count());
+        $this->assertSame(20000.0, (float) $merchant->wallet()->first()->fresh()->balance);
+    }
+
+    public function test_provider_treasury_reserves_captures_and_releases_payout_liquidity(): void
+    {
+        $merchant = $this->merchant('USD');
+        $channel = $this->providerPayoutChannel(['currencies' => ['TZS']]);
+        $account = ProviderTreasuryAccount::create([
+            'payment_provider_id' => $channel->payment_provider_id,
+            'payment_provider_channel_id' => $channel->id,
+            'provider_key' => 'selcom',
+            'provider_channel_key' => $channel->key,
+            'country_code' => 'TZ',
+            'method' => 'mobile_money',
+            'currency_code' => 'TZS',
+            'balance_amount' => 30000,
+            'reserved_amount' => 0,
+            'status' => 'active',
+        ]);
+        $quote = app(WithdrawalQuoteService::class)->quote($merchant, 10, $this->payoutChannel([
+            'id' => $channel->id,
+            'provider_id' => $channel->payment_provider_id,
+            'key' => $channel->key,
+            'currency_code' => 'TZS',
+            'fee_fixed' => 500,
+        ]));
+        $withdrawal = WithdrawalRequest::create([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'method' => 'mobile_money',
+            'amount' => $quote['wallet_debit_amount'],
+            'merchant_currency_code' => $quote['merchant_currency_code'],
+            'payout_currency_code' => $quote['payout_currency_code'],
+            'merchant_amount' => $quote['merchant_principal_amount'],
+            'payout_amount' => $quote['payout_amount'],
+            'status' => 'pending',
+        ]);
+
+        app(ProviderTreasuryService::class)->reserveForWithdrawal($withdrawal, $quote, [
+            'id' => $channel->id,
+            'provider_id' => $channel->payment_provider_id,
+            'key' => $channel->key,
+            'provider' => 'selcom',
+            'method' => 'mobile_money',
+            'currency_code' => 'TZS',
+        ]);
+
+        $this->assertSame(25500.0, (float) $account->fresh()->reserved_amount);
+        $this->assertSame(4500.0, $account->fresh()->availableAmount());
+
+        app(ProviderTreasuryService::class)->captureWithdrawal($withdrawal);
+
+        $this->assertSame(4500.0, (float) $account->fresh()->balance_amount);
+        $this->assertSame(0.0, (float) $account->fresh()->reserved_amount);
+        $this->assertDatabaseHas('provider_treasury_reservations', [
+            'withdrawal_request_id' => $withdrawal->id,
+            'status' => 'captured',
+            'amount' => 25500,
+        ]);
+
+        $second = WithdrawalRequest::create([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'method' => 'mobile_money',
+            'amount' => 1,
+            'merchant_currency_code' => 'USD',
+            'payout_currency_code' => 'TZS',
+            'merchant_amount' => 1,
+            'payout_amount' => 1,
+            'status' => 'pending',
+        ]);
+        $account->fresh()->update(['balance_amount' => 30000]);
+        app(ProviderTreasuryService::class)->reserveForWithdrawal($second, $quote, [
+            'id' => $channel->id,
+            'provider_id' => $channel->payment_provider_id,
+            'currency_code' => 'TZS',
+        ]);
+        app(ProviderTreasuryService::class)->releaseWithdrawal($second);
+
+        $this->assertSame(30000.0, (float) $account->fresh()->balance_amount);
+        $this->assertSame(0.0, (float) $account->fresh()->reserved_amount);
+        $this->assertDatabaseHas('provider_treasury_reservations', [
+            'withdrawal_request_id' => $second->id,
+            'status' => 'released',
+        ]);
+    }
+
+    public function test_failed_withdrawal_releases_liquidity_and_refunds_wallet_debit_once(): void
+    {
+        $merchant = $this->merchant('USD');
+        Wallet::create([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'balance' => 0,
+            'frozen_balance' => 0,
+        ]);
+        $channel = $this->providerPayoutChannel(['currencies' => ['TZS']]);
+        $account = ProviderTreasuryAccount::create([
+            'payment_provider_id' => $channel->payment_provider_id,
+            'payment_provider_channel_id' => $channel->id,
+            'provider_key' => 'selcom',
+            'provider_channel_key' => $channel->key,
+            'country_code' => 'TZ',
+            'method' => 'mobile_money',
+            'currency_code' => 'TZS',
+            'balance_amount' => 30000,
+            'reserved_amount' => 0,
+            'status' => 'active',
+        ]);
+        $quote = app(WithdrawalQuoteService::class)->quote($merchant, 10, $this->payoutChannel([
+            'id' => $channel->id,
+            'provider_id' => $channel->payment_provider_id,
+            'key' => $channel->key,
+            'currency_code' => 'TZS',
+            'fee_fixed' => 500,
+        ]));
+        $withdrawal = WithdrawalRequest::create([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'method' => 'mobile_money',
+            'amount' => $quote['wallet_debit_amount'],
+            'merchant_currency_code' => $quote['merchant_currency_code'],
+            'payout_currency_code' => $quote['payout_currency_code'],
+            'merchant_amount' => $quote['merchant_principal_amount'],
+            'payout_amount' => $quote['payout_amount'],
+            'payout_snapshot' => [
+                'wallet_debit_amount' => $quote['wallet_debit_amount'],
+            ],
+            'status' => 'processing',
+        ]);
+
+        app(ProviderTreasuryService::class)->reserveForWithdrawal($withdrawal, $quote, [
+            'id' => $channel->id,
+            'provider_id' => $channel->payment_provider_id,
+            'currency_code' => 'TZS',
+        ]);
+        app(ProviderTreasuryService::class)->releaseWithdrawal($withdrawal);
+        app(WithdrawalFailureRecoveryService::class)->refundWalletDebit($withdrawal);
+        app(WithdrawalFailureRecoveryService::class)->refundWalletDebit($withdrawal);
+
+        $this->assertSame(30000.0, (float) $account->fresh()->balance_amount);
+        $this->assertSame(0.0, (float) $account->fresh()->reserved_amount);
+        $this->assertSame($quote['wallet_debit_amount'], (float) $merchant->wallet()->first()->balance);
+        $this->assertNotEmpty($withdrawal->fresh()->payout_snapshot['wallet_refunded_at'] ?? null);
+    }
+
     private function merchant(string $currencyCode): Merchant
     {
         $currency = $this->currency($currencyCode);
@@ -301,6 +529,34 @@ class MoneyFlowFeeQuoteTest extends TestCase
             'fee_max' => null,
             'limits' => [],
         ], $overrides);
+    }
+
+    private function providerPayoutChannel(array $overrides = []): PaymentProviderChannel
+    {
+        $provider = PaymentProvider::create([
+            'key' => 'selcom',
+            'name' => 'Selcom',
+            'driver' => 'selcom',
+            'status' => 'enabled',
+        ]);
+
+        return PaymentProviderChannel::create(array_merge([
+            'payment_provider_id' => $provider->id,
+            'key' => 'tz_selcom_payout_mobile_money_tzs',
+            'country_code' => 'TZ',
+            'direction' => 'payout',
+            'method' => 'mobile_money',
+            'name' => 'Selcom Mobile Money',
+            'currencies' => ['TZS'],
+            'status' => 'enabled',
+            'priority' => 10,
+            'fee_type' => 'fixed_plus_percent',
+            'fee_fixed' => 0,
+            'fee_percent_bps' => 0,
+            'fee_min' => 0,
+            'fee_max' => null,
+            'fx_margin_bps' => 0,
+        ], $overrides));
     }
 
     private function currency(string $code): Currency

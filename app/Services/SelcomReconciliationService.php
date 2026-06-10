@@ -126,12 +126,15 @@ class SelcomReconciliationService
 
                     if ($event->isSuccessful()) {
                         $withdrawal->update(['status' => 'approved']);
+                        app(ProviderTreasuryService::class)->captureWithdrawal($withdrawal->fresh());
                         $summary['successful']++;
                         return;
                     }
 
                     if ($event->isFailed()) {
                         $withdrawal->update(['status' => 'failed']);
+                        app(ProviderTreasuryService::class)->releaseWithdrawal($withdrawal->fresh());
+                        app(WithdrawalFailureRecoveryService::class)->refundWalletDebit($withdrawal->fresh());
                         $summary['failed']++;
                         return;
                     }

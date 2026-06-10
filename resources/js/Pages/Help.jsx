@@ -29,16 +29,21 @@ const categoryHints = {
 export default function Help({ categories = [] }) {
     const { auth } = usePage().props;
     const user = auth?.user || null;
+    const query = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const requestedCategory = query.get('category') || '';
+    const defaultCategory = categories.some((category) => category.key === requestedCategory)
+        ? requestedCategory
+        : (categories[0]?.key || 'order');
     const [submittedReference, setSubmittedReference] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [form, setForm] = useState({
-        category: categories[0]?.key || 'order',
+        category: defaultCategory,
         name: user?.name || '',
         email: user?.email || '',
         phone: user?.phone_number || '',
-        order_reference: '',
-        subject: '',
-        message: '',
+        order_reference: query.get('reference') || '',
+        subject: query.get('subject') || '',
+        message: query.get('message') || '',
     });
 
     const selectedCategory = useMemo(() => (

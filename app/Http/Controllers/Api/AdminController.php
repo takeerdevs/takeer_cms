@@ -28,6 +28,7 @@ use App\Services\PlatformNotificationService;
 use App\Services\AdminAttentionService;
 use App\Services\PayoutPolicyService;
 use App\Services\SelcomPayoutService;
+use App\Services\ProviderTreasuryService;
 use App\Services\WithdrawalAccountingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -440,12 +441,37 @@ class AdminController extends Controller
 
     public function approveWithdrawal(Request $request, WithdrawalRequest $withdrawal, SelcomPayoutService $selcomPayouts): JsonResponse
     {
-        if ($withdrawal->status !== 'pending') {
-            return response()->json(['message' => 'This withdrawal request has already been handled.'], 400);
-        }
+        $withdrawal->loadMissing(['paymentProvider', 'paymentProviderChannel.provider', 'payoutCredential.channel.provider']);
+        $handledBySelcom = $selcomPayouts->shouldHandle($withdrawal);
 
-        if ($selcomPayouts->shouldHandle($withdrawal)) {
-            $result = $selcomPayouts->submit($withdrawal);
+        if ($handledBySelcom) {
+            $claimed = DB::transaction(function () use ($withdrawal) {
+                $locked = WithdrawalRequest::query()
+                    ->whereKey($withdrawal->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($locked->status !== 'pending') {
+                    return false;
+                }
+
+                $snapshot = $locked->payout_snapshot ?: [];
+                $snapshot['admin_approval_claimed_at'] = now()->toISOString();
+                $snapshot['admin_approval_claimed_by'] = request()->user()?->id;
+
+                $locked->update([
+                    'status' => 'processing',
+                    'payout_snapshot' => $snapshot,
+                ]);
+
+                return true;
+            });
+
+            if (! $claimed) {
+                return response()->json(['message' => 'This withdrawal request has already been handled.'], 400);
+            }
+
+            $result = $selcomPayouts->submit($withdrawal->fresh());
 
             if (! $result->success) {
                 return response()->json([
@@ -460,10 +486,30 @@ class AdminController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($withdrawal) {
-            $withdrawal->update(['status' => 'approved']);
-            app(WithdrawalAccountingService::class)->recordSubmitted($withdrawal->fresh());
+        if ($withdrawal->status !== 'pending') {
+            return response()->json(['message' => 'This withdrawal request has already been handled.'], 400);
+        }
+
+        $claimed = DB::transaction(function () use ($withdrawal) {
+            $locked = WithdrawalRequest::query()
+                ->whereKey($withdrawal->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->status !== 'pending') {
+                return false;
+            }
+
+            $locked->update(['status' => 'approved']);
+            app(ProviderTreasuryService::class)->captureWithdrawal($locked->fresh());
+            app(WithdrawalAccountingService::class)->recordSubmitted($locked->fresh());
+
+            return true;
         });
+
+        if (! $claimed) {
+            return response()->json(['message' => 'This withdrawal request has already been handled.'], 400);
+        }
 
         return response()->json(['message' => 'Withdrawal approved successfully.']);
     }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WithdrawalRequest extends Model
 {
@@ -78,5 +79,10 @@ class WithdrawalRequest extends Model
     public function payoutCredential(): BelongsTo
     {
         return $this->belongsTo(MerchantPayoutCredential::class, 'merchant_payout_credential_id');
+    }
+
+    public function treasuryReservations(): HasMany
+    {
+        return $this->hasMany(ProviderTreasuryReservation::class, 'withdrawal_request_id');
     }
 }

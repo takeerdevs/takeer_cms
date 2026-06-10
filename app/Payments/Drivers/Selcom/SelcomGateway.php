@@ -20,6 +20,7 @@ class SelcomGateway implements PaymentGatewayInterface, PaymentProviderAdapterIn
     private const QWIKSEND_QUERY_PATH = '/v1/qwiksend/query';
     private const WALLET_CASHIN_PROCESS_PATH = '/v1/walletcashin/process';
     private const WALLET_CASHIN_QUERY_PATH = '/v1/walletcashin/query';
+    private const VENDOR_BALANCE_PATH = '/v1/vendor/balance';
 
     public function __construct(
         private readonly SelcomClient $client,
@@ -90,6 +91,48 @@ class SelcomGateway implements PaymentGatewayInterface, PaymentProviderAdapterIn
 
             return PaymentResult::failure('Selcom payment request failed.', 'selcom_network_error');
         }
+    }
+
+    public function queryVendorBalance(): PaymentResult
+    {
+        if ($this->simulate) {
+            return PaymentResult::success('Selcom simulation: vendor balance unavailable from provider.', 'SIM-SELCOM-BALANCE', [
+                'simulated' => true,
+                'provider' => 'selcom',
+                'resultcode' => '111',
+                'result' => 'PENDING',
+                'balance' => null,
+                'message' => 'Simulation mode is enabled. Set treasury balances manually for liquidity testing.',
+            ]);
+        }
+
+        if (! $this->client->enabled()) {
+            return PaymentResult::failure('Selcom credentials are not configured.', 'selcom_not_configured');
+        }
+
+        $transId = SelcomClient::cleanReference('BAL' . now()->format('YmdHis'), 'BAL');
+        $body = [
+            'vendor' => $this->vendor,
+            'pin' => (string) config('services.selcom.vendor_pin', ''),
+            'transid' => $transId,
+        ];
+
+        $response = $this->client->post(self::VENDOR_BALANCE_PATH, $body, array_keys($body));
+        $data = $response->json() ?: [];
+
+        if ($response->successful() && $this->isAccepted($data)) {
+            return PaymentResult::success(
+                $data['message'] ?? 'Selcom vendor balance returned.',
+                $data['reference'] ?? $transId,
+                $data + ['takeer_reference' => $transId],
+            );
+        }
+
+        return PaymentResult::failure(
+            $data['message'] ?? 'Selcom vendor balance query failed.',
+            (string) ($data['resultcode'] ?? $response->status()),
+            $data + ['takeer_reference' => $transId],
+        );
     }
 
     private function createMinimalOrder(array $payload, string $orderId): PaymentResult

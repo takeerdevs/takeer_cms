@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\WithdrawalRequest;
+use App\Models\ProviderTreasuryAccount;
 use App\Payments\Drivers\Selcom\SelcomGateway;
 use App\Payments\PaymentResult;
 use Illuminate\Support\Facades\DB;
@@ -60,8 +61,32 @@ class SelcomPayoutService
 
             if ($result->success) {
                 app(WithdrawalAccountingService::class)->recordSubmitted($withdrawal->fresh());
+                if (($result->raw['simulated'] ?? false) || (string) ($result->raw['resultcode'] ?? '') === '000') {
+                    app(ProviderTreasuryService::class)->captureWithdrawal($withdrawal->fresh());
+                }
             }
         });
+
+        return $result;
+    }
+
+    public function syncTreasuryAccount(ProviderTreasuryAccount $account): PaymentResult
+    {
+        $result = $this->selcom->queryVendorBalance();
+
+        if (! $result->success) {
+            return $result;
+        }
+
+        $balance = data_get($result->raw, 'balance');
+
+        if ($balance === null || $balance === '') {
+            return PaymentResult::failure('Selcom did not return a usable vendor balance.', 'selcom_balance_missing', $result->raw);
+        }
+
+        app(ProviderTreasuryService::class)->syncAccountBalance($account, (float) $balance, 'selcom_vendor_balance', [
+            'provider_response' => $result->raw,
+        ]);
 
         return $result;
     }

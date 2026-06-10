@@ -7,6 +7,7 @@ use App\Models\PaymentChannelIncident;
 use App\Models\PaymentProvider;
 use App\Models\PaymentProviderChannel;
 use App\Models\PaymentProviderCountry;
+use App\Models\ProviderTreasuryAccount;
 use App\Services\PaymentChannelIncidentService;
 use App\Services\PaymentProviderCatalogService;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +21,14 @@ class AdminPaymentOperationsController extends Controller
 
         return response()->json([
             'providers' => PaymentProvider::query()
-                ->with(['countries', 'channels' => fn ($query) => $query->orderBy('country_code')->orderBy('direction')->orderBy('priority')])
+                ->with([
+                    'countries',
+                    'channels' => fn ($query) => $query
+                        ->with('treasuryAccounts')
+                        ->orderBy('country_code')
+                        ->orderBy('direction')
+                        ->orderBy('priority'),
+                ])
                 ->orderBy('name')
                 ->get(),
             'incidents' => PaymentChannelIncident::query()
@@ -45,11 +53,20 @@ class AdminPaymentOperationsController extends Controller
             'limits' => 'nullable|array',
             'limits.min_withdrawal_amount' => 'nullable|numeric|min:0',
             'limits.max_withdrawal_amount' => 'nullable|numeric|min:0',
+            'treasury_accounts' => 'nullable|array',
+            'treasury_accounts.*.currency_code' => 'required_with:treasury_accounts|string|size:3',
+            'treasury_accounts.*.balance_amount' => 'nullable|numeric|min:0',
+            'treasury_accounts.*.minimum_available_amount' => 'nullable|numeric|min:0',
+            'treasury_accounts.*.status' => 'nullable|in:active,paused',
             'settlement_note' => 'nullable|string|max:255',
         ]);
 
+        $treasuryAccounts = $validated['treasury_accounts'] ?? null;
+        unset($validated['treasury_accounts']);
+
         if (($channel->direction ?? null) !== 'payout') {
             unset($validated['limits']);
+            $treasuryAccounts = null;
         } elseif (array_key_exists('limits', $validated)) {
             $limits = is_array($validated['limits']) ? $validated['limits'] : [];
             $validated['limits'] = [
@@ -64,7 +81,42 @@ class AdminPaymentOperationsController extends Controller
 
         $channel->fill($validated)->save();
 
-        return response()->json(['message' => 'Channel updated.', 'channel' => $channel->fresh('provider')]);
+        if (is_array($treasuryAccounts)) {
+            $this->upsertTreasuryAccounts($channel->fresh('provider'), $treasuryAccounts);
+        }
+
+        return response()->json(['message' => 'Channel updated.', 'channel' => $channel->fresh(['provider', 'treasuryAccounts'])]);
+    }
+
+    private function upsertTreasuryAccounts(PaymentProviderChannel $channel, array $accounts): void
+    {
+        $supportedCurrencies = collect($channel->currencies ?: [])->map(fn ($code) => strtoupper((string) $code))->all();
+
+        foreach ($accounts as $account) {
+            $currencyCode = strtoupper((string) ($account['currency_code'] ?? ''));
+
+            if ($currencyCode === '' || ($supportedCurrencies && ! in_array($currencyCode, $supportedCurrencies, true))) {
+                continue;
+            }
+
+            ProviderTreasuryAccount::query()->updateOrCreate(
+                [
+                    'payment_provider_id' => $channel->payment_provider_id,
+                    'payment_provider_channel_id' => $channel->id,
+                    'currency_code' => $currencyCode,
+                ],
+                [
+                    'provider_key' => $channel->provider?->key ?: '',
+                    'provider_channel_key' => $channel->key,
+                    'country_code' => $channel->country_code,
+                    'method' => $channel->method,
+                    'balance_amount' => round(max(0, (float) ($account['balance_amount'] ?? 0)), 2),
+                    'minimum_available_amount' => round(max(0, (float) ($account['minimum_available_amount'] ?? 0)), 2),
+                    'status' => $account['status'] ?? 'active',
+                    'balance_source' => 'manual',
+                ]
+            );
+        }
     }
 
     public function updateProvider(Request $request, PaymentProvider $provider): JsonResponse

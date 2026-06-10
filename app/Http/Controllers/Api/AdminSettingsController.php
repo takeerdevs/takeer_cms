@@ -424,15 +424,23 @@ class AdminSettingsController extends Controller
     }
 
     /**
-     * Get pending withdrawals.
+     * Get withdrawals for admin operations.
      */
-    public function withdrawals(): JsonResponse
+    public function withdrawals(Request $request): JsonResponse
     {
+        $status = strtolower((string) $request->query('status', 'pending'));
+        $allowedStatuses = ['pending', 'processing', 'approved', 'failed', 'all'];
+        if (! in_array($status, $allowedStatuses, true)) {
+            $status = 'pending';
+        }
+        $perPage = min(100, max(10, (int) $request->query('per_page', 20)));
+
         $withdrawals = WithdrawalRequest::with(['user:id,name,phone_number', 'merchant:id,display_name,username,currency_id', 'merchant.currency:id,code'])
-            ->where('status', 'pending')
+            ->when($status !== 'all', fn ($query) => $query->where('status', $status))
             ->latest()
-            ->get()
-            ->map(function (WithdrawalRequest $withdrawal) {
+            ->paginate($perPage);
+
+        $items = $withdrawals->getCollection()->map(function (WithdrawalRequest $withdrawal) {
                 $snapshot = $withdrawal->payout_snapshot ?: [];
 
                 return [
@@ -456,9 +464,18 @@ class AdminSettingsController extends Controller
                     'fx_rate_date' => $withdrawal->fx_rate_date?->toDateString(),
                     'payout_snapshot' => $withdrawal->payout_snapshot ?: [],
                     'money_quote_snapshot' => $withdrawal->money_quote_snapshot ?: [],
+                    'provider' => $snapshot['payout_provider'] ?? $snapshot['provider'] ?? null,
+                    'provider_status' => $snapshot['provider_status'] ?? null,
+                    'provider_reference' => $snapshot['provider_reference'] ?? null,
+                    'provider_takeer_reference' => $snapshot['provider_takeer_reference'] ?? null,
+                    'treasury_reserved_amount' => (float) ($snapshot['treasury_reserved_amount'] ?? 0),
+                    'treasury_reserved_currency_code' => $snapshot['treasury_reserved_currency_code'] ?? null,
+                    'wallet_refund_amount' => (float) ($snapshot['wallet_refund_amount'] ?? 0),
+                    'wallet_refunded_at' => $snapshot['wallet_refunded_at'] ?? null,
                     'method' => $withdrawal->method,
                     'status' => $withdrawal->status,
                     'created_at' => $withdrawal->created_at?->toISOString(),
+                    'updated_at' => $withdrawal->updated_at?->toISOString(),
                     'user' => $withdrawal->user,
                     'merchant' => $withdrawal->merchant ? [
                         'id' => $withdrawal->merchant->id,
@@ -468,7 +485,15 @@ class AdminSettingsController extends Controller
                 ];
             });
 
-        return response()->json(['withdrawals' => $withdrawals]);
+        return response()->json([
+            'withdrawals' => $items,
+            'pagination' => [
+                'current_page' => $withdrawals->currentPage(),
+                'last_page' => $withdrawals->lastPage(),
+                'per_page' => $withdrawals->perPage(),
+                'total' => $withdrawals->total(),
+            ],
+        ]);
     }
 
     public function platformWallet(Request $request): JsonResponse
