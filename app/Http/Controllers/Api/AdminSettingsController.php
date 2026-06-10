@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AdminSetting;
 use App\Models\Order;
 use App\Models\PaymentProviderChannel;
+use App\Models\RefundRequest;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
@@ -492,6 +493,74 @@ class AdminSettingsController extends Controller
                 'last_page' => $withdrawals->lastPage(),
                 'per_page' => $withdrawals->perPage(),
                 'total' => $withdrawals->total(),
+            ],
+        ]);
+    }
+
+    public function refunds(Request $request): JsonResponse
+    {
+        $status = strtolower((string) $request->query('status', 'pending'));
+        $allowedStatuses = ['pending', 'approved', 'rejected', 'all'];
+        if (! in_array($status, $allowedStatuses, true)) {
+            $status = 'pending';
+        }
+        $perPage = min(100, max(10, (int) $request->query('per_page', 20)));
+
+        $refunds = RefundRequest::query()
+            ->with([
+                'buyer:id,name,phone_number',
+                'merchant:id,display_name,username,currency_id',
+                'merchant.currency:id,code',
+                'order:id,public_id,total_paid,payment_status,pickup_status,pickup_deadline_at,pickup_grace_ends_at,pickup_cancellation_penalty_amount,pickup_cancellation_refund_amount',
+                'approver:id,name',
+            ])
+            ->when($status !== 'all', fn ($query) => $query->where('status', $status))
+            ->latest()
+            ->paginate($perPage);
+
+        $items = $refunds->getCollection()->map(fn (RefundRequest $refund) => [
+            'id' => $refund->id,
+            'source' => $refund->source,
+            'status' => $refund->status,
+            'amount' => (float) $refund->amount,
+            'currency_code' => $refund->currency_code ?: 'TZS',
+            'merchant_penalty_amount' => (float) $refund->merchant_penalty_amount,
+            'merchant_penalty_percent' => (float) $refund->merchant_penalty_percent,
+            'reason' => $refund->reason,
+            'snapshot' => $refund->snapshot ?: [],
+            'admin_notes' => $refund->admin_notes,
+            'approved_at' => $refund->approved_at?->toISOString(),
+            'rejected_at' => $refund->rejected_at?->toISOString(),
+            'created_at' => $refund->created_at?->toISOString(),
+            'updated_at' => $refund->updated_at?->toISOString(),
+            'buyer' => $refund->buyer,
+            'merchant' => $refund->merchant ? [
+                'id' => $refund->merchant->id,
+                'display_name' => $refund->merchant->display_name,
+                'username' => $refund->merchant->username,
+                'currency_code' => $refund->merchant->currency?->code,
+            ] : null,
+            'order' => $refund->order ? [
+                'id' => $refund->order->id,
+                'public_id' => $refund->order->public_id,
+                'total_paid' => (float) $refund->order->total_paid,
+                'payment_status' => $refund->order->payment_status,
+                'pickup_status' => $refund->order->pickup_status,
+                'pickup_deadline_at' => $refund->order->pickup_deadline_at?->toISOString(),
+                'pickup_grace_ends_at' => $refund->order->pickup_grace_ends_at?->toISOString(),
+                'pickup_cancellation_penalty_amount' => $refund->order->pickup_cancellation_penalty_amount !== null ? (float) $refund->order->pickup_cancellation_penalty_amount : null,
+                'pickup_cancellation_refund_amount' => $refund->order->pickup_cancellation_refund_amount !== null ? (float) $refund->order->pickup_cancellation_refund_amount : null,
+            ] : null,
+            'approver' => $refund->approver,
+        ]);
+
+        return response()->json([
+            'refunds' => $items,
+            'pagination' => [
+                'current_page' => $refunds->currentPage(),
+                'last_page' => $refunds->lastPage(),
+                'per_page' => $refunds->perPage(),
+                'total' => $refunds->total(),
             ],
         ]);
     }

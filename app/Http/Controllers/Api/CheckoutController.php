@@ -27,6 +27,7 @@ use App\Services\EntitlementService;
 use App\Services\ForwarderShipmentService;
 use App\Services\MoneyQuoteService;
 use App\Services\OfferingGroupCheckoutResolver;
+use App\Services\PickupAgreementService;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
 use App\Support\GeographyResolver;
@@ -35,6 +36,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -336,9 +338,11 @@ class CheckoutController extends Controller
         // ── Create pending Order ──────────────────────────────────────────────
         $transactionRef = 'TXN-' . Str::upper(Str::random(10));
         $liveGatewayCheckout = (bool) env('LIVE_GATEWAY_CHECKOUT', false);
+        $pickupRequestSnapshot = $this->pickupRequestSnapshot($validated, $deliveryType === 'self_pickup');
+        $expiresAt = $this->pendingOrderExpiresAt($purchasable, $pickupRequestSnapshot, $deliveryType === 'self_pickup');
 
         try {
-            $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $purchasable, $totalPaid, $merchantUnitPrice, $moneySnapshot, $unitMoneySnapshot, $shippingMoneySnapshot, $discountMoneySnapshot, $validated, $requestedQuantity, $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $selectedOfferingGroup, $zone, $deliveryType, $isForwarderCheckout, $isInquiry, $serviceRequest, $servicePricingInputs, $coupon, $discountAmount, $referralLink, $referralCommissionAmount, $groupSaleCampaign, $liveGatewayCheckout) {
+            $order = DB::transaction(function () use ($buyer, $product, $selectedVariant, $purchasable, $totalPaid, $merchantUnitPrice, $moneySnapshot, $unitMoneySnapshot, $shippingMoneySnapshot, $discountMoneySnapshot, $validated, $requestedQuantity, $transactionRef, $gateway, $countryCode, $accountPhone, $paymentPhone, $selectedBundleItems, $selectedOfferingGroup, $zone, $deliveryType, $isForwarderCheckout, $isInquiry, $serviceRequest, $servicePricingInputs, $coupon, $discountAmount, $referralLink, $referralCommissionAmount, $groupSaleCampaign, $liveGatewayCheckout, $pickupRequestSnapshot, $expiresAt) {
                 $productInventoryReserved = false;
 
                 if ($product?->isPhysical()) {
@@ -549,7 +553,8 @@ class CheckoutController extends Controller
                     // Gateway tracking (multi-country, multi-gateway)
                     'payment_gateway' => $gateway->getName(),
                     'country_code' => $countryCode,
-                    'expires_at' => now()->addMinutes(30),
+                    'expires_at' => $expiresAt,
+                    'pickup_policy_snapshot' => $pickupRequestSnapshot,
                 ]);
 
                 if (!empty($productInventoryReserved)) {
@@ -593,8 +598,11 @@ class CheckoutController extends Controller
                     $isCustomDelivery = $product?->isDigital()
                         && ($product->digital_delivery_type ?? null) === 'custom_delivery';
                     $newOrder->update([
-                        'payment_status' => ($serviceRequest || $newOrder->requiresPhysicalFulfillment() || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid',
+                        'payment_status' => $newOrder->requiresPhysicalFulfillment()
+                            ? 'awaiting_merchant_confirmation'
+                            : (($serviceRequest || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid'),
                         'custom_delivery_due_at' => $isCustomDelivery ? $newOrder->customDeliveryDueAtFrom() : null,
+                        'merchant_confirmed_at' => $newOrder->requiresPhysicalFulfillment() ? null : $newOrder->merchant_confirmed_at,
                     ]);
                     if (!$newOrder->requiresPhysicalFulfillment() && !($purchasable instanceof OfferingGroup)) {
                         app(\App\Services\EntitlementService::class)->grantForOrder($newOrder->fresh(['product']));
@@ -1824,6 +1832,8 @@ class CheckoutController extends Controller
             'account_phone' => 'required|string',
             'buyer_name' => 'nullable|string|max:255',
             'delivery_type' => 'nullable|in:local_boda,intercity_bus,self_pickup',
+            'pickup_requested_start_at' => 'nullable|date',
+            'pickup_requested_end_at' => 'nullable|date|after:pickup_requested_start_at',
             'user_address_id' => 'nullable|integer|exists:user_addresses,id',
             'delivery_zone_id' => 'nullable|integer|exists:shipping_zones,id',
             'physical_address' => 'nullable|string|min:3',
@@ -2042,8 +2052,10 @@ class CheckoutController extends Controller
             : ($isForwarderCheckout ? 'forwarder' : ($resolvedShippingZone?->delivery_type ?: $deliveryType));
         $inquiryStatus = ($isSelfPickup || $resolvedShippingZone) ? 'quoted' : 'pending';
         $transactionRef = 'INQ-' . Str::upper(Str::random(10));
+        $pickupRequestSnapshot = $this->pickupRequestSnapshot($validated, $isSelfPickup);
+        $expiresAt = $this->pendingOrderExpiresAt($product ?? $bundle ?? $offeringGroup, $pickupRequestSnapshot, $isSelfPickup);
 
-        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $moneySnapshot, $unitMoneySnapshot, $shippingMoneySnapshot, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $isForwarderCheckout, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId, $merchantId, $countryCode) {
+        $order = DB::transaction(function () use ($buyer, $product, $bundle, $offeringGroup, $selectedVariant, $selectedBundleItems, $selectedOfferingGroup, $unitPrice, $quotedTotalPrice, $resolvedShippingFee, $moneySnapshot, $unitMoneySnapshot, $shippingMoneySnapshot, $requestedQuantity, $validated, $transactionRef, $isSelfPickup, $isForwarderCheckout, $resolvedDeliveryType, $groupSaleCampaign, $isServiceInquiry, $inquiryStatus, $resolvedHotspotId, $merchantId, $countryCode, $pickupRequestSnapshot, $expiresAt) {
             $newOrder = Order::create([
                 'buyer_id' => $buyer->id,
                 'user_address_id' => $validated['user_address_id'] ?? null,
@@ -2143,7 +2155,8 @@ class CheckoutController extends Controller
                 'account_phone' => $validated['account_phone'],
                 'payment_phone' => $validated['account_phone'],
                 'country_code' => $countryCode,
-                'expires_at' => now()->addMinutes(30),
+                'expires_at' => $expiresAt,
+                'pickup_policy_snapshot' => $pickupRequestSnapshot,
             ]);
 
             if (!$isServiceInquiry) {
@@ -2273,7 +2286,7 @@ class CheckoutController extends Controller
             ]);
             $order->update([
                 'payment_status' => $targetStatus,
-                'merchant_confirmed_at' => $isPhysical ? ($order->merchant_confirmed_at ?: now()) : $order->merchant_confirmed_at,
+                'merchant_confirmed_at' => $order->merchant_confirmed_at,
             ]);
 
             if (!$isPhysical) {
@@ -2289,6 +2302,11 @@ class CheckoutController extends Controller
 
             if ($isPhysical) {
                 $this->createTakeerOrderForwarderShipment($order, $order->user_address_id);
+                $order->loadMissing(['delivery']);
+                if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup') {
+                    app(PickupAgreementService::class)->ensureAgreementForPaidPickup($order);
+                    $order->refresh()->loadMissing(['delivery']);
+                }
             }
 
             // Log TRA-ready transaction simulation
@@ -2317,7 +2335,7 @@ class CheckoutController extends Controller
             $publicId = (string) ($order->public_id ?: $order->id);
             if ($order->buyer?->phone_number) {
                 $this->smsService->sendPhysicalPaymentHeldToBuyer($order->buyer->phone_number, $publicId, (float) $order->total_paid, $order->buyer_id);
-                if ($order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
+                if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
                     $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
                 }
             }
@@ -2555,6 +2573,105 @@ class CheckoutController extends Controller
     private function moneyAmountFromQuote(array $quote, float $merchantAmount): array
     {
         return app(MoneyQuoteService::class)->amountFromQuote($quote, $merchantAmount);
+    }
+
+    private function pickupRequestSnapshot(array $validated, bool $isSelfPickup): ?array
+    {
+        if (!$isSelfPickup || empty($validated['pickup_requested_start_at']) || empty($validated['pickup_requested_end_at'])) {
+            return null;
+        }
+
+        $start = Carbon::parse($validated['pickup_requested_start_at']);
+        $end = Carbon::parse($validated['pickup_requested_end_at']);
+
+        if ($end->lessThanOrEqualTo($start)) {
+            return null;
+        }
+
+        return [
+            'buyer_requested_slot' => [
+                'requested_at' => now()->toISOString(),
+                'start_at' => $start->toISOString(),
+                'end_at' => $end->toISOString(),
+                'status' => 'requested',
+            ],
+        ];
+    }
+
+    private function pendingOrderExpiresAt(mixed $purchasable, ?array $pickupRequestSnapshot, bool $isSelfPickup): Carbon
+    {
+        if (!$isSelfPickup || !$pickupRequestSnapshot) {
+            return now()->addMinutes(30);
+        }
+
+        $merchantId = (int) ($purchasable?->merchant_id ?? 0);
+        $location = $merchantId
+            ? \App\Models\MerchantLocation::query()
+                ->where('merchant_id', $merchantId)
+                ->where('allow_self_pickup', true)
+                ->orderByDesc('is_primary')
+                ->first()
+            : null;
+
+        $windows = is_array($location?->pickup_available_windows) && count($location->pickup_available_windows)
+            ? $location->pickup_available_windows
+            : [
+                ['day' => 1, 'enabled' => true, 'start' => '08:30', 'end' => '16:00'],
+                ['day' => 2, 'enabled' => true, 'start' => '08:30', 'end' => '16:00'],
+                ['day' => 3, 'enabled' => true, 'start' => '08:30', 'end' => '16:00'],
+                ['day' => 4, 'enabled' => true, 'start' => '08:30', 'end' => '16:00'],
+                ['day' => 5, 'enabled' => true, 'start' => '08:30', 'end' => '16:00'],
+                ['day' => 6, 'enabled' => true, 'start' => '08:30', 'end' => '16:00'],
+            ];
+
+        return $this->addPickupWorkingMinutes(now(), 30, $windows);
+    }
+
+    private function addPickupWorkingMinutes(Carbon $from, int $minutes, array $windows): Carbon
+    {
+        $remaining = max(1, $minutes);
+        $cursor = $from->copy();
+        $normalizedWindows = collect($windows)
+            ->filter(fn ($window) => (bool) ($window['enabled'] ?? true))
+            ->groupBy(fn ($window) => (int) ($window['day'] ?? 0))
+            ->map(fn ($dayWindows) => $dayWindows
+                ->sortBy(fn ($window) => (string) ($window['start'] ?? '08:30'))
+                ->values()
+                ->all()
+            );
+
+        for ($guard = 0; $guard < 21; $guard++) {
+            $dayWindows = $normalizedWindows->get((int) $cursor->isoWeekday(), []);
+
+            foreach ($dayWindows as $window) {
+                $start = $this->dateAtPickupWindowTime($cursor, (string) ($window['start'] ?? '08:30'));
+                $end = $this->dateAtPickupWindowTime($cursor, (string) ($window['end'] ?? '16:00'));
+                if ($end->lessThanOrEqualTo($start) || $cursor->greaterThanOrEqualTo($end)) {
+                    continue;
+                }
+
+                $activeFrom = $cursor->greaterThan($start) ? $cursor->copy() : $start;
+                $available = $activeFrom->diffInMinutes($end);
+
+                if ($available >= $remaining) {
+                    return $activeFrom->addMinutes($remaining);
+                }
+
+                $remaining -= $available;
+                $cursor = $end->copy();
+            }
+
+            $cursor = $cursor->copy()->addDay()->startOfDay();
+        }
+
+        return $from->copy()->addMinutes($minutes);
+    }
+
+    private function dateAtPickupWindowTime(Carbon $date, string $time): Carbon
+    {
+        [$hour, $minute] = array_pad(array_map('intval', explode(':', $time)), 2, 0);
+
+        return $date->copy()->setTime($hour, $minute, 0);
     }
 
     private function decrementLocationInventory(int $productId, ?int $variantId, float $quantity, int $merchantId): void

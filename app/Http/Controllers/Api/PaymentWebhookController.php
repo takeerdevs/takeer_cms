@@ -8,6 +8,7 @@ use App\Models\UserSubscription;
 use App\Models\Transaction;
 use App\Services\EntitlementService;
 use App\Services\OrderExtraItemFulfillmentService;
+use App\Services\PickupAgreementService;
 use App\Services\SubscriptionRenewalService;
 use App\Services\SmsService;
 use Illuminate\Http\JsonResponse;
@@ -66,7 +67,7 @@ class PaymentWebhookController extends Controller
                 $order->update([
                     'payment_status' => $isPhysical ? 'awaiting_merchant_confirmation' : (($isHeldService || $isCustomDelivery) ? 'escrow_locked' : 'resolved_merchant_paid'),
                     'custom_delivery_due_at' => $isCustomDelivery ? $order->customDeliveryDueAtFrom() : $order->custom_delivery_due_at,
-                    'merchant_confirmed_at' => $isPhysical ? ($order->merchant_confirmed_at ?: now()) : $order->merchant_confirmed_at,
+                    'merchant_confirmed_at' => $order->merchant_confirmed_at,
                 ]);
 
                 $processedOrders = collect([$order->fresh(['product', 'merchant.user'])])
@@ -106,10 +107,14 @@ class PaymentWebhookController extends Controller
                 if ($isPhysical || $isHeldService || $isCustomDelivery) {
                     if ($isPhysical) {
                         $order->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                        if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup') {
+                            app(PickupAgreementService::class)->ensureAgreementForPaidPickup($order);
+                            $order->refresh()->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                        }
                         $publicId = (string) ($order->public_id ?: $order->id);
                         if ($order->buyer?->phone_number) {
                             $this->smsService->sendPhysicalPaymentHeldToBuyer($order->buyer->phone_number, $publicId, (float) $order->total_paid, $order->buyer_id);
-                            if ($order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
+                            if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
                                 $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
                             }
                         }

@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Models\Order;
 use App\Models\Product;
 use App\Services\OrderExtraItemFulfillmentService;
+use App\Services\PickupAgreementService;
 use App\Services\SmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -294,15 +295,14 @@ class ChatController extends Controller
                     $payload = $message->payload ?: [];
                     $order->loadMissing(['delivery', 'product']);
                     $isSelfPickupPhysical = $this->orderHasPhysicalItems($order)
-                        && $order->delivery?->delivery_type === 'self_pickup'
-                        && filled($order->delivery?->pickup_pin);
+                        && $order->delivery?->delivery_type === 'self_pickup';
 
                     $message->forceFill([
                         'payload' => array_merge($payload, [
                             'payment_status' => $order->payment_status,
                             'delivery_type' => $order->delivery?->delivery_type,
-                            'pickup_pin' => $isSelfPickupPhysical ? (string) $order->delivery->pickup_pin : null,
-                            'show_shop_locations' => $isSelfPickupPhysical,
+                            'pickup_pin' => null,
+                            'show_shop_locations' => false,
                             'product_title' => $order->product?->title,
                             'total_paid' => (float) $order->total_paid,
                         ]),
@@ -484,7 +484,7 @@ class ChatController extends Controller
                 $order->update([
                     'payment_status' => $targetStatus,
                     'custom_delivery_due_at' => $isCustomDelivery ? $order->customDeliveryDueAtFrom() : $order->custom_delivery_due_at,
-                    'merchant_confirmed_at' => $isPhysical ? ($order->merchant_confirmed_at ?: now()) : $order->merchant_confirmed_at,
+                    'merchant_confirmed_at' => $order->merchant_confirmed_at,
                 ]);
             });
 
@@ -531,10 +531,14 @@ class ChatController extends Controller
 
             if ($isPhysical) {
                 $order->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup') {
+                    app(PickupAgreementService::class)->ensureAgreementForPaidPickup($order);
+                    $order->refresh()->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                }
                 $publicId = (string) ($order->public_id ?: $order->id);
                 if ($order->buyer?->phone_number) {
                     $this->smsService->sendPhysicalPaymentHeldToBuyer($order->buyer->phone_number, $publicId, (float) $order->total_paid, $order->buyer_id);
-                    if ($order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
+                    if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
                         $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
                     }
                 }

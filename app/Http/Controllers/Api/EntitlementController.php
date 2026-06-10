@@ -190,11 +190,7 @@ class EntitlementController extends Controller
                 'granted_at' => $entitlement->created_at?->toISOString(),
                 'sort_date' => $entitlement->created_at,
                 'search_blob' => $searchBlob,
-                'merchant' => $entitlement->merchant ? [
-                    'id' => $entitlement->merchant->id,
-                    'name' => $entitlement->merchant->display_name,
-                    'slug' => $entitlement->merchant->username,
-                ] : null,
+                'merchant' => $this->merchantSummary($entitlement->merchant),
                 'item' => match ($entitlement->item_type) {
                     'product' => $resolved ? ProductResource::make($resolved->loadMissing(['attributes', 'images', 'merchant']))->resolve($request) : null,
                     'content_item' => $resolved ? ContentItemResource::make($resolved->loadMissing('merchant'))->resolve($request) : null,
@@ -265,11 +261,7 @@ class EntitlementController extends Controller
                 'granted_at' => $order->created_at?->toISOString(),
                 'sort_date' => $order->created_at,
                 'search_blob' => $searchBlob,
-                'merchant' => $order->merchant ? [
-                    'id' => $order->merchant->id,
-                    'name' => $order->merchant->display_name,
-                    'slug' => $order->merchant->username,
-                ] : null,
+                'merchant' => $this->merchantSummary($order->merchant),
                 'item' => $this->orderLibraryItemPayload($order, $resolved, $request),
                 'order_details' => $this->buildOrderDetails($order),
             ];
@@ -579,11 +571,29 @@ class EntitlementController extends Controller
             'cover_image' => $resolved->cover_image_url,
             'image_url' => $resolved->cover_image_url,
             'type' => 'physical',
-            'merchant' => $order->merchant ? [
-                'id' => $order->merchant->id,
-                'name' => $order->merchant->display_name,
-                'slug' => $order->merchant->username,
-            ] : null,
+            'merchant' => $this->merchantSummary($order->merchant),
+        ];
+    }
+
+    private function merchantSummary(?Merchant $merchant): ?array
+    {
+        if (!$merchant) {
+            return null;
+        }
+
+        $businessCategory = $merchant->businessCategory();
+
+        return [
+            'id' => $merchant->id,
+            'name' => $merchant->display_name,
+            'display_name' => $merchant->display_name,
+            'slug' => $merchant->username,
+            'username' => $merchant->username,
+            'avatar_url' => $merchant->avatar_url,
+            'is_verified' => (bool) $merchant->is_verified,
+            'is_active' => (bool) $merchant->is_active,
+            'successful_sales' => (int) ($merchant->successful_sales ?? 0),
+            'business_category' => $businessCategory['subcategory_label'] ?? $businessCategory['label'] ?? null,
         ];
     }
 
@@ -671,6 +681,24 @@ class EntitlementController extends Controller
             'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
             'is_merchant_confirmed' => $order->merchant_confirmed_at !== null,
             'download_count' => (int) $order->download_count,
+            'pickup_ready_at' => $order->pickup_ready_at?->toISOString(),
+            'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
+            'pickup_grace_ends_at' => $order->pickup_grace_ends_at?->toISOString(),
+            'pickup_completed_at' => $order->pickup_completed_at?->toISOString(),
+            'pickup_status' => $order->pickup_status,
+            'pickup_policy_snapshot' => $order->pickup_policy_snapshot,
+            'pickup_no_show_marked_at' => $order->pickup_no_show_marked_at?->toISOString(),
+            'pickup_no_show_reason' => $order->pickup_no_show_reason,
+            'holding_fee_status' => $order->holding_fee_status,
+            'holding_fee_amount' => $order->holding_fee_amount !== null ? (float) $order->holding_fee_amount : null,
+            'holding_fee_payment_order_id' => $order->holding_fee_payment_order_id,
+            'holding_fee_started_at' => $order->holding_fee_started_at?->toISOString(),
+            'holding_fee_accepted_at' => $order->holding_fee_accepted_at?->toISOString(),
+            'holding_fee_paid_at' => $order->holding_fee_paid_at?->toISOString(),
+            'pickup_cancellation_penalty_percent' => $order->pickup_cancellation_penalty_percent !== null ? (float) $order->pickup_cancellation_penalty_percent : null,
+            'pickup_cancellation_penalty_amount' => $order->pickup_cancellation_penalty_amount !== null ? (float) $order->pickup_cancellation_penalty_amount : null,
+            'pickup_cancellation_refund_amount' => $order->pickup_cancellation_refund_amount !== null ? (float) $order->pickup_cancellation_refund_amount : null,
+            'pickup_cancelled_after_grace_at' => $order->pickup_cancelled_after_grace_at?->toISOString(),
             'first_downloaded_at' => $order->first_downloaded_at?->toISOString(),
             'refund_policy' => $order->refundPolicyContext(),
             'return_request' => $order->returnRequest ? [
@@ -708,7 +736,9 @@ class EntitlementController extends Controller
                 'status' => $order->delivery->delivery_status,
                 'type' => $deliveryType,
                 'delivery_type' => $deliveryType,
-                'pickup_pin' => $order->delivery->pickup_pin,
+                'pickup_pin' => $order->merchant_confirmed_at && $order->pickup_status === 'ready_for_pickup'
+                    ? $order->delivery->pickup_pin
+                    : null,
                 'buyer_release_pin' => $order->delivery->buyer_release_pin,
                 'bus_company' => $order->delivery->bus_company,
                 'waybill_tracking_number' => $order->delivery->waybill_tracking_number,

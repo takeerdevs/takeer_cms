@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (Schedule $schedule) {
         $schedule->command('orders:release-expired')->everyMinute();
+        $schedule->command('orders:send-pickup-reminders')->everyFifteenMinutes()->withoutOverlapping();
+        $schedule->command('orders:mark-overdue-pickups')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('orders:auto-release-delivery-escrow')->hourly()->withoutOverlapping();
         $schedule->command('payments:reconcile-selcom')->everyThreeMinutes()->withoutOverlapping();
         $schedule->command('currency:update-rates')->dailyAt('03:15')->withoutOverlapping();

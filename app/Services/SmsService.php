@@ -147,6 +147,32 @@ class SmsService
         return $this->sendOnce("physical-pickup-pin:{$orderPublicId}", $phone, $message, $userId);
     }
 
+    public function sendPickupDeadlineReminderToBuyer(string $phone, string $orderPublicId, string $deadline, string $window, ?int $userId = null): bool
+    {
+        $message = "Takeer: Kumbusho {$window}. Pickup ya order #{$orderPublicId} inatakiwa kufanyika kabla ya {$deadline}. Fungua order chat kama unahitaji muda zaidi au delivery.";
+        return $this->sendOnce("pickup-reminder-buyer:{$window}:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendPickupDeadlineReminderToMerchant(string $phone, string $orderPublicId, string $deadline, string $window, ?int $userId = null): bool
+    {
+        $message = "Takeer: Kumbusho {$window}. Order #{$orderPublicId} bado iko pickup na deadline ni {$deadline}. Tumia order chat kwa extension, delivery, holding fee, au no-show.";
+        return $this->sendOnce("pickup-reminder-merchant:{$window}:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendPickupFeeHeldToBuyer(string $phone, string $orderPublicId, string $label, float $amount, ?int $userId = null): bool
+    {
+        $formatted = number_format($amount);
+        $message = "Takeer: {$label} ya order #{$orderPublicId} TZS {$formatted} imelipwa na iko SafePay. Fedha itatolewa kwa muuzaji baada ya pickup/delivery kukamilika.";
+        return $this->sendOnce("pickup-fee-held-buyer:{$label}:{$orderPublicId}", $phone, $message, $userId);
+    }
+
+    public function sendPickupFeeHeldToMerchant(string $phone, string $orderPublicId, string $label, float $amount, ?int $userId = null): bool
+    {
+        $formatted = number_format($amount);
+        $message = "Takeer: {$label} ya order #{$orderPublicId} TZS {$formatted} imelipwa na iko SafePay. Itatolewa kwenye wallet baada ya pickup/delivery kukamilika.";
+        return $this->sendOnce("pickup-fee-held-merchant:{$label}:{$orderPublicId}", $phone, $message, $userId);
+    }
+
     public function sendOrderCompletedToBuyer(string $phone, string $orderPublicId, ?int $userId = null): bool
     {
         $message = "Takeer: Asante! Order #{$orderPublicId} imekamilika. Unaweza kutoa review kwenye app.";

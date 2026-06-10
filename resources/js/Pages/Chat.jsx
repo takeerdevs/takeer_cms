@@ -565,6 +565,16 @@ export default function Chat({
     const [isShopModalOpen, setIsShopModalOpen] = useState(false);
     const [showCancelConfirm, setShowCancelConfirm] = useState(false);
     const [showDiscountResetConfirm, setShowDiscountResetConfirm] = useState(false);
+    const [pickupActionSubmitting, setPickupActionSubmitting] = useState(false);
+    const [pickupActionForm, setPickupActionForm] = useState(null);
+    const [pickupExtensionDeadline, setPickupExtensionDeadline] = useState('');
+    const [pickupExtensionReason, setPickupExtensionReason] = useState('');
+    const [holdingFeePaymentNumber, setHoldingFeePaymentNumber] = useState('');
+    const [conversionAddress, setConversionAddress] = useState('');
+    const [conversionNote, setConversionNote] = useState('');
+    const [conversionQuoteFee, setConversionQuoteFee] = useState('');
+    const [conversionQuoteNote, setConversionQuoteNote] = useState('');
+    const [conversionPaymentNumber, setConversionPaymentNumber] = useState('');
 
     // Shipping Management State
     const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
@@ -721,6 +731,15 @@ export default function Chat({
         setOrder(prev => messages.reduce((nextOrder, message) => mergeDeliveryMessageIntoOrder(nextOrder, message), prev));
     }, [messages]);
 
+    const refreshMessages = async () => {
+        const res = await fetch(`/api/chat/order/${orderId}/messages`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Imeshindwa kusasisha chat.');
+        setMessages(data.messages || []);
+    };
+
     useEffect(() => {
         if (order?.delivery?.delivery_type) {
             if (order.delivery.delivery_type === 'local_boda') {
@@ -795,11 +814,14 @@ export default function Chat({
 
             toast.success(data.message || 'Order imethibitishwa.');
             if (data.order) setOrder(data.order);
+            const isPaidPickupConfirmation = canMerchantConfirmPaidPickup;
             setMessages(prev => [...prev, {
                 id: Date.now(),
                 sender_id: auth.user.id,
                 type: 'text',
-                body: 'Nimethibitisha kuwa order ipo tayari. Unaweza kulipia sasa.',
+                body: isPaidPickupConfirmation
+                    ? 'Nimethibitisha kuwa order ipo. Iko tayari kwa pickup kulingana na muda mliochagua.'
+                    : 'Nimethibitisha kuwa order ipo tayari. Unaweza kulipia sasa.',
                 payload: { acting_as: actingAs },
                 sender: { role: auth.user.role, name: auth.user.name },
                 created_at: new Date().toISOString()
@@ -1318,6 +1340,217 @@ export default function Chat({
         }
     };
 
+    const runPickupAgreementAction = async (endpoint, payload = {}, successMessage = 'Pickup agreement updated.') => {
+        if (pickupActionSubmitting) return;
+
+        setPickupActionSubmitting(true);
+        try {
+            const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Imeshindwa kukamilisha hatua hii.');
+
+            if (data.order) setOrder(data.order);
+            await refreshMessages();
+            toast.success(data.message || successMessage);
+        } catch (error) {
+            toast.error(error.message);
+        } finally {
+            setPickupActionSubmitting(false);
+        }
+    };
+
+    const openPickupActionForm = (form) => {
+        if (form === 'extension_request') {
+            const defaultDate = order?.pickup_deadline_at
+                ? new Date(new Date(order.pickup_deadline_at).getTime() + (24 * 60 * 60 * 1000))
+                : new Date(Date.now() + (24 * 60 * 60 * 1000));
+            setPickupExtensionDeadline(defaultDate.toISOString().slice(0, 16));
+            setPickupExtensionReason('');
+        }
+        if (form === 'holding_fee_payment') {
+            setHoldingFeePaymentNumber(order?.payment_phone || order?.account_phone || auth.user?.phone_number || '');
+        }
+        if (form === 'delivery_conversion_request') {
+            setConversionAddress(order?.delivery?.physical_address || '');
+            setConversionNote('');
+        }
+        if (form === 'delivery_conversion_quote') {
+            setConversionQuoteFee('');
+            setConversionQuoteNote('');
+        }
+        if (form === 'delivery_conversion_payment') {
+            setConversionPaymentNumber(order?.payment_phone || order?.account_phone || auth.user?.phone_number || '');
+        }
+        setPickupActionForm(form);
+    };
+
+    const requestPickupExtension = async (event) => {
+        event?.preventDefault();
+        const requestedDate = new Date(pickupExtensionDeadline);
+        if (Number.isNaN(requestedDate.getTime()) || requestedDate <= new Date()) {
+            toast.error('Tafadhali weka tarehe na muda sahihi wa baadaye.');
+            return;
+        }
+
+        await runPickupAgreementAction(
+            `/api/buyer/orders/${orderId}/pickup-extension`,
+            { requested_deadline_at: requestedDate.toISOString(), reason: pickupExtensionReason },
+            'Ombi la kuongeza muda limetumwa.'
+        );
+        setPickupActionForm(null);
+    };
+
+    const requestDeliveryConversion = async (event) => {
+        event?.preventDefault();
+        if (!conversionAddress.trim()) {
+            toast.error('Weka anwani ya kufikishiwa.');
+            return;
+        }
+
+        await runPickupAgreementAction(
+            `/api/buyer/orders/${orderId}/pickup-delivery-conversion`,
+            {
+                delivery_type: 'local_boda',
+                physical_address: conversionAddress.trim(),
+                note: conversionNote.trim(),
+            },
+            'Ombi la kubadili kwenda delivery limetumwa.'
+        );
+        setPickupActionForm(null);
+    };
+
+    const quoteDeliveryConversion = async (event) => {
+        event?.preventDefault();
+        const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
+        const shippingFee = Number(String(conversionQuoteFee).replace(/,/g, ''));
+        if (!merchantUsername || !Number.isFinite(shippingFee) || shippingFee <= 0) {
+            toast.error('Weka gharama sahihi ya delivery.');
+            return;
+        }
+
+        await runPickupAgreementAction(
+            `/api/merchant/${merchantUsername}/orders/${orderId}/pickup-delivery-conversion/quote`,
+            { shipping_fee: shippingFee, note: conversionQuoteNote.trim() },
+            'Delivery quote imetumwa.'
+        );
+        setPickupActionForm(null);
+    };
+
+    const acceptDeliveryConversion = async (event) => {
+        event?.preventDefault();
+        if (!conversionPaymentNumber.trim()) {
+            toast.error('Weka namba ya malipo.');
+            return;
+        }
+
+        await runPickupAgreementAction(
+            `/api/buyer/orders/${orderId}/pickup-delivery-conversion/accept`,
+            { payment_number: conversionPaymentNumber.trim() },
+            'Delivery fee payment request imetumwa.'
+        );
+        setPickupActionForm(null);
+    };
+
+    const resolvePickupExtension = async (decision) => {
+        const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
+        if (!merchantUsername) {
+            toast.error('Merchant haijapatikana kwa order hii.');
+            return;
+        }
+
+        const pending = order?.pickup_policy_snapshot?.pending_extension || {};
+        const payload = { decision };
+
+        if (decision === 'approved') {
+            const suggested = pending.requested_deadline_at
+                ? new Date(pending.requested_deadline_at).toISOString().slice(0, 16).replace('T', ' ')
+                : '';
+            const approved = window.prompt('Thibitisha muda mpya wa pickup:', suggested);
+            if (!approved) return;
+
+            const approvedDate = new Date(approved.replace(' ', 'T'));
+            if (Number.isNaN(approvedDate.getTime()) || approvedDate <= new Date()) {
+                toast.error('Tafadhali weka tarehe na muda sahihi wa baadaye.');
+                return;
+            }
+            payload.approved_deadline_at = approvedDate.toISOString();
+        }
+
+        const note = window.prompt(decision === 'approved' ? 'Ujumbe kwa mteja? (hiari)' : 'Sababu ya kukataa? (hiari)', '') || '';
+        if (note) payload.note = note;
+
+        await runPickupAgreementAction(
+            `/api/merchant/${merchantUsername}/orders/${orderId}/pickup-extension`,
+            payload,
+            decision === 'approved' ? 'Muda wa pickup umeongezwa.' : 'Ombi la kuongeza muda limekataliwa.'
+        );
+    };
+
+    const proposeHoldingFee = async () => {
+        const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
+        if (!merchantUsername) {
+            toast.error('Merchant haijapatikana kwa order hii.');
+            return;
+        }
+
+        const policyAmount = order?.pickup_policy_snapshot?.late_fee_amount || order?.pickup_policy_snapshot?.holding_fee_amount || order?.holding_fee_amount || '';
+        const amountInput = window.prompt('Weka gharama ya ziada mliyokubaliana kwenye chat:', policyAmount ? String(policyAmount) : '');
+        if (amountInput === null) return;
+
+        const amount = Number(String(amountInput).replace(/,/g, ''));
+        if (!Number.isFinite(amount) || amount <= 0) {
+            toast.error('Tafadhali weka kiwango sahihi.');
+            return;
+        }
+
+        const note = window.prompt('Maelezo mafupi ya gharama hii? (hiari)', '') || '';
+        await runPickupAgreementAction(
+            `/api/merchant/${merchantUsername}/orders/${orderId}/holding-fee`,
+            { amount, note },
+            'Gharama ya ziada imetumwa kwa mteja.'
+        );
+    };
+
+    const cancelPickupAfterGrace = async () => {
+        const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
+        if (!merchantUsername) {
+            toast.error('Merchant haijapatikana kwa order hii.');
+            return;
+        }
+
+        const reason = window.prompt('Sababu ya cancellation baada ya deadline kupita? (hiari)', 'Mteja hakuchukua mzigo ndani ya muda mliokubaliana.') || '';
+        await runPickupAgreementAction(
+            `/api/merchant/${merchantUsername}/orders/${orderId}/pickup-cancel-after-grace`,
+            { reason },
+            'Order imecanceliwa baada ya deadline kupita.'
+        );
+    };
+
+    const acceptHoldingFee = async (event) => {
+        event?.preventDefault();
+        if (!holdingFeePaymentNumber.trim()) {
+            toast.error('Weka namba ya malipo.');
+            return;
+        }
+
+        await runPickupAgreementAction(
+            `/api/buyer/orders/${orderId}/holding-fee/accept`,
+            { payment_number: holdingFeePaymentNumber.trim() },
+            'Extra cost payment request imetumwa.'
+        );
+        setPickupActionForm(null);
+    };
+
     const visibleMessages = [...messages].reverse().reduce((acc, msg) => {
         const isPaymentNotice = msg.type === 'action'
             && msg.payload?.action_type === 'initiate_payment';
@@ -1407,11 +1640,17 @@ export default function Chat({
     const isWaitingForShippingFee = canMerchantQuote
         && !isServiceOrder
         && order?.shipping_fee === null;
-    const canMerchantConfirm = actingAs === 'merchant'
+    const canMerchantConfirmUnpaid = actingAs === 'merchant'
         && order?.is_inquiry
         && order?.payment_status === 'pending'
         && order?.inquiry_status === 'quoted'
         && !merchantConfirmed;
+    const canMerchantConfirmPaidPickup = actingAs === 'merchant'
+        && order?.product?.type === 'physical'
+        && order?.payment_status === 'awaiting_merchant_confirmation'
+        && order?.delivery?.delivery_type === 'self_pickup'
+        && !merchantConfirmed;
+    const canMerchantConfirm = canMerchantConfirmUnpaid || canMerchantConfirmPaidPickup;
     const agreedAt = order?.agreed_at || order?.agreement_snapshot?.agreed_at || order?.agreement_snapshot?.offered_at;
     const orderImageUrl = order?.variant?.swatch_image_url
         || order?.variant_snapshot?.swatch_image_url
@@ -1464,6 +1703,55 @@ export default function Chat({
     ].filter(Boolean);
     const hasPhysicalOrderItems = orderItems.some((item) => isPhysicalDealItem(item, order));
     const isSelfPickupOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'self_pickup';
+    const pickupSnapshot = order?.pickup_policy_snapshot || {};
+    const pendingPickupExtension = pickupSnapshot?.pending_extension;
+    const pickupDeadlineAt = order?.pickup_deadline_at ? new Date(order.pickup_deadline_at) : null;
+    const pickupDeadlinePassed = Boolean(pickupDeadlineAt && pickupDeadlineAt.getTime() <= nowMs);
+    const pickupClosed = Boolean(
+        order?.pickup_completed_at
+        || ['completed', 'buyer_no_show'].includes(order?.pickup_status)
+        || ['resolved_merchant_paid', 'resolved_buyer_refunded', 'refund_pending'].includes(order?.payment_status)
+    );
+    const pickupPaid = ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status);
+    const hasPendingPickupExtension = isSelfPickupOrder
+        && order?.pickup_status === 'extension_requested'
+        && pendingPickupExtension?.status === 'pending';
+    const deliveryConversion = pickupSnapshot?.delivery_conversion || null;
+    const canRequestDeliveryConversion = actingAs === 'buyer'
+        && isSelfPickupOrder
+        && pickupPaid
+        && !pickupClosed
+        && !['requested', 'quoted', 'payment_pending', 'paid_held'].includes(deliveryConversion?.status);
+    const canQuoteDeliveryConversion = actingAs === 'merchant'
+        && isSelfPickupOrder
+        && !pickupClosed
+        && deliveryConversion?.status === 'requested';
+    const canAcceptDeliveryConversion = actingAs === 'buyer'
+        && isSelfPickupOrder
+        && !pickupClosed
+        && deliveryConversion?.status === 'quoted';
+    const canRequestPickupExtension = actingAs === 'buyer'
+        && isSelfPickupOrder
+        && pickupPaid
+        && !pickupClosed
+        && !hasPendingPickupExtension
+        && (pickupSnapshot?.extension_allowed ?? true) !== false;
+    const canResolvePickupExtension = actingAs === 'merchant' && hasPendingPickupExtension && !pickupClosed;
+    const canProposeHoldingFee = actingAs === 'merchant'
+        && isSelfPickupOrder
+        && pickupPaid
+        && pickupDeadlinePassed
+        && !pickupClosed
+        && !['proposed', 'payment_pending', 'paid_held', 'accepted'].includes(order?.holding_fee_status);
+    const canCancelPickupAfterGrace = actingAs === 'merchant'
+        && isSelfPickupOrder
+        && pickupPaid
+        && pickupDeadlinePassed
+        && !pickupClosed;
+    const canAcceptHoldingFee = actingAs === 'buyer'
+        && isSelfPickupOrder
+        && !pickupClosed
+        && order?.holding_fee_status === 'proposed';
     const isForwarderOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'forwarder';
     const isIntercityOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'intercity_bus';
     const isLocalDeliveryOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'local_boda';
@@ -1628,7 +1916,7 @@ export default function Chat({
                             </div>
                         </div>
 
-                        {(canBuyerPay || canMerchantQuote || canMerchantConfirm || canCancelBeforePayment) && (
+                        {(canBuyerPay || canMerchantQuote || canMerchantConfirmUnpaid || canCancelBeforePayment || canRequestPickupExtension || canResolvePickupExtension || canProposeHoldingFee || canAcceptHoldingFee || canRequestDeliveryConversion || canQuoteDeliveryConversion || canAcceptDeliveryConversion) && (
                             <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60">
                                 {canBuyerPay && (
                                     <Button
@@ -1651,7 +1939,7 @@ export default function Chat({
                                         Send Offer
                                     </Button>
                                 )}
-                                {canMerchantConfirm && (
+                                {canMerchantConfirmUnpaid && (
                                     <Button
                                         onClick={confirmAvailability}
                                         disabled={confirmingAvailability}
@@ -1669,6 +1957,100 @@ export default function Chat({
                                     >
                                         <X className="mr-1.5 h-3.5 w-3.5" />
                                         Cancel
+                                    </Button>
+                                )}
+                                {canRequestPickupExtension && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => openPickupActionForm('extension_request')}
+                                        disabled={pickupActionSubmitting}
+                                        className="h-9 rounded-xl border-sky-100 px-4 text-[10px] font-black uppercase tracking-widest text-sky-700 hover:bg-sky-50"
+                                    >
+                                        {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Clock className="mr-1.5 h-3.5 w-3.5" />}
+                                        Request Pickup Time
+                                    </Button>
+                                )}
+                                {canResolvePickupExtension && (
+                                    <>
+                                        <Button
+                                            onClick={() => resolvePickupExtension('approved')}
+                                            disabled={pickupActionSubmitting}
+                                            className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                        >
+                                            {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                                            Approve Pickup Time
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => resolvePickupExtension('rejected')}
+                                            disabled={pickupActionSubmitting}
+                                            className="h-9 rounded-xl border-red-100 px-4 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
+                                        >
+                                            <X className="mr-1.5 h-3.5 w-3.5" />
+                                            Reject Time
+                                        </Button>
+                                    </>
+                                )}
+                                {canProposeHoldingFee && (
+                                    <Button
+                                        onClick={proposeHoldingFee}
+                                        disabled={pickupActionSubmitting}
+                                        className="h-9 rounded-xl bg-amber-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700"
+                                    >
+                                        {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Tag className="mr-1.5 h-3.5 w-3.5" />}
+                                        Add Extra Cost
+                                    </Button>
+                                )}
+                                {canCancelPickupAfterGrace && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={cancelPickupAfterGrace}
+                                        disabled={pickupActionSubmitting}
+                                        className="h-9 rounded-xl border-red-100 px-4 text-[10px] font-black uppercase tracking-widest text-red-700 hover:bg-red-50"
+                                    >
+                                        {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <X className="mr-1.5 h-3.5 w-3.5" />}
+                                        Cancel Pickup
+                                    </Button>
+                                )}
+                                {canAcceptHoldingFee && (
+                                    <Button
+                                        onClick={() => openPickupActionForm('holding_fee_payment')}
+                                        disabled={pickupActionSubmitting}
+                                        className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                    >
+                                        {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                                        Accept & Pay Extra Cost
+                                    </Button>
+                                )}
+                                {canRequestDeliveryConversion && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => openPickupActionForm('delivery_conversion_request')}
+                                        disabled={pickupActionSubmitting}
+                                        className="h-9 rounded-xl border-emerald-100 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-700 hover:bg-emerald-50"
+                                    >
+                                        <Truck className="mr-1.5 h-3.5 w-3.5" />
+                                        Request Delivery
+                                    </Button>
+                                )}
+                                {canQuoteDeliveryConversion && (
+                                    <Button
+                                        onClick={() => openPickupActionForm('delivery_conversion_quote')}
+                                        disabled={pickupActionSubmitting}
+                                        className="h-9 rounded-xl bg-sky-700 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-sky-800"
+                                    >
+                                        <Truck className="mr-1.5 h-3.5 w-3.5" />
+                                        Quote Delivery
+                                    </Button>
+                                )}
+                                {canAcceptDeliveryConversion && (
+                                    <Button
+                                        onClick={() => openPickupActionForm('delivery_conversion_payment')}
+                                        disabled={pickupActionSubmitting}
+                                        className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                    >
+                                        <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                                        Accept & Pay Delivery
                                     </Button>
                                 )}
                                 {expiryLabel && (
@@ -1889,11 +2271,172 @@ export default function Chat({
                                             );
                                         }
 
+                                        if (['pickup_window_expired', 'pickup_cancelled_after_grace', 'pickup_extension_requested', 'pickup_extension_approved', 'pickup_extension_rejected', 'holding_fee_proposed', 'holding_fee_payment_started', 'holding_fee_paid_held', 'holding_fee_accepted', 'delivery_conversion_requested', 'delivery_conversion_quoted', 'delivery_conversion_payment_started', 'delivery_conversion_paid_held'].includes(actionType)) {
+                                            const requestedDeadline = msg.payload?.requested_deadline_at
+                                                ? new Date(msg.payload.requested_deadline_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                                                : null;
+                                            const pickupDeadline = msg.payload?.pickup_deadline_at
+                                                ? new Date(msg.payload.pickup_deadline_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                                                : null;
+                                            const amount = Number(msg.payload?.amount || 0);
+                                            const isPickupWindowExpired = actionType === 'pickup_window_expired';
+                                            const isPickupCancelledAfterGrace = actionType === 'pickup_cancelled_after_grace';
+                                            const isExtensionRequest = actionType === 'pickup_extension_requested';
+                                            const isExtensionApproved = actionType === 'pickup_extension_approved';
+                                            const isExtensionRejected = actionType === 'pickup_extension_rejected';
+                                            const isHoldingFeeProposal = actionType === 'holding_fee_proposed';
+                                            const isHoldingFeePaymentStarted = actionType === 'holding_fee_payment_started' || actionType === 'holding_fee_accepted';
+                                            const isHoldingFeePaidHeld = actionType === 'holding_fee_paid_held';
+                                            const isDeliveryConversionRequested = actionType === 'delivery_conversion_requested';
+                                            const isDeliveryConversionQuoted = actionType === 'delivery_conversion_quoted';
+                                            const isDeliveryConversionPaymentStarted = actionType === 'delivery_conversion_payment_started';
+                                            const isDeliveryConversionPaidHeld = actionType === 'delivery_conversion_paid_held';
+                                            const tone = isExtensionRejected || isPickupCancelledAfterGrace
+                                                ? 'border-red-100 bg-red-50 text-red-800'
+                                                : isPickupWindowExpired || isHoldingFeeProposal || isHoldingFeePaymentStarted
+                                                    ? 'border-amber-100 bg-amber-50 text-amber-900'
+                                                    : isHoldingFeePaidHeld || isDeliveryConversionPaidHeld
+                                                        ? 'border-emerald-100 bg-emerald-50 text-emerald-900'
+                                                        : (isDeliveryConversionRequested || isDeliveryConversionQuoted || isDeliveryConversionPaymentStarted)
+                                                            ? 'border-sky-100 bg-sky-50 text-sky-900'
+                                                            : 'border-sky-100 bg-sky-50 text-sky-900';
+                                            const Icon = (isPickupWindowExpired || isPickupCancelledAfterGrace) ? AlertTriangle : (isHoldingFeeProposal || isHoldingFeePaymentStarted || isHoldingFeePaidHeld ? Tag : (isDeliveryConversionRequested || isDeliveryConversionQuoted || isDeliveryConversionPaymentStarted || isDeliveryConversionPaidHeld ? Truck : Clock));
+                                            const title = isPickupWindowExpired
+                                                ? 'Pickup Window Expired'
+                                                : isPickupCancelledAfterGrace
+                                                    ? 'Pickup Cancelled'
+                                                : isExtensionRequest
+                                                    ? 'Pickup Extension Requested'
+                                                    : isExtensionApproved
+                                                    ? 'Pickup Time Approved'
+                                                    : isExtensionRejected
+                                                        ? 'Pickup Extension Rejected'
+                                                        : isHoldingFeeProposal
+                                                            ? 'Extra Cost Proposed'
+                                                            : isHoldingFeePaidHeld
+                                                                ? 'Extra Cost Paid & Held'
+                                                                : isHoldingFeePaymentStarted
+                                                                    ? 'Extra Cost Payment Started'
+                                                                    : isDeliveryConversionRequested
+                                                                        ? 'Delivery Requested'
+                                                                        : isDeliveryConversionQuoted
+                                                                            ? 'Delivery Fee Quoted'
+                                                                            : isDeliveryConversionPaidHeld
+                                                                                ? 'Delivery Fee Paid & Held'
+                                                                                : 'Delivery Payment Started';
+                                            const body = isPickupWindowExpired
+                                                ? 'Muda wa pickup umepita. Kubalianeni hatua inayofuata hapa kwenye chat: kuongeza muda, kubadili kwenda delivery, kuweka gharama ya ziada, au cancellation.'
+                                                : isPickupCancelledAfterGrace
+                                                    ? `Pickup deadline imepita bila pickup. Order imefutwa; penalty TZS ${Number(msg.payload?.penalty_amount || 0).toLocaleString()} imeenda kwa merchant na refund TZS ${Number(msg.payload?.refund_amount || 0).toLocaleString()} inasubiri approval ya admin.`
+                                                : isExtensionRequest
+                                                    ? `Mteja ameomba kuchukua mpaka ${requestedDeadline || 'muda mpya uliopendekezwa'}.`
+                                                    : isExtensionApproved
+                                                    ? `Muda mpya wa kuchukua order ni ${pickupDeadline || 'umethibitishwa'}.`
+                                                    : isExtensionRejected
+                                                        ? 'Muuzaji amekataa ombi la kuongeza muda wa pickup.'
+                                                        : isHoldingFeeProposal
+                                                            ? `Muuzaji ameomba gharama ya ziada ya TZS ${amount.toLocaleString()} kwa makubaliano ya pickup yaliyochelewa.`
+                                                            : isHoldingFeePaidHeld
+                                                                ? `Gharama ya ziada ya TZS ${amount.toLocaleString()} imelipwa na imehifadhiwa escrow mpaka pickup/delivery ikamilike.`
+                                                                : isHoldingFeePaymentStarted
+                                                                    ? `Mteja amekubali gharama ya ziada ya TZS ${amount.toLocaleString()} na ameanza malipo.`
+                                                                    : isDeliveryConversionRequested
+                                                                        ? `Mteja ameomba order ibadilishwe kutoka pickup kwenda delivery${msg.payload?.physical_address ? `: ${msg.payload.physical_address}` : ''}.`
+                                                                        : isDeliveryConversionQuoted
+                                                                            ? `Muuzaji ameweka gharama ya delivery: TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()}.`
+                                                                            : isDeliveryConversionPaidHeld
+                                                                                ? `Delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} imelipwa na imehifadhiwa escrow mpaka delivery ikamilike.`
+                                                                                : `Mteja amekubali delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} na ameanza malipo.`;
+
+                                            return (
+                                                <div key={msg.id} className="flex justify-center my-3">
+                                                    <div className={cn("w-full max-w-[620px] rounded-2xl border px-4 py-3 shadow-sm", tone)}>
+                                                        <div className="flex items-start gap-3">
+                                                            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/80 shadow-sm">
+                                                                <Icon className="h-4 w-4" />
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Pickup Agreement</p>
+                                                                <h4 className="mt-0.5 text-sm font-black uppercase tracking-wide">{title}</h4>
+                                                                <p className="mt-1 text-sm font-bold leading-relaxed opacity-90">{body}</p>
+                                                                {msg.payload?.reason && (
+                                                                    <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-xs font-bold italic text-slate-700">"{msg.payload.reason}"</p>
+                                                                )}
+                                                                {msg.payload?.note && (
+                                                                    <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-xs font-bold italic text-slate-700">"{msg.payload.note}"</p>
+                                                                )}
+                                                                {(isExtensionRequest && actingAs === 'merchant' && canResolvePickupExtension) && (
+                                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                                        <Button
+                                                                            onClick={() => resolvePickupExtension('approved')}
+                                                                            disabled={pickupActionSubmitting}
+                                                                            className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                                                        >
+                                                                            {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                                                                            Approve
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            onClick={() => resolvePickupExtension('rejected')}
+                                                                            disabled={pickupActionSubmitting}
+                                                                            className="h-8 rounded-xl border-red-100 bg-white px-3 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
+                                                                        >
+                                                                            <X className="mr-1.5 h-3.5 w-3.5" />
+                                                                            Reject
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                                {(isHoldingFeeProposal && actingAs === 'buyer' && canAcceptHoldingFee) && (
+                                                                    <div className="mt-3">
+                                                                        <Button
+                                                                            onClick={() => openPickupActionForm('holding_fee_payment')}
+                                                                            disabled={pickupActionSubmitting}
+                                                                            className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                                                        >
+                                                                            {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                                                                            Accept & Pay
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                                {(isDeliveryConversionRequested && actingAs === 'merchant' && canQuoteDeliveryConversion) && (
+                                                                    <div className="mt-3">
+                                                                        <Button
+                                                                            onClick={() => openPickupActionForm('delivery_conversion_quote')}
+                                                                            disabled={pickupActionSubmitting}
+                                                                            className="h-8 rounded-xl bg-sky-700 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-sky-800"
+                                                                        >
+                                                                            <Truck className="mr-1.5 h-3.5 w-3.5" />
+                                                                            Quote Delivery
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                                {(isDeliveryConversionQuoted && actingAs === 'buyer' && canAcceptDeliveryConversion) && (
+                                                                    <div className="mt-3">
+                                                                        <Button
+                                                                            onClick={() => openPickupActionForm('delivery_conversion_payment')}
+                                                                            disabled={pickupActionSubmitting}
+                                                                            className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                                                        >
+                                                                            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                                                                            Accept & Pay
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                                <ChatNoticeTimestamp value={msg.created_at} className="text-slate-500/70" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
                                         if (actionType === 'initiate_payment') {
                                             const pickupPin = msg.payload?.pickup_pin || order?.delivery?.pickup_pin;
                                             const paymentAmount = Number(msg.payload?.total_paid || order?.total_paid || dealTotal || 0);
                                             const showPickupCard = hasPhysicalOrderItems
                                                 && (isSelfPickupOrder || msg.payload?.delivery_type === 'self_pickup')
+                                                && merchantConfirmed
+                                                && order?.pickup_status === 'ready_for_pickup'
                                                 && pickupPin;
 
                                             if (showPickupCard && actingAs === 'buyer') {
@@ -2394,7 +2937,7 @@ export default function Chat({
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && order?.delivery?.pickup_pin && (
+                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && order?.pickup_status === 'ready_for_pickup' && order?.delivery?.pickup_pin && (
                                 <div className="mx-auto flex w-full max-w-lg flex-col">
                                     <PickupPinCard
                                         pickupPin={order?.delivery?.pickup_pin}
@@ -2510,10 +3053,14 @@ export default function Chat({
                                 <div className="p-4 rounded-[2rem] bg-emerald-50/80 border border-emerald-200 shadow-sm">
                                     <div className="flex items-center gap-2 mb-2">
                                         <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                                        <h4 className="font-black text-emerald-900 uppercase tracking-tight text-sm">Confirm Availability</h4>
+                                        <h4 className="font-black text-emerald-900 uppercase tracking-tight text-sm">
+                                            {canMerchantConfirmPaidPickup ? 'Confirm Pickup Availability' : 'Confirm Availability'}
+                                        </h4>
                                     </div>
                                     <p className="text-xs text-emerald-900/80 mb-3 font-medium">
-                                        Mteja hawezi kulipa mpaka uthibitishe kuwa order ipo na unaweza kuitimiza.
+                                        {canMerchantConfirmPaidPickup
+                                            ? 'Mteja amelipa. Thibitisha stock/uwezo wa kutimiza ili pickup PIN na muda wa pickup uanze kufanya kazi.'
+                                            : 'Mteja hawezi kulipa mpaka uthibitishe kuwa order ipo na unaweza kuitimiza.'}
                                     </p>
                                     <Button
                                         type="button"
@@ -2522,7 +3069,7 @@ export default function Chat({
                                         className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold uppercase text-[10px] tracking-widest"
                                     >
                                         {confirmingAvailability ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                                        THIBITISHA ORDER IPO
+                                        {canMerchantConfirmPaidPickup ? 'THIBITISHA PICKUP IPO' : 'THIBITISHA ORDER IPO'}
                                     </Button>
                                 </div>
                             )}
@@ -2658,7 +3205,7 @@ export default function Chat({
                                 </div>
                             )}
 
-                            {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && (
+                            {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && order?.pickup_status === 'ready_for_pickup' && (
                                 <div className="rounded-[2rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-100/50">
                                     <div className="mb-4 flex items-start gap-3">
                                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
@@ -2692,6 +3239,88 @@ export default function Chat({
 
                     <div ref={bottomRef} className="h-4" />
                 </div>
+
+                <Drawer open={!!pickupActionForm} onOpenChange={(open) => !open && setPickupActionForm(null)}>
+                    <DrawerContent className="rounded-t-[2rem] bg-white dark:bg-slate-950">
+                        <div className="mx-auto w-full max-w-lg p-5">
+                            <DrawerHeader className="px-0 text-left">
+                                <DrawerTitle className="text-xl font-black tracking-tight text-slate-950">
+                                    {pickupActionForm === 'extension_request' && 'Request Pickup Time'}
+                                    {pickupActionForm === 'holding_fee_payment' && 'Accept & Pay Extra Cost'}
+                                    {pickupActionForm === 'delivery_conversion_request' && 'Request Delivery'}
+                                    {pickupActionForm === 'delivery_conversion_quote' && 'Quote Delivery'}
+                                    {pickupActionForm === 'delivery_conversion_payment' && 'Accept & Pay Delivery'}
+                                </DrawerTitle>
+                                <DrawerDescription className="text-xs font-bold text-slate-500">
+                                    This action is recorded in order chat as part of the agreement trail.
+                                </DrawerDescription>
+                            </DrawerHeader>
+
+                            {pickupActionForm === 'extension_request' && (
+                                <form onSubmit={requestPickupExtension} className="space-y-3">
+                                    <Input type="datetime-local" value={pickupExtensionDeadline} onChange={(event) => setPickupExtensionDeadline(event.target.value)} className="h-12 rounded-xl font-bold" required />
+                                    <textarea value={pickupExtensionReason} onChange={(event) => setPickupExtensionReason(event.target.value)} rows={3} placeholder="Reason or note..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                                    <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-sky-700 font-black uppercase tracking-widest text-white hover:bg-sky-800">
+                                        {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="mr-2 h-4 w-4" />}
+                                        Send Request
+                                    </Button>
+                                </form>
+                            )}
+
+                            {pickupActionForm === 'holding_fee_payment' && (
+                                <form onSubmit={acceptHoldingFee} className="space-y-3">
+                                    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Extra agreed cost</p>
+                                        <p className="mt-1 text-2xl font-black text-amber-950">TZS {Number(order?.holding_fee_amount || 0).toLocaleString()}</p>
+                                        <p className="mt-1 text-xs font-bold text-amber-800/80">Payment will be held in escrow and released to the merchant only when pickup or delivery is completed.</p>
+                                    </div>
+                                    <Input value={holdingFeePaymentNumber} onChange={(event) => setHoldingFeePaymentNumber(event.target.value)} placeholder="Payment phone number" className="h-12 rounded-xl font-bold" required />
+                                    <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-emerald-600 font-black uppercase tracking-widest text-white hover:bg-emerald-700">
+                                        {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                                        Accept & Pay
+                                    </Button>
+                                </form>
+                            )}
+
+                            {pickupActionForm === 'delivery_conversion_request' && (
+                                <form onSubmit={requestDeliveryConversion} className="space-y-3">
+                                    <textarea value={conversionAddress} onChange={(event) => setConversionAddress(event.target.value)} rows={3} placeholder="Delivery address..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" required />
+                                    <textarea value={conversionNote} onChange={(event) => setConversionNote(event.target.value)} rows={2} placeholder="Note for merchant..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                                    <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-emerald-600 font-black uppercase tracking-widest text-white hover:bg-emerald-700">
+                                        {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
+                                        Send Delivery Request
+                                    </Button>
+                                </form>
+                            )}
+
+                            {pickupActionForm === 'delivery_conversion_quote' && (
+                                <form onSubmit={quoteDeliveryConversion} className="space-y-3">
+                                    <Input type="number" min="1" value={conversionQuoteFee} onChange={(event) => setConversionQuoteFee(event.target.value)} placeholder="Delivery fee (TZS)" className="h-12 rounded-xl font-bold" required />
+                                    <textarea value={conversionQuoteNote} onChange={(event) => setConversionQuoteNote(event.target.value)} rows={2} placeholder="Note for buyer..." className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                                    <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-sky-700 font-black uppercase tracking-widest text-white hover:bg-sky-800">
+                                        {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
+                                        Send Quote
+                                    </Button>
+                                </form>
+                            )}
+
+                            {pickupActionForm === 'delivery_conversion_payment' && (
+                                <form onSubmit={acceptDeliveryConversion} className="space-y-3">
+                                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Delivery Fee</p>
+                                        <p className="mt-1 text-2xl font-black text-emerald-950">TZS {Number(deliveryConversion?.shipping_fee || 0).toLocaleString()}</p>
+                                        <p className="mt-1 text-xs font-bold text-emerald-800/80">Payment will be held in escrow until delivery is completed.</p>
+                                    </div>
+                                    <Input value={conversionPaymentNumber} onChange={(event) => setConversionPaymentNumber(event.target.value)} placeholder="Payment phone number" className="h-12 rounded-xl font-bold" required />
+                                    <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-emerald-600 font-black uppercase tracking-widest text-white hover:bg-emerald-700">
+                                        {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                                        Accept & Pay
+                                    </Button>
+                                </form>
+                            )}
+                        </div>
+                    </DrawerContent>
+                </Drawer>
 
                 {/* Input Area */}
                 <div className="shrink-0 bg-white dark:bg-slate-950 border-t border-brand-100 dark:border-brand-900/40 p-4">

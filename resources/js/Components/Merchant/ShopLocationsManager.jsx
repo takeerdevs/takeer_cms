@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { MapPin, Plus, Trash2, Loader2, Globe, CheckCircle2, Pencil, X, Truck, ChevronDown, ChevronUp, Star, ShieldCheck } from 'lucide-react';
+import { MapPin, Plus, Trash2, Loader2, Globe, CheckCircle2, Pencil, X, Truck, ChevronDown, ChevronUp, Star, ShieldCheck, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import ShippingZonesManager from './ShippingZonesManager';
@@ -19,6 +19,35 @@ const DEFAULT_CENTER = {
 };
 
 const libraries = ['places'];
+const PICKUP_DAYS = [
+    { day: 1, label: 'Mon' },
+    { day: 2, label: 'Tue' },
+    { day: 3, label: 'Wed' },
+    { day: 4, label: 'Thu' },
+    { day: 5, label: 'Fri' },
+    { day: 6, label: 'Sat' },
+    { day: 7, label: 'Sun' },
+];
+
+const defaultPickupWindows = () => PICKUP_DAYS.map(({ day }) => ({
+    day,
+    enabled: day <= 6,
+    start: '08:30',
+    end: '16:00',
+}));
+
+const normalizePickupWindows = (windows) => {
+    const byDay = new Map((Array.isArray(windows) ? windows : []).map((window) => [Number(window.day), window]));
+    return PICKUP_DAYS.map(({ day }) => {
+        const window = byDay.get(day);
+        return {
+            day,
+            enabled: window ? window.enabled !== false : day <= 6,
+            start: window?.start || '08:30',
+            end: window?.end || '16:00',
+        };
+    });
+};
 
 export default function ShopLocationsManager({ locations = [], onRefresh, loading: propLoading, profiles = [], onRefreshZones, merchantId = null, personalMode = false, countries = [] }) {
     const [loading, setLoading] = useState(false);
@@ -41,6 +70,17 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         region: '',
         is_primary: false,
         allow_self_pickup: true,
+        pickup_hold_hours: 2,
+        pickup_grace_hours: 0,
+        pickup_available_windows: defaultPickupWindows(),
+        pickup_instructions: '',
+        pickup_holding_fee_enabled: false,
+        pickup_late_fee_type: 'fixed',
+        pickup_holding_fee_amount: '',
+        pickup_late_fee_cap_amount: '',
+        pickup_cancellation_penalty_percent: 0,
+        pickup_holding_fee_interval: 'day',
+        pickup_max_holding_days: 2,
         contact_phone: '',
     });
     const [retailSettings, setRetailSettings] = useState(null);
@@ -143,6 +183,17 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             region: '',
             is_primary: false,
             allow_self_pickup: true,
+            pickup_hold_hours: 2,
+            pickup_grace_hours: 0,
+            pickup_available_windows: defaultPickupWindows(),
+            pickup_instructions: '',
+            pickup_holding_fee_enabled: false,
+            pickup_late_fee_type: 'fixed',
+            pickup_holding_fee_amount: '',
+            pickup_late_fee_cap_amount: '',
+            pickup_cancellation_penalty_percent: 0,
+            pickup_holding_fee_interval: 'day',
+            pickup_max_holding_days: 2,
             contact_phone: '',
         });
     };
@@ -165,6 +216,17 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             region: loc.region || '',
             is_primary: !!loc.is_primary,
             allow_self_pickup: loc.allow_self_pickup === null || loc.allow_self_pickup === undefined ? true : !!loc.allow_self_pickup,
+            pickup_hold_hours: loc.pickup_hold_hours || 2,
+            pickup_grace_hours: 0,
+            pickup_available_windows: normalizePickupWindows(loc.pickup_available_windows),
+            pickup_instructions: loc.pickup_instructions || '',
+            pickup_holding_fee_enabled: false,
+            pickup_late_fee_type: 'fixed',
+            pickup_holding_fee_amount: '',
+            pickup_late_fee_cap_amount: '',
+            pickup_cancellation_penalty_percent: loc.pickup_cancellation_penalty_percent ?? 0,
+            pickup_holding_fee_interval: 'day',
+            pickup_max_holding_days: loc.pickup_max_holding_days ?? 2,
             contact_phone: loc.contact_phone || '',
         });
 
@@ -193,6 +255,17 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             region: '',
             is_primary: locations.length === 0,
             allow_self_pickup: true,
+            pickup_hold_hours: 2,
+            pickup_grace_hours: 0,
+            pickup_available_windows: defaultPickupWindows(),
+            pickup_instructions: '',
+            pickup_holding_fee_enabled: false,
+            pickup_late_fee_type: 'fixed',
+            pickup_holding_fee_amount: '',
+            pickup_late_fee_cap_amount: '',
+            pickup_cancellation_penalty_percent: 0,
+            pickup_holding_fee_interval: 'day',
+            pickup_max_holding_days: 2,
             contact_phone: '',
         });
     };
@@ -206,12 +279,26 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
 
         setIsSaving(true);
         try {
+            const payload = {
+                ...formData,
+                merchant_id: merchantId,
+                pickup_hold_hours: 2,
+                pickup_grace_hours: 0,
+                pickup_holding_fee_enabled: false,
+                pickup_late_fee_type: 'fixed',
+                pickup_holding_fee_amount: null,
+                pickup_late_fee_cap_amount: null,
+                pickup_holding_fee_interval: 'day',
+                pickup_available_windows: formData.allow_self_pickup
+                    ? normalizePickupWindows(formData.pickup_available_windows).filter(window => window.enabled)
+                    : null,
+            };
             if (editingId) {
-                await window.axios.put(`/api/merchant/locations/${editingId}`, { ...formData, merchant_id: merchantId });
+                await window.axios.put(`/api/merchant/locations/${editingId}`, payload);
                 toast.success('Eneo limebadilishwa kwa mafanikio!');
                 resetForm();
             } else {
-                await window.axios.post('/api/merchant/locations', { ...formData, merchant_id: merchantId });
+                await window.axios.post('/api/merchant/locations', payload);
                 resetForm();
                 toast.success(personalMode ? 'Eneo la stock/pickup limehifadhiwa!' : 'Eneo la duka limehifadhiwa!');
             }
@@ -646,6 +733,107 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                 </div>
                             </div>
                         </div>
+                        {formData.allow_self_pickup && (
+                            <div className="rounded-2xl border border-sky-100 bg-sky-50/50 p-4">
+                                <div className="mb-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Sera ya pickup</p>
+                                    <p className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">
+                                        Mteja atachagua siku na muda wa juu wa kuchukua kabla ya kulipa. Mabadiliko yoyote baada ya hapo yaandikwe kwenye order chat.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Siku za mbele za kuchagua muda wa pickup</label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            max="30"
+                                            value={formData.pickup_max_holding_days}
+                                            onChange={e => setFormData(prev => ({ ...prev, pickup_max_holding_days: e.target.value }))}
+                                            className="rounded-xl bg-white"
+                                        />
+                                        <p className="text-[10px] font-semibold leading-4 text-slate-500">
+                                            Utaruhusu mteja achague kuja kuchukua hadi siku ngapi mbele toka muda wa kuweka oda? 0 = leo tu. 1 = leo na kesho.
+                                        </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Penalty ya cancellation (%)</label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            step="0.01"
+                                            value={formData.pickup_cancellation_penalty_percent}
+                                            onChange={e => setFormData(prev => ({ ...prev, pickup_cancellation_penalty_percent: e.target.value }))}
+                                            className="rounded-xl bg-white"
+                                        />
+                                        <p className="text-[10px] font-semibold leading-4 text-slate-500">
+                                            Ikitumika kama mteja hajachukua mpaka muda mlioafikiana upite na order kusitishwa kwa mteja kufeli kuchukua.
+                                        </p>
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <label className="inline-flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
+                                                <Clock className="h-3.5 w-3.5" />
+                                                Muda wa pickup
+                                            </label>
+                                            <span className="text-[10px] font-semibold text-slate-500">
+                                                Wateja watachagua ndani ya muda huu kwa range za saa moja.
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                            {normalizePickupWindows(formData.pickup_available_windows).map((window) => (
+                                                <div key={window.day} className="flex items-center gap-2 rounded-xl border border-sky-100 bg-white p-2">
+                                                    <label className="flex w-16 items-center gap-2 text-[10px] font-black uppercase tracking-wider text-slate-600">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={window.enabled}
+                                                            onChange={e => setFormData(prev => ({
+                                                                ...prev,
+                                                                pickup_available_windows: normalizePickupWindows(prev.pickup_available_windows).map(item => item.day === window.day ? { ...item, enabled: e.target.checked } : item)
+                                                            }))}
+                                                        />
+                                                        {PICKUP_DAYS.find(day => day.day === window.day)?.label}
+                                                    </label>
+                                                    <Input
+                                                        type="time"
+                                                        step="1800"
+                                                        value={window.start}
+                                                        disabled={!window.enabled}
+                                                        onChange={e => setFormData(prev => ({
+                                                            ...prev,
+                                                            pickup_available_windows: normalizePickupWindows(prev.pickup_available_windows).map(item => item.day === window.day ? { ...item, start: e.target.value } : item)
+                                                        }))}
+                                                        className="h-9 rounded-lg bg-white text-xs disabled:opacity-50"
+                                                    />
+                                                    <span className="text-xs font-bold text-slate-400">hadi</span>
+                                                    <Input
+                                                        type="time"
+                                                        step="1800"
+                                                        value={window.end}
+                                                        disabled={!window.enabled}
+                                                        onChange={e => setFormData(prev => ({
+                                                            ...prev,
+                                                            pickup_available_windows: normalizePickupWindows(prev.pickup_available_windows).map(item => item.day === window.day ? { ...item, end: e.target.value } : item)
+                                                        }))}
+                                                        className="h-9 rounded-lg bg-white text-xs disabled:opacity-50"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1 md:col-span-2">
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Maelekezo ya pickup</label>
+                                        <textarea
+                                            value={formData.pickup_instructions}
+                                            onChange={e => setFormData(prev => ({ ...prev, pickup_instructions: e.target.value }))}
+                                            placeholder="Mf. Njoo na Pickup PIN. Pickup Jumatatu-Jumamosi 8:30AM-4PM. Ukihitaji extension, tukubaliane kwenye order chat kabla order haijacanceliwa."
+                                            className="min-h-20 w-full rounded-xl border border-input bg-white px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-brand-200"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex items-center justify-end gap-3">
                             <Button type="button" variant="ghost" onClick={resetForm} className="h-11 px-4 rounded-xl font-bold flex gap-2">
                                 <X className="h-4 w-4" />

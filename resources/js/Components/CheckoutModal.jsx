@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter } from '@/Components/ui/Drawer';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
-import { Loader2, ShieldCheck, Zap, Store, Briefcase, ChevronRight, MapPin, CheckCircle2 } from 'lucide-react';
+import { Loader2, ShieldCheck, Zap, Store, Briefcase, ChevronRight, MapPin, CheckCircle2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePage } from '@inertiajs/react';
 import { GoogleMap, Marker, Circle, useJsApiLoader } from '@react-google-maps/api';
@@ -26,6 +26,39 @@ const COVERAGE_MAP_STYLE = {
 };
 
 const MAP_LIBRARIES = ['places'];
+
+const pad2 = (value) => String(value).padStart(2, '0');
+const toLocalInputValue = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+const ceilToNextPickupHour = (date) => {
+    const next = new Date(date);
+    next.setSeconds(0, 0);
+    const minute = next.getMinutes();
+    const add = minute === 0 ? 0 : 60 - minute;
+    next.setMinutes(minute + add);
+    return next;
+};
+const dateAtTime = (base, hhmm) => {
+    const [hours, minutes] = String(hhmm || '00:00').split(':').map(Number);
+    const date = new Date(base);
+    date.setHours(hours || 0, minutes || 0, 0, 0);
+    return date;
+};
+const addDays = (date, days) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+};
+const isoWeekday = (date) => {
+    const day = date.getDay();
+    return day === 0 ? 7 : day;
+};
+const formatPickupSlot = (start, end) => {
+    const sameDay = start.toDateString() === end.toDateString();
+    const dateLabel = start.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const startTime = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const endTime = end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return `${dateLabel}, ${startTime}-${sameDay ? endTime : `${end.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${endTime}`}`;
+};
 
 const formatKmRadius = (value) => {
     const radius = Number(value);
@@ -176,6 +209,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const [selectedHotspot, setSelectedHotspot] = useState(null);
     const [loadingZones, setLoadingZones] = useState(false);
     const [isSelfPickupChoice, setIsSelfPickupChoice] = useState(false);
+    const [selectedPickupSlotValue, setSelectedPickupSlotValue] = useState('');
+    const [isPickupSlotMenuOpen, setIsPickupSlotMenuOpen] = useState(false);
     const [extraAddressDetails, setExtraAddressDetails] = useState('');
 
     // Map Picker State
@@ -784,8 +819,94 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const selectedAddress = addresses.find((addr) => String(addr.id) === String(selectedAddressId));
     const isForwarderAddressSelected = selectedAddress?.type === 'forwarder';
     const isPickup = isSelfPickupChoice || activeShippingZone?.delivery_type === 'self_pickup';
+    const pickupLocations = useMemo(() => (
+        (activeProduct?.merchant?.locations || [])
+            .filter((location) => location?.allow_self_pickup)
+    ), [activeProduct?.merchant?.locations]);
+    const pickupLocation = useMemo(() => (
+        pickupLocations.find((location) => location.is_primary) || pickupLocations[0] || null
+    ), [pickupLocations]);
+    const pickupMaxDays = Math.max(0, Number(pickupLocation?.pickup_max_holding_days ?? 2));
+    const pickupWindows = Array.isArray(pickupLocation?.pickup_available_windows) && pickupLocation.pickup_available_windows.length
+        ? pickupLocation.pickup_available_windows
+        : [
+            { day: 1, enabled: true, start: '08:30', end: '16:00' },
+            { day: 2, enabled: true, start: '08:30', end: '16:00' },
+            { day: 3, enabled: true, start: '08:30', end: '16:00' },
+            { day: 4, enabled: true, start: '08:30', end: '16:00' },
+            { day: 5, enabled: true, start: '08:30', end: '16:00' },
+            { day: 6, enabled: true, start: '08:30', end: '16:00' },
+        ];
+    const pickupSlotOptions = useMemo(() => {
+        if (!isPhysicalProduct || !pickupLocation) return [];
+        const now = new Date();
+        const slots = [];
+        const slotsForDay = (offset) => {
+            const dayDate = addDays(now, offset);
+            const dayWindows = pickupWindows
+                .filter((window) => (window.enabled ?? true) && Number(window.day) === isoWeekday(dayDate))
+                .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+
+            return dayWindows.flatMap((window) => {
+                const windowStart = dateAtTime(dayDate, window.start || '08:30');
+                const windowEnd = dateAtTime(dayDate, window.end || '16:00');
+                if (windowEnd <= windowStart) return [];
+
+                let cursor = ceilToNextPickupHour(offset === 0 && now > windowStart ? now : windowStart);
+                const daySlots = [];
+                while (cursor < windowEnd) {
+                    const deadline = new Date(cursor.getTime() + 60 * 60 * 1000);
+                    const cappedDeadline = deadline > windowEnd ? windowEnd : deadline;
+                    if (cappedDeadline > cursor) {
+                        daySlots.push({
+                            value: toLocalInputValue(cursor),
+                            start: cursor.toISOString(),
+                            end: cappedDeadline.toISOString(),
+                            label: formatPickupSlot(cursor, cappedDeadline),
+                        });
+                    }
+                    cursor = new Date(cursor.getTime() + 60 * 60 * 1000);
+                }
+                return daySlots;
+            });
+        };
+        let firstAvailableOffset = null;
+        for (let offset = 0; offset <= pickupMaxDays + 7; offset += 1) {
+            if (slotsForDay(offset).length > 0) {
+                firstAvailableOffset = offset;
+                break;
+            }
+        }
+
+        if (firstAvailableOffset === null) {
+            return [];
+        }
+
+        const lastOffset = firstAvailableOffset + pickupMaxDays;
+        for (let offset = firstAvailableOffset; offset <= lastOffset; offset += 1) {
+            slots.push(...slotsForDay(offset));
+        }
+        return slots.slice(0, 48);
+    }, [isPhysicalProduct, pickupLocation?.id, pickupLocation?.pickup_available_windows, pickupMaxDays]);
+    const selectedPickupSlot = pickupSlotOptions.find((slot) => slot.value === selectedPickupSlotValue) || pickupSlotOptions[0] || null;
+
+    useEffect(() => {
+        if (!isSelfPickupChoice) {
+            setSelectedPickupSlotValue('');
+            setIsPickupSlotMenuOpen(false);
+            return;
+        }
+        if (pickupSlotOptions.length && !pickupSlotOptions.some((slot) => slot.value === selectedPickupSlotValue)) {
+            setSelectedPickupSlotValue(pickupSlotOptions[0].value);
+            setIsPickupSlotMenuOpen(false);
+        }
+    }, [isSelfPickupChoice, pickupSlotOptions, selectedPickupSlotValue]);
+
     const shippingFee = (activeShippingZone && isPhysicalProduct && !isSelfPickupChoice) ? parseFloat(activeShippingZone.flat_rate_fee || 0) : 0;
     const price = basePrice + shippingFee;
+    const pickupCancellationPenaltyPercent = Math.max(0, Math.min(100, Number(pickupLocation?.pickup_cancellation_penalty_percent || 0)));
+    const pickupCancellationPenaltyAmount = price * (pickupCancellationPenaltyPercent / 100);
+    const pickupLocationMapUrl = pickupLocation ? googleMapsUrl(pickupLocation.latitude, pickupLocation.longitude) : null;
     const formatPromiseDayRange = (min, max) => {
         const a = min !== null && min !== undefined && min !== '' ? Number(min) : null;
         const b = max !== null && max !== undefined && max !== '' ? Number(max) : null;
@@ -1113,6 +1234,8 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 country_iso2: detectedIso2 || undefined,
                 user_address_id: isPhysicalProduct && selectedAddressId ? selectedAddressId : undefined,
                 delivery_type: isPhysicalProduct ? (isSelfPickupChoice ? 'self_pickup' : (activeShippingZone?.delivery_type || 'local_boda')) : undefined,
+                pickup_requested_start_at: isPhysicalProduct && isSelfPickupChoice && selectedPickupSlot ? selectedPickupSlot.start : undefined,
+                pickup_requested_end_at: isPhysicalProduct && isSelfPickupChoice && selectedPickupSlot ? selectedPickupSlot.end : undefined,
                 delivery_zone_id: (isPhysicalProduct && !isSelfPickupChoice) ? selectedShippingZoneId : undefined,
                 customer_city: isPhysicalProduct ? (customerCity || undefined) : undefined,
                 customer_region: isPhysicalProduct ? (customerRegion || undefined) : undefined,
@@ -1150,6 +1273,10 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                 if (!physicalAddress || physicalAddress.trim().length < 5) {
                     throw new Error('Tafadhali weka anwani yako ya usafirishaji ili muuzaji ajue mahali pa kuleta mzigo.');
                 }
+            }
+
+            if (isPhysicalProduct && isSelfPickupChoice && !selectedPickupSlot) {
+                throw new Error('Tafadhali chagua muda wa kuchukua bidhaa.');
             }
 
             if (activeProduct?.has_variants && !selectedVariant?.id) {
@@ -1508,10 +1635,96 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="p-4 rounded-2xl bg-brand-100/40 border border-brand-100 shadow-sm mt-2">
-                                                <p className="text-xs font-bold text-brand-800">
-                                                    Unaweza kufuata bidhaa mwenyewe ilipo. Tutakutumia anwani na neno la siri na kuchati na muuzaji kwa makubaliano zaidi mara baada ya kuanzisha oda.
-                                                </p>
+                                            <div className="space-y-3 rounded-2xl border border-brand-100 bg-brand-100/40 p-4 shadow-sm mt-2">
+                                                <div>
+                                                    <p className="text-[11px] font-black uppercase tracking-widest text-brand-700">Chagua muda wa pickup</p>
+                                                    <p className="mt-1 text-xs font-bold leading-5 text-brand-800">
+                                                        Chagua muda wa juu ambao unaweza kufika. Unaweza kuchukua mapema kuliko muda huu; ukihitaji extension, makubaliano yaandikwe kwenye order chat.
+                                                    </p>
+                                                </div>
+                                                {pickupSlotOptions.length > 0 ? (
+                                                    <>
+                                                        <div className="relative">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    setIsPickupSlotMenuOpen((open) => !open);
+                                                                }}
+                                                                className="flex h-12 w-full items-center justify-between gap-3 rounded-xl border border-brand-200 bg-white px-3 text-left text-sm font-black text-brand-950 outline-none transition focus:ring-2 focus:ring-brand-200"
+                                                                aria-haspopup="listbox"
+                                                                aria-expanded={isPickupSlotMenuOpen}
+                                                            >
+                                                                <span className="min-w-0 truncate">{selectedPickupSlot?.label || 'Chagua muda wa pickup'}</span>
+                                                                <ChevronRight className={`h-4 w-4 shrink-0 text-brand-700 transition-transform ${isPickupSlotMenuOpen ? '-rotate-90' : 'rotate-90'}`} />
+                                                            </button>
+                                                            {isPickupSlotMenuOpen && (
+                                                                <div
+                                                                    role="listbox"
+                                                                    className="absolute left-0 right-0 top-full z-30 mt-2 max-h-64 overflow-auto rounded-xl border border-brand-100 bg-white p-1 shadow-2xl shadow-brand-900/10"
+                                                                    onClick={(event) => event.stopPropagation()}
+                                                                >
+                                                                    {pickupSlotOptions.slice(0, 18).map((slot) => (
+                                                                        <button
+                                                                            key={slot.value}
+                                                                            type="button"
+                                                                            role="option"
+                                                                            aria-selected={slot.value === (selectedPickupSlotValue || selectedPickupSlot?.value)}
+                                                                            onClick={() => {
+                                                                                setSelectedPickupSlotValue(slot.value);
+                                                                                setIsPickupSlotMenuOpen(false);
+                                                                            }}
+                                                                            className={`block w-full rounded-lg px-3 py-2.5 text-left text-sm font-black transition ${slot.value === (selectedPickupSlotValue || selectedPickupSlot?.value) ? 'bg-brand-600 text-white' : 'text-brand-950 hover:bg-brand-50'}`}
+                                                                        >
+                                                                            {slot.label}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        {selectedPickupSlot && (
+                                                            <div className="space-y-2 rounded-xl border border-brand-100 bg-white px-3 py-3 text-[11px] font-bold leading-5 text-brand-900">
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-brand-100 bg-brand-50 text-brand-700">
+                                                                        <Store className="h-4 w-4" />
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">Eneo la pickup</span>
+                                                                            {pickupLocationMapUrl && (
+                                                                                <a
+                                                                                    href={pickupLocationMapUrl}
+                                                                                    target="_blank"
+                                                                                    rel="noreferrer"
+                                                                                    className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-sky-700 underline-offset-2 hover:underline"
+                                                                                >
+                                                                                    Ramani <ExternalLink className="h-3 w-3" />
+                                                                                </a>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="mt-0.5 truncate text-sm font-black text-brand-950">
+                                                                            {pickupLocation?.name || 'Eneo la pickup'}
+                                                                        </p>
+                                                                        {pickupLocation?.address && (
+                                                                            <p className="mt-0.5 text-[11px] font-bold leading-4 text-brand-800/75">
+                                                                                {pickupLocation.address}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                {pickupCancellationPenaltyPercent > 0 && (
+                                                                    <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-amber-900">
+                                                                        Penalty ukishindwa kuchukua na order ikacanceliwa: {pickupCancellationPenaltyPercent.toLocaleString()}% ({formatCheckoutMoney(displayAmount(pickupCancellationPenaltyAmount))}).
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+                                                        Hakuna muda wa pickup uliopatikana kwenye masaa ya kazi ya merchant kwa sasa. Unaweza kuanzisha order na kukubaliana muda kwenye chat.
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>

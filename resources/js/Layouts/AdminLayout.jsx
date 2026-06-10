@@ -6,7 +6,7 @@ import {
     LayoutDashboard, ShieldAlert, Users, ArrowDownToLine,
     Settings2, ShoppingBag, ChevronLeft, Store, Flag, Shapes, Newspaper,
     ShieldCheck, Globe, Wallet, Percent, Crown, Calendar, Bell, BarChart3, LinkIcon,
-    Tags, Ruler, WalletCards, Activity, Gauge, LifeBuoy
+    Tags, Ruler, WalletCards, Activity, Gauge, LifeBuoy, RefreshCcw
 } from 'lucide-react';
 
 const adminNav = [
@@ -36,6 +36,7 @@ const adminNav = [
     { name: 'Pricing & Fees', href: '/admin/fee-policies', icon: Percent },
     { name: 'Subscriptions', href: '/admin/subscriptions', icon: Crown },
     { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowDownToLine },
+    { name: 'Refunds', href: '/admin/refunds', icon: RefreshCcw },
     { name: 'Payout Settings', href: '/admin/payout-settings', icon: WalletCards },
     { name: 'General Settings', href: '/admin/settings', icon: Settings2 },
     { name: 'AI Settings', href: '/admin/ai-settings', icon: Settings2 },

@@ -8,6 +8,7 @@ use App\Models\Transaction;
 use App\Models\UserSubscription;
 use App\Services\EntitlementService;
 use App\Services\PayoutPolicyService;
+use App\Services\PickupAgreementService;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +52,11 @@ class PaymentCallbackProcessor
             return;
         }
 
+        if ($this->isPickupEscrowFeePaymentOrder($order)) {
+            $this->handlePickupEscrowFeePayment($order, $gatewayRef, $gateway);
+            return;
+        }
+
         Log::info("PaymentCallbackProcessor: Processing success for order [{$order->id}] via [{$gateway}] ref [{$gatewayRef}].");
 
         DB::transaction(function () use ($order, $gatewayRef, $gateway) {
@@ -71,7 +77,7 @@ class PaymentCallbackProcessor
                     : ($shouldHoldFunds ? 'escrow_locked' : 'resolved_merchant_paid'),
                 'gateway_ref'    => $gatewayRef,
                 'payment_gateway' => $gateway,
-                'merchant_confirmed_at' => $isPhysical ? now() : $order->merchant_confirmed_at,
+                'merchant_confirmed_at' => $order->merchant_confirmed_at,
             ]);
 
             // Log TRA-ready transaction record
@@ -102,10 +108,14 @@ class PaymentCallbackProcessor
                 }
                 if ($isPhysical) {
                     $order->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                    if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup') {
+                        app(PickupAgreementService::class)->ensureAgreementForPaidPickup($order);
+                        $order->refresh()->loadMissing(['buyer', 'merchant.user', 'delivery']);
+                    }
                     $publicId = (string) ($order->public_id ?: $order->id);
                     if ($order->buyer?->phone_number) {
                         $this->smsService->sendPhysicalPaymentHeldToBuyer($order->buyer->phone_number, $publicId, (float) $order->total_paid, $order->buyer_id);
-                        if ($order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
+                        if ($order->merchant_confirmed_at && $order->delivery?->delivery_type === 'self_pickup' && $order->delivery?->pickup_pin) {
                             $this->smsService->sendPickupPinToBuyer($order->buyer->phone_number, $publicId, (string) $order->delivery->pickup_pin, $order->buyer_id);
                         }
                     }
@@ -161,6 +171,28 @@ class PaymentCallbackProcessor
         if ($this->isRetailCreditPaymentOrder($order)) {
             $order->update(['payment_status' => 'failed']);
             Log::info("PaymentCallbackProcessor: POS credit payment order [{$order->id}] failed. Reason: {$reason}");
+            return;
+        }
+
+        if ($this->isPickupEscrowFeePaymentOrder($order)) {
+            $order->update(['payment_status' => 'failed']);
+            $parent = Order::query()->whereKey((int) data_get($order->extra_items, 'parent_order_id'))->first();
+            if ($parent && data_get($order->extra_items, 'type') === 'pickup_holding_fee') {
+                $parent->forceFill([
+                    'holding_fee_status' => 'proposed',
+                    'pickup_status' => 'holding_fee_pending',
+                ])->save();
+            } elseif ($parent && data_get($order->extra_items, 'type') === 'pickup_delivery_fee') {
+                $snapshot = $parent->pickup_policy_snapshot ?: [];
+                if (isset($snapshot['delivery_conversion'])) {
+                    $snapshot['delivery_conversion']['status'] = 'quoted';
+                }
+                $parent->forceFill([
+                    'pickup_status' => 'delivery_conversion_quoted',
+                    'pickup_policy_snapshot' => $snapshot,
+                ])->save();
+            }
+            Log::info("PaymentCallbackProcessor: Pickup escrow fee payment order [{$order->id}] failed. Reason: {$reason}");
             return;
         }
 
@@ -287,5 +319,72 @@ class PaymentCallbackProcessor
     private function isRetailCreditPaymentOrder(Order $order): bool
     {
         return (int) data_get($order->extra_items, 'credit_order_id') > 0;
+    }
+
+    private function isPickupEscrowFeePaymentOrder(Order $order): bool
+    {
+        return in_array(data_get($order->extra_items, 'type'), ['pickup_holding_fee', 'pickup_delivery_fee'], true)
+            && (int) data_get($order->extra_items, 'parent_order_id') > 0;
+    }
+
+    private function handlePickupEscrowFeePayment(Order $paymentOrder, string $gatewayRef, string $gateway): void
+    {
+        DB::transaction(function () use ($paymentOrder, $gatewayRef, $gateway) {
+            $paymentOrder = Order::query()->whereKey($paymentOrder->id)->lockForUpdate()->firstOrFail();
+            if ($paymentOrder->payment_status !== 'pending') {
+                Log::warning("PaymentCallbackProcessor: Pickup escrow fee payment order [{$paymentOrder->id}] is not pending.");
+                return;
+            }
+
+            $parentOrderId = (int) data_get($paymentOrder->extra_items, 'parent_order_id');
+            $parent = Order::query()->with(['merchant.user'])->whereKey($parentOrderId)->lockForUpdate()->firstOrFail();
+            $amount = (float) $paymentOrder->total_paid;
+            $reference = $gatewayRef !== 'N/A' ? $gatewayRef : (string) $paymentOrder->transaction_ref;
+            $feeType = data_get($paymentOrder->extra_items, 'type');
+
+            if ($feeType === 'pickup_delivery_fee') {
+                app(PickupAgreementService::class)->markDeliveryConversionPaid($paymentOrder, $gatewayRef, $gateway);
+            } else {
+                app(PickupAgreementService::class)->markHoldingFeePaid($paymentOrder, $gatewayRef, $gateway);
+            }
+
+            Transaction::create([
+                'user_id' => $paymentOrder->buyer_id,
+                'merchant_id' => $paymentOrder->merchant_id,
+                'order_id' => $paymentOrder->id,
+                'type' => 'order_revenue',
+                'fee_policy_name' => $feeType === 'pickup_delivery_fee'
+                    ? 'Pickup delivery conversion fee passthrough'
+                    : 'Pickup holding fee passthrough',
+                'fee_policy_type' => 'fixed',
+                'currency_code' => $paymentOrder->merchant_currency_code ?: $parent->merchant_currency_code ?: 'TZS',
+                'gross_amount' => $amount,
+                'fee_amount' => 0,
+                'provider_cost_amount' => 0,
+                'takeer_margin_amount' => 0,
+                'net_amount' => $amount,
+                'tax_amount' => 0,
+                'reference' => $reference . '-PICKUP-FEE-' . $paymentOrder->id,
+            ]);
+
+            $merchant = $parent->merchant ?: $paymentOrder->merchant;
+            if ($merchant?->user) {
+                $wallet = $merchant->wallet()->firstOrCreate(
+                    ['merchant_id' => $merchant->id],
+                    ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
+                );
+                $wallet->increment('frozen_balance', $amount);
+            }
+
+            $parent->loadMissing(['buyer', 'merchant.user']);
+            $publicId = (string) ($parent->public_id ?: $parent->id);
+            $label = $feeType === 'pickup_delivery_fee' ? 'Delivery fee' : 'Holding fee';
+            if ($parent->buyer?->phone_number) {
+                $this->smsService->sendPickupFeeHeldToBuyer($parent->buyer->phone_number, $publicId, $label, $amount, $parent->buyer_id);
+            }
+            if ($parent->merchant?->user?->phone_number) {
+                $this->smsService->sendPickupFeeHeldToMerchant($parent->merchant->user->phone_number, $publicId, $label, $amount, $parent->merchant->user_id);
+            }
+        });
     }
 }

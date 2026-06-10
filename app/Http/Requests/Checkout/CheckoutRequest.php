@@ -83,6 +83,8 @@ class CheckoutRequest extends FormRequest
             'longitude' => 'nullable|numeric|between:-180,180',
             'shipping_hotspot_id' => 'nullable|integer|exists:shipping_hotspots,id',
             'delivery_type' => ['nullable', 'string', Rule::in(['local_boda', 'intercity_bus', 'self_pickup'])],
+            'pickup_requested_start_at' => 'nullable|date',
+            'pickup_requested_end_at' => 'nullable|date|after:pickup_requested_start_at',
             'idempotency_key' => 'required|string|max:255',
             'payment_page_id' => 'nullable|integer|exists:payment_pages,id',
             'coupon_code' => 'nullable|string|max:64',

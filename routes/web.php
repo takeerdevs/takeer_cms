@@ -2336,6 +2336,9 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
         Route::get('/withdrawals', [AdminSettingsController::class, 'withdrawals']);
         Route::post('/withdrawals/{withdrawal}/approve', [AdminController::class, 'approveWithdrawal']);
+        Route::get('/refunds', [AdminSettingsController::class, 'refunds']);
+        Route::post('/refunds/{refund}/approve', [AdminController::class, 'approveRefund']);
+        Route::post('/refunds/{refund}/reject', [AdminController::class, 'rejectRefund']);
         Route::get('/platform-wallet', [AdminSettingsController::class, 'platformWallet']);
         Route::get('/fee-policies', [AdminFeePolicyController::class, 'index']);
         Route::post('/fee-policies', [AdminFeePolicyController::class, 'store']);
@@ -2506,6 +2509,10 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     Route::get('/admin/withdrawals', function () {
         return Inertia::render('Admin/Withdrawals');
+    });
+
+    Route::get('/admin/refunds', function () {
+        return Inertia::render('Admin/Refunds');
     });
 
     Route::get('/admin/payout-settings', function () {

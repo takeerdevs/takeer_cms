@@ -17,16 +17,22 @@ use App\Models\ReturnRequest;
 use App\Models\SubscriptionPlan;
 use App\Models\UserSubscription;
 use App\Services\ForwarderShipmentService;
+use App\Services\PickupAgreementService;
 use App\Services\SmsService;
 use App\Support\MerchantPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 class MerchantOrderController extends Controller
 {
+    private const PICKUP_PIN_MAX_ATTEMPTS = 5;
+    private const PICKUP_PIN_DECAY_SECONDS = 600;
+
     private const DELIVERY_STATUSES = [
         'packing',
         'ready_for_pickup',
@@ -313,6 +319,26 @@ class MerchantOrderController extends Controller
             'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
             'is_merchant_confirmed' => $order->merchant_confirmed_at !== null,
             'paid_out_at' => $order->paid_out_at?->toISOString(),
+            'pickup_location_id' => $order->pickup_location_id,
+            'pickup_ready_at' => $order->pickup_ready_at?->toISOString(),
+            'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
+            'pickup_grace_ends_at' => $order->pickup_grace_ends_at?->toISOString(),
+            'pickup_completed_at' => $order->pickup_completed_at?->toISOString(),
+            'pickup_status' => $order->pickup_status,
+            'pickup_policy_snapshot' => $order->pickup_policy_snapshot,
+            'pickup_extension_count' => (int) $order->pickup_extension_count,
+            'pickup_no_show_marked_at' => $order->pickup_no_show_marked_at?->toISOString(),
+            'pickup_no_show_reason' => $order->pickup_no_show_reason,
+            'holding_fee_status' => $order->holding_fee_status,
+            'holding_fee_amount' => $order->holding_fee_amount !== null ? (float) $order->holding_fee_amount : null,
+            'holding_fee_payment_order_id' => $order->holding_fee_payment_order_id,
+            'holding_fee_started_at' => $order->holding_fee_started_at?->toISOString(),
+            'holding_fee_accepted_at' => $order->holding_fee_accepted_at?->toISOString(),
+            'holding_fee_paid_at' => $order->holding_fee_paid_at?->toISOString(),
+            'pickup_cancellation_penalty_percent' => $order->pickup_cancellation_penalty_percent !== null ? (float) $order->pickup_cancellation_penalty_percent : null,
+            'pickup_cancellation_penalty_amount' => $order->pickup_cancellation_penalty_amount !== null ? (float) $order->pickup_cancellation_penalty_amount : null,
+            'pickup_cancellation_refund_amount' => $order->pickup_cancellation_refund_amount !== null ? (float) $order->pickup_cancellation_refund_amount : null,
+            'pickup_cancelled_after_grace_at' => $order->pickup_cancelled_after_grace_at?->toISOString(),
             'shipping_fee' => $order->shipping_fee !== null ? (float) $order->shipping_fee : null,
             'custom_delivery' => [
                 'file_url' => $order->custom_delivery_file_url,
@@ -1051,16 +1077,34 @@ class MerchantOrderController extends Controller
         abort_unless($this->canOperateMerchant($request, $merchant), 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
 
-        $validated = $request->validate(['pickup_pin' => 'required|string']);
+        $validated = $request->validate(['pickup_pin' => ['required', 'string', 'regex:/^\d{4}$/']]);
+        $throttleKey = $this->pickupPinThrottleKey($request, $merchant, $order);
+
+        if (RateLimiter::tooManyAttempts($throttleKey, self::PICKUP_PIN_MAX_ATTEMPTS)) {
+            return response()->json([
+                'message' => 'Majaribio mengi ya PIN. Tafadhali subiri kidogo kabla ya kujaribu tena.',
+                'retry_after_seconds' => RateLimiter::availableIn($throttleKey),
+            ], 429);
+        }
 
         if (!$order->delivery || $order->delivery->pickup_pin !== $validated['pickup_pin']) {
+            RateLimiter::hit($throttleKey, self::PICKUP_PIN_DECAY_SECONDS);
+
             return response()->json(['message' => 'PIN sio sahihi. Tafadhali hakiki upya.'], 400);
         }
+
+        RateLimiter::clear($throttleKey);
 
         abort_unless(
             in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true),
             422,
             'Order must be paid before pickup can be released.'
+        );
+
+        abort_unless(
+            $order->merchant_confirmed_at && $order->pickup_status === 'ready_for_pickup',
+            422,
+            'Confirm stock and pickup availability before releasing this order.'
         );
 
         $chatMessage = null;
@@ -1077,6 +1121,7 @@ class MerchantOrderController extends Controller
 
             app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
             app(\App\Services\EntitlementService::class)->grantForOrder($order->fresh(['product']));
+            app(PickupAgreementService::class)->markCompleted($order->fresh(['delivery']));
 
             $activeStaff = $this->activeStaffContext($request, $merchant);
             $actorName = $request->user()->name ?: ($merchant->business_name ?: $merchant->username);
@@ -1115,6 +1160,134 @@ class MerchantOrderController extends Controller
         ]);
     }
 
+    public function markPickupNoShow(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        $order->loadMissing(['delivery']);
+
+        if ($order->delivery?->delivery_type !== 'self_pickup') {
+            return response()->json(['message' => 'No-show applies only to pickup orders.'], 422);
+        }
+
+        if (!$order->pickup_deadline_at || $order->pickup_deadline_at->isFuture()) {
+            return response()->json(['message' => 'Pickup window has not expired yet.'], 422);
+        }
+
+        if ($order->pickup_completed_at || in_array($order->payment_status, ['resolved_merchant_paid', 'resolved_buyer_refunded'], true)) {
+            return response()->json(['message' => 'This pickup order is already closed.'], 422);
+        }
+
+        $updated = app(PickupAgreementService::class)->markNoShow(
+            $order,
+            $request->user()->id,
+            $validated['reason'] ?? null
+        );
+
+        return response()->json([
+            'message' => 'Pickup marked as buyer no-show.',
+            'order' => $updated->fresh(['buyer', 'product', 'variant', 'delivery.events.actor']),
+        ]);
+    }
+
+    public function resolvePickupExtension(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+
+        $validated = $request->validate([
+            'decision' => 'required|string|in:approved,rejected',
+            'approved_deadline_at' => 'nullable|date|after:now',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        $updated = app(PickupAgreementService::class)->resolveExtension(
+            $order,
+            $request->user()->id,
+            $validated['decision'],
+            !empty($validated['approved_deadline_at']) ? Carbon::parse($validated['approved_deadline_at']) : null,
+            $validated['note'] ?? null
+        );
+
+        return response()->json([
+            'message' => $validated['decision'] === 'approved' ? 'Pickup extension approved.' : 'Pickup extension rejected.',
+            'order' => $updated->fresh(['buyer', 'product', 'variant', 'delivery.events.actor']),
+        ]);
+    }
+
+    public function proposePickupHoldingFee(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+
+        $validated = $request->validate([
+            'amount' => 'nullable|numeric|min:0',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        $updated = app(PickupAgreementService::class)->proposeHoldingFee(
+            $order,
+            $request->user()->id,
+            $request->filled('amount') ? (float) $validated['amount'] : null,
+            $validated['note'] ?? null
+        );
+
+        return response()->json([
+            'message' => 'Holding fee proposal sent.',
+            'order' => $updated->fresh(['buyer', 'product', 'variant', 'delivery.events.actor']),
+        ]);
+    }
+
+    public function cancelPickupAfterGrace(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        $updated = app(PickupAgreementService::class)->cancelAfterGrace(
+            $order,
+            $request->user()->id,
+            'merchant',
+            $validated['reason'] ?? 'Merchant cancelled after pickup grace period ended.'
+        );
+
+        return response()->json([
+            'message' => 'Pickup order cancelled after grace period.',
+            'order' => $updated->fresh(['buyer', 'product', 'variant', 'delivery.events.actor']),
+        ]);
+    }
+
+    public function quotePickupDeliveryConversion(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+
+        $validated = $request->validate([
+            'shipping_fee' => 'required|numeric|min:0.01',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        $updated = app(PickupAgreementService::class)->quoteDeliveryConversion(
+            $order,
+            $request->user()->id,
+            (float) $validated['shipping_fee'],
+            $validated['note'] ?? null
+        );
+
+        return response()->json([
+            'message' => 'Delivery conversion quote sent.',
+            'order' => $updated->fresh(['buyer', 'product', 'variant', 'delivery.events.actor']),
+        ]);
+    }
+
     public function checkupLookup(Request $request, Merchant $merchant): JsonResponse
     {
         abort_unless($this->canOperateMerchant($request, $merchant), 403);
@@ -1124,21 +1297,14 @@ class MerchantOrderController extends Controller
         ]);
 
         $code = strtoupper(trim((string) $validated['code']));
-        $digitsOnly = preg_replace('/\D+/', '', $code);
 
         $order = Order::query()
             ->with(['buyer:id,name,phone_number', 'product:id,title,type,url,download_link', 'product.images', 'variant:id,name,swatch_image_url', 'delivery'])
             ->where('merchant_id', $merchant->id)
-            ->where(function ($query) use ($code, $digitsOnly) {
+            ->where(function ($query) use ($code) {
                 $query->where('public_id', $code)
                     ->orWhere('transaction_ref', $code)
-                    ->orWhere('pickup_code', $code)
-                    ->orWhereHas('delivery', function ($deliveryQuery) use ($code, $digitsOnly) {
-                        $deliveryQuery->where('pickup_pin', $code);
-                        if ($digitsOnly && $digitsOnly !== $code) {
-                            $deliveryQuery->orWhere('pickup_pin', $digitsOnly);
-                        }
-                    });
+                    ->orWhere('pickup_code', $code);
             })
             ->orderByRaw("CASE payment_status WHEN 'awaiting_merchant_confirmation' THEN 0 WHEN 'escrow_locked' THEN 1 WHEN 'shipped' THEN 2 WHEN 'pending' THEN 3 ELSE 4 END")
             ->latest()
@@ -1153,6 +1319,13 @@ class MerchantOrderController extends Controller
         ]);
     }
 
+    private function pickupPinThrottleKey(Request $request, Merchant $merchant, Order $order): string
+    {
+        $userId = $request->user()?->id ?: 'guest';
+
+        return 'pickup-pin:merchant:'.$merchant->id.':order:'.$order->id.':user:'.$userId.':ip:'.$request->ip();
+    }
+
     private function checkupPayload(Order $order): array
     {
         $display = $this->resolveDisplay($order);
@@ -1165,6 +1338,8 @@ class MerchantOrderController extends Controller
         $isPaidForRelease = in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true);
         $canVerifyPickup = $isPickup
             && $isPaidForRelease
+            && $order->merchant_confirmed_at
+            && $order->pickup_status === 'ready_for_pickup'
             && $order->delivery?->pickup_pin;
         $amountPaid = $isPaidForRelease || in_array($order->payment_status, ['shipped', 'disputed', 'resolved_merchant_paid'], true)
             ? (float) $order->total_paid
@@ -1193,6 +1368,10 @@ class MerchantOrderController extends Controller
             'has_pickup_pin' => (bool) $order->delivery?->pickup_pin,
             'can_verify_pickup' => (bool) $canVerifyPickup,
             'release_blocked_reason' => $canVerifyPickup ? null : $this->checkupReleaseBlockedReason($order, $isPickup),
+            'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
+            'pickup_grace_ends_at' => $order->pickup_grace_ends_at?->toISOString(),
+            'pickup_status' => $order->pickup_status,
+            'pickup_no_show_marked_at' => $order->pickup_no_show_marked_at?->toISOString(),
             'chat_url' => $order->public_id ? "/chat/{$order->public_id}?acting_as=merchant" : null,
             'created_at' => $order->created_at?->toISOString(),
         ];
@@ -1273,6 +1452,10 @@ class MerchantOrderController extends Controller
 
         if (! $order->delivery?->pickup_pin) {
             return 'Pickup PIN is not available for this order.';
+        }
+
+        if (! $order->merchant_confirmed_at || $order->pickup_status !== 'ready_for_pickup') {
+            return 'Confirm stock and pickup availability before releasing this order.';
         }
 
         return 'This order cannot be released from this code right now.';
@@ -1466,6 +1649,73 @@ class MerchantOrderController extends Controller
         $order->loadMissing(['merchant', 'buyer', 'product', 'delivery']);
         if (!$order->merchant || !MerchantPermissions::can($user, $order->merchant, 'orders.update')) {
             abort(403, 'Unauthorized.');
+        }
+
+        $isPaidPhysicalConfirmation = $order->requiresPhysicalFulfillment()
+            && $order->payment_status === 'awaiting_merchant_confirmation'
+            && ! $order->merchant_confirmed_at;
+
+        if ($isPaidPhysicalConfirmation) {
+            $updated = DB::transaction(function () use ($order, $user) {
+                $order = Order::query()
+                    ->with(['merchant.user', 'buyer', 'product', 'delivery'])
+                    ->whereKey($order->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($order->merchant_confirmed_at) {
+                    return $order;
+                }
+
+                $order->forceFill([
+                    'merchant_confirmed_at' => now(),
+                    'agreement_snapshot' => array_filter([
+                        ...(is_array($order->agreement_snapshot) ? $order->agreement_snapshot : []),
+                        'merchant_confirmed_at' => now()->toISOString(),
+                        'confirmed_after_payment' => true,
+                    ], fn ($value) => $value !== null),
+                ])->save();
+
+                if ($order->delivery?->delivery_type === 'self_pickup') {
+                    app(PickupAgreementService::class)->ensureAgreementForPaidPickup($order);
+                }
+
+                $message = $order->messages()->create([
+                    'sender_id' => $user->id,
+                    'receiver_id' => $order->buyer_id,
+                    'body' => $order->delivery?->delivery_type === 'self_pickup'
+                        ? 'Nimethibitisha kuwa order ipo. Iko tayari kwa pickup kulingana na muda mliochagua.'
+                        : 'Nimethibitisha kuwa order ipo na inaweza kutimizwa.',
+                    'type' => 'system',
+                    'payload' => [
+                        'action_type' => 'merchant_confirmed_fulfillment',
+                        'acting_as' => 'merchant',
+                        'delivery_type' => $order->delivery?->delivery_type,
+                        'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
+                    ],
+                    'is_system' => true,
+                ]);
+                $message->load('sender:id,name,role');
+                broadcast(new MessageSent($message, $order))->toOthers();
+
+                return $order->fresh(['buyer', 'product', 'variant', 'delivery']);
+            });
+
+            if ($updated->delivery?->delivery_type === 'self_pickup' && $updated->buyer?->phone_number && $updated->delivery?->pickup_pin) {
+                $this->smsService->sendPickupPinToBuyer(
+                    $updated->buyer->phone_number,
+                    (string) ($updated->public_id ?: $updated->id),
+                    (string) $updated->delivery->pickup_pin,
+                    $updated->buyer_id
+                );
+            }
+
+            return response()->json([
+                'message' => $updated->delivery?->delivery_type === 'self_pickup'
+                    ? 'Order imethibitishwa. Pickup PIN sasa imepatikana kwa mteja.'
+                    : 'Order imethibitishwa. Unaweza kuendelea na fulfillment.',
+                'order' => $updated,
+            ]);
         }
 
         if (!$order->is_inquiry || $order->payment_status !== 'pending') {

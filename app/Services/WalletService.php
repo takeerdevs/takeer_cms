@@ -23,7 +23,7 @@ class WalletService
                 return;
             }
 
-            if (!in_array($order->payment_status, ['paid_pending_confirmation', 'awaiting_merchant_confirmation', 'escrow_locked', 'shipped'], true)) {
+            if (!in_array($order->payment_status, ['paid_pending_confirmation', 'awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'], true)) {
                 throw new \Exception('Order is not in a releasable escrow state.');
             }
 
@@ -37,38 +37,80 @@ class WalletService
                 ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
             );
 
-            $grossAmount = $order->total_paid;
-            $existingRevenue = Transaction::query()
-                ->where('order_id', $order->id)
-                ->where('type', 'order_revenue')
-                ->latest()
-                ->first();
+            $holdingFeeOrders = Order::query()
+                ->where('merchant_id', $merchant->id)
+                ->where('payment_status', 'escrow_locked')
+                ->whereNull('paid_out_at')
+                ->whereIn('extra_items->type', ['pickup_holding_fee', 'pickup_delivery_fee'])
+                ->where('extra_items->parent_order_id', $order->id)
+                ->lockForUpdate()
+                ->get();
 
-            $fee = $existingRevenue ? null : app(FeePolicyService::class)->calculateForOrder($order, (float) $grossAmount);
-            $netAmount = $existingRevenue
-                ? (float) $existingRevenue->net_amount
-                : (float) $fee['net_amount'];
+            $releaseOrders = collect([$order])->merge($holdingFeeOrders);
+            $grossTotal = 0.0;
+            $netTotal = 0.0;
 
-            if (! $existingRevenue) {
-                Transaction::create([
-                    'user_id' => $merchant->user_id,
-                    'merchant_id' => $merchant->id,
-                    'order_id' => $order->id,
-                    'type' => 'order_revenue',
-                    ...$fee['snapshot'],
-                    'gross_amount' => $grossAmount,
-                    'fee_amount' => $fee['fee_amount'],
-                    'tax_amount' => $fee['tax_amount'],
-                    'net_amount' => $netAmount,
-                    'reference' => 'ESCROW-RELEASE-' . $order->id . '-' . Str::random(6),
-                ]);
+            foreach ($releaseOrders as $releaseOrder) {
+                $grossAmount = (float) $releaseOrder->total_paid;
+                $existingRevenue = Transaction::query()
+                    ->where('order_id', $releaseOrder->id)
+                    ->where('type', 'order_revenue')
+                    ->latest()
+                    ->first();
+
+                $isMerchantOnlyPickupFee = data_get($releaseOrder->extra_items, 'type') === 'pickup_holding_fee';
+                $fee = $existingRevenue
+                    ? null
+                    : ($isMerchantOnlyPickupFee
+                        ? [
+                            'net_amount' => $grossAmount,
+                            'fee_amount' => 0,
+                            'tax_amount' => 0,
+                            'snapshot' => [
+                                'fee_policy_name' => 'Merchant late pickup fee',
+                                'fee_policy_type' => 'merchant_only',
+                                'fee_percentage_rate' => 0,
+                                'fee_fixed_amount' => 0,
+                                'provider_cost_amount' => 0,
+                                'takeer_margin_amount' => 0,
+                            ],
+                        ]
+                        : app(FeePolicyService::class)->calculateForOrder($releaseOrder, $grossAmount));
+                $netAmount = $existingRevenue
+                    ? (float) $existingRevenue->net_amount
+                    : (float) $fee['net_amount'];
+
+                if (! $existingRevenue) {
+                    Transaction::create([
+                        'user_id' => $merchant->user_id,
+                        'merchant_id' => $merchant->id,
+                        'order_id' => $releaseOrder->id,
+                        'type' => 'order_revenue',
+                        ...$fee['snapshot'],
+                        'gross_amount' => $grossAmount,
+                        'fee_amount' => $fee['fee_amount'],
+                        'tax_amount' => $fee['tax_amount'],
+                        'net_amount' => $netAmount,
+                        'reference' => 'ESCROW-RELEASE-' . $releaseOrder->id . '-' . Str::random(6),
+                    ]);
+                }
+
+                $grossTotal += $grossAmount;
+                $netTotal += $netAmount;
+
+                if ($releaseOrder->id !== $order->id) {
+                    $releaseOrder->update([
+                        'payment_status' => 'resolved_merchant_paid',
+                        'paid_out_at' => now(),
+                    ]);
+                }
             }
 
-            $wallet->balance += $netAmount;
+            $wallet->balance += $netTotal;
 
             // If we tracked frozen balance previously, decrement it
-            if ($wallet->frozen_balance >= $grossAmount) {
-                $wallet->frozen_balance -= $grossAmount;
+            if ($wallet->frozen_balance >= $grossTotal) {
+                $wallet->frozen_balance -= $grossTotal;
             }
 
             $wallet->save();
@@ -85,7 +127,7 @@ class WalletService
                 $smsService->sendOrderCompletedToBuyer($order->buyer->phone_number, $publicId, $order->buyer_id);
             }
             if ($merchant->user?->phone_number) {
-                $smsService->sendMerchantPayoutReleased($merchant->user->phone_number, $publicId, (float) $netAmount, $merchant->user_id);
+                $smsService->sendMerchantPayoutReleased($merchant->user->phone_number, $publicId, (float) $netTotal, $merchant->user_id);
             }
         });
     }

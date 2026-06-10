@@ -30,6 +30,8 @@ import {
     Bell,
     BellOff,
     TrendingDown,
+    BadgeCheck,
+    ArrowUpRight,
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -1151,6 +1153,7 @@ function orderStatusLabel(orderDetails) {
     if (orderDetails.payment_status === 'awaiting_merchant_confirmation') return 'Paid order is waiting for merchant confirmation.';
     if (orderDetails.payment_status === 'escrow_locked') return 'Payment is protected while delivery is in progress.';
     if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Order completed and merchant has been paid.';
+    if (orderDetails.payment_status === 'refund_pending') return 'Refund is waiting for admin approval.';
     if (orderDetails.payment_status === 'disputed') return 'A claim is open for this order.';
     return String(orderDetails.payment_status || 'Order update').replaceAll('_', ' ');
 }
@@ -1206,7 +1209,46 @@ function compactDeliveryStatus(orderDetails) {
     return null;
 }
 
+function compactPickupStatus(orderDetails) {
+    const status = orderDetails?.pickup_status;
+    const paymentStatus = orderDetails?.payment_status;
+    const deliveryStatus = orderDetails?.delivery?.status || orderDetails?.delivery?.delivery_status;
+
+    if (status === 'completed' || orderDetails?.pickup_completed_at || paymentStatus === 'resolved_merchant_paid') return 'Imekabidhiwa';
+    if (paymentStatus === 'refund_pending') return 'Refund inasubiri admin';
+    if (status === 'buyer_no_show') return 'Mteja hakufika';
+    if (status === 'cancelled_after_grace') return 'Imefutwa baada ya deadline';
+    if (status === 'pickup_overdue') return 'Muda wa pickup umepita';
+    if (status === 'extension_requested') return 'Extension imeombwa';
+    if (status === 'holding_fee_pending') return 'Gharama ya ziada imependekezwa';
+    if (status === 'holding_fee_payment_pending') return 'Inasubiri malipo ya gharama ya ziada';
+    if (status === 'holding_fee_paid_held') return 'Gharama ya ziada imelipwa';
+    if (status === 'delivery_conversion_requested') return 'Delivery imeombwa';
+    if (status === 'delivery_conversion_quoted') return 'Bei ya delivery imewekwa';
+    if (status === 'delivery_conversion_payment_pending') return 'Inasubiri malipo ya delivery';
+    if (status === 'converted_to_delivery') return 'Imebadilishwa kuwa delivery';
+    if (status === 'ready_for_pickup' || deliveryStatus === 'ready_for_pickup') return 'Tayari kuchukuliwa';
+    if (deliveryStatus === 'awaiting_pickup') return 'Inasubiri kuchukuliwa';
+    if (['awaiting_merchant_confirmation', 'escrow_locked'].includes(paymentStatus)) return 'Inasubiri kuchukuliwa';
+
+    return 'Kuchukua dukani';
+}
+
 function deliveryEventStatusLabel(status, type) {
+    if (type === 'self_pickup') {
+        const map = {
+            ready_for_pickup: 'Tayari kuchukuliwa',
+            awaiting_pickup: 'Inasubiri kuchukuliwa',
+            buyer_no_show: 'Mteja hakufika',
+            pickup_overdue: 'Muda wa pickup umepita',
+            customer_confirmed: 'Mteja amethibitisha',
+            delivered: 'Imekabidhiwa',
+            issue_reported: 'Kuna taarifa ya tatizo',
+        };
+
+        return map[status] || deliveryStatusText(status);
+    }
+
     if (type === 'forwarder') {
         if (status === 'ready_at_terminal' || status === 'customer_confirmed' || status === 'delivered') return 'Forwarder amepokea';
         if (status === 'with_boda' || status === 'dispatched' || status === 'in_transit') return 'Inaenda kwa forwarder';
@@ -1222,6 +1264,52 @@ function serviceStatusLabel(orderDetails) {
     if (serviceRequest?.payment_status === 'held') return 'Payment is protected until the service is confirmed.';
     if (serviceRequest?.payment_status === 'released') return 'Service completed and payment released.';
     return orderStatusLabel(orderDetails);
+}
+
+function MerchantProfileStrip({ merchant }) {
+    const username = merchant?.slug || merchant?.username;
+    const displayName = merchant?.display_name || merchant?.name || username || 'Merchant';
+    const avatarUrl = merchant?.avatar_url;
+    const category = merchant?.business_category || merchant?.business_subcategory;
+    const shopHref = username ? `/u/${username}/shop/all` : null;
+    const initial = String(displayName || 'M').trim().charAt(0).toUpperCase();
+
+    const content = (
+        <div className={`group flex items-center justify-between gap-2.5 rounded-2xl border border-slate-200/80 bg-white px-2.5 py-2 text-left shadow-sm transition ${shopHref ? 'hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-md hover:shadow-slate-900/5 focus:outline-none focus:ring-4 focus:ring-brand-100' : ''}`}>
+            <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-50 text-sm font-black text-slate-500">
+                    {avatarUrl ? (
+                        <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                    ) : (
+                        <span>{initial}</span>
+                    )}
+                </div>
+                <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <p className="truncate text-sm font-black leading-tight text-slate-900">{displayName}</p>
+                        {merchant?.is_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-sky-500" />}
+                    </div>
+                    <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
+                        {username ? `@${username}` : 'Takeer merchant'}
+                        {category ? ` · ${category}` : ''}
+                    </p>
+                </div>
+            </div>
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-500 transition group-hover:bg-brand-50 group-hover:text-brand-700">
+                <ArrowUpRight className="h-3.5 w-3.5" />
+            </span>
+        </div>
+    );
+
+    if (!shopHref) {
+        return content;
+    }
+
+    return (
+        <Link href={shopHref} className="block" aria-label={`Open ${displayName} shop`}>
+            {content}
+        </Link>
+    );
 }
 
 function OwnedCard({ entry }) {
@@ -1341,6 +1429,9 @@ function OwnedCard({ entry }) {
     const isSubscriptionDigitalAccess = isDigitalProduct && !orderId;
     const fullDescription = String(item.description || item.excerpt || item.body || '').trim();
     const canShowDescription = fullDescription.length > 0;
+    const pickupDeadlineLabel = orderDetails?.pickup_deadline_at
+        ? new Date(orderDetails.pickup_deadline_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : null;
 
     const confirmReceiptCopy = (() => {
         if (isCustomDeliveryProduct) {
@@ -1599,16 +1690,16 @@ function OwnedCard({ entry }) {
                     </div>
                 </div>
 
-                <div className="mt-5 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                        <Store className="h-3.5 w-3.5" />
-                        {merchant.name || 'Merchant'}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                        <ShieldCheck className="h-3.5 w-3.5 text-green-600" />
-                        Active
-                    </span>
+                <div className="mt-5">
+                    <MerchantProfileStrip merchant={merchant} />
                 </div>
+
+                {isSelfPickupOrder && pickupDeadlineLabel && !orderDetails?.pickup_completed_at && (
+                    <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+                        <p className="font-black uppercase tracking-widest">Pickup deadline</p>
+                        <p className="mt-1 font-bold">Collect before {pickupDeadlineLabel}</p>
+                    </div>
+                )}
 
                 <div className="mt-5">
                     {isCustomDeliveryProduct ? (
@@ -1812,10 +1903,10 @@ function OwnedCard({ entry }) {
                                     </div>
                                 </div>
                             )}
-                            {/* Shipping Status Badge */}
+                            {/* Fulfillment Status Badge */}
                             <div className="flex items-center justify-between p-2 rounded-xl bg-muted/30 border border-muted-foreground/10">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                    {activeDeliveryLabel ? 'Delivery:' : 'Shipping:'}
+                                    {isSelfPickupOrder ? 'Pickup:' : (activeDeliveryLabel ? 'Delivery:' : 'Shipping:')}
                                 </span>
                                 <span className={`text-[10px] font-black uppercase tracking-widest ${orderDetails.payment_status === 'resolved_merchant_paid' ? 'text-green-600' :
                                     orderDetails.payment_status === 'disputed' ? 'text-red-600' :
@@ -1825,6 +1916,7 @@ function OwnedCard({ entry }) {
                                     {(() => {
                                         const delivType = orderDetails.delivery?.delivery_type || orderDetails.delivery?.type;
                                         const deliveryLabel = compactDeliveryStatus(orderDetails);
+                                        if (delivType === 'self_pickup') return compactPickupStatus(orderDetails);
                                         // Final status takes precedence
                                         if (orderDetails.payment_status === 'resolved_merchant_paid') return 'Imekamilika';
                                         if (orderDetails.payment_status === 'failed') return 'Imesitishwa';
@@ -1840,8 +1932,6 @@ function OwnedCard({ entry }) {
                                             if (['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status)) return 'Imelipwa — Inasubiri Utumaji';
                                             return 'Bei Imewekwa — Lipia Sasa';
                                         }
-                                        // Self pickup orders
-                                        if (delivType === 'self_pickup') return 'Kuchukua Dukani';
                                         // Shipping statuses
                                         if (orderDetails.payment_status === 'awaiting_merchant_confirmation') return 'Inasubiri Utumaji';
                                         if (orderDetails.payment_status === 'escrow_locked') return deliveryStatusText(orderDetails.delivery?.status);
@@ -1858,7 +1948,9 @@ function OwnedCard({ entry }) {
                                     <div className="flex items-start gap-2">
                                         <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-600" />
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Taarifa ya delivery</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                                {isSelfPickupOrder ? 'Taarifa ya pickup' : 'Taarifa ya delivery'}
+                                            </p>
                                             <p className="mt-0.5 truncate text-xs font-black text-slate-950">
                                                 {deliveryEventStatusLabel(latestDeliveryEvent.status, deliveryType)}
                                             </p>
@@ -2023,7 +2115,7 @@ function OwnedCard({ entry }) {
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(orderDetails.payment_status) && isSelfPickupOrder && orderDetails.delivery?.pickup_pin && (
+                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(orderDetails.payment_status) && isSelfPickupOrder && (orderDetails.is_merchant_confirmed || orderDetails.merchant_confirmed_at) && orderDetails.pickup_status === 'ready_for_pickup' && orderDetails.delivery?.pickup_pin && (
                                 <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100 text-center">
                                     <p className="text-[10px] font-black uppercase text-brand-700 mb-1">Your Pickup PIN</p>
                                     <p className="text-xl font-mono font-black tracking-widest text-brand-600">

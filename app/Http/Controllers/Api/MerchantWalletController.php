@@ -288,13 +288,24 @@ class MerchantWalletController extends Controller
             'net_amount' => $netAmount,
             'tax_amount' => (float) $transaction->tax_amount,
             'customer_name' => $order?->buyer?->name ?? 'Mteja',
-            'product_name' => $order?->product?->title ?? 'Bidhaa',
+            'product_name' => $this->transactionProductName($transaction),
             'status' => 'completed',
             'created_at' => $transaction->created_at->toIso8601String(),
             'type' => $transaction->type,
             'ledger_type' => 'wallet-entry',
             'reference' => $transaction->reference,
         ];
+    }
+
+    private function transactionProductName(Transaction $transaction): string
+    {
+        $type = data_get($transaction->order?->extra_items, 'type');
+
+        return match ($type) {
+            'pickup_holding_fee' => 'Pickup holding fee',
+            'pickup_delivery_fee' => 'Pickup delivery conversion fee',
+            default => $transaction->order?->product?->title ?? 'Bidhaa',
+        };
     }
 
     private function mapSale(Order $order): array

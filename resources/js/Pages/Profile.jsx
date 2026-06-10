@@ -52,6 +52,7 @@ export default function Profile({
     const [isCreateShopModalOpen, setIsCreateShopModalOpen] = useState(false);
     const [isOrderCheckupOpen, setIsOrderCheckupOpen] = useState(false);
     const [checkupCode, setCheckupCode] = useState('');
+    const [checkupPickupPin, setCheckupPickupPin] = useState('');
     const [checkupOrder, setCheckupOrder] = useState(null);
     const [checkupLoading, setCheckupLoading] = useState(false);
     const [checkupVerifying, setCheckupVerifying] = useState(false);
@@ -220,6 +221,7 @@ export default function Profile({
 
         setCheckupLoading(true);
         setCheckupOrder(null);
+        setCheckupPickupPin('');
         try {
             const res = await axios.post(`/api/merchant/${merchantSlug}/order-checkup/lookup`, {
                 code: checkupCode.trim(),
@@ -234,14 +236,15 @@ export default function Profile({
     };
 
     const verifyOrderCheckupPickup = async () => {
-        if (!merchantSlug || !checkupOrder?.id || !checkupCode.trim() || checkupVerifying) return;
+        if (!merchantSlug || !checkupOrder?.id || checkupPickupPin.length !== 4 || checkupVerifying) return;
 
         setCheckupVerifying(true);
         try {
             const res = await axios.post(`/api/merchant/${merchantSlug}/orders/${checkupOrder.id}/verify-pickup`, {
-                pickup_pin: checkupCode.trim(),
+                pickup_pin: checkupPickupPin,
             });
             toast.success(res.data.message || 'Pickup imethibitishwa.');
+            setCheckupPickupPin('');
             setCheckupOrder(prev => res.data.order ? {
                 ...prev,
                 ...res.data.order,
@@ -451,6 +454,7 @@ export default function Profile({
                     setIsOrderCheckupOpen(open);
                     if (!open) {
                         setCheckupCode('');
+                        setCheckupPickupPin('');
                         setCheckupOrder(null);
                     }
                 }}>
@@ -462,7 +466,7 @@ export default function Profile({
                                 </div>
                                 <DialogTitle className="text-2xl font-black tracking-tight text-slate-900">Order Checkup</DialogTitle>
                                 <DialogDescription className="text-sm font-medium text-slate-500">
-                                    Enter pickup PIN, pickup code, or order reference to verify a customer pickup.
+                                    Enter the order reference or pickup code first, then ask the customer for their 4-digit pickup PIN.
                                 </DialogDescription>
                             </DialogHeader>
 
@@ -471,7 +475,7 @@ export default function Profile({
                                 <Input
                                     value={checkupCode}
                                     onChange={(event) => setCheckupCode(event.target.value.toUpperCase())}
-                                    placeholder="PIN au Order Ref"
+                                    placeholder="Order Ref au Pickup Code"
                                     className="h-14 rounded-2xl border-brand-100 bg-brand-50/40 pl-11 pr-24 text-base font-black tracking-widest text-brand-900 focus:border-brand-300"
                                 />
                                 <Button
@@ -557,14 +561,27 @@ export default function Profile({
 
                                     <div className="space-y-2 p-4">
                                         {checkupOrder.can_verify_pickup ? (
-                                            <Button
-                                                onClick={verifyOrderCheckupPickup}
-                                                disabled={checkupVerifying}
-                                                className="h-12 w-full rounded-2xl bg-emerald-600 text-[11px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
-                                            >
-                                                {checkupVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                                                Confirm & Release Order
-                                            </Button>
+                                            <div className="space-y-3">
+                                                <div className="relative">
+                                                    <KeyRound className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-500" />
+                                                    <Input
+                                                        value={checkupPickupPin}
+                                                        onChange={(event) => setCheckupPickupPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                                                        inputMode="numeric"
+                                                        autoComplete="one-time-code"
+                                                        placeholder="PIN ya mteja"
+                                                        className="h-14 rounded-2xl border-emerald-100 bg-emerald-50/45 pl-11 text-center text-xl font-black tracking-[0.35em] text-emerald-900 focus:border-emerald-300"
+                                                    />
+                                                </div>
+                                                <Button
+                                                    onClick={verifyOrderCheckupPickup}
+                                                    disabled={checkupVerifying || checkupPickupPin.length !== 4}
+                                                    className="h-12 w-full rounded-2xl bg-emerald-600 text-[11px] font-black uppercase tracking-widest text-white hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400"
+                                                >
+                                                    {checkupVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                                                    Confirm & Release Order
+                                                </Button>
+                                            </div>
                                         ) : (
                                             <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-[11px] font-bold leading-relaxed text-amber-800">
                                                 {checkupOrder.release_blocked_reason || 'This order cannot be released from this code right now.'}

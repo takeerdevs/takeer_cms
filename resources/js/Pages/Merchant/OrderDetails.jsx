@@ -57,6 +57,20 @@ function formatMoney(amount, currency = 'TZS') {
     }
 }
 
+function formatDateTime(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) return null;
+
+    return date.toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+}
+
 function maskPhone(value) {
     const digits = String(value || '').replace(/\D/g, '');
     if (!digits) return '';
@@ -157,6 +171,7 @@ function statusMeta(status, isEscrowOrder) {
         shipped: { label: 'Imesafirishwa', cls: 'bg-indigo-100 text-indigo-700' },
         resolved_merchant_paid: { label: 'Imekamilika', cls: 'bg-emerald-100 text-emerald-700' },
         disputed: { label: 'Mgogoro', cls: 'bg-red-100 text-red-700' },
+        refund_pending: { label: 'Refund Inasubiri Admin', cls: 'bg-amber-100 text-amber-700' },
         resolved_buyer_refunded: { label: 'Mteja Amerudishiwa', cls: 'bg-slate-100 text-slate-700' },
     };
 
@@ -519,6 +534,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const [returnNote, setReturnNote] = useState('');
     const [returnResolution, setReturnResolution] = useState('replacement');
     const [returnSubmitting, setReturnSubmitting] = useState(false);
+    const [pickupNoShowSubmitting, setPickupNoShowSubmitting] = useState(false);
 
     useEffect(() => {
         loadOrder();
@@ -582,6 +598,17 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const merchantConfirmed = Boolean(order?.is_merchant_confirmed || order?.merchant_confirmed_at);
     const isForwarderOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'forwarder';
     const deliveryType = order?.delivery?.delivery_type || order?.delivery?.type || '';
+    const hasDeliveryFeeWorkflow = deliveryType && deliveryType !== 'self_pickup';
+    const buyerRequestedPickupSlot = order?.pickup_policy_snapshot?.buyer_requested_slot || null;
+    const pickupDeadlineAt = order?.pickup_deadline_at ? new Date(order.pickup_deadline_at) : null;
+    const pickupGraceEndsAt = order?.pickup_grace_ends_at ? new Date(order.pickup_grace_ends_at) : null;
+    const pickupDeadlinePassed = pickupDeadlineAt && !Number.isNaN(pickupDeadlineAt.valueOf()) && pickupDeadlineAt.getTime() <= Date.now();
+    const canMarkPickupNoShow = canUpdateOrder
+        && deliveryType === 'self_pickup'
+        && pickupDeadlinePassed
+        && !order?.pickup_completed_at
+        && !order?.pickup_no_show_marked_at
+        && !['resolved_merchant_paid', 'resolved_buyer_refunded'].includes(order?.payment_status);
     const isPackingStatus = deliveryStatusInput === 'packing';
     const needsTransportEvidence = ['intercity_bus', 'forwarder'].includes(deliveryType)
         && ['with_boda', 'in_transit', 'ready_at_terminal'].includes(deliveryStatusInput);
@@ -630,8 +657,21 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         && deliveryCurrentIndex(order?.delivery || {}) >= deliveryStepsFor('forwarder').length - 1;
     const canUpdateDeliveryStatus = !!order
         && order.is_escrow_order
+        && deliveryType !== 'self_pickup'
         && (canDispatch || canUpdateOrder)
         && ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed'].includes(order.payment_status);
+    const canConfirmPaidPickup = canUpdateOrder
+        && order?.product?.type === 'physical'
+        && order?.payment_status === 'awaiting_merchant_confirmation'
+        && deliveryType === 'self_pickup'
+        && !merchantConfirmed;
+    const canConfirmUnpaidPickup = canUpdateOrder
+        && order?.product?.type === 'physical'
+        && order?.is_inquiry
+        && order?.payment_status === 'pending'
+        && order?.inquiry_status === 'quoted'
+        && deliveryType === 'self_pickup'
+        && !merchantConfirmed;
     const isSubscriptionOrder = order?.purchasable_type === 'subscription_plan';
     const isCustomDigitalDelivery = order?.product?.type === 'digital'
         && order?.product?.digital_delivery_type === 'custom_delivery';
@@ -830,7 +870,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
         setQuoteSubmitting(true);
         try {
             await axios.post(`/api/merchant/orders/${orderId}/confirm-availability`);
-            toast.success('Order imethibitishwa. Mteja anaweza kulipia sasa.');
+            toast.success(canConfirmPaidPickup
+                ? 'Pickup imethibitishwa. PIN sasa inapatikana kwa mteja.'
+                : 'Order imethibitishwa. Mteja anaweza kulipia sasa.'
+            );
             await loadOrder();
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Imeshindwa kuthibitisha order.');
@@ -885,6 +928,25 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
             toast.error(error?.response?.data?.message || 'PIN si sahihi.');
         } finally {
             setPinVerifying(false);
+        }
+    }
+
+    async function markPickupNoShow() {
+        if (!canMarkPickupNoShow || pickupNoShowSubmitting) return;
+        const confirmed = window.confirm('Mark this pickup as buyer no-show? This will be recorded in the order chat.');
+        if (!confirmed) return;
+
+        setPickupNoShowSubmitting(true);
+        try {
+            await axios.post(`/api/merchant/${merchantUsername}/orders/${orderId}/pickup-no-show`, {
+                reason: 'Buyer did not collect within the agreed pickup window.',
+            });
+            toast.success('Pickup marked as buyer no-show.');
+            await loadOrder();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Imeshindikana kuweka no-show.');
+        } finally {
+            setPickupNoShowSubmitting(false);
         }
     }
 
@@ -1085,8 +1147,39 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </p>
                                     {order.delivery && (
                                         <>
-                                            <p><span className="text-muted-foreground">Delivery Method:</span> <span className="font-semibold uppercase text-brand-700">{deliveryMethodLabel(order.delivery)}</span></p>
-                                            <p><span className="text-muted-foreground">Delivery status:</span> <span className="font-semibold">{deliveryStatusLabel(order.delivery)}</span></p>
+                                            <p><span className="text-muted-foreground">{deliveryType === 'self_pickup' ? 'Fulfilment Method:' : 'Delivery Method:'}</span> <span className="font-semibold uppercase text-brand-700">{deliveryMethodLabel(order.delivery)}</span></p>
+                                            <p><span className="text-muted-foreground">{deliveryType === 'self_pickup' ? 'Pickup status:' : 'Delivery status:'}</span> <span className="font-semibold">{deliveryStatusLabel(order.delivery)}</span></p>
+                                            {deliveryType === 'self_pickup' && buyerRequestedPickupSlot?.start_at && buyerRequestedPickupSlot?.end_at && (
+                                                <div className="rounded-2xl border border-brand-100 bg-brand-50/70 px-4 py-3">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-700">Muda aliochagua mteja</p>
+                                                    <p className="mt-1 text-sm font-black text-brand-950">
+                                                        {formatDateTime(buyerRequestedPickupSlot.start_at)} - {formatDateTime(buyerRequestedPickupSlot.end_at)}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {(canConfirmUnpaidPickup || canConfirmPaidPickup) && (
+                                                <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+                                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                        <div>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Inasubiri uthibitisho wako</p>
+                                                            <p className="mt-1 text-sm font-bold leading-6 text-emerald-950">
+                                                                {canConfirmPaidPickup
+                                                                    ? 'Mteja amelipa. Thibitisha stock/uwezo wa kutimiza kabla pickup PIN haijaonekana.'
+                                                                    : 'Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipia.'}
+                                                            </p>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            onClick={confirmAvailability}
+                                                            disabled={quoteSubmitting || !canUpdateOrder}
+                                                            className="h-11 rounded-xl bg-emerald-600 px-5 font-black uppercase tracking-widest hover:bg-emerald-700"
+                                                        >
+                                                            {quoteSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                                                            {canConfirmPaidPickup ? 'THIBITISHA PICKUP IPO' : 'THIBITISHA ORDER IPO'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )}
                                             {order.delivery.physical_address && (
                                                 <div>
                                                     <span className="text-muted-foreground">{isForwarderOrder ? 'Forwarder warehouse:' : 'Anwani ya Mteja:'}</span>
@@ -1173,7 +1266,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </CardContent>
                             </Card>
 
-                            {order.is_inquiry && (
+                            {order.is_inquiry && hasDeliveryFeeWorkflow && (
                                 <Card className="rounded-2xl md:col-span-2 border-brand-200 bg-brand-50/20">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
@@ -1350,7 +1443,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
                                                     <p className="text-[10px] font-black uppercase text-amber-700 mb-1">Inasubiri uthibitisho wako:</p>
-                                                    <p className="text-sm font-bold text-amber-900">Gharama ipo tayari. Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipa.</p>
+                                                    <p className="text-sm font-bold text-amber-900">Gharama ipo tayari. Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipia.</p>
                                                 </div>
                                                 <Button
                                                     type="button"
@@ -1374,26 +1467,11 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 </div>
                                             </div>
                                         )}
-                                        {order.inquiry_status === 'quoted' && !merchantConfirmed && order.payment_status === 'pending' && (
-                                            <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                                <div>
-                                                    <p className="text-[10px] font-black uppercase text-amber-700 mb-1">Inasubiri uthibitisho wako:</p>
-                                                    <p className="text-sm font-bold text-amber-900">Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipa.</p>
-                                                </div>
-                                                <Button
-                                                    type="button"
-                                                    onClick={confirmAvailability}
-                                                    disabled={quoteSubmitting || !canUpdateOrder}
-                                                    className="h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold"
-                                                >
-                                                    {quoteSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                                                    THIBITISHA
-                                                </Button>
-                                            </div>
+                                        {hasDeliveryFeeWorkflow && (
+                                            <p className="text-[11px] text-muted-foreground italic font-medium">
+                                                Kabla ya mteja kulipa, unaweza kusasisha gharama ya usafiri kulingana na makubaliano ya boda au mabadiliko ya haraka. Baada ya malipo, gharama inafungwa.
+                                            </p>
                                         )}
-                                        <p className="text-[11px] text-muted-foreground italic font-medium">
-                                            Kabla ya mteja kulipa, unaweza kusasisha gharama ya usafiri kulingana na makubaliano ya boda au mabadiliko ya haraka. Baada ya malipo, gharama inafungwa.
-                                        </p>
                                     </CardContent>
                                 </Card>
                             )}
@@ -1508,7 +1586,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
-                            {order.is_escrow_order && canVerifyPickup && order.delivery?.delivery_type === 'self_pickup' && order.payment_status === 'awaiting_merchant_confirmation' && (
+                            {order.is_escrow_order && canVerifyPickup && order.delivery?.delivery_type === 'self_pickup' && order.payment_status === 'awaiting_merchant_confirmation' && merchantConfirmed && order.pickup_status === 'ready_for_pickup' && (
                                 <Card className="rounded-[2rem] md:col-span-2 overflow-hidden border-brand-100 bg-white shadow-xl shadow-brand-100/40">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
@@ -1521,13 +1599,48 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                             <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-brand-600 text-white shadow-xl shadow-brand-600/25">
                                                 <Store className="h-8 w-8" />
                                             </div>
-                                            <div>
-                                                <h3 className="text-2xl font-black tracking-tight text-slate-950">Confirm customer pickup</h3>
-                                                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
-                                                    Mteja akifika, omba <strong>Pickup PIN</strong> aliyopewa kwenye chat yake. Ukithibitisha PIN, order itatolewa na escrow itaendelea kukamilishwa.
-                                                </p>
-                                            </div>
-                                            <form onSubmit={verifyPickupPin} className="w-full space-y-3">
+	                                            <div>
+	                                                <h3 className="text-2xl font-black tracking-tight text-slate-950">Confirm customer pickup</h3>
+	                                                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
+	                                                    Mteja akifika, omba <strong>Pickup PIN</strong> aliyopewa kwenye chat yake. Ukithibitisha PIN, order itatolewa na escrow itaendelea kukamilishwa.
+	                                                </p>
+	                                            </div>
+	                                            {order.pickup_deadline_at && (
+	                                                <div className="w-full rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-left">
+	                                                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Pickup agreement</p>
+	                                                    <p className="mt-1 text-sm font-black text-amber-950">
+	                                                        Collect before {formatDateTime(order.pickup_deadline_at)}
+	                                                    </p>
+	                                                    {order.pickup_policy_snapshot?.holding_fee_enabled && (
+	                                                        <p className="mt-2 text-xs font-semibold text-amber-900">
+	                                                            Storage fee policy: {formatMoney(order.pickup_policy_snapshot.holding_fee_amount || 0, currencyCode)} / {order.pickup_policy_snapshot.holding_fee_interval || 'day'} after the pickup deadline.
+	                                                        </p>
+	                                                    )}
+	                                                    {order.pickup_policy_snapshot?.instructions && (
+	                                                        <p className="mt-2 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">
+	                                                            {order.pickup_policy_snapshot.instructions}
+	                                                        </p>
+	                                                    )}
+	                                                    {canMarkPickupNoShow && (
+	                                                        <Button
+	                                                            type="button"
+	                                                            variant="outline"
+	                                                            onClick={markPickupNoShow}
+	                                                            disabled={pickupNoShowSubmitting}
+	                                                            className="mt-3 h-10 rounded-xl border-amber-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-amber-800 hover:bg-amber-100"
+	                                                        >
+	                                                            {pickupNoShowSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CircleAlert className="mr-2 h-4 w-4" />}
+	                                                            Mark Buyer No-show
+	                                                        </Button>
+	                                                    )}
+	                                                    {order.pickup_no_show_marked_at && (
+	                                                        <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-amber-800">
+	                                                            No-show marked {formatDateTime(order.pickup_no_show_marked_at)}
+	                                                        </p>
+	                                                    )}
+	                                                </div>
+	                                            )}
+	                                            <form onSubmit={verifyPickupPin} className="w-full space-y-3">
                                                 <Input
                                                     inputMode="numeric"
                                                     placeholder="0000"
@@ -1546,7 +1659,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 </Card>
                             )}
 
-                            {canUpdateDeliveryStatus && order.delivery && (
+                            {canUpdateDeliveryStatus && hasDeliveryFeeWorkflow && order.delivery && (
                                 <Card className="rounded-2xl md:col-span-2">
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">

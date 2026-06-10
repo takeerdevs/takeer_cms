@@ -16,6 +16,7 @@ class Order extends Model
         'pickup_code',
         'buyer_id',
         'user_address_id',
+        'pickup_location_id',
         'merchant_id',
         'product_id',
         'variant_id',
@@ -100,6 +101,25 @@ class Order extends Model
         'cancelled_by',
         'cancellation_reason',
         'paid_out_at',
+        'pickup_ready_at',
+        'pickup_deadline_at',
+        'pickup_grace_ends_at',
+        'pickup_completed_at',
+        'pickup_status',
+        'pickup_policy_snapshot',
+        'pickup_extension_count',
+        'pickup_no_show_marked_at',
+        'pickup_no_show_reason',
+        'holding_fee_status',
+        'holding_fee_amount',
+        'holding_fee_payment_order_id',
+        'holding_fee_started_at',
+        'holding_fee_accepted_at',
+        'holding_fee_paid_at',
+        'pickup_cancellation_penalty_percent',
+        'pickup_cancellation_penalty_amount',
+        'pickup_cancellation_refund_amount',
+        'pickup_cancelled_after_grace_at',
         'live_event_attendance_status',
         'live_event_checked_in_at',
         'live_event_access_last_sent_at',
@@ -162,6 +182,22 @@ class Order extends Model
             'merchant_confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'paid_out_at' => 'datetime',
+            'pickup_ready_at' => 'datetime',
+            'pickup_deadline_at' => 'datetime',
+            'pickup_grace_ends_at' => 'datetime',
+            'pickup_completed_at' => 'datetime',
+            'pickup_policy_snapshot' => 'array',
+            'pickup_extension_count' => 'integer',
+            'pickup_no_show_marked_at' => 'datetime',
+            'holding_fee_amount' => 'decimal:2',
+            'holding_fee_payment_order_id' => 'integer',
+            'holding_fee_started_at' => 'datetime',
+            'holding_fee_accepted_at' => 'datetime',
+            'holding_fee_paid_at' => 'datetime',
+            'pickup_cancellation_penalty_percent' => 'decimal:2',
+            'pickup_cancellation_penalty_amount' => 'decimal:2',
+            'pickup_cancellation_refund_amount' => 'decimal:2',
+            'pickup_cancelled_after_grace_at' => 'datetime',
             'is_inquiry' => 'boolean',
             'payment_channel_snapshot' => 'array',
             'money_quote_snapshot' => 'array',
@@ -328,6 +364,11 @@ class Order extends Model
     public function returnRequest(): HasOne
     {
         return $this->hasOne(ReturnRequest::class);
+    }
+
+    public function refundRequests(): HasMany
+    {
+        return $this->hasMany(RefundRequest::class);
     }
 
     public function customDeliveryEvents(): HasMany

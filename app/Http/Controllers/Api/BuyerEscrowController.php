@@ -7,6 +7,9 @@ use App\Models\Order;
 use App\Models\Dispute;
 use App\Models\ReturnRequest;
 use App\Services\ForwarderShipmentService;
+use App\Services\PickupAgreementService;
+use App\Payments\GatewayRegistry;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -73,6 +76,193 @@ class BuyerEscrowController extends Controller
         });
 
         return response()->json(['message' => $serviceRequest ? 'Asante! Umethibitisha huduma.' : 'Asante! Malipo yametumwa kwa muuzaji.']);
+    }
+
+    public function requestPickupExtension(Request $request, Order $order): JsonResponse
+    {
+        if ($order->buyer_id !== $request->user()->id) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $order->loadMissing(['delivery']);
+        if ($order->delivery?->delivery_type !== 'self_pickup') {
+            return response()->json(['message' => 'Extension requests apply only to pickup orders.'], 422);
+        }
+
+        if ($order->pickup_completed_at || in_array($order->payment_status, ['resolved_merchant_paid', 'resolved_buyer_refunded'], true)) {
+            return response()->json(['message' => 'This pickup order is already closed.'], 422);
+        }
+
+        $validated = $request->validate([
+            'requested_deadline_at' => 'required|date|after:now',
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        $updated = app(PickupAgreementService::class)->requestExtension(
+            $order,
+            $request->user()->id,
+            Carbon::parse($validated['requested_deadline_at']),
+            $validated['reason'] ?? null
+        );
+
+        return response()->json([
+            'message' => 'Pickup extension request sent.',
+            'order' => $updated->fresh(['delivery']),
+        ]);
+    }
+
+    public function acceptHoldingFee(Request $request, Order $order): JsonResponse
+    {
+        if ($order->buyer_id !== $request->user()->id) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $validated = $request->validate([
+            'payment_number' => 'nullable|string|max:32',
+        ]);
+
+        $paymentPhone = $validated['payment_number']
+            ?? $order->payment_phone
+            ?? $order->account_phone
+            ?? $request->user()->phone_number;
+
+        $paymentOrder = app(PickupAgreementService::class)->createHoldingFeePaymentOrder(
+            $order,
+            $request->user()->id,
+            $paymentPhone
+        );
+
+        try {
+            $gatewayRegistry = app(GatewayRegistry::class);
+            $gateway = $gatewayRegistry->resolve($request, $paymentPhone);
+            $countryCode = $gatewayRegistry->resolveCountry($request, $paymentPhone);
+
+            $paymentOrder->forceFill([
+                'payment_gateway' => $gateway->getName(),
+                'country_code' => $countryCode,
+                'payment_phone' => $paymentPhone,
+            ])->save();
+
+            $paymentResult = $gateway->initiate($paymentOrder->fresh(['buyer']), [
+                'payment_number' => $paymentPhone,
+            ]);
+
+            if (!$paymentResult->success) {
+                $paymentOrder->forceFill(['payment_status' => 'failed'])->save();
+
+                return response()->json([
+                    'message' => $paymentResult->message ?: 'Holding fee payment could not be started.',
+                ], 422);
+            }
+        } catch (\Throwable $e) {
+            $paymentOrder->forceFill(['payment_status' => 'failed'])->save();
+
+            return response()->json([
+                'message' => 'Holding fee payment could not be started.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Holding fee accepted. Payment request sent.',
+            'order' => $order->fresh(['delivery']),
+            'payment_order' => [
+                'id' => $paymentOrder->id,
+                'public_id' => $paymentOrder->public_id,
+                'payment_status' => $paymentOrder->payment_status,
+                'amount' => (float) $paymentOrder->total_paid,
+            ],
+        ]);
+    }
+
+    public function requestPickupDeliveryConversion(Request $request, Order $order): JsonResponse
+    {
+        if ($order->buyer_id !== $request->user()->id) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $validated = $request->validate([
+            'delivery_type' => 'nullable|string|in:local_boda,intercity_bus,forwarder',
+            'physical_address' => 'required|string|max:1000',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        $updated = app(PickupAgreementService::class)->requestDeliveryConversion(
+            $order,
+            $request->user()->id,
+            $validated
+        );
+
+        return response()->json([
+            'message' => 'Delivery conversion request sent.',
+            'order' => $updated->fresh(['delivery']),
+        ]);
+    }
+
+    public function acceptPickupDeliveryConversion(Request $request, Order $order): JsonResponse
+    {
+        if ($order->buyer_id !== $request->user()->id) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $validated = $request->validate([
+            'payment_number' => 'nullable|string|max:32',
+        ]);
+
+        $paymentPhone = $validated['payment_number']
+            ?? $order->payment_phone
+            ?? $order->account_phone
+            ?? $request->user()->phone_number;
+
+        $paymentOrder = app(PickupAgreementService::class)->createDeliveryConversionPaymentOrder(
+            $order,
+            $request->user()->id,
+            $paymentPhone
+        );
+
+        try {
+            $gatewayRegistry = app(GatewayRegistry::class);
+            $gateway = $gatewayRegistry->resolve($request, $paymentPhone);
+            $countryCode = $gatewayRegistry->resolveCountry($request, $paymentPhone);
+
+            $paymentOrder->forceFill([
+                'payment_gateway' => $gateway->getName(),
+                'country_code' => $countryCode,
+                'payment_phone' => $paymentPhone,
+            ])->save();
+
+            $paymentResult = $gateway->initiate($paymentOrder->fresh(['buyer']), [
+                'payment_number' => $paymentPhone,
+            ]);
+
+            if (!$paymentResult->success) {
+                $paymentOrder->forceFill(['payment_status' => 'failed'])->save();
+
+                return response()->json([
+                    'message' => $paymentResult->message ?: 'Delivery fee payment could not be started.',
+                ], 422);
+            }
+        } catch (\Throwable $e) {
+            $paymentOrder->forceFill(['payment_status' => 'failed'])->save();
+
+            return response()->json([
+                'message' => 'Delivery fee payment could not be started.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Delivery fee payment request sent.',
+            'order' => $order->fresh(['delivery']),
+            'payment_order' => [
+                'id' => $paymentOrder->id,
+                'public_id' => $paymentOrder->public_id,
+                'payment_status' => $paymentOrder->payment_status,
+                'amount' => (float) $paymentOrder->total_paid,
+            ],
+        ]);
     }
 
     public function requestCustomRevision(Request $request, Order $order): JsonResponse

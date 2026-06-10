@@ -10,6 +10,7 @@ use App\Models\MerchantServiceCredential;
 use App\Models\MerchantTrustSafetyReview;
 use App\Models\NotificationLog;
 use App\Models\Product;
+use App\Models\RefundRequest;
 use App\Models\ServiceCategory;
 use App\Models\ServiceRequest;
 use App\Models\TrackedLink;
@@ -23,6 +24,7 @@ class AdminAttentionService
     {
         $items = collect()
             ->merge($this->openDisputes())
+            ->merge($this->pendingRefunds())
             ->merge($this->pendingWithdrawals())
             ->merge($this->pendingMerchantKyc())
             ->merge($this->pendingForwarders())
@@ -100,6 +102,27 @@ class AdminAttentionService
                 href: '/admin/withdrawals',
                 action: 'Review payout',
                 occurredAt: $withdrawal->created_at?->toISOString(),
+            ));
+    }
+
+    private function pendingRefunds(): Collection
+    {
+        return RefundRequest::query()
+            ->with(['buyer:id,name,phone_number', 'order:id,public_id', 'merchant:id,display_name,username'])
+            ->where('status', 'pending')
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(fn (RefundRequest $refund) => $this->item(
+                id: "refund:{$refund->id}",
+                category: 'payments',
+                source: 'Refunds',
+                severity: 'high',
+                title: 'Buyer refund waiting approval',
+                body: trim(($refund->buyer?->name ?: 'Buyer') . ' is due ' . ($refund->currency_code ?: 'TZS') . ' ' . number_format((float) $refund->amount, 2) . ' for order #' . ($refund->order?->public_id ?: $refund->order_id) . $this->merchantSuffix($refund->merchant)),
+                href: '/admin/refunds',
+                action: 'Review refund',
+                occurredAt: $refund->created_at?->toISOString(),
             ));
     }
 

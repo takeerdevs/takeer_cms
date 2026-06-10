@@ -19,6 +19,7 @@ use App\Models\Order;
 use App\Models\Post;
 use App\Models\PostModerationAction;
 use App\Models\Product;
+use App\Models\RefundRequest;
 use App\Models\RetailAuditLog;
 use App\Models\ServiceCategory;
 use App\Models\ServiceRequest;
@@ -233,6 +234,9 @@ class AdminController extends Controller
 
             if ($validated['verdict'] === 'refund_buyer') {
                 $order->update(['payment_status' => 'resolved_buyer_refunded']);
+                $pickupFeeOrders = $this->pickupEscrowFeeOrders($order);
+                $pickupFeeRefundTotal = (float) $pickupFeeOrders->sum('total_paid');
+                $pickupFeeOrders->each->update(['payment_status' => 'resolved_buyer_refunded']);
                 \App\Models\ServiceRequest::query()
                     ->where('payment_order_id', $order->id)
                     ->update([
@@ -243,10 +247,8 @@ class AdminController extends Controller
                     ['merchant_id' => $order->merchant_id],
                     ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
                 );
-                $this->debitRefundAmount($wallet, (float) $order->total_paid);
+                $this->debitRefundAmount($wallet, (float) $order->total_paid + $pickupFeeRefundTotal);
             } else {
-                $wasAlreadyPaid = $order->payment_status === 'resolved_merchant_paid';
-                $order->update(['payment_status' => 'resolved_merchant_paid']);
                 \App\Models\ServiceRequest::query()
                     ->where('payment_order_id', $order->id)
                     ->update([
@@ -255,20 +257,7 @@ class AdminController extends Controller
                         'customer_confirmed_at' => now(),
                         'status' => 'completed',
                     ]);
-                $merchantWallet = $order->merchant->wallet()->firstOrCreate(
-                    ['merchant_id' => $order->merchant_id],
-                    ['user_id' => $order->merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
-                );
-                $netAmount = \App\Models\Transaction::query()
-                    ->where('order_id', $order->id)
-                    ->where('type', 'order_revenue')
-                    ->latest()
-                    ->value('net_amount')
-                    ?? app(\App\Services\FeePolicyService::class)->calculateForOrder($order, (float) $order->total_paid)['net_amount'];
-                if (! $wasAlreadyPaid) {
-                    $merchantWallet->decrement('frozen_balance', $order->total_paid);
-                    $merchantWallet->increment('balance', $netAmount);
-                }
+                app(\App\Services\WalletService::class)->releaseEscrowToMerchant($order);
             }
         });
 
@@ -401,6 +390,17 @@ class AdminController extends Controller
         }
     }
 
+    private function pickupEscrowFeeOrders(Order $order)
+    {
+        return Order::query()
+            ->where('merchant_id', $order->merchant_id)
+            ->whereIn('payment_status', ['escrow_locked', 'disputed'])
+            ->whereIn('extra_items->type', ['pickup_holding_fee', 'pickup_delivery_fee'])
+            ->where('extra_items->parent_order_id', $order->id)
+            ->lockForUpdate()
+            ->get();
+    }
+
     private function trustSafetyActionLabel(string $action): string
     {
         return match ($action) {
@@ -512,6 +512,115 @@ class AdminController extends Controller
         }
 
         return response()->json(['message' => 'Withdrawal approved successfully.']);
+    }
+
+    public function approveRefund(Request $request, RefundRequest $refund): JsonResponse
+    {
+        $validated = $request->validate([
+            'admin_notes' => 'nullable|string|max:2000',
+        ]);
+
+        $approved = DB::transaction(function () use ($request, $refund, $validated) {
+            $locked = RefundRequest::query()
+                ->with(['order.merchant.user', 'order.buyer'])
+                ->whereKey($refund->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->status !== 'pending') {
+                return false;
+            }
+
+            $locked->forceFill([
+                'status' => 'approved',
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+                'admin_notes' => $validated['admin_notes'] ?? null,
+            ])->save();
+
+            $order = $locked->order;
+            if ($order && $order->payment_status === 'refund_pending') {
+                $order->forceFill(['payment_status' => 'resolved_buyer_refunded'])->save();
+            }
+
+            if ($order) {
+                $this->writeRefundAdminMessage($order, $request->user()->id, $locked, 'approved', $validated['admin_notes'] ?? null);
+            }
+
+            return true;
+        });
+
+        if (! $approved) {
+            return response()->json(['message' => 'This refund request has already been handled.'], 400);
+        }
+
+        return response()->json(['message' => 'Refund approved successfully.']);
+    }
+
+    public function rejectRefund(Request $request, RefundRequest $refund): JsonResponse
+    {
+        $validated = $request->validate([
+            'admin_notes' => 'required|string|max:2000',
+        ]);
+
+        $rejected = DB::transaction(function () use ($request, $refund, $validated) {
+            $locked = RefundRequest::query()
+                ->with(['order.merchant.user', 'order.buyer'])
+                ->whereKey($refund->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->status !== 'pending') {
+                return false;
+            }
+
+            $locked->forceFill([
+                'status' => 'rejected',
+                'approved_by' => $request->user()->id,
+                'rejected_at' => now(),
+                'admin_notes' => $validated['admin_notes'],
+            ])->save();
+
+            if ($locked->order) {
+                $this->writeRefundAdminMessage($locked->order, $request->user()->id, $locked, 'rejected', $validated['admin_notes']);
+            }
+
+            return true;
+        });
+
+        if (! $rejected) {
+            return response()->json(['message' => 'This refund request has already been handled.'], 400);
+        }
+
+        return response()->json(['message' => 'Refund rejected.']);
+    }
+
+    private function writeRefundAdminMessage(Order $order, int $adminId, RefundRequest $refund, string $decision, ?string $notes = null): void
+    {
+        $receiverId = $order->buyer_id ?: $order->merchant?->user_id;
+        if (! $receiverId) {
+            return;
+        }
+
+        $message = $order->messages()->create([
+            'sender_id' => $adminId,
+            'receiver_id' => $receiverId,
+            'type' => 'action',
+            'body' => $decision === 'approved'
+                ? 'Admin approved the refund request.'
+                : 'Admin rejected the refund request.',
+            'payload' => [
+                'action_type' => 'refund_request_' . $decision,
+                'acting_as' => 'admin',
+                'refund_request_id' => $refund->id,
+                'amount' => (float) $refund->amount,
+                'currency' => $refund->currency_code ?: 'TZS',
+                'admin_notes' => $notes,
+            ],
+        ]);
+
+        $message->load('sender:id,name,role');
+        broadcast(new \App\Events\MessageSent($message, $order))->toOthers();
     }
 
     /**

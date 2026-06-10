@@ -100,6 +100,21 @@ class MerchantLocationController extends Controller
             'region' => 'nullable|string',
             'is_primary' => 'boolean',
             'allow_self_pickup' => 'boolean',
+            'pickup_hold_hours' => 'nullable|integer|min:1|max:8760',
+            'pickup_grace_hours' => 'nullable|integer|min:0|max:8760',
+            'pickup_available_windows' => 'nullable|array',
+            'pickup_available_windows.*.day' => 'required_with:pickup_available_windows|integer|min:1|max:7',
+            'pickup_available_windows.*.enabled' => 'nullable|boolean',
+            'pickup_available_windows.*.start' => 'required_with:pickup_available_windows|date_format:H:i',
+            'pickup_available_windows.*.end' => 'required_with:pickup_available_windows|date_format:H:i',
+            'pickup_instructions' => 'nullable|string|max:2000',
+            'pickup_holding_fee_enabled' => 'boolean',
+            'pickup_late_fee_type' => 'nullable|string|in:fixed,hourly',
+            'pickup_holding_fee_amount' => 'nullable|numeric|min:0',
+            'pickup_late_fee_cap_amount' => 'nullable|numeric|min:0',
+            'pickup_cancellation_penalty_percent' => 'nullable|numeric|min:0|max:100',
+            'pickup_holding_fee_interval' => 'nullable|string|in:hour,day,week',
+            'pickup_max_holding_days' => 'nullable|integer|min:0|max:365',
             'contact_phone' => 'nullable|string|max:50',
             'type' => 'nullable|string',
         ]);
@@ -110,6 +125,8 @@ class MerchantLocationController extends Controller
                 return response()->json(['message' => 'Aina ya eneo si sahihi.'], 422);
             }
         }
+
+        $validated = $this->normalizePickupPolicy($validated);
 
         if ($validated['is_primary'] ?? false) {
             MerchantLocation::where('merchant_id', $merchant->id)->update(['is_primary' => false]);
@@ -160,6 +177,21 @@ class MerchantLocationController extends Controller
             'region' => 'nullable|string',
             'is_primary' => 'boolean',
             'allow_self_pickup' => 'boolean',
+            'pickup_hold_hours' => 'nullable|integer|min:1|max:8760',
+            'pickup_grace_hours' => 'nullable|integer|min:0|max:8760',
+            'pickup_available_windows' => 'nullable|array',
+            'pickup_available_windows.*.day' => 'required_with:pickup_available_windows|integer|min:1|max:7',
+            'pickup_available_windows.*.enabled' => 'nullable|boolean',
+            'pickup_available_windows.*.start' => 'required_with:pickup_available_windows|date_format:H:i',
+            'pickup_available_windows.*.end' => 'required_with:pickup_available_windows|date_format:H:i',
+            'pickup_instructions' => 'nullable|string|max:2000',
+            'pickup_holding_fee_enabled' => 'boolean',
+            'pickup_late_fee_type' => 'nullable|string|in:fixed,hourly',
+            'pickup_holding_fee_amount' => 'nullable|numeric|min:0',
+            'pickup_late_fee_cap_amount' => 'nullable|numeric|min:0',
+            'pickup_cancellation_penalty_percent' => 'nullable|numeric|min:0|max:100',
+            'pickup_holding_fee_interval' => 'nullable|string|in:hour,day,week',
+            'pickup_max_holding_days' => 'nullable|integer|min:0|max:365',
             'contact_phone' => 'nullable|string|max:50',
             'type' => 'nullable|string',
         ]);
@@ -170,6 +202,8 @@ class MerchantLocationController extends Controller
                 return response()->json(['message' => 'Aina ya eneo si sahihi.'], 422);
             }
         }
+
+        $validated = $this->normalizePickupPolicy($validated);
 
         if ($validated['is_primary'] ?? false) {
             MerchantLocation::where('merchant_id', $merchant->id)
@@ -221,5 +255,51 @@ class MerchantLocationController extends Controller
         unset($validated['country_iso2'], $validated['country_name'], $validated['state_name'], $validated['city_name']);
 
         return $validated;
+    }
+
+    private function normalizePickupPolicy(array $validated): array
+    {
+        $validated['pickup_available_windows'] = $this->sanitizePickupWindows($validated['pickup_available_windows'] ?? null);
+
+        $validated['pickup_hold_hours'] = 2;
+        $validated['pickup_grace_hours'] = 0;
+        $validated['pickup_holding_fee_enabled'] = false;
+        $validated['pickup_late_fee_type'] = 'fixed';
+        $validated['pickup_holding_fee_amount'] = null;
+        $validated['pickup_late_fee_cap_amount'] = null;
+        $validated['pickup_holding_fee_interval'] = 'day';
+
+        return $validated;
+    }
+
+    private function sanitizePickupWindows(?array $windows): ?array
+    {
+        if (!$windows) {
+            return null;
+        }
+
+        $clean = collect($windows)
+            ->map(function ($window) {
+                $day = (int) ($window['day'] ?? 0);
+                $start = (string) ($window['start'] ?? '');
+                $end = (string) ($window['end'] ?? '');
+
+                if ($day < 1 || $day > 7 || !preg_match('/^\d{2}:\d{2}$/', $start) || !preg_match('/^\d{2}:\d{2}$/', $end) || $start >= $end) {
+                    return null;
+                }
+
+                return [
+                    'day' => $day,
+                    'enabled' => (bool) ($window['enabled'] ?? true),
+                    'start' => $start,
+                    'end' => $end,
+                ];
+            })
+            ->filter()
+            ->sortBy([['day', 'asc'], ['start', 'asc']])
+            ->values()
+            ->all();
+
+        return $clean ?: null;
     }
 }
