@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/Card';
 import { Button } from '@/Components/ui/Button';
 import { Input } from '@/Components/ui/Input';
@@ -1117,6 +1117,25 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     outcomes: Array.isArray(p.module_details?.learning_outcomes) ? p.module_details.learning_outcomes : (p.service_details?.outcomes || []),
                     requirements: Array.isArray(p.module_details?.workshop_requirements) ? p.module_details.workshop_requirements : (p.service_details?.requirements || []),
                 });
+            } else if (p.module_key === 'online_live_events') {
+                setServiceTemplateKey('learning');
+                setServiceLocationType('remote');
+                setServiceDetails({
+                    ...(p.service_details || {}),
+                    ...(p.module_details || {}),
+                    workshop_format: p.module_details?.workshop_format || p.service_details?.workshop_format || 'webinar',
+                    delivery_channel: 'online_live_event',
+                    outcomes: Array.isArray(p.module_details?.learning_outcomes) ? p.module_details.learning_outcomes : (p.service_details?.outcomes || []),
+                    requirements: Array.isArray(p.module_details?.workshop_requirements) ? p.module_details.workshop_requirements : (p.service_details?.requirements || []),
+                });
+                setLiveEventStartsAt(p.live_event?.starts_at ? p.live_event.starts_at.slice(0, 16) : '');
+                setLiveEventDurationMinutes(String(p.live_event?.duration_minutes || p.module_details?.workshop_duration_minutes || 90));
+                setLiveEventTimezone(p.live_event?.timezone || merchantTimezone || 'Africa/Dar_es_Salaam');
+                setLiveEventAccessUrl(p.live_event?.access_url || '');
+                setLiveEventVenue(p.live_event?.venue || '');
+                setLiveEventCapacity(p.live_event?.capacity ? String(p.live_event.capacity) : '');
+                setLiveEventReplayUrl(p.live_event?.replay_url || '');
+                setLiveEventInstructions(p.live_event?.instructions || '');
             } else if (p.module_key === 'forwarders') {
                 setServiceTemplateKey('orderable_service');
                 setServiceDetails({
@@ -1781,7 +1800,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (servingLocations.length === 0) {
             return (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-800">
-                    Add a shop location in Settings when this service is tied to a specific branch. For now it remains available without a branch restriction.
+                    Add location in{' '}
+                    <Link
+                        href={`/merchant/${merchantUsername}/settings`}
+                        className="font-black text-brand-700 underline decoration-2 underline-offset-4 hover:text-brand-900"
+                    >
+                        Business Settings
+                    </Link>{' '}
+                    when this service is tied to a specific branch. For now it remains available without a branch restriction.
                 </div>
             );
         }
@@ -2766,6 +2792,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
     const activeUploadModule = getUploadModuleConfig(uploadModule);
     const isMenuUpload = activeUploadModule?.key === 'menu' && step === 'physical';
     const isModuleServiceUpload = step === 'service' && activeUploadModule?.type === 'service';
+    const isOnlineLiveEventService = isModuleServiceUpload && uploadModule === 'online_live_events';
+    const isLiveEventListing = (step === 'digital' && digitalDeliveryMode === 'live_event') || isOnlineLiveEventService;
     const useFocusedModuleServiceForm = isModuleServiceUpload && uploadModule !== 'forwarders';
     const showRoomDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'rooms' || selectedServiceTemplateKey === 'stay') && hasConcreteServiceSubtype;
     const showReservationDetailsForm = !useFocusedModuleServiceForm && step === 'service' && (uploadModule === 'reservations' || selectedServiceTemplateKey === 'space_booking') && hasConcreteServiceSubtype;
@@ -2796,6 +2824,79 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
         if (fulfillmentMode === 'group_sale' && (!groupSaleGoalQuantity || !groupSaleDeadline)) return 'Group sale inahitaji target quantity na deadline.';
         return '';
     })();
+
+    const renderLiveEventFields = () => (
+        <div className="animate-in fade-in space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Starts at</label>
+                    <Input
+                        type="datetime-local"
+                        value={liveEventStartsAt}
+                        onChange={(e) => setLiveEventStartsAt(e.target.value)}
+                        className="h-11 bg-white"
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Duration minutes</label>
+                    <Input
+                        type="number"
+                        min="1"
+                        value={liveEventDurationMinutes}
+                        onChange={(e) => setLiveEventDurationMinutes(e.target.value)}
+                        className="h-11 bg-white"
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Timezone</label>
+                    <select
+                        value={liveEventTimezone}
+                        onChange={(e) => setLiveEventTimezone(e.target.value)}
+                        className="h-11 w-full rounded-xl border border-blue-100 bg-white px-3 text-sm font-bold"
+                    >
+                        {liveEventTimezoneOptions.map((timezone) => (
+                            <option key={timezone} value={timezone}>{timezone}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Capacity (Attendee Limit)</label>
+                    <Input
+                        type="number"
+                        min="1"
+                        value={liveEventCapacity}
+                        onChange={(e) => setLiveEventCapacity(e.target.value)}
+                        placeholder="Optional"
+                        className="h-11 bg-white"
+                    />
+                </div>
+            </div>
+            <Input
+                value={liveEventAccessUrl}
+                onChange={(e) => setLiveEventAccessUrl(e.target.value)}
+                placeholder="Private Zoom/Google Meet/stream link"
+                className="h-11 bg-white"
+            />
+            <Input
+                value={liveEventVenue}
+                onChange={(e) => setLiveEventVenue(e.target.value)}
+                placeholder="Venue or physical location, optional"
+                className="h-11 bg-white"
+            />
+            <Input
+                value={liveEventReplayUrl}
+                onChange={(e) => setLiveEventReplayUrl(e.target.value)}
+                placeholder="Replay link after the event, optional"
+                className="h-11 bg-white"
+            />
+            <Textarea
+                value={liveEventInstructions}
+                onChange={(e) => setLiveEventInstructions(e.target.value)}
+                placeholder="Buyer instructions: agenda, preparation, workbook link, arrival notes..."
+                className="min-h-[96px] rounded-xl bg-white"
+            />
+        </div>
+    );
 
     const analyzeImageWithAI = async (imageUrl) => {
         setIsAnalyzing(true);
@@ -3366,6 +3467,16 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 toast.error('Tafadhali weka link ya booking.');
                 return;
             }
+            if (isOnlineLiveEventService) {
+                if (!liveEventStartsAt) {
+                    toast.error('Tafadhali weka muda wa live event/webinar.');
+                    return;
+                }
+                if (!liveEventAccessUrl) {
+                    toast.error('Weka meeting link ya online live event.');
+                    return;
+                }
+            }
         }
         if (!description) {
             toast.error('Tafadhali jaza maelezo ya bidhaa/huduma.');
@@ -3485,6 +3596,19 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     learning_outcomes: Array.isArray(serviceDetails.learning_outcomes) ? serviceDetails.learning_outcomes.filter(Boolean) : Array.isArray(serviceDetails.outcomes) ? serviceDetails.outcomes.filter(Boolean) : [],
                     workshop_requirements: Array.isArray(serviceDetails.workshop_requirements) ? serviceDetails.workshop_requirements.filter(Boolean) : Array.isArray(serviceDetails.requirements) ? serviceDetails.requirements.filter(Boolean) : [],
                     materials_included: Array.isArray(serviceDetails.materials_included) ? serviceDetails.materials_included.filter(Boolean) : [],
+                } : uploadModule === 'online_live_events' && step === 'service' ? {
+                    workshop_format: serviceDetails.workshop_format || 'webinar',
+                    delivery_channel: 'online_live_event',
+                    session_count: serviceDetails.session_count !== '' && serviceDetails.session_count !== undefined ? Number(serviceDetails.session_count || 1) : 1,
+                    workshop_duration_minutes: serviceDurationMinutes ? Number(serviceDurationMinutes) : Number(serviceDetails.workshop_duration_minutes || liveEventDurationMinutes || 90),
+                    workshop_capacity: liveEventCapacity !== '' ? Number(liveEventCapacity || 0) : (serviceDetails.workshop_capacity !== '' && serviceDetails.workshop_capacity !== undefined ? Number(serviceDetails.workshop_capacity || 0) : null),
+                    workshop_level: serviceDetails.workshop_level || 'All levels',
+                    enrollment_policy: serviceDetails.enrollment_policy || 'manual_confirm',
+                    workshop_location_mode: 'remote',
+                    workshop_start_note: serviceDetails.workshop_start_note || '',
+                    learning_outcomes: Array.isArray(serviceDetails.learning_outcomes) ? serviceDetails.learning_outcomes.filter(Boolean) : Array.isArray(serviceDetails.outcomes) ? serviceDetails.outcomes.filter(Boolean) : [],
+                    workshop_requirements: Array.isArray(serviceDetails.workshop_requirements) ? serviceDetails.workshop_requirements.filter(Boolean) : Array.isArray(serviceDetails.requirements) ? serviceDetails.requirements.filter(Boolean) : [],
+                    materials_included: Array.isArray(serviceDetails.materials_included) ? serviceDetails.materials_included.filter(Boolean) : [],
                 } : uploadModule === 'forwarders' && step === 'service' ? {
                     legal_name: serviceDetails.legal_name || '',
                     contact_person: serviceDetails.contact_person || '',
@@ -3529,14 +3653,14 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                         preview_size: item.preview_size || null,
                     }))
                     : null,
-                live_event_starts_at: (step === 'digital' && digitalDeliveryMode === 'live_event') ? liveEventStartsAt : null,
-                live_event_duration_minutes: (step === 'digital' && digitalDeliveryMode === 'live_event') ? Number(liveEventDurationMinutes || 0) || null : null,
-                live_event_timezone: (step === 'digital' && digitalDeliveryMode === 'live_event') ? liveEventTimezone : null,
-                live_event_access_url: (step === 'digital' && digitalDeliveryMode === 'live_event') ? liveEventAccessUrl : null,
-                live_event_venue: (step === 'digital' && digitalDeliveryMode === 'live_event') ? liveEventVenue : null,
-                live_event_capacity: (step === 'digital' && digitalDeliveryMode === 'live_event') ? Number(liveEventCapacity || 0) || null : null,
-                live_event_replay_url: (step === 'digital' && digitalDeliveryMode === 'live_event') ? liveEventReplayUrl : null,
-                live_event_instructions: (step === 'digital' && digitalDeliveryMode === 'live_event') ? liveEventInstructions : null,
+                live_event_starts_at: isLiveEventListing ? liveEventStartsAt : null,
+                live_event_duration_minutes: isLiveEventListing ? Number(liveEventDurationMinutes || 0) || null : null,
+                live_event_timezone: isLiveEventListing ? liveEventTimezone : null,
+                live_event_access_url: isLiveEventListing ? liveEventAccessUrl : null,
+                live_event_venue: isLiveEventListing ? liveEventVenue : null,
+                live_event_capacity: isLiveEventListing ? Number(liveEventCapacity || 0) || null : null,
+                live_event_replay_url: isLiveEventListing ? liveEventReplayUrl : null,
+                live_event_instructions: isLiveEventListing ? liveEventInstructions : null,
                 allow_download: (step === 'digital' && ['video_stream', 'audio_stream', 'gallery_pack'].includes(digitalDeliveryMode)) ? allowDigitalDownload : true,
                 url: step === 'digital'
                     ? (digitalDeliveryMode === 'link' ? url : null)
@@ -5479,76 +5603,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                     )}
 
                                     {digitalDeliveryMode === 'live_event' && (
-                                        <div className="animate-in fade-in space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
-                                            <div className="grid gap-3 sm:grid-cols-2">
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Starts at</label>
-                                                    <Input
-                                                        type="datetime-local"
-                                                        value={liveEventStartsAt}
-                                                        onChange={(e) => setLiveEventStartsAt(e.target.value)}
-                                                        className="h-11 bg-white"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Duration minutes</label>
-                                                    <Input
-                                                        type="number"
-                                                        min="1"
-                                                        value={liveEventDurationMinutes}
-                                                        onChange={(e) => setLiveEventDurationMinutes(e.target.value)}
-                                                        className="h-11 bg-white"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Timezone</label>
-                                                    <select
-                                                        value={liveEventTimezone}
-                                                        onChange={(e) => setLiveEventTimezone(e.target.value)}
-                                                        className="h-11 w-full rounded-xl border border-blue-100 bg-white px-3 text-sm font-bold"
-                                                    >
-                                                        {liveEventTimezoneOptions.map((timezone) => (
-                                                            <option key={timezone} value={timezone}>{timezone}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Capacity (Attendee Limit)</label>
-                                                    <Input
-                                                        type="number"
-                                                        min="1"
-                                                        value={liveEventCapacity}
-                                                        onChange={(e) => setLiveEventCapacity(e.target.value)}
-                                                        placeholder="Optional"
-                                                        className="h-11 bg-white"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <Input
-                                                value={liveEventAccessUrl}
-                                                onChange={(e) => setLiveEventAccessUrl(e.target.value)}
-                                                placeholder="Private Zoom/Google Meet/stream link"
-                                                className="h-11 bg-white"
-                                            />
-                                            <Input
-                                                value={liveEventVenue}
-                                                onChange={(e) => setLiveEventVenue(e.target.value)}
-                                                placeholder="Venue or physical location, optional"
-                                                className="h-11 bg-white"
-                                            />
-                                            <Input
-                                                value={liveEventReplayUrl}
-                                                onChange={(e) => setLiveEventReplayUrl(e.target.value)}
-                                                placeholder="Replay link after the event, optional"
-                                                className="h-11 bg-white"
-                                            />
-                                            <Textarea
-                                                value={liveEventInstructions}
-                                                onChange={(e) => setLiveEventInstructions(e.target.value)}
-                                                placeholder="Buyer instructions: agenda, preparation, workbook link, arrival notes..."
-                                                className="min-h-[96px] rounded-xl bg-white"
-                                            />
-                                        </div>
+                                        renderLiveEventFields()
                                     )}
 
                                     {digitalDeliveryMode === 'custom_delivery' && (
@@ -5995,6 +6050,7 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                                                 roomAvailabilityOptions={roomAvailabilityOptions}
                                                 roomBookingPolicyOptions={roomBookingPolicyOptions}
                                             />
+                                            {isOnlineLiveEventService && renderLiveEventFields()}
                                             {renderServingLocationSelector()}
                                         </>
                                     ) : (

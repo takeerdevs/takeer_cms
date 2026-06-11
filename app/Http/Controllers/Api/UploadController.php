@@ -79,7 +79,7 @@ class UploadController extends Controller
             $query->where('products.type', $type);
         }
 
-        if (in_array($module, ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops', 'forwarders'], true) && Schema::hasColumn('products', 'module_key')) {
+        if (in_array($module, ['menu', 'rooms', 'tour_departures', 'custom_orders', 'appointments', 'reservations', 'rentals', 'workshops', 'online_live_events', 'forwarders'], true) && Schema::hasColumn('products', 'module_key')) {
             $query->where('products.module_key', $module);
         }
 
@@ -721,7 +721,7 @@ class UploadController extends Controller
             'media_items.*.processing_status' => 'nullable|string|in:pending,processing,ready,failed',
             'type' => 'required|string|in:physical,digital,service',
             'selling_style' => 'nullable|string|in:retail,wholesale,both',
-            'module_key' => 'nullable|string|in:menu,rooms,tour_departures,custom_orders,appointments,reservations,rentals,workshops,forwarders',
+            'module_key' => 'nullable|string|in:menu,rooms,tour_departures,custom_orders,appointments,reservations,rentals,workshops,online_live_events,forwarders',
             'module_details' => 'nullable|array',
             'module_details.section' => 'nullable|string|max:80',
             'module_details.item_type' => 'nullable|string|max:80',
@@ -1390,6 +1390,8 @@ class UploadController extends Controller
         $digitalDeliveryType = $request->input('type') === 'digital'
             ? ($request->input('digital_delivery_type') ?: ($request->filled('url') ? 'external_link' : 'file'))
             : null;
+        $isServiceLiveEvent = $request->input('type') === 'service' && $request->input('module_key') === 'online_live_events';
+        $isLiveEventListing = ($request->input('type') === 'digital' && $digitalDeliveryType === 'live_event') || $isServiceLiveEvent;
         $paidVideoUrl = null;
         if ($request->input('type') === 'digital' && $digitalDeliveryType === 'video_stream') {
             if (!$request->filled('paid_video_url')) {
@@ -1423,6 +1425,13 @@ class UploadController extends Controller
                 return response()->json(['message' => 'Weka meeting link au venue ya tukio.'], 422);
             }
             $productUrl = null;
+        } elseif ($isServiceLiveEvent) {
+            if (!$request->filled('live_event_starts_at')) {
+                return response()->json(['message' => 'Tafadhali weka muda wa live event/webinar.'], 422);
+            }
+            if (!$request->filled('live_event_access_url')) {
+                return response()->json(['message' => 'Weka meeting link ya online live event.'], 422);
+            }
         } elseif ($request->input('type') === 'digital' && $digitalDeliveryType === 'custom_delivery') {
             if (! $request->filled('availability_lead_time_days')) {
                 return response()->json(['message' => 'Custom work inahitaji delivery deadline/turnaround days.'], 422);
@@ -1739,28 +1748,28 @@ class UploadController extends Controller
                 ? (int) $request->input('refund_window_days')
                 : ($request->input('type') === 'physical' ? 7 : null),
             'refund_policy_note' => $request->input('refund_policy_note') ?: null,
-            'live_event_starts_at' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+            'live_event_starts_at' => $isLiveEventListing
                 ? $request->input('live_event_starts_at')
                 : null,
-            'live_event_duration_minutes' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+            'live_event_duration_minutes' => $isLiveEventListing
                 ? ($request->input('live_event_duration_minutes') ?: null)
                 : null,
-            'live_event_timezone' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+            'live_event_timezone' => $isLiveEventListing
                 ? ($request->input('live_event_timezone') ?: config('app.timezone'))
                 : null,
-            'live_event_access_url' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+            'live_event_access_url' => $isLiveEventListing
                 ? ($request->input('live_event_access_url') ?: null)
                 : null,
-            'live_event_venue' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+            'live_event_venue' => $isLiveEventListing
                 ? ($request->input('live_event_venue') ?: null)
                 : null,
-            'live_event_capacity' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+            'live_event_capacity' => $isLiveEventListing
                 ? ($request->input('live_event_capacity') ?: null)
                 : null,
-            'live_event_replay_url' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+            'live_event_replay_url' => $isLiveEventListing
                 ? ($request->input('live_event_replay_url') ?: null)
                 : null,
-            'live_event_instructions' => $request->input('type') === 'digital' && $digitalDeliveryType === 'live_event'
+            'live_event_instructions' => $isLiveEventListing
                 ? ($request->input('live_event_instructions') ?: null)
                 : null,
             'service_pricing_model' => $servicePricingModel,
@@ -1812,6 +1821,7 @@ class UploadController extends Controller
                 $requestedModule === 'reservations' && $request->input('type') === 'service' => 'reservations',
                 $requestedModule === 'rentals' && $request->input('type') === 'service' => 'rentals',
                 $requestedModule === 'workshops' && $request->input('type') === 'service' => 'workshops',
+                $requestedModule === 'online_live_events' && $request->input('type') === 'service' => 'online_live_events',
                 $requestedModule === 'forwarders' && $request->input('type') === 'service' => 'forwarders',
                 default => null,
             };
@@ -1824,6 +1834,7 @@ class UploadController extends Controller
                 'reservations' => $this->sanitizeReservationModuleDetails($request->input('module_details', [])),
                 'rentals' => $this->sanitizeRentalModuleDetails($request->input('module_details', [])),
                 'workshops' => $this->sanitizeWorkshopModuleDetails($request->input('module_details', [])),
+                'online_live_events' => $this->sanitizeWorkshopModuleDetails($request->input('module_details', [])),
                 'forwarders' => $this->sanitizeForwarderModuleDetails($request->input('module_details', [])),
                 default => null,
             };
@@ -2971,6 +2982,9 @@ class UploadController extends Controller
             'workshop_format' => in_array($format, ['live_session', 'bootcamp', 'seminar', 'webinar', 'cohort', 'private_group'], true)
                 ? $format
                 : 'live_session',
+            'delivery_channel' => ($details['delivery_channel'] ?? null) === 'online_live_event'
+                ? 'online_live_event'
+                : null,
             'session_count' => isset($details['session_count']) && $details['session_count'] !== ''
                 ? max(1, min(1000, (int) $details['session_count']))
                 : 1,

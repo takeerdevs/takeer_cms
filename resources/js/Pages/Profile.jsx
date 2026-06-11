@@ -1419,6 +1419,15 @@ export default function Profile({
                                                     </span>
                                                 </div>
                                             </div>
+                                            <div className="pt-2">
+                                                <Link
+                                                    href="/profile/settings"
+                                                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 shadow-sm transition-colors hover:bg-white"
+                                                >
+                                                    <span>Mipangilio ya Wasifu</span>
+                                                    <ChevronRight className="h-4 w-4 text-slate-500" />
+                                                </Link>
+                                            </div>
                                         </div>
                                     </motion.div>
                                 )}

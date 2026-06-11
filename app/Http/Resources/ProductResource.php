@@ -106,7 +106,9 @@ class ProductResource extends JsonResource
             && $digitalDeliveryType === 'gallery_pack'
             && $canExposeDigitalDelivery
             && $galleryItems->isNotEmpty();
-        $isLiveEvent = $this->type === 'digital' && $digitalDeliveryType === 'live_event';
+        $isServiceLiveEvent = $this->type === 'service' && ($this->module_key ?? null) === 'online_live_events';
+        $isLiveEvent = ($this->type === 'digital' && $digitalDeliveryType === 'live_event') || $isServiceLiveEvent;
+        $canExposeLiveEventDelivery = $this->type === 'digital' ? $canExposeDigitalDelivery : $isOwner;
         $canReadDocument = $this->type === 'digital'
             && $canExposeDigitalDelivery
             && $digitalDeliveryType === 'file'
@@ -489,11 +491,11 @@ class ProductResource extends JsonResource
                 'capacity' => $this->live_event_capacity !== null ? (int) $this->live_event_capacity : null,
                 'seats_sold' => $this->live_event_capacity ? $this->liveEventSeatsSold() : null,
                 'seats_remaining' => $this->live_event_capacity ? $this->liveEventSeatsRemaining() : null,
-                'venue' => $canExposeDigitalDelivery ? $this->live_event_venue : null,
-                'access_url' => $canExposeDigitalDelivery ? $this->live_event_access_url : null,
-                'replay_url' => $canExposeDigitalDelivery ? $this->live_event_replay_url : null,
-                'instructions' => $canExposeDigitalDelivery ? $this->live_event_instructions : null,
-                'has_access' => (bool) $canExposeDigitalDelivery,
+                'venue' => $canExposeLiveEventDelivery ? $this->live_event_venue : null,
+                'access_url' => $canExposeLiveEventDelivery ? $this->live_event_access_url : null,
+                'replay_url' => $canExposeLiveEventDelivery ? $this->live_event_replay_url : null,
+                'instructions' => $canExposeLiveEventDelivery ? $this->live_event_instructions : null,
+                'has_access' => (bool) $canExposeLiveEventDelivery,
             ] : null,
             'paid_video_url' => $isOwner ? $this->paid_video_url : null,
             'paid_audio_url' => $isOwner ? $this->paid_audio_url : null,
