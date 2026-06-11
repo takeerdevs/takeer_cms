@@ -108,13 +108,8 @@ class MerchantLocationController extends Controller
             'pickup_available_windows.*.start' => 'required_with:pickup_available_windows|date_format:H:i',
             'pickup_available_windows.*.end' => 'required_with:pickup_available_windows|date_format:H:i',
             'pickup_instructions' => 'nullable|string|max:2000',
-            'pickup_holding_fee_enabled' => 'boolean',
-            'pickup_late_fee_type' => 'nullable|string|in:fixed,hourly',
-            'pickup_holding_fee_amount' => 'nullable|numeric|min:0',
-            'pickup_late_fee_cap_amount' => 'nullable|numeric|min:0',
             'pickup_cancellation_penalty_percent' => 'nullable|numeric|min:0|max:100',
-            'pickup_holding_fee_interval' => 'nullable|string|in:hour,day,week',
-            'pickup_max_holding_days' => 'nullable|integer|min:0|max:365',
+            'pickup_advance_days' => 'nullable|integer|min:0|max:365',
             'contact_phone' => 'nullable|string|max:50',
             'type' => 'nullable|string',
         ]);
@@ -185,13 +180,8 @@ class MerchantLocationController extends Controller
             'pickup_available_windows.*.start' => 'required_with:pickup_available_windows|date_format:H:i',
             'pickup_available_windows.*.end' => 'required_with:pickup_available_windows|date_format:H:i',
             'pickup_instructions' => 'nullable|string|max:2000',
-            'pickup_holding_fee_enabled' => 'boolean',
-            'pickup_late_fee_type' => 'nullable|string|in:fixed,hourly',
-            'pickup_holding_fee_amount' => 'nullable|numeric|min:0',
-            'pickup_late_fee_cap_amount' => 'nullable|numeric|min:0',
             'pickup_cancellation_penalty_percent' => 'nullable|numeric|min:0|max:100',
-            'pickup_holding_fee_interval' => 'nullable|string|in:hour,day,week',
-            'pickup_max_holding_days' => 'nullable|integer|min:0|max:365',
+            'pickup_advance_days' => 'nullable|integer|min:0|max:365',
             'contact_phone' => 'nullable|string|max:50',
             'type' => 'nullable|string',
         ]);
@@ -263,11 +253,6 @@ class MerchantLocationController extends Controller
 
         $validated['pickup_hold_hours'] = 2;
         $validated['pickup_grace_hours'] = 0;
-        $validated['pickup_holding_fee_enabled'] = false;
-        $validated['pickup_late_fee_type'] = 'fixed';
-        $validated['pickup_holding_fee_amount'] = null;
-        $validated['pickup_late_fee_cap_amount'] = null;
-        $validated['pickup_holding_fee_interval'] = 'day';
 
         return $validated;
     }

@@ -12,17 +12,13 @@ return new class extends Migration {
             $table->unsignedInteger('pickup_grace_hours')->default(12)->after('pickup_hold_hours');
             $table->json('pickup_available_windows')->nullable()->after('pickup_grace_hours');
             $table->text('pickup_instructions')->nullable()->after('pickup_available_windows');
-            $table->boolean('pickup_holding_fee_enabled')->default(false)->after('pickup_instructions');
-            $table->decimal('pickup_holding_fee_amount', 12, 2)->nullable()->after('pickup_holding_fee_enabled');
-            $table->string('pickup_holding_fee_interval')->default('day')->after('pickup_holding_fee_amount');
-            $table->unsignedInteger('pickup_max_holding_days')->default(2)->after('pickup_holding_fee_interval');
+            $table->unsignedInteger('pickup_advance_days')->default(2)->after('pickup_instructions');
         });
 
         Schema::table('products', function (Blueprint $table) {
             $table->unsignedInteger('pickup_hold_hours_override')->nullable()->after('availability_lead_time_days');
             $table->boolean('pickup_extension_allowed')->default(true)->after('pickup_hold_hours_override');
-            $table->boolean('pickup_holding_fee_allowed')->default(true)->after('pickup_extension_allowed');
-            $table->text('pickup_policy_note')->nullable()->after('pickup_holding_fee_allowed');
+            $table->text('pickup_policy_note')->nullable()->after('pickup_extension_allowed');
         });
 
         Schema::table('orders', function (Blueprint $table) {
@@ -36,11 +32,6 @@ return new class extends Migration {
             $table->unsignedInteger('pickup_extension_count')->default(0)->after('pickup_policy_snapshot');
             $table->timestamp('pickup_no_show_marked_at')->nullable()->after('pickup_extension_count');
             $table->text('pickup_no_show_reason')->nullable()->after('pickup_no_show_marked_at');
-            $table->string('holding_fee_status')->nullable()->after('pickup_no_show_reason');
-            $table->decimal('holding_fee_amount', 12, 2)->nullable()->after('holding_fee_status');
-            $table->timestamp('holding_fee_started_at')->nullable()->after('holding_fee_amount');
-            $table->timestamp('holding_fee_accepted_at')->nullable()->after('holding_fee_started_at');
-
             $table->index(['pickup_status', 'pickup_deadline_at']);
         });
     }
@@ -61,10 +52,6 @@ return new class extends Migration {
                 'pickup_extension_count',
                 'pickup_no_show_marked_at',
                 'pickup_no_show_reason',
-                'holding_fee_status',
-                'holding_fee_amount',
-                'holding_fee_started_at',
-                'holding_fee_accepted_at',
             ]);
         });
 
@@ -72,7 +59,6 @@ return new class extends Migration {
             $table->dropColumn([
                 'pickup_hold_hours_override',
                 'pickup_extension_allowed',
-                'pickup_holding_fee_allowed',
                 'pickup_policy_note',
             ]);
         });
@@ -83,10 +69,7 @@ return new class extends Migration {
                 'pickup_grace_hours',
                 'pickup_available_windows',
                 'pickup_instructions',
-                'pickup_holding_fee_enabled',
-                'pickup_holding_fee_amount',
-                'pickup_holding_fee_interval',
-                'pickup_max_holding_days',
+                'pickup_advance_days',
             ]);
         });
     }

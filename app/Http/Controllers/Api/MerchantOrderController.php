@@ -32,6 +32,7 @@ class MerchantOrderController extends Controller
 {
     private const PICKUP_PIN_MAX_ATTEMPTS = 5;
     private const PICKUP_PIN_DECAY_SECONDS = 600;
+    private const INTERNAL_PAYMENT_PURCHASABLE_TYPES = ['extra_charge', 'pickup_delivery_fee'];
 
     private const DELIVERY_STATUSES = [
         'packing',
@@ -61,6 +62,7 @@ class MerchantOrderController extends Controller
         $query = Order::with(['buyer', 'product.unitType', 'variant', 'returnRequest'])
             ->where('merchant_id', $merchant->id)
             ->latest();
+        $this->scopePrimaryOrders($query);
 
         // Optional status filter
         if ($request->filled('status')) {
@@ -81,6 +83,8 @@ class MerchantOrderController extends Controller
         $orders = $query->paginate($perPage);
         $orders->getCollection()->transform(function (Order $order) use ($merchantCurrencyCode) {
             $display = $this->resolveDisplay($order);
+            $additionalPaidTotal = $this->additionalPaidTotal($order);
+            $orderTotalWithAdditions = (float) $order->total_paid + $additionalPaidTotal;
 
             return [
                 'id' => $order->id,
@@ -91,6 +95,8 @@ class MerchantOrderController extends Controller
                 'requested_quantity' => $order->requested_quantity !== null ? (float) $order->requested_quantity : (float) $order->quantity,
                 'unit_snapshot' => $order->unit_snapshot,
                 'total_paid' => $order->total_paid,
+                'additional_paid_total' => $additionalPaidTotal,
+                'order_total_with_additions' => $orderTotalWithAdditions,
                 'merchant_currency_code' => $order->merchant_currency_code ?: $merchantCurrencyCode,
                 'customer_currency_code' => $order->customer_currency_code,
                 'customer_total_amount' => $order->customer_total_amount !== null ? (float) $order->customer_total_amount : null,
@@ -126,6 +132,7 @@ class MerchantOrderController extends Controller
                 'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
                 'is_merchant_confirmed' => $order->merchant_confirmed_at !== null,
                 'shipping_fee' => $order->shipping_fee !== null ? (float) $order->shipping_fee : null,
+                'extra_charges' => $this->extraChargesPayload($order),
                 'return_request' => $order->returnRequest ? $this->returnRequestPayload($order->returnRequest) : null,
             ];
         });
@@ -151,6 +158,7 @@ class MerchantOrderController extends Controller
     public function summary(Request $request, Merchant $merchant): JsonResponse
     {
         $base = Order::where('merchant_id', $merchant->id);
+        $this->scopePrimaryOrders($base);
 
         return response()->json([
             'total' => (clone $base)->count(),
@@ -177,6 +185,7 @@ class MerchantOrderController extends Controller
 
         $today = today();
         $orderBase = Order::where('merchant_id', $merchant->id);
+        $this->scopePrimaryOrders($orderBase);
         $todayOrders = (clone $orderBase)->whereDate('created_at', $today);
 
         $sectionTotals = fn($query) => [
@@ -268,6 +277,7 @@ class MerchantOrderController extends Controller
     {
         abort_unless($merchant->user_id === $request->user()->id, 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
+        abort_if($this->isInternalPaymentOrder($order), 404);
 
         $merchant->loadMissing('currency');
         $merchantCurrencyCode = $merchant->currency?->code ?: 'TZS';
@@ -277,6 +287,7 @@ class MerchantOrderController extends Controller
             : null;
         $display = $this->resolveDisplay($order);
         $deliveryType = $this->normalizeDeliveryType($order->delivery?->delivery_type ?? $order->delivery?->shippingZone?->delivery_type);
+        $additionalPaidTotal = $this->additionalPaidTotal($order);
 
         return response()->json([
             'id' => $order->id,
@@ -288,6 +299,8 @@ class MerchantOrderController extends Controller
             'unit_snapshot' => $order->unit_snapshot,
             'unit_price' => $order->unit_price,
             'total_paid' => $order->total_paid,
+            'additional_paid_total' => $additionalPaidTotal,
+            'order_total_with_additions' => (float) $order->total_paid + $additionalPaidTotal,
             'merchant_currency_code' => $order->merchant_currency_code ?: $merchantCurrencyCode,
             'customer_currency_code' => $order->customer_currency_code,
             'customer_total_amount' => $order->customer_total_amount !== null ? (float) $order->customer_total_amount : null,
@@ -329,12 +342,7 @@ class MerchantOrderController extends Controller
             'pickup_extension_count' => (int) $order->pickup_extension_count,
             'pickup_no_show_marked_at' => $order->pickup_no_show_marked_at?->toISOString(),
             'pickup_no_show_reason' => $order->pickup_no_show_reason,
-            'holding_fee_status' => $order->holding_fee_status,
-            'holding_fee_amount' => $order->holding_fee_amount !== null ? (float) $order->holding_fee_amount : null,
-            'holding_fee_payment_order_id' => $order->holding_fee_payment_order_id,
-            'holding_fee_started_at' => $order->holding_fee_started_at?->toISOString(),
-            'holding_fee_accepted_at' => $order->holding_fee_accepted_at?->toISOString(),
-            'holding_fee_paid_at' => $order->holding_fee_paid_at?->toISOString(),
+            'extra_charges' => $this->extraChargesPayload($order),
             'pickup_cancellation_penalty_percent' => $order->pickup_cancellation_penalty_percent !== null ? (float) $order->pickup_cancellation_penalty_percent : null,
             'pickup_cancellation_penalty_amount' => $order->pickup_cancellation_penalty_amount !== null ? (float) $order->pickup_cancellation_penalty_amount : null,
             'pickup_cancellation_refund_amount' => $order->pickup_cancellation_refund_amount !== null ? (float) $order->pickup_cancellation_refund_amount : null,
@@ -1102,7 +1110,7 @@ class MerchantOrderController extends Controller
         );
 
         abort_unless(
-            $order->merchant_confirmed_at && $order->pickup_status === 'ready_for_pickup',
+            $order->merchant_confirmed_at && $this->isPickupReadyForRelease($order),
             422,
             'Confirm stock and pickup availability before releasing this order.'
         );
@@ -1204,6 +1212,7 @@ class MerchantOrderController extends Controller
             'decision' => 'required|string|in:approved,rejected',
             'approved_deadline_at' => 'nullable|date|after:now',
             'note' => 'nullable|string|max:1000',
+            'extension_id' => 'nullable|string|max:80',
         ]);
 
         $updated = app(PickupAgreementService::class)->resolveExtension(
@@ -1211,7 +1220,8 @@ class MerchantOrderController extends Controller
             $request->user()->id,
             $validated['decision'],
             !empty($validated['approved_deadline_at']) ? Carbon::parse($validated['approved_deadline_at']) : null,
-            $validated['note'] ?? null
+            $validated['note'] ?? null,
+            $validated['extension_id'] ?? null
         );
 
         return response()->json([
@@ -1220,25 +1230,41 @@ class MerchantOrderController extends Controller
         ]);
     }
 
-    public function proposePickupHoldingFee(Request $request, Merchant $merchant, Order $order): JsonResponse
+    public function proposePickupExtraCharge(Request $request, Merchant $merchant, Order $order): JsonResponse
     {
         abort_unless($this->canOperateMerchant($request, $merchant), 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
 
         $validated = $request->validate([
-            'amount' => 'nullable|numeric|min:0',
+            'amount' => 'required|numeric|min:0.01',
             'note' => 'nullable|string|max:1000',
         ]);
 
-        $updated = app(PickupAgreementService::class)->proposeHoldingFee(
+        $updated = app(PickupAgreementService::class)->proposeExtraCharge(
             $order,
             $request->user()->id,
-            $request->filled('amount') ? (float) $validated['amount'] : null,
+            (float) $validated['amount'],
             $validated['note'] ?? null
         );
 
         return response()->json([
-            'message' => 'Holding fee proposal sent.',
+            'message' => 'Extra charge proposal sent.',
+            'order' => $updated->fresh(['buyer', 'product', 'variant', 'delivery.events.actor']),
+        ]);
+    }
+
+    public function removePickupExtraCharge(Request $request, Merchant $merchant, Order $order): JsonResponse
+    {
+        abort_unless($this->canOperateMerchant($request, $merchant), 403);
+        abort_unless($order->merchant_id === $merchant->id, 404);
+
+        $updated = app(PickupAgreementService::class)->removeExtraChargeProposal(
+            $order,
+            $request->user()->id
+        );
+
+        return response()->json([
+            'message' => 'Extra cost proposal removed.',
             'order' => $updated->fresh(['buyer', 'product', 'variant', 'delivery.events.actor']),
         ]);
     }
@@ -1298,14 +1324,16 @@ class MerchantOrderController extends Controller
 
         $code = strtoupper(trim((string) $validated['code']));
 
-        $order = Order::query()
+        $lookup = Order::query()
             ->with(['buyer:id,name,phone_number', 'product:id,title,type,url,download_link', 'product.images', 'variant:id,name,swatch_image_url', 'delivery'])
             ->where('merchant_id', $merchant->id)
             ->where(function ($query) use ($code) {
                 $query->where('public_id', $code)
                     ->orWhere('transaction_ref', $code)
                     ->orWhere('pickup_code', $code);
-            })
+            });
+        $this->scopePrimaryOrders($lookup);
+        $order = $lookup
             ->orderByRaw("CASE payment_status WHEN 'awaiting_merchant_confirmation' THEN 0 WHEN 'escrow_locked' THEN 1 WHEN 'shipped' THEN 2 WHEN 'pending' THEN 3 ELSE 4 END")
             ->latest()
             ->first();
@@ -1336,15 +1364,17 @@ class MerchantOrderController extends Controller
         $deliveryType = $order->delivery?->delivery_type;
         $isPickup = $deliveryType === 'self_pickup' || filled($order->delivery?->pickup_pin);
         $isPaidForRelease = in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true);
+        $additionalPaidTotal = $this->additionalPaidTotal($order);
         $canVerifyPickup = $isPickup
             && $isPaidForRelease
             && $order->merchant_confirmed_at
-            && $order->pickup_status === 'ready_for_pickup'
+            && $this->isPickupReadyForRelease($order)
             && $order->delivery?->pickup_pin;
         $amountPaid = $isPaidForRelease || in_array($order->payment_status, ['shipped', 'disputed', 'resolved_merchant_paid'], true)
-            ? (float) $order->total_paid
+            ? (float) $order->total_paid + $additionalPaidTotal
             : 0.0;
-        $amountRemaining = max(0, (float) $order->total_paid - $amountPaid);
+        $amountTotal = (float) $order->total_paid + $additionalPaidTotal;
+        $amountRemaining = max(0, $amountTotal - $amountPaid);
 
         return [
             'id' => $order->id,
@@ -1358,7 +1388,9 @@ class MerchantOrderController extends Controller
                 ? 'awaiting_pickup'
                 : $order->delivery?->delivery_status,
             'total_paid' => (float) $order->total_paid,
-            'amount_total' => (float) $order->total_paid,
+            'additional_paid_total' => $additionalPaidTotal,
+            'order_total_with_additions' => $amountTotal,
+            'amount_total' => $amountTotal,
             'amount_paid' => $amountPaid,
             'amount_remaining' => $amountRemaining,
             'quantity' => (float) ($order->quantity ?: 1),
@@ -1454,11 +1486,83 @@ class MerchantOrderController extends Controller
             return 'Pickup PIN is not available for this order.';
         }
 
-        if (! $order->merchant_confirmed_at || $order->pickup_status !== 'ready_for_pickup') {
+        if (! $order->merchant_confirmed_at || ! $this->isPickupReadyForRelease($order)) {
             return 'Confirm stock and pickup availability before releasing this order.';
         }
 
         return 'This order cannot be released from this code right now.';
+    }
+
+    private function isPickupReadyForRelease(Order $order): bool
+    {
+        return $order->pickup_status === 'ready_for_pickup';
+    }
+
+    private function additionalPaidTotal(Order $order): float
+    {
+        return (float) Order::query()
+            ->where(function ($query) use ($order) {
+                $query->where(function ($legacy) use ($order) {
+                    $legacy->where('purchasable_id', $order->id)
+                        ->where('purchasable_type', 'pickup_delivery_fee');
+                })->orWhere(function ($extraCharge) use ($order) {
+                    $extraCharge->where('purchasable_type', 'extra_charge')
+                        ->where('extra_items->parent_order_id', $order->id);
+                });
+            })
+            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->sum('total_paid');
+    }
+
+    private function scopePrimaryOrders($query)
+    {
+        return $query
+            ->where(function ($orders) {
+                $orders->whereNull('purchasable_type')
+                    ->orWhereNotIn('purchasable_type', self::INTERNAL_PAYMENT_PURCHASABLE_TYPES);
+            })
+            ->where(function ($orders) {
+                $orders->whereNull('transaction_ref')
+                    ->orWhere('transaction_ref', 'not like', 'EXTRA-%');
+            });
+    }
+
+    private function isInternalPaymentOrder(Order $order): bool
+    {
+        return in_array($order->purchasable_type, self::INTERNAL_PAYMENT_PURCHASABLE_TYPES, true)
+            || str_starts_with((string) $order->transaction_ref, 'EXTRA-');
+    }
+
+    private function extraChargesPayload(Order $order): array
+    {
+        if (! $order->id) {
+            return [];
+        }
+
+        return \App\Models\ExtraCharge::query()
+            ->where('order_id', $order->id)
+            ->latest()
+            ->get()
+            ->map(fn ($charge) => [
+                'id' => $charge->id,
+                'public_id' => $charge->public_id,
+                'payment_order_id' => $charge->payment_order_id,
+                'context' => $charge->context,
+                'charge_type' => $charge->charge_type,
+                'title' => $charge->title,
+                'description' => $charge->description,
+                'amount' => (float) $charge->amount,
+                'currency_code' => $charge->currency_code,
+                'status' => $charge->status,
+                'proposed_at' => $charge->proposed_at?->toISOString(),
+                'accepted_at' => $charge->accepted_at?->toISOString(),
+                'paid_at' => $charge->paid_at?->toISOString(),
+                'removed_at' => $charge->removed_at?->toISOString(),
+                'rejected_at' => $charge->rejected_at?->toISOString(),
+                'cancelled_at' => $charge->cancelled_at?->toISOString(),
+            ])
+            ->values()
+            ->all();
     }
 
     private function canOperateMerchant(Request $request, Merchant $merchant): bool

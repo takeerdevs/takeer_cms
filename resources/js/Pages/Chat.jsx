@@ -569,7 +569,9 @@ export default function Chat({
     const [pickupActionForm, setPickupActionForm] = useState(null);
     const [pickupExtensionDeadline, setPickupExtensionDeadline] = useState('');
     const [pickupExtensionReason, setPickupExtensionReason] = useState('');
-    const [holdingFeePaymentNumber, setHoldingFeePaymentNumber] = useState('');
+    const [extraChargeAmount, setExtraChargeAmount] = useState('');
+    const [extraChargeNote, setExtraChargeNote] = useState('');
+    const [extraChargePaymentNumber, setExtraChargePaymentNumber] = useState('');
     const [conversionAddress, setConversionAddress] = useState('');
     const [conversionNote, setConversionNote] = useState('');
     const [conversionQuoteFee, setConversionQuoteFee] = useState('');
@@ -1340,20 +1342,20 @@ export default function Chat({
         }
     };
 
-    const runPickupAgreementAction = async (endpoint, payload = {}, successMessage = 'Pickup agreement updated.') => {
+    const runPickupAgreementAction = async (endpoint, payload = {}, successMessage = 'Pickup agreement updated.', method = 'POST') => {
         if (pickupActionSubmitting) return;
 
         setPickupActionSubmitting(true);
         try {
             const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
             const res = await fetch(endpoint, {
-                method: 'POST',
+                method,
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': token || ''
                 },
-                body: JSON.stringify(payload)
+                body: method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(payload)
             });
 
             const data = await res.json();
@@ -1377,8 +1379,8 @@ export default function Chat({
             setPickupExtensionDeadline(defaultDate.toISOString().slice(0, 16));
             setPickupExtensionReason('');
         }
-        if (form === 'holding_fee_payment') {
-            setHoldingFeePaymentNumber(order?.payment_phone || order?.account_phone || auth.user?.phone_number || '');
+        if (form === 'extra_charge_payment') {
+            setExtraChargePaymentNumber(order?.payment_phone || order?.account_phone || auth.user?.phone_number || '');
         }
         if (form === 'delivery_conversion_request') {
             setConversionAddress(order?.delivery?.physical_address || '');
@@ -1392,6 +1394,20 @@ export default function Chat({
             setConversionPaymentNumber(order?.payment_phone || order?.account_phone || auth.user?.phone_number || '');
         }
         setPickupActionForm(form);
+    };
+
+    const prepareExtraChargeForm = () => {
+        const activeFee = order?.pickup_policy_snapshot?.active_extra_charge || {};
+        const policyAmount = activeFee?.amount || '';
+        setExtraChargeAmount(policyAmount ? String(policyAmount) : '');
+        setExtraChargeNote(activeFee?.note || '');
+    };
+
+    const openExtraChargeForm = () => {
+        prepareExtraChargeForm();
+        setActionPayload({ title: activeExtraCharge?.status === 'proposed' ? 'Update Extra Charge' : 'Extra Charge' });
+        setActiveAction('extra_charge');
+        setIsActionDrawerOpen(true);
     };
 
     const requestPickupExtension = async (event) => {
@@ -1461,7 +1477,7 @@ export default function Chat({
         setPickupActionForm(null);
     };
 
-    const resolvePickupExtension = async (decision) => {
+    const resolvePickupExtension = async (decision, extensionId = null) => {
         const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
         if (!merchantUsername) {
             toast.error('Merchant haijapatikana kwa order hii.');
@@ -1470,6 +1486,7 @@ export default function Chat({
 
         const pending = order?.pickup_policy_snapshot?.pending_extension || {};
         const payload = { decision };
+        if (extensionId) payload.extension_id = extensionId;
 
         if (decision === 'approved') {
             const suggested = pending.requested_deadline_at
@@ -1496,29 +1513,44 @@ export default function Chat({
         );
     };
 
-    const proposeHoldingFee = async () => {
+    const proposeExtraCharge = async (event) => {
+        event?.preventDefault();
         const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
         if (!merchantUsername) {
             toast.error('Merchant haijapatikana kwa order hii.');
             return;
         }
 
-        const policyAmount = order?.pickup_policy_snapshot?.late_fee_amount || order?.pickup_policy_snapshot?.holding_fee_amount || order?.holding_fee_amount || '';
-        const amountInput = window.prompt('Weka gharama ya ziada mliyokubaliana kwenye chat:', policyAmount ? String(policyAmount) : '');
-        if (amountInput === null) return;
-
-        const amount = Number(String(amountInput).replace(/,/g, ''));
+        const amount = Number(String(extraChargeAmount).replace(/,/g, ''));
         if (!Number.isFinite(amount) || amount <= 0) {
             toast.error('Tafadhali weka kiwango sahihi.');
             return;
         }
 
-        const note = window.prompt('Maelezo mafupi ya gharama hii? (hiari)', '') || '';
         await runPickupAgreementAction(
-            `/api/merchant/${merchantUsername}/orders/${orderId}/holding-fee`,
-            { amount, note },
+            `/api/merchant/${merchantUsername}/orders/${orderId}/extra-charges`,
+            { amount, note: extraChargeNote.trim() },
             'Gharama ya ziada imetumwa kwa mteja.'
         );
+        setPickupActionForm(null);
+        setActiveAction(null);
+    };
+
+    const removeExtraCharge = async () => {
+        const merchantUsername = order?.merchant?.username || order?.product?.merchant?.username;
+        if (!merchantUsername) {
+            toast.error('Merchant haijapatikana kwa order hii.');
+            return;
+        }
+
+        await runPickupAgreementAction(
+            `/api/merchant/${merchantUsername}/orders/${orderId}/extra-charges`,
+            {},
+            'Gharama ya ziada imeondolewa.',
+            'DELETE'
+        );
+        setPickupActionForm(null);
+        setActiveAction(null);
     };
 
     const cancelPickupAfterGrace = async () => {
@@ -1536,16 +1568,19 @@ export default function Chat({
         );
     };
 
-    const acceptHoldingFee = async (event) => {
+    const acceptExtraCharge = async (event) => {
         event?.preventDefault();
-        if (!holdingFeePaymentNumber.trim()) {
+        if (!extraChargePaymentNumber.trim()) {
             toast.error('Weka namba ya malipo.');
             return;
         }
 
         await runPickupAgreementAction(
-            `/api/buyer/orders/${orderId}/holding-fee/accept`,
-            { payment_number: holdingFeePaymentNumber.trim() },
+            `/api/buyer/orders/${orderId}/extra-charges/accept`,
+            {
+                payment_number: extraChargePaymentNumber.trim(),
+                proposal_id: order?.pickup_policy_snapshot?.active_extra_charge?.id,
+            },
             'Extra cost payment request imetumwa.'
         );
         setPickupActionForm(null);
@@ -1704,6 +1739,9 @@ export default function Chat({
     const hasPhysicalOrderItems = orderItems.some((item) => isPhysicalDealItem(item, order));
     const isSelfPickupOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'self_pickup';
     const pickupSnapshot = order?.pickup_policy_snapshot || {};
+    const activeExtraCharge = pickupSnapshot?.active_extra_charge || null;
+    const orderDisplayTotal = Number(order?.order_total_with_additions ?? order?.total_paid ?? 0);
+    const pickupReadyForRelease = order?.pickup_status === 'ready_for_pickup';
     const pendingPickupExtension = pickupSnapshot?.pending_extension;
     const pickupDeadlineAt = order?.pickup_deadline_at ? new Date(order.pickup_deadline_at) : null;
     const pickupDeadlinePassed = Boolean(pickupDeadlineAt && pickupDeadlineAt.getTime() <= nowMs);
@@ -1737,21 +1775,23 @@ export default function Chat({
         && !hasPendingPickupExtension
         && (pickupSnapshot?.extension_allowed ?? true) !== false;
     const canResolvePickupExtension = actingAs === 'merchant' && hasPendingPickupExtension && !pickupClosed;
-    const canProposeHoldingFee = actingAs === 'merchant'
+    const canProposeExtraCharge = actingAs === 'merchant'
         && isSelfPickupOrder
         && pickupPaid
-        && pickupDeadlinePassed
+        && !pickupClosed;
+    const canRemoveExtraCharge = actingAs === 'merchant'
+        && isSelfPickupOrder
         && !pickupClosed
-        && !['proposed', 'payment_pending', 'paid_held', 'accepted'].includes(order?.holding_fee_status);
+        && activeExtraCharge?.status === 'proposed';
     const canCancelPickupAfterGrace = actingAs === 'merchant'
         && isSelfPickupOrder
         && pickupPaid
         && pickupDeadlinePassed
         && !pickupClosed;
-    const canAcceptHoldingFee = actingAs === 'buyer'
+    const canAcceptExtraCharge = actingAs === 'buyer'
         && isSelfPickupOrder
         && !pickupClosed
-        && order?.holding_fee_status === 'proposed';
+        && activeExtraCharge?.status === 'proposed';
     const isForwarderOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'forwarder';
     const isIntercityOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'intercity_bus';
     const isLocalDeliveryOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'local_boda';
@@ -1781,18 +1821,18 @@ export default function Chat({
             report: 'RIPOTI TATIZO',
         }
         : isIntercityOrder
-        ? {
-            title: 'Thibitisha Pickup',
-            body: 'Ukishachukua mzigo kwenye terminal au ofisi ya cargo na umeukagua uko salama, thibitisha ili muuzaji alipwe. Kama kuna tatizo, fungua ripoti.',
-            confirm: 'NIMEPOKEA MZIGO',
-            report: 'RIPOTI TATIZO',
-        }
-        : {
-            title: 'Thibitisha Mzigo',
-            body: 'Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.',
-            confirm: 'NDIO, NIMEPOKEA',
-            report: 'SIJAPATA / TATIZO',
-        };
+            ? {
+                title: 'Thibitisha Pickup',
+                body: 'Ukishachukua mzigo kwenye terminal au ofisi ya cargo na umeukagua uko salama, thibitisha ili muuzaji alipwe. Kama kuna tatizo, fungua ripoti.',
+                confirm: 'NIMEPOKEA MZIGO',
+                report: 'RIPOTI TATIZO',
+            }
+            : {
+                title: 'Thibitisha Mzigo',
+                body: 'Je, umepokea mzigo wako na uko salama? Thibitisha ili muuzaji alipwe au fungua madai kama kuna tatizo.',
+                confirm: 'NDIO, NIMEPOKEA',
+                report: 'SIJAPATA / TATIZO',
+            };
     const isDeliveryStageOrder = Boolean(
         order?.delivery
         && !isSelfPickupOrder
@@ -1916,7 +1956,7 @@ export default function Chat({
                             </div>
                         </div>
 
-                        {(canBuyerPay || canMerchantQuote || canMerchantConfirmUnpaid || canCancelBeforePayment || canRequestPickupExtension || canResolvePickupExtension || canProposeHoldingFee || canAcceptHoldingFee || canRequestDeliveryConversion || canQuoteDeliveryConversion || canAcceptDeliveryConversion) && (
+                        {(canBuyerPay || canMerchantQuote || canMerchantConfirmUnpaid || canCancelBeforePayment || canRequestPickupExtension || canResolvePickupExtension || canProposeExtraCharge || canAcceptExtraCharge || canRequestDeliveryConversion || canQuoteDeliveryConversion || canAcceptDeliveryConversion) && (
                             <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60">
                                 {canBuyerPay && (
                                     <Button
@@ -1973,7 +2013,7 @@ export default function Chat({
                                 {canResolvePickupExtension && (
                                     <>
                                         <Button
-                                            onClick={() => resolvePickupExtension('approved')}
+                                            onClick={() => resolvePickupExtension('approved', pendingPickupExtension?.id)}
                                             disabled={pickupActionSubmitting}
                                             className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                         >
@@ -1982,7 +2022,7 @@ export default function Chat({
                                         </Button>
                                         <Button
                                             variant="outline"
-                                            onClick={() => resolvePickupExtension('rejected')}
+                                            onClick={() => resolvePickupExtension('rejected', pendingPickupExtension?.id)}
                                             disabled={pickupActionSubmitting}
                                             className="h-9 rounded-xl border-red-100 px-4 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
                                         >
@@ -1991,9 +2031,9 @@ export default function Chat({
                                         </Button>
                                     </>
                                 )}
-                                {canProposeHoldingFee && (
+                                {canProposeExtraCharge && (
                                     <Button
-                                        onClick={proposeHoldingFee}
+                                        onClick={openExtraChargeForm}
                                         disabled={pickupActionSubmitting}
                                         className="h-9 rounded-xl bg-amber-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700"
                                     >
@@ -2012,9 +2052,9 @@ export default function Chat({
                                         Cancel Pickup
                                     </Button>
                                 )}
-                                {canAcceptHoldingFee && (
+                                {canAcceptExtraCharge && (
                                     <Button
-                                        onClick={() => openPickupActionForm('holding_fee_payment')}
+                                        onClick={() => openPickupActionForm('extra_charge_payment')}
                                         disabled={pickupActionSubmitting}
                                         className="h-9 rounded-xl bg-emerald-600 px-4 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                     >
@@ -2271,7 +2311,7 @@ export default function Chat({
                                             );
                                         }
 
-                                        if (['pickup_window_expired', 'pickup_cancelled_after_grace', 'pickup_extension_requested', 'pickup_extension_approved', 'pickup_extension_rejected', 'holding_fee_proposed', 'holding_fee_payment_started', 'holding_fee_paid_held', 'holding_fee_accepted', 'delivery_conversion_requested', 'delivery_conversion_quoted', 'delivery_conversion_payment_started', 'delivery_conversion_paid_held'].includes(actionType)) {
+                                        if (['pickup_window_expired', 'pickup_cancelled_after_grace', 'pickup_extension_requested', 'pickup_extension_approved', 'pickup_extension_rejected', 'extra_charge_proposed', 'extra_charge_removed', 'extra_charge_payment_started', 'extra_charge_paid_held', 'delivery_conversion_requested', 'delivery_conversion_quoted', 'delivery_conversion_payment_started', 'delivery_conversion_paid_held'].includes(actionType)) {
                                             const requestedDeadline = msg.payload?.requested_deadline_at
                                                 ? new Date(msg.payload.requested_deadline_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
                                                 : null;
@@ -2284,69 +2324,85 @@ export default function Chat({
                                             const isExtensionRequest = actionType === 'pickup_extension_requested';
                                             const isExtensionApproved = actionType === 'pickup_extension_approved';
                                             const isExtensionRejected = actionType === 'pickup_extension_rejected';
-                                            const isHoldingFeeProposal = actionType === 'holding_fee_proposed';
-                                            const isHoldingFeePaymentStarted = actionType === 'holding_fee_payment_started' || actionType === 'holding_fee_accepted';
-                                            const isHoldingFeePaidHeld = actionType === 'holding_fee_paid_held';
+                                            const isActiveExtensionRequest = isExtensionRequest
+                                                && Boolean(pendingPickupExtension?.id)
+                                                && Boolean(msg.payload?.extension_id)
+                                                && pendingPickupExtension?.status === 'pending'
+                                                && String(pendingPickupExtension?.id || '') === String(msg.payload?.extension_id || '');
+                                            const isExtraChargeProposal = actionType === 'extra_charge_proposed';
+                                            const isExtraChargeRemoved = actionType === 'extra_charge_removed';
+                                            const isExtraChargePaymentStarted = actionType === 'extra_charge_payment_started';
+                                            const isExtraChargePaidHeld = actionType === 'extra_charge_paid_held';
+                                            const isActiveExtraChargeProposal = isExtraChargeProposal
+                                                && activeExtraCharge?.status === 'proposed'
+                                                && String(activeExtraCharge?.id || '') === String(msg.payload?.proposal_id || '');
+                                            const isActiveExtraChargePaymentPending = isExtraChargePaymentStarted
+                                                && activeExtraCharge?.status === 'payment_pending'
+                                                && String(activeExtraCharge?.id || '') === String(msg.payload?.proposal_id || '');
                                             const isDeliveryConversionRequested = actionType === 'delivery_conversion_requested';
                                             const isDeliveryConversionQuoted = actionType === 'delivery_conversion_quoted';
                                             const isDeliveryConversionPaymentStarted = actionType === 'delivery_conversion_payment_started';
                                             const isDeliveryConversionPaidHeld = actionType === 'delivery_conversion_paid_held';
-                                            const tone = isExtensionRejected || isPickupCancelledAfterGrace
+                                            const tone = isExtensionRejected || isPickupCancelledAfterGrace || isExtraChargeRemoved
                                                 ? 'border-red-100 bg-red-50 text-red-800'
-                                                : isPickupWindowExpired || isHoldingFeeProposal || isHoldingFeePaymentStarted
+                                                : isPickupWindowExpired || isExtraChargeProposal || isExtraChargePaymentStarted
                                                     ? 'border-amber-100 bg-amber-50 text-amber-900'
-                                                    : isHoldingFeePaidHeld || isDeliveryConversionPaidHeld
+                                                    : isExtraChargePaidHeld || isDeliveryConversionPaidHeld
                                                         ? 'border-emerald-100 bg-emerald-50 text-emerald-900'
                                                         : (isDeliveryConversionRequested || isDeliveryConversionQuoted || isDeliveryConversionPaymentStarted)
                                                             ? 'border-sky-100 bg-sky-50 text-sky-900'
                                                             : 'border-sky-100 bg-sky-50 text-sky-900';
-                                            const Icon = (isPickupWindowExpired || isPickupCancelledAfterGrace) ? AlertTriangle : (isHoldingFeeProposal || isHoldingFeePaymentStarted || isHoldingFeePaidHeld ? Tag : (isDeliveryConversionRequested || isDeliveryConversionQuoted || isDeliveryConversionPaymentStarted || isDeliveryConversionPaidHeld ? Truck : Clock));
+                                            const Icon = (isPickupWindowExpired || isPickupCancelledAfterGrace) ? AlertTriangle : (isExtraChargeProposal || isExtraChargeRemoved || isExtraChargePaymentStarted || isExtraChargePaidHeld ? Tag : (isDeliveryConversionRequested || isDeliveryConversionQuoted || isDeliveryConversionPaymentStarted || isDeliveryConversionPaidHeld ? Truck : Clock));
                                             const title = isPickupWindowExpired
                                                 ? 'Pickup Window Expired'
                                                 : isPickupCancelledAfterGrace
                                                     ? 'Pickup Cancelled'
-                                                : isExtensionRequest
-                                                    ? 'Pickup Extension Requested'
-                                                    : isExtensionApproved
-                                                    ? 'Pickup Time Approved'
-                                                    : isExtensionRejected
-                                                        ? 'Pickup Extension Rejected'
-                                                        : isHoldingFeeProposal
-                                                            ? 'Extra Cost Proposed'
-                                                            : isHoldingFeePaidHeld
-                                                                ? 'Extra Cost Paid & Held'
-                                                                : isHoldingFeePaymentStarted
-                                                                    ? 'Extra Cost Payment Started'
-                                                                    : isDeliveryConversionRequested
-                                                                        ? 'Delivery Requested'
-                                                                        : isDeliveryConversionQuoted
-                                                                            ? 'Delivery Fee Quoted'
-                                                                            : isDeliveryConversionPaidHeld
-                                                                                ? 'Delivery Fee Paid & Held'
-                                                                                : 'Delivery Payment Started';
+                                                    : isExtensionRequest
+                                                        ? 'Pickup Extension Requested'
+                                                        : isExtensionApproved
+                                                            ? 'Pickup Time Approved'
+                                                            : isExtensionRejected
+                                                                ? 'Pickup Extension Rejected'
+                                                                : isExtraChargeProposal
+                                                                    ? 'Extra Cost Proposed'
+                                                                    : isExtraChargeRemoved
+                                                                        ? 'Extra Cost Removed'
+                                                                        : isExtraChargePaidHeld
+                                                                            ? 'Extra Cost Paid & Held'
+                                                                            : isExtraChargePaymentStarted
+                                                                                ? 'Extra Cost Payment Started'
+                                                                                : isDeliveryConversionRequested
+                                                                                    ? 'Delivery Requested'
+                                                                                    : isDeliveryConversionQuoted
+                                                                                        ? 'Delivery Fee Quoted'
+                                                                                        : isDeliveryConversionPaidHeld
+                                                                                            ? 'Delivery Fee Paid & Held'
+                                                                                            : 'Delivery Payment Started';
                                             const body = isPickupWindowExpired
                                                 ? 'Muda wa pickup umepita. Kubalianeni hatua inayofuata hapa kwenye chat: kuongeza muda, kubadili kwenda delivery, kuweka gharama ya ziada, au cancellation.'
                                                 : isPickupCancelledAfterGrace
                                                     ? `Pickup deadline imepita bila pickup. Order imefutwa; penalty TZS ${Number(msg.payload?.penalty_amount || 0).toLocaleString()} imeenda kwa merchant na refund TZS ${Number(msg.payload?.refund_amount || 0).toLocaleString()} inasubiri approval ya admin.`
-                                                : isExtensionRequest
-                                                    ? `Mteja ameomba kuchukua mpaka ${requestedDeadline || 'muda mpya uliopendekezwa'}.`
-                                                    : isExtensionApproved
-                                                    ? `Muda mpya wa kuchukua order ni ${pickupDeadline || 'umethibitishwa'}.`
-                                                    : isExtensionRejected
-                                                        ? 'Muuzaji amekataa ombi la kuongeza muda wa pickup.'
-                                                        : isHoldingFeeProposal
-                                                            ? `Muuzaji ameomba gharama ya ziada ya TZS ${amount.toLocaleString()} kwa makubaliano ya pickup yaliyochelewa.`
-                                                            : isHoldingFeePaidHeld
-                                                                ? `Gharama ya ziada ya TZS ${amount.toLocaleString()} imelipwa na imehifadhiwa escrow mpaka pickup/delivery ikamilike.`
-                                                                : isHoldingFeePaymentStarted
-                                                                    ? `Mteja amekubali gharama ya ziada ya TZS ${amount.toLocaleString()} na ameanza malipo.`
-                                                                    : isDeliveryConversionRequested
-                                                                        ? `Mteja ameomba order ibadilishwe kutoka pickup kwenda delivery${msg.payload?.physical_address ? `: ${msg.payload.physical_address}` : ''}.`
-                                                                        : isDeliveryConversionQuoted
-                                                                            ? `Muuzaji ameweka gharama ya delivery: TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()}.`
-                                                                            : isDeliveryConversionPaidHeld
-                                                                                ? `Delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} imelipwa na imehifadhiwa escrow mpaka delivery ikamilike.`
-                                                                                : `Mteja amekubali delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} na ameanza malipo.`;
+                                                    : isExtensionRequest
+                                                        ? `Mteja ameomba kuchukua mpaka ${requestedDeadline || 'muda mpya uliopendekezwa'}.`
+                                                        : isExtensionApproved
+                                                            ? `Muda mpya wa kuchukua order ni ${pickupDeadline || 'umethibitishwa'}.`
+                                                            : isExtensionRejected
+                                                                ? 'Muuzaji amekataa ombi la kuongeza muda wa pickup.'
+                                                                : isExtraChargeProposal
+                                                                    ? `Muuzaji ameomba gharama ya ziada ya TZS ${amount.toLocaleString()}.`
+                                                                    : isExtraChargeRemoved
+                                                                        ? `Muuzaji ameondoa proposal ya gharama ya ziada ya TZS ${amount.toLocaleString()}.`
+                                                                        : isExtraChargePaidHeld
+                                                                            ? `Gharama ya ziada ya TZS ${amount.toLocaleString()} imelipwa na mteja.`
+                                                                            : isExtraChargePaymentStarted
+                                                                                ? `Mteja amekubali gharama ya ziada ya TZS ${amount.toLocaleString()} na ameanza malipo.`
+                                                                                : isDeliveryConversionRequested
+                                                                                    ? `Mteja ameomba order ibadilishwe kutoka pickup kwenda delivery${msg.payload?.physical_address ? `: ${msg.payload.physical_address}` : ''}.`
+                                                                                    : isDeliveryConversionQuoted
+                                                                                        ? `Muuzaji ameweka gharama ya delivery: TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()}.`
+                                                                                        : isDeliveryConversionPaidHeld
+                                                                                            ? `Delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} imelipwa na imehifadhiwa escrow mpaka delivery ikamilike.`
+                                                                                            : `Mteja amekubali delivery fee ya TZS ${Number(msg.payload?.shipping_fee || 0).toLocaleString()} na ameanza malipo.`;
 
                                             return (
                                                 <div key={msg.id} className="flex justify-center my-3">
@@ -2365,10 +2421,10 @@ export default function Chat({
                                                                 {msg.payload?.note && (
                                                                     <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-xs font-bold italic text-slate-700">"{msg.payload.note}"</p>
                                                                 )}
-                                                                {(isExtensionRequest && actingAs === 'merchant' && canResolvePickupExtension) && (
+                                                                {(isExtensionRequest && isActiveExtensionRequest && actingAs === 'merchant' && canResolvePickupExtension) && (
                                                                     <div className="mt-3 flex flex-wrap gap-2">
                                                                         <Button
-                                                                            onClick={() => resolvePickupExtension('approved')}
+                                                                            onClick={() => resolvePickupExtension('approved', msg.payload?.extension_id)}
                                                                             disabled={pickupActionSubmitting}
                                                                             className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                                                         >
@@ -2377,7 +2433,7 @@ export default function Chat({
                                                                         </Button>
                                                                         <Button
                                                                             variant="outline"
-                                                                            onClick={() => resolvePickupExtension('rejected')}
+                                                                            onClick={() => resolvePickupExtension('rejected', msg.payload?.extension_id)}
                                                                             disabled={pickupActionSubmitting}
                                                                             className="h-8 rounded-xl border-red-100 bg-white px-3 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
                                                                         >
@@ -2386,15 +2442,48 @@ export default function Chat({
                                                                         </Button>
                                                                     </div>
                                                                 )}
-                                                                {(isHoldingFeeProposal && actingAs === 'buyer' && canAcceptHoldingFee) && (
+                                                                {(isExtraChargeProposal && isActiveExtraChargeProposal && actingAs === 'buyer' && canAcceptExtraCharge) && (
                                                                     <div className="mt-3">
                                                                         <Button
-                                                                            onClick={() => openPickupActionForm('holding_fee_payment')}
+                                                                            onClick={() => openPickupActionForm('extra_charge_payment')}
                                                                             disabled={pickupActionSubmitting}
                                                                             className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
                                                                         >
                                                                             {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
                                                                             Accept & Pay
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                                {(isExtraChargePaymentStarted && isActiveExtraChargePaymentPending && actingAs === 'buyer' && !pickupClosed) && (
+                                                                    <div className="mt-3">
+                                                                        <Button
+                                                                            onClick={() => openPickupActionForm('extra_charge_payment')}
+                                                                            disabled={pickupActionSubmitting}
+                                                                            className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-emerald-700"
+                                                                        >
+                                                                            {pickupActionSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CreditCard className="mr-1.5 h-3.5 w-3.5" />}
+                                                                            Pay Now
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                                {(isExtraChargeProposal && isActiveExtraChargeProposal && actingAs === 'merchant' && canProposeExtraCharge) && (
+                                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                                        <Button
+                                                                            onClick={openExtraChargeForm}
+                                                                            disabled={pickupActionSubmitting}
+                                                                            className="h-8 rounded-xl bg-orange-600 px-3 text-[10px] font-black uppercase tracking-widest text-white hover:bg-orange-700"
+                                                                        >
+                                                                            <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+                                                                            Edit
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            onClick={removeExtraCharge}
+                                                                            disabled={pickupActionSubmitting}
+                                                                            className="h-8 rounded-xl border-red-100 bg-white px-3 text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
+                                                                        >
+                                                                            <X className="mr-1.5 h-3.5 w-3.5" />
+                                                                            Remove
                                                                         </Button>
                                                                     </div>
                                                                 )}
@@ -2432,11 +2521,11 @@ export default function Chat({
 
                                         if (actionType === 'initiate_payment') {
                                             const pickupPin = msg.payload?.pickup_pin || order?.delivery?.pickup_pin;
-                                            const paymentAmount = Number(msg.payload?.total_paid || order?.total_paid || dealTotal || 0);
+                                            const paymentAmount = Number(msg.payload?.total_paid || orderDisplayTotal || dealTotal || 0);
                                             const showPickupCard = hasPhysicalOrderItems
                                                 && (isSelfPickupOrder || msg.payload?.delivery_type === 'self_pickup')
                                                 && merchantConfirmed
-                                                && order?.pickup_status === 'ready_for_pickup'
+                                                && pickupReadyForRelease
                                                 && pickupPin;
 
                                             if (showPickupCard && actingAs === 'buyer') {
@@ -2937,11 +3026,11 @@ export default function Chat({
                                 </div>
                             )}
 
-                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && order?.pickup_status === 'ready_for_pickup' && order?.delivery?.pickup_pin && (
+                            {['awaiting_merchant_confirmation', 'escrow_locked'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && pickupReadyForRelease && order?.delivery?.pickup_pin && (
                                 <div className="mx-auto flex w-full max-w-lg flex-col">
                                     <PickupPinCard
                                         pickupPin={order?.delivery?.pickup_pin}
-                                        amount={order?.total_paid}
+                                        amount={orderDisplayTotal}
                                         onShopLocations={() => setIsShopModalOpen(true)}
                                         className="max-w-none"
                                     />
@@ -3205,7 +3294,7 @@ export default function Chat({
                                 </div>
                             )}
 
-                            {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && order?.pickup_status === 'ready_for_pickup' && (
+                            {order?.payment_status === 'awaiting_merchant_confirmation' && order?.delivery?.delivery_type === 'self_pickup' && merchantConfirmed && pickupReadyForRelease && (
                                 <div className="rounded-[2rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-100/50">
                                     <div className="mb-4 flex items-start gap-3">
                                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
@@ -3246,7 +3335,7 @@ export default function Chat({
                             <DrawerHeader className="px-0 text-left">
                                 <DrawerTitle className="text-xl font-black tracking-tight text-slate-950">
                                     {pickupActionForm === 'extension_request' && 'Request Pickup Time'}
-                                    {pickupActionForm === 'holding_fee_payment' && 'Accept & Pay Extra Cost'}
+                                    {pickupActionForm === 'extra_charge_payment' && 'Accept & Pay Extra Cost'}
                                     {pickupActionForm === 'delivery_conversion_request' && 'Request Delivery'}
                                     {pickupActionForm === 'delivery_conversion_quote' && 'Quote Delivery'}
                                     {pickupActionForm === 'delivery_conversion_payment' && 'Accept & Pay Delivery'}
@@ -3267,14 +3356,14 @@ export default function Chat({
                                 </form>
                             )}
 
-                            {pickupActionForm === 'holding_fee_payment' && (
-                                <form onSubmit={acceptHoldingFee} className="space-y-3">
+                            {pickupActionForm === 'extra_charge_payment' && (
+                                <form onSubmit={acceptExtraCharge} className="space-y-3">
                                     <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Extra agreed cost</p>
-                                        <p className="mt-1 text-2xl font-black text-amber-950">TZS {Number(order?.holding_fee_amount || 0).toLocaleString()}</p>
+                                        <p className="mt-1 text-2xl font-black text-amber-950">TZS {Number(activeExtraCharge?.amount || 0).toLocaleString()}</p>
                                         <p className="mt-1 text-xs font-bold text-amber-800/80">Payment will be held in escrow and released to the merchant only when pickup or delivery is completed.</p>
                                     </div>
-                                    <Input value={holdingFeePaymentNumber} onChange={(event) => setHoldingFeePaymentNumber(event.target.value)} placeholder="Payment phone number" className="h-12 rounded-xl font-bold" required />
+                                    <Input value={extraChargePaymentNumber} onChange={(event) => setExtraChargePaymentNumber(event.target.value)} placeholder="Payment phone number" className="h-12 rounded-xl font-bold" required />
                                     <Button type="submit" disabled={pickupActionSubmitting} className="h-12 w-full rounded-xl bg-emerald-600 font-black uppercase tracking-widest text-white hover:bg-emerald-700">
                                         {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                                         Accept & Pay
@@ -3358,6 +3447,7 @@ export default function Chat({
                                                     {(actingAs === 'merchant' ? [
                                                         { id: 'shipping_cost', label: isForwarderOrder ? 'Forwarder Drop-off' : 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: isForwarderOrder ? 'Gharama hadi forwarder' : 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PICKUP ONLY' },
                                                         { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+                                                        { id: 'extra_charge', label: 'Extra Charge', icon: CreditCard, color: 'bg-orange-50 text-orange-600', border: 'border-orange-100', desc: activeExtraCharge?.status === 'proposed' ? 'Update/remove charge' : 'Storage au gharama nyingine', disabled: !canProposeExtraCharge && !canRemoveExtraCharge, disabledReason: 'PICKUP ONLY' },
                                                         { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
                                                         { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
                                                         { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
@@ -3392,6 +3482,7 @@ export default function Chat({
                                                                             amount: action.id === 'discount' ? 5000 : action.id === 'shipping_cost' ? 7000 : 0,
                                                                             quantity: order?.quantity || 1
                                                                         });
+                                                                        if (action.id === 'extra_charge') prepareExtraChargeForm();
                                                                         if (action.id === 'upsell') handleSearchProducts('');
                                                                         if (action.id === 'order_delivery') {
                                                                             const profileId = order?.product?.shipping_profile_id;
@@ -3661,6 +3752,67 @@ export default function Chat({
                                                         </div>
                                                     )}
 
+                                                    {activeAction === 'extra_charge' && actingAs === 'merchant' && (
+                                                        <form onSubmit={proposeExtraCharge} className="space-y-5">
+                                                            <div className="rounded-2xl border border-orange-100 bg-orange-50/50 px-4 py-3 text-xs font-bold leading-relaxed text-orange-900">
+                                                                This action is recorded in order chat as part of the agreement trail.
+                                                            </div>
+                                                            {activeExtraCharge?.status === 'proposed' && (
+                                                                <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs font-bold leading-relaxed text-amber-900">
+                                                                    Kuna extra charge inayosubiri jibu la mteja. Ukisave hapa, amount/note itabadilishwa kwenye proposal hiyo hiyo.
+                                                                </div>
+                                                            )}
+                                                            <div className="space-y-2">
+                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Gharama ya ziada</label>
+                                                                <div className="relative group">
+                                                                    <Input
+                                                                        type="number"
+                                                                        min="1"
+                                                                        value={extraChargeAmount}
+                                                                        onChange={e => setExtraChargeAmount(e.target.value)}
+                                                                        className="h-16 rounded-2xl text-2xl font-black bg-slate-50 border-2 border-transparent transition-all focus:bg-white focus:border-orange-200 outline-none pl-6 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        placeholder="0.00"
+                                                                    />
+                                                                    <div className="absolute right-6 top-1/2 -translate-y-1/2 font-black text-slate-300 pointer-events-none group-focus-within:text-orange-300 transition-colors">TZS</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Maelezo kwa mteja</label>
+                                                                <textarea
+                                                                    value={extraChargeNote}
+                                                                    onChange={e => setExtraChargeNote(e.target.value)}
+                                                                    placeholder="Mfano: Gharama ya ziada mliyokubaliana kwenye chat..."
+                                                                    className="w-full min-h-[110px] rounded-2xl bg-slate-50 border-2 border-transparent p-4 text-sm font-bold placeholder:opacity-50 resize-none outline-none focus:bg-white focus:border-orange-200 focus:ring-4 ring-orange-500/5 transition-all"
+                                                                />
+                                                            </div>
+                                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                                {canRemoveExtraCharge && (
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        onClick={removeExtraCharge}
+                                                                        disabled={pickupActionSubmitting}
+                                                                        className="h-14 rounded-2xl border-red-100 text-[11px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
+                                                                    >
+                                                                        <X className="mr-2 h-4 w-4" />
+                                                                        Remove
+                                                                    </Button>
+                                                                )}
+                                                                <Button
+                                                                    type="submit"
+                                                                    disabled={pickupActionSubmitting || Number(String(extraChargeAmount).replace(/,/g, '')) <= 0}
+                                                                    className={cn(
+                                                                        "h-14 rounded-2xl bg-orange-600 text-[11px] font-black uppercase tracking-widest text-white hover:bg-orange-700",
+                                                                        !canRemoveExtraCharge && "sm:col-span-2"
+                                                                    )}
+                                                                >
+                                                                    {pickupActionSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                                                                    {activeExtraCharge?.status === 'proposed' ? 'Update Charge' : 'Send Charge'}
+                                                                </Button>
+                                                            </div>
+                                                        </form>
+                                                    )}
+
                                                     {activeAction === 'quantity' && (
                                                         <div className="space-y-4">
                                                             <div className="p-6 rounded-3xl bg-blue-50/50 border border-blue-100 flex flex-col items-center gap-4">
@@ -3879,7 +4031,7 @@ export default function Chat({
                                                 </div>
 
                                                 <div className="pt-6 pb-6 mt-auto">
-                                                    {activeAction !== 'upsell' && activeAction !== 'order_items' && activeAction !== 'discount' && activeAction !== 'order_delivery' && (
+                                                    {activeAction !== 'upsell' && activeAction !== 'order_items' && activeAction !== 'discount' && activeAction !== 'order_delivery' && activeAction !== 'extra_charge' && (
                                                         <Button
                                                             className="w-full h-16 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-600/30 transition-all active:scale-[0.98]"
                                                             disabled={
@@ -4063,7 +4215,7 @@ export default function Chat({
                                     <Zap className="h-10 w-10 fill-white" />
                                 </div>
                                 <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">Mchakato wa Malipo</p>
-                                <h2 className="text-4xl font-black tracking-tight mb-2">TZS {Number(order?.total_paid).toLocaleString()}</h2>
+                                <h2 className="text-4xl font-black tracking-tight mb-2">TZS {orderDisplayTotal.toLocaleString()}</h2>
                                 <div className="px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
                                     <ShieldCheck className="h-3 w-3" /> Malipo Salama (Escrow)
                                 </div>
@@ -4137,7 +4289,7 @@ export default function Chat({
                                     try {
                                         const paymentResult = await submitAction('initiate_payment', {
                                             payment_number: paymentPhone,
-                                            title: `Malipo yameanzishwa — TZS ${Number(order?.total_paid).toLocaleString()}`
+                                            title: `Malipo yameanzishwa — TZS ${orderDisplayTotal.toLocaleString()}`
                                         });
 
                                         const freshOrder = paymentResult?.order;
@@ -4147,7 +4299,7 @@ export default function Chat({
 
                                         setOrder(freshOrder);
                                         setIsPaymentDrawerOpen(false);
-                                        toast.success(`Malipo ya TZS ${Number(freshOrder.total_paid || order?.total_paid).toLocaleString()} yamekamilika!`);
+                                        toast.success(`Malipo ya TZS ${Number(freshOrder.order_total_with_additions || freshOrder.total_paid || orderDisplayTotal).toLocaleString()} yamekamilika!`);
                                     } finally {
                                         setIsPaying(false);
                                     }

@@ -302,7 +302,7 @@ class MerchantWalletController extends Controller
         $type = data_get($transaction->order?->extra_items, 'type');
 
         return match ($type) {
-            'pickup_holding_fee' => 'Pickup holding fee',
+            'extra_charge' => 'Extra charge',
             'pickup_delivery_fee' => 'Pickup delivery conversion fee',
             default => $transaction->order?->product?->title ?? 'Bidhaa',
         };

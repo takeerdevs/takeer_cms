@@ -826,7 +826,7 @@ export default function CheckoutModal({ product, isOpen, onOpenChange }) {
     const pickupLocation = useMemo(() => (
         pickupLocations.find((location) => location.is_primary) || pickupLocations[0] || null
     ), [pickupLocations]);
-    const pickupMaxDays = Math.max(0, Number(pickupLocation?.pickup_max_holding_days ?? 2));
+    const pickupMaxDays = Math.max(0, Number(pickupLocation?.pickup_advance_days ?? 2));
     const pickupWindows = Array.isArray(pickupLocation?.pickup_available_windows) && pickupLocation.pickup_available_windows.length
         ? pickupLocation.pickup_available_windows
         : [

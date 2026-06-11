@@ -155,7 +155,7 @@ class SmsService
 
     public function sendPickupDeadlineReminderToMerchant(string $phone, string $orderPublicId, string $deadline, string $window, ?int $userId = null): bool
     {
-        $message = "Takeer: Kumbusho {$window}. Order #{$orderPublicId} bado iko pickup na deadline ni {$deadline}. Tumia order chat kwa extension, delivery, holding fee, au no-show.";
+        $message = "Takeer: Kumbusho {$window}. Order #{$orderPublicId} bado iko pickup na deadline ni {$deadline}. Tumia order chat kwa extension, delivery, extra charge, au no-show.";
         return $this->sendOnce("pickup-reminder-merchant:{$window}:{$orderPublicId}", $phone, $message, $userId);
     }
 

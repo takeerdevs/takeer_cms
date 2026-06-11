@@ -1220,9 +1220,6 @@ function compactPickupStatus(orderDetails) {
     if (status === 'cancelled_after_grace') return 'Imefutwa baada ya deadline';
     if (status === 'pickup_overdue') return 'Muda wa pickup umepita';
     if (status === 'extension_requested') return 'Extension imeombwa';
-    if (status === 'holding_fee_pending') return 'Gharama ya ziada imependekezwa';
-    if (status === 'holding_fee_payment_pending') return 'Inasubiri malipo ya gharama ya ziada';
-    if (status === 'holding_fee_paid_held') return 'Gharama ya ziada imelipwa';
     if (status === 'delivery_conversion_requested') return 'Delivery imeombwa';
     if (status === 'delivery_conversion_quoted') return 'Bei ya delivery imewekwa';
     if (status === 'delivery_conversion_payment_pending') return 'Inasubiri malipo ya delivery';
@@ -2071,7 +2068,7 @@ function OwnedCard({ entry }) {
                                     )}
                                     <div className="flex justify-between items-center border-t border-emerald-200 pt-2 mb-3">
                                         <p className="text-[10px] font-black uppercase text-emerald-800">{isB2BOrder ? 'SafePay Total:' : 'Total to Pay:'}</p>
-                                        <p className="text-lg font-black text-emerald-700">TZS {Number(orderDetails.total_paid || 0).toLocaleString()}</p>
+                                        <p className="text-lg font-black text-emerald-700">TZS {Number(orderDetails.order_total_with_additions ?? orderDetails.total_paid ?? 0).toLocaleString()}</p>
                                     </div>
                                     <Button
                                         className="w-full rounded-xl h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-600/20"

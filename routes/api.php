@@ -124,7 +124,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{order}/complete', [CheckoutController::class, 'complete']);
     Route::post('/buyer/orders/{order}/confirm-receipt', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'confirmReceipt']);
     Route::post('/buyer/orders/{order}/pickup-extension', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestPickupExtension']);
-    Route::post('/buyer/orders/{order}/holding-fee/accept', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'acceptHoldingFee']);
+    Route::post('/buyer/orders/{order}/extra-charges/accept', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'acceptExtraCharge']);
     Route::post('/buyer/orders/{order}/pickup-delivery-conversion', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestPickupDeliveryConversion']);
     Route::post('/buyer/orders/{order}/pickup-delivery-conversion/accept', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'acceptPickupDeliveryConversion']);
     Route::post('/buyer/orders/{order}/request-revision', [\App\Http\Controllers\Api\BuyerEscrowController::class, 'requestCustomRevision']);
@@ -191,7 +191,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{merchant:username}/orders/{order:id}/verify-pickup', [MerchantOrderController::class, 'verifyPickup'])->middleware(['merchant_permission:orders.verify_pickup', 'throttle:10,1']);
         Route::post('/{merchant:username}/orders/{order:id}/pickup-no-show', [MerchantOrderController::class, 'markPickupNoShow'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/pickup-extension', [MerchantOrderController::class, 'resolvePickupExtension'])->middleware('merchant_permission:orders.update');
-        Route::post('/{merchant:username}/orders/{order:id}/holding-fee', [MerchantOrderController::class, 'proposePickupHoldingFee'])->middleware('merchant_permission:orders.update');
+        Route::post('/{merchant:username}/orders/{order:id}/extra-charges', [MerchantOrderController::class, 'proposePickupExtraCharge'])->middleware('merchant_permission:orders.update');
+        Route::delete('/{merchant:username}/orders/{order:id}/extra-charges', [MerchantOrderController::class, 'removePickupExtraCharge'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/pickup-cancel-after-grace', [MerchantOrderController::class, 'cancelPickupAfterGrace'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/pickup-delivery-conversion/quote', [MerchantOrderController::class, 'quotePickupDeliveryConversion'])->middleware('merchant_permission:orders.update');
         Route::post('/{merchant:username}/orders/{order:id}/verify-delivery', [MerchantOrderController::class, 'verifyDelivery'])->middleware('merchant_permission:orders.verify_pickup');

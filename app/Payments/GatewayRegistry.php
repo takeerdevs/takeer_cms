@@ -88,6 +88,30 @@ class GatewayRegistry
     }
 
     /**
+     * Resolve a gateway by its stored driver name.
+     * Follow-up payment orders should keep using the gateway selected for
+     * the parent order instead of re-routing by current country priority.
+     */
+    public function resolveByName(string $gatewayName): PaymentGatewayInterface
+    {
+        $gatewayName = strtolower(trim($gatewayName));
+
+        foreach (config('payment_gateways', []) as $countryGateways) {
+            if (!is_array($countryGateways)) {
+                continue;
+            }
+
+            foreach ($countryGateways as $config) {
+                if (strtolower((string) ($config['driver'] ?? '')) === $gatewayName) {
+                    return $this->makeDriver($gatewayName, $config);
+                }
+            }
+        }
+
+        return $this->makeDriver($gatewayName, []);
+    }
+
+    /**
      * Determine country code using layered resolution.
      */
     public function resolveCountry(Request $request, ?string $phoneNumber = null): string

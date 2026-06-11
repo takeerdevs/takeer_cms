@@ -26,13 +26,8 @@ class MerchantLocation extends Model
         'pickup_grace_hours',
         'pickup_available_windows',
         'pickup_instructions',
-        'pickup_holding_fee_enabled',
-        'pickup_late_fee_type',
-        'pickup_holding_fee_amount',
-        'pickup_late_fee_cap_amount',
         'pickup_cancellation_penalty_percent',
-        'pickup_holding_fee_interval',
-        'pickup_max_holding_days',
+        'pickup_advance_days',
         'contact_phone',
         'type',
     ];
@@ -47,11 +42,8 @@ class MerchantLocation extends Model
             'pickup_hold_hours' => 'integer',
             'pickup_grace_hours' => 'integer',
             'pickup_available_windows' => 'array',
-            'pickup_holding_fee_enabled' => 'boolean',
-            'pickup_holding_fee_amount' => 'decimal:2',
-            'pickup_late_fee_cap_amount' => 'decimal:2',
             'pickup_cancellation_penalty_percent' => 'decimal:2',
-            'pickup_max_holding_days' => 'integer',
+            'pickup_advance_days' => 'integer',
         ];
     }
 

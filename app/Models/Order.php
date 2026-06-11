@@ -110,12 +110,6 @@ class Order extends Model
         'pickup_extension_count',
         'pickup_no_show_marked_at',
         'pickup_no_show_reason',
-        'holding_fee_status',
-        'holding_fee_amount',
-        'holding_fee_payment_order_id',
-        'holding_fee_started_at',
-        'holding_fee_accepted_at',
-        'holding_fee_paid_at',
         'pickup_cancellation_penalty_percent',
         'pickup_cancellation_penalty_amount',
         'pickup_cancellation_refund_amount',
@@ -189,11 +183,6 @@ class Order extends Model
             'pickup_policy_snapshot' => 'array',
             'pickup_extension_count' => 'integer',
             'pickup_no_show_marked_at' => 'datetime',
-            'holding_fee_amount' => 'decimal:2',
-            'holding_fee_payment_order_id' => 'integer',
-            'holding_fee_started_at' => 'datetime',
-            'holding_fee_accepted_at' => 'datetime',
-            'holding_fee_paid_at' => 'datetime',
             'pickup_cancellation_penalty_percent' => 'decimal:2',
             'pickup_cancellation_penalty_amount' => 'decimal:2',
             'pickup_cancellation_refund_amount' => 'decimal:2',
@@ -369,6 +358,11 @@ class Order extends Model
     public function refundRequests(): HasMany
     {
         return $this->hasMany(RefundRequest::class);
+    }
+
+    public function extraCharges(): HasMany
+    {
+        return $this->hasMany(ExtraCharge::class);
     }
 
     public function customDeliveryEvents(): HasMany

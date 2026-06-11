@@ -9,6 +9,9 @@ class OrderResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $additionalPaidTotal = $this->additionalPaidTotal();
+        $pickupReadyStatuses = ['ready_for_pickup'];
+
         return [
             'id' => $this->id,
             'public_id' => $this->public_id,
@@ -24,6 +27,8 @@ class OrderResource extends JsonResource
             'unit_snapshot' => $this->unit_snapshot,
             'unit_price' => $this->unit_price !== null ? (float) $this->unit_price : null,
             'total_paid' => (float) $this->total_paid,
+            'additional_paid_total' => $additionalPaidTotal,
+            'order_total_with_additions' => (float) $this->total_paid + $additionalPaidTotal,
             'merchant_currency_code' => $this->merchant_currency_code,
             'customer_currency_code' => $this->customer_currency_code,
             'fx_base_currency_code' => $this->fx_base_currency_code,
@@ -61,12 +66,7 @@ class OrderResource extends JsonResource
             'pickup_extension_count' => (int) $this->pickup_extension_count,
             'pickup_no_show_marked_at' => $this->pickup_no_show_marked_at?->toISOString(),
             'pickup_no_show_reason' => $this->pickup_no_show_reason,
-            'holding_fee_status' => $this->holding_fee_status,
-            'holding_fee_amount' => $this->holding_fee_amount !== null ? (float) $this->holding_fee_amount : null,
-            'holding_fee_payment_order_id' => $this->holding_fee_payment_order_id,
-            'holding_fee_started_at' => $this->holding_fee_started_at?->toISOString(),
-            'holding_fee_accepted_at' => $this->holding_fee_accepted_at?->toISOString(),
-            'holding_fee_paid_at' => $this->holding_fee_paid_at?->toISOString(),
+            'extra_charges' => $this->extraChargesPayload(),
             'transaction_ref' => $this->transaction_ref,
             'source' => $this->source,
             'customer_name' => $this->customer_name,
@@ -88,7 +88,7 @@ class OrderResource extends JsonResource
                     'destination_region' => $this->delivery->shippingZone->destination_region,
                     'flat_rate_fee' => $this->delivery->shippingZone->flat_rate_fee,
                 ] : null,
-                'pickup_pin' => $this->merchant_confirmed_at && $this->pickup_status === 'ready_for_pickup'
+                'pickup_pin' => $this->merchant_confirmed_at && in_array($this->pickup_status, $pickupReadyStatuses, true)
                     ? $this->delivery?->pickup_pin
                     : null,
                 'buyer_release_pin' => $this->delivery?->buyer_release_pin,
@@ -117,5 +117,54 @@ class OrderResource extends JsonResource
             ]),
             'created_at' => $this->created_at?->toISOString(),
         ];
+    }
+
+    private function additionalPaidTotal(): float
+    {
+        if (! $this->id) {
+            return 0.0;
+        }
+
+        return (float) \App\Models\Order::query()
+            ->where(function ($query) {
+                $query->where(function ($legacy) {
+                    $legacy->where('purchasable_id', $this->id)
+                        ->where('purchasable_type', 'pickup_delivery_fee');
+                })->orWhere(function ($extraCharge) {
+                    $extraCharge->where('purchasable_type', 'extra_charge')
+                        ->where('extra_items->parent_order_id', $this->id);
+                });
+            })
+            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->sum('total_paid');
+    }
+
+    private function extraChargesPayload(): array
+    {
+        if (! $this->id) {
+            return [];
+        }
+
+        return \App\Models\ExtraCharge::query()
+            ->where('order_id', $this->id)
+            ->latest()
+            ->get()
+            ->map(fn ($charge) => [
+                'id' => $charge->id,
+                'public_id' => $charge->public_id,
+                'payment_order_id' => $charge->payment_order_id,
+                'context' => $charge->context,
+                'charge_type' => $charge->charge_type,
+                'description' => $charge->description,
+                'amount' => (float) $charge->amount,
+                'currency_code' => $charge->currency_code,
+                'status' => $charge->status,
+                'proposed_at' => $charge->proposed_at?->toISOString(),
+                'accepted_at' => $charge->accepted_at?->toISOString(),
+                'paid_at' => $charge->paid_at?->toISOString(),
+                'removed_at' => $charge->removed_at?->toISOString(),
+            ])
+            ->values()
+            ->all();
     }
 }

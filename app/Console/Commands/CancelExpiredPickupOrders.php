@@ -32,9 +32,6 @@ class CancelExpiredPickupOrders extends Command
                         'ready_for_pickup',
                         'pickup_overdue',
                         'buyer_no_show',
-                        'holding_fee_pending',
-                        'holding_fee_payment_pending',
-                        'holding_fee_paid_held',
                     ]);
             })
             ->whereHas('delivery', fn ($query) => $query->where('delivery_type', 'self_pickup'))

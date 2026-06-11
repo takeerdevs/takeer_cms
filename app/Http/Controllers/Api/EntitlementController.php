@@ -664,6 +664,8 @@ class EntitlementController extends Controller
     private function buildOrderDetails(Order $order): array
     {
         $this->ensureCustomerPins($order);
+        $additionalPaidTotal = $this->additionalPaidTotal($order);
+        $pickupReadyStatuses = ['ready_for_pickup'];
         $deliveryType = $order->delivery
             ? (($order->delivery->delivery_type ?? $order->delivery->shippingZone?->delivery_type) === 'shipping'
                 ? 'local_boda'
@@ -676,6 +678,8 @@ class EntitlementController extends Controller
             'payment_status' => $order->payment_status,
             'shipping_fee' => $order->shipping_fee,
             'total_paid' => $order->total_paid,
+            'additional_paid_total' => $additionalPaidTotal,
+            'order_total_with_additions' => (float) $order->total_paid + $additionalPaidTotal,
             'is_inquiry' => (bool) $order->is_inquiry,
             'inquiry_status' => $order->inquiry_status,
             'merchant_confirmed_at' => $order->merchant_confirmed_at?->toISOString(),
@@ -689,12 +693,6 @@ class EntitlementController extends Controller
             'pickup_policy_snapshot' => $order->pickup_policy_snapshot,
             'pickup_no_show_marked_at' => $order->pickup_no_show_marked_at?->toISOString(),
             'pickup_no_show_reason' => $order->pickup_no_show_reason,
-            'holding_fee_status' => $order->holding_fee_status,
-            'holding_fee_amount' => $order->holding_fee_amount !== null ? (float) $order->holding_fee_amount : null,
-            'holding_fee_payment_order_id' => $order->holding_fee_payment_order_id,
-            'holding_fee_started_at' => $order->holding_fee_started_at?->toISOString(),
-            'holding_fee_accepted_at' => $order->holding_fee_accepted_at?->toISOString(),
-            'holding_fee_paid_at' => $order->holding_fee_paid_at?->toISOString(),
             'pickup_cancellation_penalty_percent' => $order->pickup_cancellation_penalty_percent !== null ? (float) $order->pickup_cancellation_penalty_percent : null,
             'pickup_cancellation_penalty_amount' => $order->pickup_cancellation_penalty_amount !== null ? (float) $order->pickup_cancellation_penalty_amount : null,
             'pickup_cancellation_refund_amount' => $order->pickup_cancellation_refund_amount !== null ? (float) $order->pickup_cancellation_refund_amount : null,
@@ -736,7 +734,7 @@ class EntitlementController extends Controller
                 'status' => $order->delivery->delivery_status,
                 'type' => $deliveryType,
                 'delivery_type' => $deliveryType,
-                'pickup_pin' => $order->merchant_confirmed_at && $order->pickup_status === 'ready_for_pickup'
+                'pickup_pin' => $order->merchant_confirmed_at && in_array($order->pickup_status, $pickupReadyStatuses, true)
                     ? $order->delivery->pickup_pin
                     : null,
                 'buyer_release_pin' => $order->delivery->buyer_release_pin,
@@ -763,6 +761,22 @@ class EntitlementController extends Controller
                 'created_at' => $order->review->created_at?->toISOString(),
             ] : null,
         ];
+    }
+
+    private function additionalPaidTotal(Order $order): float
+    {
+        return (float) Order::query()
+            ->where(function ($query) use ($order) {
+                $query->where(function ($legacy) use ($order) {
+                    $legacy->where('purchasable_id', $order->id)
+                        ->where('purchasable_type', 'pickup_delivery_fee');
+                })->orWhere(function ($extraCharge) use ($order) {
+                    $extraCharge->where('purchasable_type', 'extra_charge')
+                        ->where('extra_items->parent_order_id', $order->id);
+                });
+            })
+            ->whereIn('payment_status', ['escrow_locked', 'resolved_merchant_paid'])
+            ->sum('total_paid');
     }
 
     private function ensureCustomerPins(Order $order): void

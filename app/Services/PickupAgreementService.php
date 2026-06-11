@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Events\MessageSent;
+use App\Models\ExtraCharge;
 use App\Models\MerchantLocation;
 use App\Models\Message;
 use App\Models\Order;
@@ -123,9 +124,6 @@ class PickupAgreementService
             'buyer_no_show',
             'completed',
             'converted_to_delivery',
-            'holding_fee_pending',
-            'holding_fee_payment_pending',
-            'holding_fee_paid_held',
             'cancelled_after_grace',
         ], true)) {
             return $order;
@@ -143,7 +141,6 @@ class PickupAgreementService
             'acting_as' => 'system',
             'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
             'pickup_grace_ends_at' => $order->pickup_grace_ends_at?->toISOString(),
-            'late_fee_estimate' => $this->calculateLatePickupFee($order),
         ]);
 
         return $order->fresh(['delivery']);
@@ -198,16 +195,16 @@ class PickupAgreementService
 
             $refundRequest = $this->createPickupRefundRequest($order->fresh(['buyer', 'merchant']), $refundAmount, $penaltyAmount, $percent, $reason);
 
-            $holdingFeeOrders = Order::query()
+            $extraChargeOrders = Order::query()
                 ->where('merchant_id', $order->merchant_id)
                 ->where('payment_status', 'escrow_locked')
                 ->whereNull('paid_out_at')
-                ->where('extra_items->type', 'pickup_holding_fee')
+                ->where('extra_items->type', 'extra_charge')
                 ->where('extra_items->parent_order_id', $order->id)
                 ->lockForUpdate()
                 ->get();
 
-            foreach ($holdingFeeOrders as $feeOrder) {
+            foreach ($extraChargeOrders as $feeOrder) {
                 $this->creditMerchantPenalty($feeOrder, (float) $feeOrder->total_paid, 'PICKUP-LATE-FEE');
                 $feeOrder->forceFill([
                     'payment_status' => 'resolved_merchant_paid',
@@ -245,7 +242,10 @@ class PickupAgreementService
             abort(422, 'Pickup extensions are not allowed for this order.');
         }
 
+        $extensionId = (string) Str::uuid();
+
         $snapshot['pending_extension'] = [
+            'id' => $extensionId,
             'requested_by' => 'buyer',
             'requested_at' => now()->toISOString(),
             'requested_deadline_at' => $requestedDeadlineAt->toISOString(),
@@ -266,12 +266,13 @@ class PickupAgreementService
             'acting_as' => 'buyer',
             'requested_deadline_at' => $requestedDeadlineAt->toISOString(),
             'reason' => $reason,
+            'extension_id' => $extensionId,
         ]);
 
         return $order->fresh(['delivery']);
     }
 
-    public function resolveExtension(Order $order, int $merchantUserId, string $decision, ?Carbon $approvedDeadlineAt = null, ?string $note = null): Order
+    public function resolveExtension(Order $order, int $merchantUserId, string $decision, ?Carbon $approvedDeadlineAt = null, ?string $note = null, ?string $extensionId = null): Order
     {
         $order->loadMissing(['delivery', 'buyer', 'merchant.user']);
         $snapshot = $order->pickup_policy_snapshot ?: [];
@@ -279,6 +280,10 @@ class PickupAgreementService
 
         if (!$pending || ($pending['status'] ?? null) !== 'pending') {
             abort(422, 'No pending pickup extension request found.');
+        }
+
+        if ($extensionId && !hash_equals((string) ($pending['id'] ?? ''), $extensionId)) {
+            abort(422, 'This pickup extension request is no longer active.');
         }
 
         if ($decision === 'approved') {
@@ -306,6 +311,7 @@ class PickupAgreementService
                 'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
                 'pickup_grace_ends_at' => $order->pickup_grace_ends_at?->toISOString(),
                 'note' => $note,
+                'extension_id' => $pending['id'] ?? null,
             ]);
 
             return $order->fresh(['delivery']);
@@ -328,43 +334,102 @@ class PickupAgreementService
             'action_type' => 'pickup_extension_rejected',
             'acting_as' => 'merchant',
             'note' => $note,
+            'extension_id' => $pending['id'] ?? null,
         ]);
 
         return $order->fresh(['delivery']);
     }
 
-    public function proposeHoldingFee(Order $order, int $merchantUserId, ?float $amount = null, ?string $note = null): Order
+    public function proposeExtraCharge(Order $order, int $merchantUserId, ?float $amount = null, ?string $note = null): Order
     {
         $order->loadMissing(['delivery', 'buyer', 'merchant.user']);
         $snapshot = $order->pickup_policy_snapshot ?: [];
 
-        if (!$order->pickup_deadline_at || $order->pickup_deadline_at->isFuture()) {
-            abort(422, 'Pickup deadline has not expired yet.');
+        if ($order->delivery?->delivery_type !== 'self_pickup') {
+            abort(422, 'Extra pickup costs apply only to self-pickup orders.');
         }
 
-        $amount = $amount !== null ? (float) $amount : $this->calculateLatePickupFee($order);
+        if (!in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'], true)) {
+            abort(422, 'Order must be paid before adding an extra pickup cost.');
+        }
+
+        if ($order->pickup_completed_at || in_array($order->payment_status, ['resolved_merchant_paid', 'resolved_buyer_refunded', 'refund_pending'], true)) {
+            abort(422, 'This pickup order is already closed.');
+        }
+
+        $amount = $amount !== null ? (float) $amount : 0.0;
 
         if ($amount <= 0) {
             abort(422, 'Extra cost amount must be greater than zero.');
         }
 
+        $active = $snapshot['active_extra_charge'] ?? null;
+        $existingCharge = null;
+        if (($active['status'] ?? null) === 'proposed' && !empty($active['id'])) {
+            $existingCharge = ExtraCharge::query()
+                ->where('order_id', $order->id)
+                ->where('public_id', (string) $active['id'])
+                ->where('status', 'proposed')
+                ->first();
+        }
+
+        $extraCharge = $existingCharge ?: new ExtraCharge([
+            'public_id' => (($active['status'] ?? null) === 'proposed' && !empty($active['id']))
+                ? (string) $active['id']
+                : (string) Str::uuid(),
+            'order_id' => $order->id,
+            'merchant_id' => $order->merchant_id,
+            'buyer_id' => $order->buyer_id,
+            'proposed_by_user_id' => $merchantUserId,
+            'context' => 'pickup_chat',
+            'charge_type' => 'agreement',
+            'proposed_at' => now(),
+        ]);
+        $extraCharge->fill([
+            'description' => $note,
+            'amount' => $amount,
+            'currency_code' => $order->merchant_currency_code ?: 'TZS',
+            'status' => 'proposed',
+            'payment_order_id' => null,
+            'accepted_by_user_id' => null,
+            'accepted_at' => null,
+            'paid_at' => null,
+            'removed_at' => null,
+            'removed_by_user_id' => null,
+            'metadata' => [
+                'source' => 'pickup_extra_charge',
+                'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
+            ],
+        ])->save();
+
+        $snapshot['active_extra_charge'] = [
+            'id' => $extraCharge->public_id,
+            'status' => 'proposed',
+            'amount' => $amount,
+            'currency' => $order->merchant_currency_code ?: 'TZS',
+            'note' => $note,
+            'proposed_by' => $merchantUserId,
+            'proposed_at' => $extraCharge->proposed_at?->toISOString() ?: now()->toISOString(),
+            'updated_at' => now()->toISOString(),
+            'extra_charge_id' => $extraCharge->id,
+        ];
+
         $order->forceFill([
-            'pickup_status' => 'holding_fee_pending',
-            'holding_fee_status' => 'proposed',
-            'holding_fee_amount' => $amount,
-            'holding_fee_started_at' => now(),
+            'pickup_policy_snapshot' => $snapshot,
         ])->save();
 
         $this->writeActionMessage($order, [
             'sender_id' => $merchantUserId,
             'receiver_id' => $order->buyer_id,
-            'body' => 'Merchant proposed an extra agreed cost for this overdue pickup.',
-            'action_type' => 'holding_fee_proposed',
+            'body' => 'Merchant proposed an extra agreed cost.',
+            'action_type' => 'extra_charge_proposed',
             'acting_as' => 'merchant',
             'amount' => $amount,
             'currency' => $order->merchant_currency_code ?: 'TZS',
             'note' => $note,
-            'fee_type' => $snapshot['late_fee_type'] ?? 'fixed',
+            'proposal_id' => $extraCharge->public_id,
+            'extra_charge_id' => $extraCharge->id,
+            'fee_type' => 'agreement',
             'pickup_deadline_at' => $order->pickup_deadline_at?->toISOString(),
             'pickup_grace_ends_at' => $order->pickup_grace_ends_at?->toISOString(),
         ]);
@@ -372,26 +437,94 @@ class PickupAgreementService
         return $order->fresh(['delivery']);
     }
 
-    public function createHoldingFeePaymentOrder(Order $order, int $buyerUserId, ?string $paymentPhone = null): Order
+    public function removeExtraChargeProposal(Order $order, int $merchantUserId): Order
+    {
+        $order->loadMissing(['delivery', 'buyer', 'merchant.user']);
+        $snapshot = $order->pickup_policy_snapshot ?: [];
+        $active = $snapshot['active_extra_charge'] ?? null;
+
+        if ($order->delivery?->delivery_type !== 'self_pickup') {
+            abort(422, 'Extra pickup costs apply only to self-pickup orders.');
+        }
+
+        if (($active['status'] ?? null) !== 'proposed') {
+            abort(422, 'No editable extra cost proposal is waiting.');
+        }
+
+        if (!empty($active['id'])) {
+            ExtraCharge::query()
+                ->where('order_id', $order->id)
+                ->where('public_id', (string) $active['id'])
+                ->where('status', 'proposed')
+                ->update([
+                    'status' => 'removed',
+                    'removed_at' => now(),
+                    'removed_by_user_id' => $merchantUserId,
+                ]);
+        }
+
+        $snapshot['active_extra_charge'] = [
+            ...$active,
+            'status' => 'removed',
+            'removed_at' => now()->toISOString(),
+            'removed_by' => $merchantUserId,
+        ];
+
+        $order->forceFill([
+            'pickup_policy_snapshot' => $snapshot,
+        ])->save();
+
+        $this->writeActionMessage($order, [
+            'sender_id' => $merchantUserId,
+            'receiver_id' => $order->buyer_id,
+            'body' => 'Merchant removed the extra cost proposal.',
+            'action_type' => 'extra_charge_removed',
+            'acting_as' => 'merchant',
+            'amount' => (float) ($active['amount'] ?? 0),
+            'currency' => $order->merchant_currency_code ?: 'TZS',
+            'proposal_id' => $active['id'] ?? null,
+            'extra_charge_id' => $active['extra_charge_id'] ?? null,
+        ]);
+
+        return $order->fresh(['delivery']);
+    }
+
+    public function createExtraChargePaymentOrder(Order $order, int $buyerUserId, ?string $paymentPhone = null, ?string $proposalId = null): Order
     {
         $order->loadMissing(['delivery', 'merchant.user', 'buyer', 'product']);
+        $snapshot = $order->pickup_policy_snapshot ?: [];
+        $active = $snapshot['active_extra_charge'] ?? null;
 
-        if (!in_array($order->holding_fee_status, ['proposed', 'payment_pending'], true) || $order->holding_fee_amount === null) {
+        if (!in_array($active['status'] ?? null, ['proposed', 'payment_pending'], true)) {
             abort(422, 'No extra cost proposal is waiting for acceptance.');
+        }
+
+        if ($proposalId && !hash_equals((string) ($active['id'] ?? ''), $proposalId)) {
+            abort(422, 'This extra cost proposal is no longer active.');
         }
 
         if ($order->buyer_id !== $buyerUserId) {
             abort(403, 'Unauthorized.');
         }
 
-        if ($order->holding_fee_payment_order_id) {
-            $existing = Order::query()->find($order->holding_fee_payment_order_id);
+        $extraCharge = ExtraCharge::query()
+            ->where('order_id', $order->id)
+            ->where('public_id', (string) ($active['id'] ?? ''))
+            ->whereIn('status', ['proposed', 'payment_pending'])
+            ->first();
+
+        if (! $extraCharge) {
+            abort(422, 'This extra cost proposal is no longer active.');
+        }
+
+        if ($extraCharge->payment_order_id) {
+            $existing = Order::query()->find($extraCharge->payment_order_id);
             if ($existing && $existing->payment_status === 'pending') {
                 return $existing;
             }
         }
 
-        $amount = (float) $order->holding_fee_amount;
+        $amount = (float) $extraCharge->amount;
         if ($amount <= 0) {
             abort(422, 'Extra cost amount must be greater than zero.');
         }
@@ -401,8 +534,8 @@ class PickupAgreementService
             'merchant_id' => $order->merchant_id,
             'product_id' => $order->product_id,
             'variant_id' => $order->variant_id,
-            'purchasable_type' => 'holding_fee',
-            'purchasable_id' => $order->id,
+            'purchasable_type' => 'extra_charge',
+            'purchasable_id' => $extraCharge->id,
             'order_kind' => 'one_time',
             'quantity' => 1,
             'unit_price' => $amount,
@@ -412,49 +545,81 @@ class PickupAgreementService
             'merchant_total_amount' => $amount,
             'customer_total_amount' => $amount,
             'payment_status' => 'pending',
+            'payment_gateway' => $order->payment_gateway,
+            'payment_provider_id' => $order->payment_provider_id,
+            'payment_provider_channel_id' => $order->payment_provider_channel_id,
+            'payment_channel_snapshot' => $order->payment_channel_snapshot,
+            'money_quote_snapshot' => $order->money_quote_snapshot,
             'payment_phone' => $paymentPhone ?: $order->payment_phone ?: $order->account_phone,
             'account_phone' => $order->account_phone,
             'country_code' => $order->country_code,
             'source' => 'online',
             'payment_mode' => 'online_escrow',
-            'transaction_ref' => 'HOLD-' . $order->id . '-' . strtoupper(Str::random(10)),
+            'transaction_ref' => 'EXTRA-' . $order->id . '-' . strtoupper(Str::random(10)),
             'extra_items' => [
-                'type' => 'pickup_holding_fee',
+                'type' => 'extra_charge',
                 'parent_order_id' => $order->id,
                 'parent_public_id' => $order->public_id,
+                'extra_charge_id' => $extraCharge->id,
+                'proposal_id' => $active['id'] ?? null,
             ],
         ]);
 
+        $extraCharge->forceFill([
+            'status' => 'payment_pending',
+            'accepted_by_user_id' => $buyerUserId,
+            'accepted_at' => now(),
+            'payment_order_id' => $paymentOrder->id,
+        ])->save();
+
+        $snapshot['active_extra_charge'] = [
+            ...$active,
+            'status' => 'payment_pending',
+            'accepted_at' => now()->toISOString(),
+            'accepted_by' => $buyerUserId,
+            'payment_order_id' => $paymentOrder->id,
+            'extra_charge_id' => $extraCharge->id,
+        ];
+
         $order->forceFill([
-            'holding_fee_status' => 'payment_pending',
-            'holding_fee_accepted_at' => now(),
-            'holding_fee_payment_order_id' => $paymentOrder->id,
-            'pickup_status' => 'holding_fee_payment_pending',
+            'pickup_policy_snapshot' => $snapshot,
         ])->save();
 
         $this->writeActionMessage($order, [
             'sender_id' => $buyerUserId,
             'receiver_id' => $order->merchant?->user_id,
             'body' => 'Buyer accepted the extra cost proposal and started payment.',
-            'action_type' => 'holding_fee_payment_started',
+            'action_type' => 'extra_charge_payment_started',
             'acting_as' => 'buyer',
             'amount' => $amount,
             'currency' => $order->merchant_currency_code ?: 'TZS',
             'payment_order_id' => $paymentOrder->id,
+            'proposal_id' => $active['id'] ?? null,
+            'extra_charge_id' => $extraCharge->id,
         ]);
 
         return $paymentOrder;
     }
 
-    public function markHoldingFeePaid(Order $paymentOrder, string $gatewayRef, string $gateway): Order
+    public function markExtraChargePaid(Order $paymentOrder, string $gatewayRef, string $gateway): Order
     {
         $parentOrderId = (int) data_get($paymentOrder->extra_items, 'parent_order_id');
-        if (!$parentOrderId || data_get($paymentOrder->extra_items, 'type') !== 'pickup_holding_fee') {
-            abort(422, 'This is not a holding fee payment order.');
+        $paymentType = data_get($paymentOrder->extra_items, 'type');
+        if (!$parentOrderId || $paymentType !== 'extra_charge') {
+            abort(422, 'This is not an extra charge payment order.');
         }
 
         $parent = Order::query()->with(['delivery', 'merchant.user', 'buyer'])->lockForUpdate()->findOrFail($parentOrderId);
         $amount = (float) $paymentOrder->total_paid;
+        $snapshot = $parent->pickup_policy_snapshot ?: [];
+        $active = $snapshot['active_extra_charge'] ?? [];
+        $paymentProposalId = (string) data_get($paymentOrder->extra_items, 'proposal_id', '');
+        $isActiveProposalPayment = $paymentProposalId !== '' && hash_equals((string) ($active['id'] ?? ''), $paymentProposalId);
+        $extraCharge = null;
+        $extraChargeId = (int) data_get($paymentOrder->extra_items, 'extra_charge_id');
+        if ($extraChargeId > 0) {
+            $extraCharge = ExtraCharge::query()->whereKey($extraChargeId)->where('order_id', $parent->id)->first();
+        }
 
         $paymentOrder->forceFill([
             'payment_status' => 'escrow_locked',
@@ -462,22 +627,39 @@ class PickupAgreementService
             'payment_gateway' => $gateway,
         ])->save();
 
-        $parent->forceFill([
-            'holding_fee_status' => 'paid_held',
-            'holding_fee_paid_at' => now(),
-            'holding_fee_payment_order_id' => $paymentOrder->id,
-            'pickup_status' => 'holding_fee_paid_held',
-        ])->save();
+        if ($extraCharge) {
+            $extraCharge->forceFill([
+                'status' => 'paid_held',
+                'paid_at' => now(),
+                'payment_order_id' => $paymentOrder->id,
+            ])->save();
+        }
+
+        if ($isActiveProposalPayment) {
+            $snapshot['active_extra_charge'] = [
+                ...$active,
+                'status' => 'paid_held',
+                'paid_at' => now()->toISOString(),
+                'payment_order_id' => $paymentOrder->id,
+                'extra_charge_id' => $extraCharge?->id ?: ($active['extra_charge_id'] ?? null),
+            ];
+
+            $parent->forceFill([
+                'pickup_policy_snapshot' => $snapshot,
+            ])->save();
+        }
 
         $this->writeActionMessage($parent, [
             'sender_id' => $parent->buyer_id,
             'receiver_id' => $parent->merchant?->user_id,
-            'body' => 'Late pickup fee payment is held in escrow.',
-            'action_type' => 'holding_fee_paid_held',
+            'body' => 'Extra charge payment is held in escrow.',
+            'action_type' => 'extra_charge_paid_held',
             'acting_as' => 'buyer',
             'amount' => $amount,
             'currency' => $parent->merchant_currency_code ?: 'TZS',
             'payment_order_id' => $paymentOrder->id,
+            'proposal_id' => $paymentProposalId ?: null,
+            'extra_charge_id' => $extraCharge?->id ?: null,
         ]);
 
         return $parent->fresh(['delivery']);
@@ -604,6 +786,11 @@ class PickupAgreementService
             'merchant_total_amount' => $amount,
             'customer_total_amount' => $amount,
             'payment_status' => 'pending',
+            'payment_gateway' => $order->payment_gateway,
+            'payment_provider_id' => $order->payment_provider_id,
+            'payment_provider_channel_id' => $order->payment_provider_channel_id,
+            'payment_channel_snapshot' => $order->payment_channel_snapshot,
+            'money_quote_snapshot' => $order->money_quote_snapshot,
             'payment_phone' => $paymentPhone ?: $order->payment_phone ?: $order->account_phone,
             'account_phone' => $order->account_phone,
             'country_code' => $order->country_code,
@@ -718,11 +905,6 @@ class PickupAgreementService
         $productHoldHours = $order->product?->pickup_hold_hours_override;
         $holdHours = max(1, (int) ($productHoldHours ?: $location?->pickup_hold_hours ?: 2));
         $graceHours = max(0, (int) ($location?->pickup_grace_hours ?? 0));
-        $holdingFeeEnabled = (bool) ($location?->pickup_holding_fee_enabled ?? false)
-            && (bool) ($order->product?->pickup_holding_fee_allowed ?? true);
-        $lateFeeType = in_array($location?->pickup_late_fee_type, ['fixed', 'hourly'], true)
-            ? $location->pickup_late_fee_type
-            : (($location?->pickup_holding_fee_interval ?: 'day') === 'hour' ? 'hourly' : 'fixed');
 
         return [
             'version' => 2,
@@ -734,46 +916,11 @@ class PickupAgreementService
             'available_windows' => $location?->pickup_available_windows ?: null,
             'instructions' => $location?->pickup_instructions,
             'extension_allowed' => (bool) ($order->product?->pickup_extension_allowed ?? true),
-            'holding_fee_enabled' => $holdingFeeEnabled,
-            'late_fee_enabled' => $holdingFeeEnabled,
-            'late_fee_type' => $lateFeeType,
-            'holding_fee_amount' => $holdingFeeEnabled ? (float) ($location?->pickup_holding_fee_amount ?? 0) : null,
-            'late_fee_amount' => $holdingFeeEnabled ? (float) ($location?->pickup_holding_fee_amount ?? 0) : null,
-            'late_fee_cap_amount' => $holdingFeeEnabled && $location?->pickup_late_fee_cap_amount !== null ? (float) $location->pickup_late_fee_cap_amount : null,
-            'holding_fee_interval' => $holdingFeeEnabled ? ($location?->pickup_holding_fee_interval ?: 'day') : null,
             'cancellation_penalty_percent' => (float) ($location?->pickup_cancellation_penalty_percent ?? 0),
-            'max_holding_days' => $location?->pickup_max_holding_days ?? 2,
+            'pickup_advance_days' => $location?->pickup_advance_days ?? 2,
             'product_note' => $order->product?->pickup_policy_note,
             'accepted_at' => now()->toISOString(),
         ];
-    }
-
-    public function calculateLatePickupFee(Order $order, ?Carbon $asOf = null): float
-    {
-        $snapshot = $order->pickup_policy_snapshot ?: [];
-        if (!($snapshot['late_fee_enabled'] ?? $snapshot['holding_fee_enabled'] ?? false)) {
-            return 0.0;
-        }
-
-        $rate = max(0, (float) ($snapshot['late_fee_amount'] ?? $snapshot['holding_fee_amount'] ?? 0));
-        if ($rate <= 0 || !$order->pickup_deadline_at) {
-            return 0.0;
-        }
-
-        $type = $snapshot['late_fee_type'] ?? (($snapshot['holding_fee_interval'] ?? null) === 'hour' ? 'hourly' : 'fixed');
-        $amount = $rate;
-        if ($type === 'hourly') {
-            $minutesLate = max(1, $order->pickup_deadline_at->diffInMinutes($asOf ?: now(), false));
-            $startedHours = max(1, (int) ceil($minutesLate / 60));
-            $amount = $rate * $startedHours;
-        }
-
-        $cap = $snapshot['late_fee_cap_amount'] ?? null;
-        if ($cap !== null && (float) $cap > 0) {
-            $amount = min($amount, (float) $cap);
-        }
-
-        return round($amount, 2);
     }
 
     private function creditMerchantPenalty(Order $order, float $amount, string $referencePrefix = 'PICKUP-CANCEL-PENALTY'): void
@@ -950,7 +1097,8 @@ class PickupAgreementService
 
     private function writePickupTermsMessage(Order $order, array $snapshot): void
     {
-        $deadline = $order->pickup_deadline_at?->timezone(config('app.timezone'))->format('M j, Y g:i A');
+        $merchantTimezone = $order->merchant?->defaultTimezone() ?: config('app.timezone', 'UTC');
+        $deadline = $order->pickup_deadline_at?->timezone($merchantTimezone)->format('M j, Y g:i A');
         $location = $snapshot['location_name'] ?: 'merchant pickup location';
         $penalty = ((float) ($snapshot['cancellation_penalty_percent'] ?? 0)) > 0
             ? ' If the agreed pickup time passes and the order is cancelled for non-pickup, a cancellation penalty may be deducted from the paid amount.'

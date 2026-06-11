@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Dispute;
 use App\Models\ReturnRequest;
+use App\Http\Resources\OrderResource;
 use App\Services\ForwarderShipmentService;
 use App\Services\PickupAgreementService;
 use App\Payments\GatewayRegistry;
@@ -111,7 +112,7 @@ class BuyerEscrowController extends Controller
         ]);
     }
 
-    public function acceptHoldingFee(Request $request, Order $order): JsonResponse
+    public function acceptExtraCharge(Request $request, Order $order): JsonResponse
     {
         if ($order->buyer_id !== $request->user()->id) {
             return response()->json(['message' => 'Unauthorized.'], 403);
@@ -119,6 +120,7 @@ class BuyerEscrowController extends Controller
 
         $validated = $request->validate([
             'payment_number' => 'nullable|string|max:32',
+            'proposal_id' => 'nullable|string|max:80',
         ]);
 
         $paymentPhone = $validated['payment_number']
@@ -126,22 +128,50 @@ class BuyerEscrowController extends Controller
             ?? $order->account_phone
             ?? $request->user()->phone_number;
 
-        $paymentOrder = app(PickupAgreementService::class)->createHoldingFeePaymentOrder(
+        $paymentOrder = app(PickupAgreementService::class)->createExtraChargePaymentOrder(
             $order,
             $request->user()->id,
-            $paymentPhone
+            $paymentPhone,
+            $validated['proposal_id'] ?? null
         );
 
         try {
             $gatewayRegistry = app(GatewayRegistry::class);
-            $gateway = $gatewayRegistry->resolve($request, $paymentPhone);
-            $countryCode = $gatewayRegistry->resolveCountry($request, $paymentPhone);
+            [$gateway, $countryCode] = $this->resolveFollowUpPaymentGateway(
+                $gatewayRegistry,
+                $request,
+                $order,
+                $paymentPhone
+            );
 
             $paymentOrder->forceFill([
                 'payment_gateway' => $gateway->getName(),
+                'payment_provider_id' => $order->payment_provider_id,
+                'payment_provider_channel_id' => $order->payment_provider_channel_id,
+                'payment_channel_snapshot' => $order->payment_channel_snapshot,
+                'money_quote_snapshot' => $order->money_quote_snapshot,
                 'country_code' => $countryCode,
                 'payment_phone' => $paymentPhone,
             ])->save();
+
+            if (! (bool) env('LIVE_GATEWAY_CHECKOUT', false)) {
+                app(\App\Payments\PaymentCallbackProcessor::class)->handleSuccess(
+                    $paymentOrder->fresh(['merchant', 'product']),
+                    'SIM-EXTRA-' . $paymentOrder->id,
+                    $gateway->getName()
+                );
+
+                return response()->json([
+                    'message' => 'Extra charge simulation completed successfully.',
+                    'order' => OrderResource::make($order->fresh(['delivery', 'product', 'buyer']))->resolve(),
+                    'payment_order' => [
+                        'id' => $paymentOrder->id,
+                        'public_id' => $paymentOrder->public_id,
+                        'payment_status' => $paymentOrder->fresh()->payment_status,
+                        'amount' => (float) $paymentOrder->total_paid,
+                    ],
+                ]);
+            }
 
             $paymentResult = $gateway->initiate($paymentOrder->fresh(['buyer']), [
                 'payment_number' => $paymentPhone,
@@ -151,21 +181,24 @@ class BuyerEscrowController extends Controller
                 $paymentOrder->forceFill(['payment_status' => 'failed'])->save();
 
                 return response()->json([
-                    'message' => $paymentResult->message ?: 'Holding fee payment could not be started.',
+                    'message' => $this->paymentStartFailureMessage(
+                        'Extra charge payment could not be started.',
+                        $paymentResult->message
+                    ),
                 ], 422);
             }
         } catch (\Throwable $e) {
             $paymentOrder->forceFill(['payment_status' => 'failed'])->save();
 
             return response()->json([
-                'message' => 'Holding fee payment could not be started.',
+                'message' => 'Extra charge payment could not be started.',
                 'error' => $e->getMessage(),
             ], 500);
         }
 
         return response()->json([
-            'message' => 'Holding fee accepted. Payment request sent.',
-            'order' => $order->fresh(['delivery']),
+            'message' => 'Extra charge accepted. Payment request sent.',
+            'order' => OrderResource::make($order->fresh(['delivery', 'product', 'buyer']))->resolve(),
             'payment_order' => [
                 'id' => $paymentOrder->id,
                 'public_id' => $paymentOrder->public_id,
@@ -224,14 +257,41 @@ class BuyerEscrowController extends Controller
 
         try {
             $gatewayRegistry = app(GatewayRegistry::class);
-            $gateway = $gatewayRegistry->resolve($request, $paymentPhone);
-            $countryCode = $gatewayRegistry->resolveCountry($request, $paymentPhone);
+            [$gateway, $countryCode] = $this->resolveFollowUpPaymentGateway(
+                $gatewayRegistry,
+                $request,
+                $order,
+                $paymentPhone
+            );
 
             $paymentOrder->forceFill([
                 'payment_gateway' => $gateway->getName(),
+                'payment_provider_id' => $order->payment_provider_id,
+                'payment_provider_channel_id' => $order->payment_provider_channel_id,
+                'payment_channel_snapshot' => $order->payment_channel_snapshot,
+                'money_quote_snapshot' => $order->money_quote_snapshot,
                 'country_code' => $countryCode,
                 'payment_phone' => $paymentPhone,
             ])->save();
+
+            if (! (bool) env('LIVE_GATEWAY_CHECKOUT', false)) {
+                app(\App\Payments\PaymentCallbackProcessor::class)->handleSuccess(
+                    $paymentOrder->fresh(['merchant', 'product']),
+                    'SIM-DELIVERY-' . $paymentOrder->id,
+                    $gateway->getName()
+                );
+
+                return response()->json([
+                    'message' => 'Delivery fee simulation completed successfully.',
+                    'order' => OrderResource::make($order->fresh(['delivery', 'product', 'buyer']))->resolve(),
+                    'payment_order' => [
+                        'id' => $paymentOrder->id,
+                        'public_id' => $paymentOrder->public_id,
+                        'payment_status' => $paymentOrder->fresh()->payment_status,
+                        'amount' => (float) $paymentOrder->total_paid,
+                    ],
+                ]);
+            }
 
             $paymentResult = $gateway->initiate($paymentOrder->fresh(['buyer']), [
                 'payment_number' => $paymentPhone,
@@ -241,7 +301,10 @@ class BuyerEscrowController extends Controller
                 $paymentOrder->forceFill(['payment_status' => 'failed'])->save();
 
                 return response()->json([
-                    'message' => $paymentResult->message ?: 'Delivery fee payment could not be started.',
+                    'message' => $this->paymentStartFailureMessage(
+                        'Delivery fee payment could not be started.',
+                        $paymentResult->message
+                    ),
                 ], 422);
             }
         } catch (\Throwable $e) {
@@ -255,7 +318,7 @@ class BuyerEscrowController extends Controller
 
         return response()->json([
             'message' => 'Delivery fee payment request sent.',
-            'order' => $order->fresh(['delivery']),
+            'order' => OrderResource::make($order->fresh(['delivery', 'product', 'buyer']))->resolve(),
             'payment_order' => [
                 'id' => $paymentOrder->id,
                 'public_id' => $paymentOrder->public_id,
@@ -536,5 +599,38 @@ class BuyerEscrowController extends Controller
             'escalated_at' => $returnRequest->escalated_at?->toISOString(),
             'dispute_id' => $returnRequest->dispute_id,
         ];
+    }
+
+    private function resolveFollowUpPaymentGateway(GatewayRegistry $gatewayRegistry, Request $request, Order $parentOrder, ?string $paymentPhone): array
+    {
+        if ($parentOrder->payment_gateway) {
+            try {
+                $gateway = $gatewayRegistry->resolveByName($parentOrder->payment_gateway);
+                $supportedCountries = $gateway->getSupportedCountries();
+                $countryCode = $parentOrder->country_code ?: ($supportedCountries[0] ?? null);
+
+                if ($countryCode) {
+                    return [$gateway, strtoupper($countryCode)];
+                }
+            } catch (\Throwable) {
+                // Fall back to current routing if the stored gateway is no longer available.
+            }
+        }
+
+        $gateway = $gatewayRegistry->resolve($request, $paymentPhone);
+
+        return [$gateway, $gatewayRegistry->resolveCountry($request, $paymentPhone)];
+    }
+
+    private function paymentStartFailureMessage(string $fallback, ?string $providerMessage): string
+    {
+        $message = trim((string) $providerMessage);
+        $lower = strtolower($message);
+
+        if ($message !== '' && !str_contains($lower, 'authorization key') && !str_contains($lower, 'credential')) {
+            return $message;
+        }
+
+        return $fallback . ' Please try again or contact support.';
     }
 }

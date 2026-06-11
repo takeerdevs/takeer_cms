@@ -47,6 +47,12 @@ function formatMoney(amount, currency = 'TZS') {
     }
 }
 
+function isInternalPaymentOrder(order) {
+    const transactionRef = String(order?.transaction_ref || order?.public_id || '');
+    return ['extra_charge', 'pickup_delivery_fee'].includes(order?.purchasable_type)
+        || transactionRef.startsWith('EXTRA-');
+}
+
 export default function MerchantOrders({ merchantUsername, merchantName }) {
     const { auth } = usePage().props;
     const merchantSlug = merchantUsername || auth?.user?.merchant_profiles?.[0]?.username || '';
@@ -88,7 +94,7 @@ export default function MerchantOrders({ merchantUsername, merchantName }) {
             const perPageParam = `per_page=${perPage}`;
             const query = statusFilter ? `${statusFilter}&${pageParam}&${perPageParam}` : `?${pageParam}&${perPageParam}`;
             const res = await axios.get(`/merchant/${merchantSlug}/orders/api${query}`);
-            setOrders(res.data?.data || []);
+            setOrders((res.data?.data || []).filter((order) => !isInternalPaymentOrder(order)));
             setMeta(res.data?.meta || { current_page: 1, last_page: 1, total: 0 });
         } catch (error) {
             toast.error('Imeshindwa kupakia oda.');
@@ -248,6 +254,8 @@ function OrderCard({ order, merchantUsername }) {
 
     const config = statusConfig[order.payment_status] || { label: order.payment_status, classes: 'bg-muted text-muted-foreground' };
     const displayTitle = order.display_title || product.title || 'Order item';
+    const displayTotal = order.order_total_with_additions ?? order.total_paid ?? 0;
+    const extraChargeTotal = Number(order.additional_paid_total || 0);
 
     // POS specific display logic
     const isPos = order.source === 'pos';
@@ -289,6 +297,11 @@ function OrderCard({ order, merchantUsername }) {
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${config.classes}`}>
                             {config.label}
                         </span>
+                        {extraChargeTotal > 0 && (
+                            <span className="inline-flex rounded-full bg-orange-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-orange-700">
+                                Extra {formatMoney(extraChargeTotal, order.merchant_currency_code || 'TZS')}
+                            </span>
+                        )}
                         {order.return_request && (
                             <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-sky-700">
                                 Return: {String(order.return_request.status || '').replaceAll('_', ' ')}
@@ -312,7 +325,7 @@ function OrderCard({ order, merchantUsername }) {
                 <div className="flex sm:flex-col items-center sm:items-end justify-between gap-3 sm:gap-2 mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 sm:border-l sm:pl-6 border-dashed">
                     <div className="text-left sm:text-right">
                         <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">Total Paid</p>
-                        <p className="text-xl font-black text-brand-600">{formatMoney(order.total_paid || 0, order.merchant_currency_code || 'TZS')}</p>
+                        <p className="text-xl font-black text-brand-600">{formatMoney(displayTotal, order.merchant_currency_code || 'TZS')}</p>
                     </div>
                     <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full bg-brand-50 text-brand-600 hover:bg-brand-100 hover:text-brand-700">
                         <ChevronRight className="h-5 w-5" />

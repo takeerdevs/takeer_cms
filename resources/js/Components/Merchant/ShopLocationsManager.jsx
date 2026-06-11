@@ -74,13 +74,8 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
         pickup_grace_hours: 0,
         pickup_available_windows: defaultPickupWindows(),
         pickup_instructions: '',
-        pickup_holding_fee_enabled: false,
-        pickup_late_fee_type: 'fixed',
-        pickup_holding_fee_amount: '',
-        pickup_late_fee_cap_amount: '',
         pickup_cancellation_penalty_percent: 0,
-        pickup_holding_fee_interval: 'day',
-        pickup_max_holding_days: 2,
+        pickup_advance_days: 2,
         contact_phone: '',
     });
     const [retailSettings, setRetailSettings] = useState(null);
@@ -187,13 +182,8 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             pickup_grace_hours: 0,
             pickup_available_windows: defaultPickupWindows(),
             pickup_instructions: '',
-            pickup_holding_fee_enabled: false,
-            pickup_late_fee_type: 'fixed',
-            pickup_holding_fee_amount: '',
-            pickup_late_fee_cap_amount: '',
             pickup_cancellation_penalty_percent: 0,
-            pickup_holding_fee_interval: 'day',
-            pickup_max_holding_days: 2,
+            pickup_advance_days: 2,
             contact_phone: '',
         });
     };
@@ -220,13 +210,8 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             pickup_grace_hours: 0,
             pickup_available_windows: normalizePickupWindows(loc.pickup_available_windows),
             pickup_instructions: loc.pickup_instructions || '',
-            pickup_holding_fee_enabled: false,
-            pickup_late_fee_type: 'fixed',
-            pickup_holding_fee_amount: '',
-            pickup_late_fee_cap_amount: '',
             pickup_cancellation_penalty_percent: loc.pickup_cancellation_penalty_percent ?? 0,
-            pickup_holding_fee_interval: 'day',
-            pickup_max_holding_days: loc.pickup_max_holding_days ?? 2,
+            pickup_advance_days: loc.pickup_advance_days ?? 2,
             contact_phone: loc.contact_phone || '',
         });
 
@@ -259,13 +244,8 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
             pickup_grace_hours: 0,
             pickup_available_windows: defaultPickupWindows(),
             pickup_instructions: '',
-            pickup_holding_fee_enabled: false,
-            pickup_late_fee_type: 'fixed',
-            pickup_holding_fee_amount: '',
-            pickup_late_fee_cap_amount: '',
             pickup_cancellation_penalty_percent: 0,
-            pickup_holding_fee_interval: 'day',
-            pickup_max_holding_days: 2,
+            pickup_advance_days: 2,
             contact_phone: '',
         });
     };
@@ -284,11 +264,6 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                 merchant_id: merchantId,
                 pickup_hold_hours: 2,
                 pickup_grace_hours: 0,
-                pickup_holding_fee_enabled: false,
-                pickup_late_fee_type: 'fixed',
-                pickup_holding_fee_amount: null,
-                pickup_late_fee_cap_amount: null,
-                pickup_holding_fee_interval: 'day',
                 pickup_available_windows: formData.allow_self_pickup
                     ? normalizePickupWindows(formData.pickup_available_windows).filter(window => window.enabled)
                     : null,
@@ -748,8 +723,8 @@ export default function ShopLocationsManager({ locations = [], onRefresh, loadin
                                             type="number"
                                             min="0"
                                             max="30"
-                                            value={formData.pickup_max_holding_days}
-                                            onChange={e => setFormData(prev => ({ ...prev, pickup_max_holding_days: e.target.value }))}
+                                            value={formData.pickup_advance_days}
+                                            onChange={e => setFormData(prev => ({ ...prev, pickup_advance_days: e.target.value }))}
                                             className="rounded-xl bg-white"
                                         />
                                         <p className="text-[10px] font-semibold leading-4 text-slate-500">

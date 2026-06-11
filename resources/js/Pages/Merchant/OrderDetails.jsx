@@ -308,7 +308,7 @@ function googleRouteUrl(origin, destination) {
 }
 
 function paymentOverview(order) {
-    const total = Number(order?.total_paid || 0);
+    const total = Number(order?.order_total_with_additions ?? order?.total_paid ?? 0);
     const explicitPaid = order?.amount_paid ?? order?.paid_amount ?? null;
     const paidStatuses = ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped', 'disputed', 'resolved_merchant_paid'];
     const paid = explicitPaid !== null
@@ -350,6 +350,23 @@ function paymentOverview(order) {
         left,
         total,
     };
+}
+
+function extraChargeStatusLabel(status, orderPaymentStatus = null) {
+    if (status === 'paid_held' && orderPaymentStatus === 'resolved_merchant_paid') {
+        return 'Released';
+    }
+
+    return {
+        proposed: 'Proposed',
+        accepted: 'Accepted',
+        payment_pending: 'Payment started',
+        paid_held: 'Paid & held',
+        released: 'Released',
+        resolved_merchant_paid: 'Released',
+        escrow_locked: 'Paid & held',
+        awaiting_merchant_confirmation: 'Paid',
+    }[status] || String(status || 'Extra charge').replaceAll('_', ' ');
 }
 
 function packageTitleForLabel(order) {
@@ -579,6 +596,46 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const status = statusMeta(order?.payment_status, !!order?.is_escrow_order);
     const paymentState = paymentOverview(order);
     const currencyCode = order?.merchant_currency_code || order?.merchant?.currency?.code || 'TZS';
+    const extraChargeLines = useMemo(() => (
+        Array.isArray(order?.extra_charges)
+            ? order.extra_charges.filter((charge) => !['removed', 'rejected', 'cancelled'].includes(charge.status))
+            : []
+    ), [order?.extra_charges]);
+    const extraChargeTotal = Number(order?.additional_paid_total || 0);
+    const paymentBreakdownLines = useMemo(() => {
+        const lines = [
+            {
+                key: 'package',
+                label: 'Package cost',
+                description: order?.display_title || order?.product?.title || 'Main order package',
+                amount: Number(order?.total_paid || 0),
+                status: order?.payment_status,
+            },
+        ];
+
+        if (extraChargeLines.length > 0) {
+            extraChargeLines.forEach((charge) => {
+                lines.push({
+                    key: charge.id || charge.public_id,
+                    label: 'Extra charge',
+                    description: charge.description || charge.title || 'Extra charge agreed in chat',
+                    amount: Number(charge.amount || 0),
+                    currency: charge.currency_code,
+                    status: charge.status,
+                });
+            });
+        } else if (extraChargeTotal > 0) {
+            lines.push({
+                key: 'extra-charges-total',
+                label: 'Extra charges',
+                description: 'Extra charges agreed in chat',
+                amount: extraChargeTotal,
+                status: 'paid_held',
+            });
+        }
+
+        return lines;
+    }, [extraChargeLines, extraChargeTotal, order?.display_title, order?.payment_status, order?.product?.title, order?.total_paid]);
     const KindIcon = kind.icon;
 
     const flowCopy = useMemo(() => {
@@ -1059,7 +1116,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </div>
                                 </div>
                                 <p className="text-3xl md:text-4xl font-black text-brand-600 shrink-0 sm:text-right">
-                                    {formatMoney(order.total_paid || 0, currencyCode)}
+                                    {formatMoney(order.order_total_with_additions ?? order.total_paid ?? 0, currencyCode)}
                                 </p>
                             </CardContent>
                         </Card>
@@ -1098,7 +1155,20 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     <p><span className="text-muted-foreground">Order Ref:</span> <span className="font-semibold">{isPos ? `#POS-${order.public_id}` : (order.transaction_ref || `#${order.id}`)}</span></p>
                                     <p><span className="text-muted-foreground">Kiasi:</span> <span className="font-semibold">{orderQuantityLabel(order)}</span></p>
                                     <p><span className="text-muted-foreground">Bei moja:</span> <span className="font-semibold">{orderUnitPriceLabel(order)}</span></p>
-                                    <p><span className="text-muted-foreground">Jumla:</span> <span className="font-semibold">{formatMoney(order.total_paid || 0, currencyCode)}</span></p>
+                                    <p><span className="text-muted-foreground">Jumla:</span> <span className="font-semibold">{formatMoney(order.order_total_with_additions ?? order.total_paid ?? 0, currencyCode)}</span></p>
+                                    {Number(order.additional_paid_total || 0) > 0 && (
+                                        <p><span className="text-muted-foreground">Extra charges:</span> <span className="font-semibold">{formatMoney(order.additional_paid_total || 0, currencyCode)}</span></p>
+                                    )}
+                                    {extraChargeLines.length > 0 && (
+                                        <div className="space-y-1 pt-1">
+                                            {extraChargeLines.map((charge) => (
+                                                <p key={charge.id || charge.public_id} className="flex items-start justify-between gap-3 text-xs">
+                                                    <span className="text-muted-foreground break-words">{charge.description || charge.title || 'Extra charge'}</span>
+                                                    <span className="shrink-0 font-black text-slate-950">{formatMoney(charge.amount || 0, charge.currency_code || currencyCode)}</span>
+                                                </p>
+                                            ))}
+                                        </div>
+                                    )}
                                     <p><span className="text-muted-foreground">Payment phone:</span> <span className="font-semibold">{maskPhone(order.payment_phone)}</span></p>
                                     <p><span className="text-muted-foreground">Account phone:</span> <span className="font-semibold">{maskPhone(order.account_phone)}</span></p>
                                 </CardContent>
@@ -1431,7 +1501,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     </div>
                                                     <div className="rounded-xl bg-slate-50 px-3 py-2">
                                                         <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Customer total</p>
-                                                        <p className="text-sm font-black text-brand-700">{formatMoney(order.total_paid || 0, currencyCode)}</p>
+                                                        <p className="text-sm font-black text-brand-700">{formatMoney(order.order_total_with_additions ?? order.total_paid ?? 0, currencyCode)}</p>
                                                     </div>
                                                 </div>
                                             </form>
@@ -1506,6 +1576,30 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 </div>
                                             </div>
                                         </div>
+                                        {extraChargeTotal > 0 && (
+                                            <div className="mt-4 border-t border-current/10 pt-4">
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.22em] opacity-70">Payment breakdown</p>
+                                                        <p className="mt-1 text-sm font-semibold opacity-80">Package cost plus any extra charges agreed in chat.</p>
+                                                    </div>
+                                                    <p className="text-lg font-black">{formatMoney(paymentState.total, currencyCode)}</p>
+                                                </div>
+                                                <div className="mt-3 divide-y divide-current/10 overflow-hidden rounded-2xl bg-white/60">
+                                                    {paymentBreakdownLines.map((line) => (
+                                                        <div key={line.key} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                                                            <div className="min-w-0">
+                                                                <p className="text-sm font-black text-slate-950 break-words">{line.description}</p>
+                                                                <p className="mt-0.5 text-[10px] font-black uppercase tracking-widest opacity-60">
+                                                                    {line.label} · {extraChargeStatusLabel(line.status, order?.payment_status)}
+                                                                </p>
+                                                            </div>
+                                                            <p className="shrink-0 text-sm font-black text-slate-950">{formatMoney(line.amount || 0, line.currency || currencyCode)}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -1611,11 +1705,6 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
 	                                                    <p className="mt-1 text-sm font-black text-amber-950">
 	                                                        Collect before {formatDateTime(order.pickup_deadline_at)}
 	                                                    </p>
-	                                                    {order.pickup_policy_snapshot?.holding_fee_enabled && (
-	                                                        <p className="mt-2 text-xs font-semibold text-amber-900">
-	                                                            Storage fee policy: {formatMoney(order.pickup_policy_snapshot.holding_fee_amount || 0, currencyCode)} / {order.pickup_policy_snapshot.holding_fee_interval || 'day'} after the pickup deadline.
-	                                                        </p>
-	                                                    )}
 	                                                    {order.pickup_policy_snapshot?.instructions && (
 	                                                        <p className="mt-2 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">
 	                                                            {order.pickup_policy_snapshot.instructions}

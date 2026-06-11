@@ -18,7 +18,7 @@ class SendPickupDeadlineReminders extends Command
         $limit = max(1, (int) $this->option('limit'));
 
         $orders = Order::query()
-            ->with(['buyer:id,phone_number', 'merchant.user:id,phone_number', 'delivery:id,order_id,delivery_type'])
+            ->with(['buyer:id,phone_number', 'merchant.country', 'merchant.user:id,phone_number', 'delivery:id,order_id,delivery_type'])
             ->whereNotNull('pickup_deadline_at')
             ->where('pickup_deadline_at', '>', now())
             ->whereIn('payment_status', ['awaiting_merchant_confirmation', 'escrow_locked'])
@@ -38,7 +38,9 @@ class SendPickupDeadlineReminders extends Command
                 continue;
             }
 
-            $deadline = $order->pickup_deadline_at->timezone(config('app.timezone'))->format('M j, Y g:i A');
+            $deadline = $order->pickup_deadline_at
+                ->timezone($order->merchant?->defaultTimezone() ?: config('app.timezone', 'UTC'))
+                ->format('M j, Y g:i A');
             $publicId = (string) ($order->public_id ?: $order->id);
 
             if ($order->buyer?->phone_number && !$this->reminderExists('buyer', $window, $publicId)) {

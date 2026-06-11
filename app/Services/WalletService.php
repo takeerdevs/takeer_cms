@@ -37,16 +37,16 @@ class WalletService
                 ['user_id' => $merchant->user_id, 'balance' => 0, 'frozen_balance' => 0]
             );
 
-            $holdingFeeOrders = Order::query()
+            $extraChargeOrders = Order::query()
                 ->where('merchant_id', $merchant->id)
                 ->where('payment_status', 'escrow_locked')
                 ->whereNull('paid_out_at')
-                ->whereIn('extra_items->type', ['pickup_holding_fee', 'pickup_delivery_fee'])
+                ->whereIn('extra_items->type', ['extra_charge', 'pickup_delivery_fee'])
                 ->where('extra_items->parent_order_id', $order->id)
                 ->lockForUpdate()
                 ->get();
 
-            $releaseOrders = collect([$order])->merge($holdingFeeOrders);
+            $releaseOrders = collect([$order])->merge($extraChargeOrders);
             $grossTotal = 0.0;
             $netTotal = 0.0;
 
@@ -58,7 +58,7 @@ class WalletService
                     ->latest()
                     ->first();
 
-                $isMerchantOnlyPickupFee = data_get($releaseOrder->extra_items, 'type') === 'pickup_holding_fee';
+                $isMerchantOnlyPickupFee = data_get($releaseOrder->extra_items, 'type') === 'extra_charge';
                 $fee = $existingRevenue
                     ? null
                     : ($isMerchantOnlyPickupFee
@@ -67,7 +67,7 @@ class WalletService
                             'fee_amount' => 0,
                             'tax_amount' => 0,
                             'snapshot' => [
-                                'fee_policy_name' => 'Merchant late pickup fee',
+                                'fee_policy_name' => 'Extra charge',
                                 'fee_policy_type' => 'merchant_only',
                                 'fee_percentage_rate' => 0,
                                 'fee_fixed_amount' => 0,

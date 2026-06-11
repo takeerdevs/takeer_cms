@@ -395,7 +395,7 @@ class AdminController extends Controller
         return Order::query()
             ->where('merchant_id', $order->merchant_id)
             ->whereIn('payment_status', ['escrow_locked', 'disputed'])
-            ->whereIn('extra_items->type', ['pickup_holding_fee', 'pickup_delivery_fee'])
+            ->whereIn('extra_items->type', ['extra_charge', 'pickup_delivery_fee'])
             ->where('extra_items->parent_order_id', $order->id)
             ->lockForUpdate()
             ->get();

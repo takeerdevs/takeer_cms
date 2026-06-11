@@ -3,6 +3,7 @@
 namespace App\Payments;
 
 use App\Models\Order;
+use App\Models\ExtraCharge;
 use App\Models\RetailAuditLog;
 use App\Models\Transaction;
 use App\Models\UserSubscription;
@@ -177,11 +178,26 @@ class PaymentCallbackProcessor
         if ($this->isPickupEscrowFeePaymentOrder($order)) {
             $order->update(['payment_status' => 'failed']);
             $parent = Order::query()->whereKey((int) data_get($order->extra_items, 'parent_order_id'))->first();
-            if ($parent && data_get($order->extra_items, 'type') === 'pickup_holding_fee') {
-                $parent->forceFill([
-                    'holding_fee_status' => 'proposed',
-                    'pickup_status' => 'holding_fee_pending',
-                ])->save();
+            if ($parent && data_get($order->extra_items, 'type') === 'extra_charge') {
+                $snapshot = $parent->pickup_policy_snapshot ?: [];
+                $activeProposalId = (string) data_get($snapshot, 'active_extra_charge.id', '');
+                $paymentProposalId = (string) data_get($order->extra_items, 'proposal_id', '');
+
+                if ($paymentProposalId !== '' && hash_equals($activeProposalId, $paymentProposalId)) {
+                    if (isset($snapshot['active_extra_charge'])) {
+                        $snapshot['active_extra_charge']['status'] = 'proposed';
+                    }
+                    $extraChargeId = (int) data_get($order->extra_items, 'extra_charge_id');
+                    if ($extraChargeId > 0) {
+                        ExtraCharge::query()
+                            ->whereKey($extraChargeId)
+                            ->where('order_id', $parent->id)
+                            ->update(['status' => 'proposed']);
+                    }
+                    $parent->forceFill([
+                        'pickup_policy_snapshot' => $snapshot,
+                    ])->save();
+                }
             } elseif ($parent && data_get($order->extra_items, 'type') === 'pickup_delivery_fee') {
                 $snapshot = $parent->pickup_policy_snapshot ?: [];
                 if (isset($snapshot['delivery_conversion'])) {
@@ -323,7 +339,7 @@ class PaymentCallbackProcessor
 
     private function isPickupEscrowFeePaymentOrder(Order $order): bool
     {
-        return in_array(data_get($order->extra_items, 'type'), ['pickup_holding_fee', 'pickup_delivery_fee'], true)
+        return in_array(data_get($order->extra_items, 'type'), ['extra_charge', 'pickup_delivery_fee'], true)
             && (int) data_get($order->extra_items, 'parent_order_id') > 0;
     }
 
@@ -345,7 +361,7 @@ class PaymentCallbackProcessor
             if ($feeType === 'pickup_delivery_fee') {
                 app(PickupAgreementService::class)->markDeliveryConversionPaid($paymentOrder, $gatewayRef, $gateway);
             } else {
-                app(PickupAgreementService::class)->markHoldingFeePaid($paymentOrder, $gatewayRef, $gateway);
+                app(PickupAgreementService::class)->markExtraChargePaid($paymentOrder, $gatewayRef, $gateway);
             }
 
             Transaction::create([
@@ -355,7 +371,7 @@ class PaymentCallbackProcessor
                 'type' => 'order_revenue',
                 'fee_policy_name' => $feeType === 'pickup_delivery_fee'
                     ? 'Pickup delivery conversion fee passthrough'
-                    : 'Pickup holding fee passthrough',
+                    : 'Extra charge passthrough',
                 'fee_policy_type' => 'fixed',
                 'currency_code' => $paymentOrder->merchant_currency_code ?: $parent->merchant_currency_code ?: 'TZS',
                 'gross_amount' => $amount,
@@ -378,7 +394,7 @@ class PaymentCallbackProcessor
 
             $parent->loadMissing(['buyer', 'merchant.user']);
             $publicId = (string) ($parent->public_id ?: $parent->id);
-            $label = $feeType === 'pickup_delivery_fee' ? 'Delivery fee' : 'Holding fee';
+            $label = $feeType === 'pickup_delivery_fee' ? 'Delivery fee' : 'Extra charge';
             if ($parent->buyer?->phone_number) {
                 $this->smsService->sendPickupFeeHeldToBuyer($parent->buyer->phone_number, $publicId, $label, $amount, $parent->buyer_id);
             }

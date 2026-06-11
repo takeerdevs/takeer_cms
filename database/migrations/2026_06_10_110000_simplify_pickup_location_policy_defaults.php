@@ -10,11 +10,6 @@ return new class extends Migration {
 
         DB::table('merchant_locations')->update([
             'pickup_grace_hours' => 0,
-            'pickup_holding_fee_enabled' => false,
-            'pickup_late_fee_type' => 'fixed',
-            'pickup_holding_fee_amount' => null,
-            'pickup_late_fee_cap_amount' => null,
-            'pickup_holding_fee_interval' => 'day',
         ]);
     }
 
