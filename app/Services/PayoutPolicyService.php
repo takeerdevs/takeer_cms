@@ -8,10 +8,10 @@ use App\Models\Order;
 
 class PayoutPolicyService
 {
-    public const MODE_AUTOMATIC = 'automatic';
-    public const MODE_MANUAL_WITHDRAWAL = 'manual_withdrawal';
+    public const MODE_AUTOMATIC_RELEASE = 'automatic_release';
+    public const MODE_MANUAL_REVIEW = 'manual_review';
     public const MODE_ESCROW_HOLD = 'escrow_hold';
-    public const MODE_PAYOUT_PAUSED = 'payout_paused';
+    public const MODE_RELEASE_PAUSED = 'release_paused';
     public const MODE_PLATFORM_DEFAULT = 'platform_default';
 
     public const BUCKETS = [
@@ -27,30 +27,30 @@ class PayoutPolicyService
     ];
 
     public const DEFAULT_MODES = [
-        'digital_downloads' => self::MODE_AUTOMATIC,
-        'premium_media' => self::MODE_AUTOMATIC,
-        'live_events' => self::MODE_AUTOMATIC,
+        'digital_downloads' => self::MODE_AUTOMATIC_RELEASE,
+        'premium_media' => self::MODE_AUTOMATIC_RELEASE,
+        'live_events' => self::MODE_AUTOMATIC_RELEASE,
         'custom_work' => self::MODE_ESCROW_HOLD,
-        'paid_writing' => self::MODE_AUTOMATIC,
-        'courses_bundles' => self::MODE_AUTOMATIC,
-        'creator_club' => self::MODE_AUTOMATIC,
-        'services' => self::MODE_AUTOMATIC,
+        'paid_writing' => self::MODE_AUTOMATIC_RELEASE,
+        'courses_bundles' => self::MODE_AUTOMATIC_RELEASE,
+        'creator_club' => self::MODE_AUTOMATIC_RELEASE,
+        'services' => self::MODE_AUTOMATIC_RELEASE,
         'physical' => self::MODE_ESCROW_HOLD,
     ];
 
     public const ACTIVE_MODES = [
-        self::MODE_AUTOMATIC,
-        self::MODE_MANUAL_WITHDRAWAL,
+        self::MODE_AUTOMATIC_RELEASE,
+        self::MODE_MANUAL_REVIEW,
         self::MODE_ESCROW_HOLD,
-        self::MODE_PAYOUT_PAUSED,
+        self::MODE_RELEASE_PAUSED,
     ];
 
     public const MERCHANT_OVERRIDE_MODES = [
         self::MODE_PLATFORM_DEFAULT,
-        self::MODE_AUTOMATIC,
-        self::MODE_MANUAL_WITHDRAWAL,
+        self::MODE_AUTOMATIC_RELEASE,
+        self::MODE_MANUAL_REVIEW,
         self::MODE_ESCROW_HOLD,
-        self::MODE_PAYOUT_PAUSED,
+        self::MODE_RELEASE_PAUSED,
     ];
 
     public function resolveForOrder(Order $order): array
@@ -123,7 +123,7 @@ class PayoutPolicyService
 
     public function platformMode(string $bucket): string
     {
-        $fallback = self::DEFAULT_MODES[$bucket] ?? self::MODE_AUTOMATIC;
+        $fallback = self::DEFAULT_MODES[$bucket] ?? self::MODE_AUTOMATIC_RELEASE;
         $mode = (string) AdminSetting::get($this->settingKey($bucket), $fallback);
 
         return in_array($mode, self::ACTIVE_MODES, true) ? $mode : $fallback;
@@ -131,7 +131,7 @@ class PayoutPolicyService
 
     public function merchantOverrideMode(Merchant $merchant, string $bucket): string
     {
-        $controls = $merchant->retail_settings['payout_controls'] ?? [];
+        $controls = $merchant->retail_settings['payment_release_controls'] ?? [];
         $mode = (string) data_get($controls, "overrides.{$bucket}", self::MODE_PLATFORM_DEFAULT);
 
         return in_array($mode, self::MERCHANT_OVERRIDE_MODES, true) ? $mode : self::MODE_PLATFORM_DEFAULT;
@@ -139,12 +139,12 @@ class PayoutPolicyService
 
     public function modeHoldsFunds(string $mode): bool
     {
-        return in_array($mode, [self::MODE_ESCROW_HOLD, self::MODE_PAYOUT_PAUSED], true);
+        return in_array($mode, [self::MODE_MANUAL_REVIEW, self::MODE_ESCROW_HOLD, self::MODE_RELEASE_PAUSED], true);
     }
 
     public function settingKey(string $bucket): string
     {
-        return "payout_policy_{$bucket}";
+        return "payment_release_policy_{$bucket}";
     }
 
     public function defaultSettings(): array
@@ -158,10 +158,11 @@ class PayoutPolicyService
     {
         return [
             self::MODE_PLATFORM_DEFAULT => 'Platform default',
-            self::MODE_AUTOMATIC => 'Automatic',
-            self::MODE_MANUAL_WITHDRAWAL => 'Manual withdrawal',
+            self::MODE_AUTOMATIC_RELEASE => 'Release to wallet automatically',
+            self::MODE_MANUAL_REVIEW => 'Manual release review',
             self::MODE_ESCROW_HOLD => 'Escrow held',
-            self::MODE_PAYOUT_PAUSED => 'Payout paused',
+            self::MODE_RELEASE_PAUSED => 'Release paused',
         ];
     }
+
 }

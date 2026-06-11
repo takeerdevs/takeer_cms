@@ -15,6 +15,7 @@ class FeePolicy extends Model
         'currency_code',
         'merchant_id',
         'payment_channel',
+        'sellable_type',
         'fee_type',
         'percentage_rate',
         'fixed_amount',

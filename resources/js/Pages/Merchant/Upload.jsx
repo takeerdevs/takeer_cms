@@ -1370,7 +1370,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     setAllowDigitalDownload(Boolean(p.allow_download));
                     setPaidVideoFile(p.premium_video ? {
                         name: fileNameFromUrl(p.premium_video.url || p.paid_video_url),
-                        url: p.paid_video_url || p.premium_video.url,
+                        url: p.premium_video.url || p.paid_video_url,
+                        sourceUrl: p.paid_video_url || p.premium_video.url,
                         size: p.premium_video.size || null,
                         type: p.premium_video.mime || 'video/mp4',
                         mime: p.premium_video.mime || 'video/mp4',
@@ -1382,7 +1383,8 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                     setAllowDigitalDownload(Boolean(p.allow_download));
                     setPaidAudioFile(p.premium_audio ? {
                         name: fileNameFromUrl(p.premium_audio.url || p.paid_audio_url),
-                        url: p.paid_audio_url || p.premium_audio.url,
+                        url: p.premium_audio.url || p.paid_audio_url,
+                        sourceUrl: p.paid_audio_url || p.premium_audio.url,
                         size: p.premium_audio.size || null,
                         type: p.premium_audio.mime || 'audio/mpeg',
                         mime: p.premium_audio.mime || 'audio/mpeg',
@@ -3636,10 +3638,10 @@ export default function Upload({ merchantUsername, merchantTimezone = 'Africa/Da
                 license_key_enabled: step === 'digital' && digitalContentType === 'software' ? licenseKeyEnabled : false,
                 license_key_prefix: step === 'digital' && digitalContentType === 'software' ? licenseKeyPrefix : null,
                 license_activation_limit: step === 'digital' && digitalContentType === 'software' ? Number(licenseActivationLimit || 1) : 1,
-                paid_video_url: (step === 'digital' && digitalDeliveryMode === 'video_stream') ? paidVideoFile?.url : null,
+                paid_video_url: (step === 'digital' && digitalDeliveryMode === 'video_stream') ? (paidVideoFile?.sourceUrl || paidVideoFile?.url) : null,
                 paid_video_mime: (step === 'digital' && digitalDeliveryMode === 'video_stream') ? paidVideoFile?.mime || paidVideoFile?.type : null,
                 paid_video_size: (step === 'digital' && digitalDeliveryMode === 'video_stream') ? paidVideoFile?.size : null,
-                paid_audio_url: (step === 'digital' && digitalDeliveryMode === 'audio_stream') ? paidAudioFile?.url : null,
+                paid_audio_url: (step === 'digital' && digitalDeliveryMode === 'audio_stream') ? (paidAudioFile?.sourceUrl || paidAudioFile?.url) : null,
                 paid_audio_mime: (step === 'digital' && digitalDeliveryMode === 'audio_stream') ? paidAudioFile?.mime || paidAudioFile?.type : null,
                 paid_audio_size: (step === 'digital' && digitalDeliveryMode === 'audio_stream') ? paidAudioFile?.size : null,
                 paid_gallery_items: (step === 'digital' && digitalDeliveryMode === 'gallery_pack')

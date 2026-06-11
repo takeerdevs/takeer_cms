@@ -18,11 +18,17 @@ const PAYOUT_BUCKETS = {
     physical: 'Physical',
 };
 
-const PAYOUT_MODES = {
-    automatic: 'Automatic',
-    manual_withdrawal: 'Manual withdrawal',
+const RELEASE_MODES = {
+    automatic_release: 'Release to wallet automatically',
+    manual_review: 'Manual release review',
     escrow_hold: 'Escrow held',
-    payout_paused: 'Payout paused',
+    release_paused: 'Release paused',
+};
+
+const WITHDRAWAL_MODES = {
+    manual_withdrawal: 'Manual withdrawal',
+    automatic_withdrawal: 'Withdraw automatically',
+    withdrawals_paused: 'Withdrawals paused',
 };
 
 const csrf = () => document.head.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -49,7 +55,8 @@ const channelTreasuryAccounts = (channel) => {
 
 export default function PayoutSettings() {
     const [settings, setSettings] = useState({});
-    const [payoutPolicy, setPayoutPolicy] = useState({ buckets: PAYOUT_BUCKETS, modes: PAYOUT_MODES });
+    const [releasePolicy, setReleasePolicy] = useState({ buckets: PAYOUT_BUCKETS, modes: RELEASE_MODES });
+    const [withdrawalPolicy, setWithdrawalPolicy] = useState({ buckets: PAYOUT_BUCKETS, modes: WITHDRAWAL_MODES });
     const [paymentOps, setPaymentOps] = useState({ providers: [], incidents: [] });
     const [opsLoading, setOpsLoading] = useState(true);
     const [loading, setLoading] = useState(true);
@@ -60,12 +67,13 @@ export default function PayoutSettings() {
         fetch('/admin/api/settings', { headers: { Accept: 'application/json' } })
             .then(async (r) => {
                 const data = await r.json();
-                if (!r.ok) throw new Error(data.message || 'Failed to load payout settings.');
+                if (!r.ok) throw new Error(data.message || 'Failed to load payment flow settings.');
                 return data;
             })
             .then((data) => {
                 setSettings(data.settings || {});
-                if (data.payout_policy) setPayoutPolicy(data.payout_policy);
+                if (data.release_policy) setReleasePolicy(data.release_policy);
+                if (data.withdrawal_policy) setWithdrawalPolicy(data.withdrawal_policy);
                 setLoading(false);
             })
             .catch((err) => {
@@ -195,17 +203,18 @@ export default function PayoutSettings() {
     const handleSave = async () => {
         setSaving(true);
         try {
-            const buckets = payoutPolicy.buckets || PAYOUT_BUCKETS;
+            const buckets = releasePolicy.buckets || PAYOUT_BUCKETS;
             const res = await fetch('/admin/api/settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf() },
                 body: JSON.stringify({
-                    ...Object.fromEntries(Object.keys(buckets).map((bucket) => [`payout_policy_${bucket}`, settings[`payout_policy_${bucket}`]])),
+                    ...Object.fromEntries(Object.keys(buckets).map((bucket) => [`payment_release_policy_${bucket}`, settings[`payment_release_policy_${bucket}`]])),
+                    ...Object.fromEntries(Object.keys(buckets).map((bucket) => [`payment_withdrawal_policy_${bucket}`, settings[`payment_withdrawal_policy_${bucket}`]])),
                 }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to save payout settings.');
-            toast.success(data.message || 'Payout settings saved');
+            if (!res.ok) throw new Error(data.message || 'Failed to save payment flow settings.');
+            toast.success(data.message || 'Payment flow settings saved');
         } catch (err) {
             toast.error(err.message);
         } finally {
@@ -216,7 +225,7 @@ export default function PayoutSettings() {
     if (loading) {
         return (
             <AdminLayout title="Payout Settings">
-                <div className="flex h-64 items-center justify-center text-slate-500">Loading payout settings...</div>
+                <div className="flex h-64 items-center justify-center text-slate-500">Loading payment flow settings...</div>
             </AdminLayout>
         );
     }
@@ -235,8 +244,8 @@ export default function PayoutSettings() {
                             <WalletCards className="h-5 w-5 text-emerald-700" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black text-slate-900">Payout Settings</h1>
-                            <p className="text-sm text-slate-600">Default release behavior for creator monetization payments.</p>
+                            <h1 className="text-2xl font-black text-slate-900">Payment Flow Settings</h1>
+                            <p className="text-sm text-slate-600">Default release and withdrawal behavior for creator monetization payments.</p>
                         </div>
                     </div>
                 </div>
@@ -565,25 +574,42 @@ export default function PayoutSettings() {
                 <Card className="border-slate-200 bg-white shadow-sm">
                     <CardContent className="space-y-4 p-6">
                         <div>
-                            <h2 className="font-bold text-slate-900">Release Policy Defaults</h2>
-                            <p className="mt-1 text-xs text-slate-600">Controls whether different revenue buckets auto-release, require manual withdrawal, stay in escrow, or pause.</p>
+                            <h2 className="font-bold text-slate-900">Payment Flow Policy Defaults</h2>
+                            <p className="mt-1 text-xs text-slate-600">
+                                Release controls when paid funds become merchant wallet balance. Withdrawal controls what happens after funds are available in the wallet.
+                            </p>
                         </div>
                         <div className="grid gap-3">
-                            {Object.entries(payoutPolicy.buckets || PAYOUT_BUCKETS).map(([bucket, label]) => (
-                                <div key={bucket} className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_240px] md:items-center">
+                            {Object.entries(releasePolicy.buckets || PAYOUT_BUCKETS).map(([bucket, label]) => (
+                                <div key={bucket} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_260px_240px] lg:items-center">
                                     <div>
                                         <p className="text-sm font-black text-slate-900">{label}</p>
                                         <p className="text-xs text-slate-500">{bucket}</p>
                                     </div>
-                                    <select
-                                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                                        value={settings[`payout_policy_${bucket}`] || 'automatic'}
-                                        onChange={(e) => set(`payout_policy_${bucket}`, e.target.value)}
-                                    >
-                                        {Object.entries(payoutPolicy.modes || PAYOUT_MODES).map(([mode, modeLabel]) => (
-                                            <option key={mode} value={mode}>{modeLabel}</option>
-                                        ))}
-                                    </select>
+                                    <label className="space-y-1">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Payment release</span>
+                                        <select
+                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                                            value={settings[`payment_release_policy_${bucket}`] || 'automatic_release'}
+                                            onChange={(e) => set(`payment_release_policy_${bucket}`, e.target.value)}
+                                        >
+                                            {Object.entries(releasePolicy.modes || RELEASE_MODES).map(([mode, modeLabel]) => (
+                                                <option key={mode} value={mode}>{modeLabel}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <label className="space-y-1">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Wallet withdrawal</span>
+                                        <select
+                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                                            value={settings[`payment_withdrawal_policy_${bucket}`] || 'manual_withdrawal'}
+                                            onChange={(e) => set(`payment_withdrawal_policy_${bucket}`, e.target.value)}
+                                        >
+                                            {Object.entries(withdrawalPolicy.modes || WITHDRAWAL_MODES).map(([mode, modeLabel]) => (
+                                                <option key={mode} value={mode}>{modeLabel}</option>
+                                            ))}
+                                        </select>
+                                    </label>
                                 </div>
                             ))}
                         </div>
@@ -592,7 +618,7 @@ export default function PayoutSettings() {
 
                 <Button className="h-12 w-full rounded-xl bg-brand-600 font-bold text-white hover:bg-brand-700" onClick={handleSave} disabled={saving}>
                     <Save className="mr-2 h-4 w-4" />
-                    {saving ? 'Saving...' : 'Save Release Policy Defaults'}
+                    {saving ? 'Saving...' : 'Save Payment Flow Policy Defaults'}
                 </Button>
             </div>
         </AdminLayout>

@@ -69,11 +69,15 @@ class DownloadController extends Controller
                     $order->markDigitalAccessed('custom_delivery');
 
                     return response()->json([
-                        'type' => 'signed',
-                        'url' => $disk->temporaryUrl($resolvedTarget, now()->addMinutes(10), [
-                            'ResponseContentDisposition' => 'attachment; filename="' . ($order->custom_delivery_file_name ?: basename($resolvedTarget)) . '"',
+                        'type' => 'direct',
+                        'url' => URL::temporarySignedRoute('web.download.custom-local', now()->addMinutes(10), [
+                            'order' => $order->id,
+                            'user' => $request->user()->id,
+                            'filename' => $order->custom_delivery_file_name ?: basename($resolvedTarget),
                         ]),
                         'size' => $disk->size($resolvedTarget),
+                        'file_name' => $order->custom_delivery_file_name ?: basename($resolvedTarget),
+                        'file_extension' => strtolower(pathinfo($order->custom_delivery_file_name ?: $resolvedTarget, PATHINFO_EXTENSION)),
                         'digital_content_type' => $order->product->digital_content_type,
                         'digital_usage_license' => $order->product->digital_usage_license,
                         'digital_access_instructions' => $order->custom_delivery_message ?: $order->product->digital_access_instructions,
@@ -92,8 +96,11 @@ class DownloadController extends Controller
                     'url' => URL::temporarySignedRoute('web.download.custom-local', now()->addMinutes(10), [
                         'order' => $order->id,
                         'user' => $request->user()->id,
+                        'filename' => $order->custom_delivery_file_name ?: basename($resolvedTarget),
                     ]),
                     'size' => Storage::disk('local')->size($resolvedTarget),
+                    'file_name' => $order->custom_delivery_file_name ?: basename($resolvedTarget),
+                    'file_extension' => strtolower(pathinfo($order->custom_delivery_file_name ?: $resolvedTarget, PATHINFO_EXTENSION)),
                     'digital_content_type' => $order->product->digital_content_type,
                     'digital_usage_license' => $order->product->digital_usage_license,
                     'digital_access_instructions' => $order->custom_delivery_message ?: $order->product->digital_access_instructions,
@@ -199,16 +206,24 @@ class DownloadController extends Controller
             if ($disk->exists($path)) {
                 $order->markDigitalAccessed('download');
 
-                $temporaryUrl = $disk->temporaryUrl($path, now()->addMinutes(10), [
-                    'ResponseContentDisposition' => 'attachment; filename="' . basename($path) . '"',
-                ]);
+                $temporaryUrl = URL::temporarySignedRoute(
+                    'web.download.local',
+                    now()->addMinutes(10),
+                    [
+                        'order' => $order->id,
+                        'user' => $request->user()->id,
+                        'filename' => basename($path),
+                    ]
+                );
                 
                 $size = $disk->size($path);
                 
                 return response()->json([
-                    'type' => 'signed',
+                    'type' => 'direct',
                     'url' => $temporaryUrl,
                     'size' => $size,
+                    'file_name' => basename($path),
+                    'file_extension' => strtolower(pathinfo($path, PATHINFO_EXTENSION)),
                     'is_course' => false,
                     'digital_content_type' => $order->product->digital_content_type,
                     'digital_usage_license' => $order->product->digital_usage_license,
@@ -234,6 +249,7 @@ class DownloadController extends Controller
                 [
                     'order' => $order->id,
                     'user' => $request->user()->id,
+                    'filename' => basename($path),
                 ]
             );
 
@@ -243,6 +259,8 @@ class DownloadController extends Controller
                 'type' => 'direct',
                 'url' => $temporaryLocalUrl,
                 'size' => $size,
+                'file_name' => basename($path),
+                'file_extension' => strtolower(pathinfo($path, PATHINFO_EXTENSION)),
                 'digital_content_type' => $order->product->digital_content_type,
                 'digital_usage_license' => $order->product->digital_usage_license,
                 'digital_access_instructions' => $order->product->digital_access_instructions,
@@ -362,11 +380,15 @@ class DownloadController extends Controller
             $disk = Storage::disk('s3');
             if ($disk->exists($resolvedTarget)) {
                 return response()->json([
-                    'type' => 'signed',
-                    'url' => $disk->temporaryUrl($resolvedTarget, now()->addMinutes(10), [
-                        'ResponseContentDisposition' => 'attachment; filename="' . basename($resolvedTarget) . '"',
+                    'type' => 'direct',
+                    'url' => URL::temporarySignedRoute('web.download.entitlement-local', now()->addMinutes(10), [
+                        'entitlement' => $entitlement->id,
+                        'user' => $request->user()->id,
+                        'filename' => basename($resolvedTarget),
                     ]),
                     'size' => $disk->size($resolvedTarget),
+                    'file_name' => basename($resolvedTarget),
+                    'file_extension' => strtolower(pathinfo($resolvedTarget, PATHINFO_EXTENSION)),
                     'is_course' => false,
                     'digital_content_type' => $product->digital_content_type,
                     'digital_usage_license' => $product->digital_usage_license,
@@ -384,8 +406,11 @@ class DownloadController extends Controller
                 'url' => URL::temporarySignedRoute('web.download.entitlement-local', now()->addMinutes(10), [
                     'entitlement' => $entitlement->id,
                     'user' => $request->user()->id,
+                    'filename' => basename($resolvedTarget),
                 ]),
                 'size' => Storage::disk('local')->size($resolvedTarget),
+                'file_name' => basename($resolvedTarget),
+                'file_extension' => strtolower(pathinfo($resolvedTarget, PATHINFO_EXTENSION)),
                 'digital_content_type' => $product->digital_content_type,
                 'digital_usage_license' => $product->digital_usage_license,
                 'digital_access_instructions' => $product->digital_access_instructions,
@@ -423,17 +448,7 @@ class DownloadController extends Controller
 
         $path = $resolvedTarget;
         
-        if (!Storage::disk('local')->exists($path)) {
-            abort(404);
-        }
-
-        $mimeType = Storage::disk('local')->mimeType($path);
-        
-        return Storage::disk('local')->download($path, basename($path), [
-            'Content-Type' => $mimeType,
-            'Cache-Control' => 'no-store, private',
-            'Pragma' => 'no-cache',
-        ]);
+        return $this->streamPrivateStoredFile($path, basename($path));
     }
 
     public function downloadCustomLocal(Request $request, Order $order): StreamedResponse|JsonResponse
@@ -452,15 +467,15 @@ class DownloadController extends Controller
         }
 
         [$isPrivateReference, $resolvedTarget] = $this->resolveDigitalTarget((string) $order->custom_delivery_file_url);
-        if (!$isPrivateReference || !Storage::disk('local')->exists($resolvedTarget)) {
+        if (!$isPrivateReference) {
             abort(404);
         }
 
-        return Storage::disk('local')->download($resolvedTarget, $order->custom_delivery_file_name ?: basename($resolvedTarget), [
-            'Content-Type' => $order->custom_delivery_file_mime ?: Storage::disk('local')->mimeType($resolvedTarget),
-            'Cache-Control' => 'no-store, private',
-            'Pragma' => 'no-cache',
-        ]);
+        return $this->streamPrivateStoredFile(
+            $resolvedTarget,
+            $order->custom_delivery_file_name ?: basename($resolvedTarget),
+            $order->custom_delivery_file_mime
+        );
     }
 
     public function downloadEntitlementLocal(Request $request, Entitlement $entitlement): StreamedResponse|JsonResponse
@@ -481,17 +496,11 @@ class DownloadController extends Controller
             : ($deliveryType === 'audio_stream' ? $product?->paid_audio_url : ($product?->download_link ?: $product?->url)));
         [$isPrivateReference, $resolvedTarget] = $this->resolveDigitalTarget($url);
 
-        if (!$url || !$isPrivateReference || !Storage::disk('local')->exists($resolvedTarget)) {
+        if (!$url || !$isPrivateReference) {
             abort(404);
         }
 
-        $mimeType = Storage::disk('local')->mimeType($resolvedTarget);
-
-        return Storage::disk('local')->download($resolvedTarget, basename($resolvedTarget), [
-            'Content-Type' => $mimeType,
-            'Cache-Control' => 'no-store, private',
-            'Pragma' => 'no-cache',
-        ]);
+        return $this->streamPrivateStoredFile($resolvedTarget, basename($resolvedTarget));
     }
 
     public function streamProductVideo(Request $request, Product $product)
@@ -514,26 +523,7 @@ class DownloadController extends Controller
 
         $path = $resolvedTarget;
 
-        try {
-            $disk = Storage::disk('s3');
-            if ($disk->exists($path)) {
-                return redirect()->away($disk->temporaryUrl($path, now()->addMinutes(20)));
-            }
-        } catch (\Exception $e) {
-            // S3 might not be configured or we are in local dev.
-        }
-
-        if (!Storage::disk('local')->exists($path)) {
-            return response()->json(['message' => 'Video haikupatikana kwenye mfumo.'], 404);
-        }
-
-        $mimeType = $product->paid_video_mime ?: Storage::disk('local')->mimeType($path) ?: 'video/mp4';
-
-        return Storage::disk('local')->response($path, basename($path), [
-            'Content-Type' => $mimeType,
-            'Content-Disposition' => 'inline; filename="'.basename($path).'"',
-            'Cache-Control' => 'no-store, private',
-        ]);
+        return $this->streamPrivateStoredFile($path, basename($path), $product->paid_video_mime ?: 'video/mp4', 'inline');
     }
 
     public function streamProductAudio(Request $request, Product $product)
@@ -556,26 +546,7 @@ class DownloadController extends Controller
 
         $path = $resolvedTarget;
 
-        try {
-            $disk = Storage::disk('s3');
-            if ($disk->exists($path)) {
-                return redirect()->away($disk->temporaryUrl($path, now()->addMinutes(20)));
-            }
-        } catch (\Exception $e) {
-            // S3 might not be configured or we are in local dev.
-        }
-
-        if (!Storage::disk('local')->exists($path)) {
-            return response()->json(['message' => 'Audio haikupatikana kwenye mfumo.'], 404);
-        }
-
-        $mimeType = $product->paid_audio_mime ?: Storage::disk('local')->mimeType($path) ?: 'audio/mpeg';
-
-        return Storage::disk('local')->response($path, basename($path), [
-            'Content-Type' => $mimeType,
-            'Content-Disposition' => 'inline; filename="'.basename($path).'"',
-            'Cache-Control' => 'no-store, private',
-        ]);
+        return $this->streamPrivateStoredFile($path, basename($path), $product->paid_audio_mime ?: 'audio/mpeg', 'inline');
     }
 
     public function readProductDocument(Request $request, Product $product)
@@ -602,27 +573,7 @@ class DownloadController extends Controller
 
         $path = $resolvedTarget;
 
-        try {
-            $disk = Storage::disk('s3');
-            if ($disk->exists($path)) {
-                return redirect()->away($disk->temporaryUrl($path, now()->addMinutes(20), [
-                    'ResponseContentDisposition' => 'inline; filename="' . basename($path) . '"',
-                    'ResponseContentType' => 'application/pdf',
-                ]));
-            }
-        } catch (\Exception) {
-            // S3 might not be configured or we are in local dev.
-        }
-
-        if (!Storage::disk('local')->exists($path)) {
-            return response()->json(['message' => 'PDF haikupatikana kwenye mfumo.'], 404);
-        }
-
-        return Storage::disk('local')->response($path, basename($path), [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.basename($path).'"',
-            'Cache-Control' => 'no-store, private',
-        ]);
+        return $this->streamPrivateStoredFile($path, basename($path), 'application/pdf', 'inline');
     }
 
     public function streamProductGalleryItem(Request $request, Product $product, int $index)
@@ -701,40 +652,12 @@ class DownloadController extends Controller
             abort(404);
         }
 
-        $diskName = null;
-        $disk = null;
-        foreach (['s3', 'local'] as $candidate) {
-            try {
-                if (Storage::disk($candidate)->exists($resolvedTarget)) {
-                    $diskName = $candidate;
-                    $disk = Storage::disk($candidate);
-                    break;
-                }
-            } catch (\Exception) {
-                // Disk may not be configured in local development.
-            }
-        }
-
-        if (!$disk) {
-            abort(404);
-        }
-
-        if ($diskName === 's3') {
-            $options = $download
-                ? ['ResponseContentDisposition' => 'attachment; filename="' . basename($resolvedTarget) . '"']
-                : ['ResponseContentDisposition' => 'inline; filename="' . basename($resolvedTarget) . '"'];
-
-            return redirect()->away($disk->temporaryUrl($resolvedTarget, now()->addMinutes(20), $options));
-        }
-
-        $mimeType = $mime ?: $disk->mimeType($resolvedTarget) ?: 'image/jpeg';
-        $disposition = $download ? 'attachment' : 'inline';
-
-        return $disk->response($resolvedTarget, basename($resolvedTarget), [
-            'Content-Type' => $mimeType,
-            'Content-Disposition' => $disposition.'; filename="'.basename($resolvedTarget).'"',
-            'Cache-Control' => 'no-store, private',
-        ]);
+        return $this->streamPrivateStoredFile(
+            $resolvedTarget,
+            basename($resolvedTarget),
+            $mime ?: 'image/jpeg',
+            $download ? 'attachment' : 'inline'
+        );
     }
 
     public function streamProductVideoHls(Request $request, Product $product, string $path)
@@ -966,6 +889,37 @@ class DownloadController extends Controller
 
         // Legacy behavior: raw storage paths were persisted directly for private uploads.
         return [true, ltrim($trimmed, '/')];
+    }
+
+    private function streamPrivateStoredFile(string $path, string $filename, ?string $mime = null, string $disposition = 'attachment'): StreamedResponse
+    {
+        $safeFilename = str_replace(['"', "\r", "\n"], '', $filename ?: basename($path));
+        $disposition = $disposition === 'inline' ? 'inline' : 'attachment';
+
+        foreach (['s3', 'local'] as $diskName) {
+            try {
+                $disk = Storage::disk($diskName);
+                if (!$disk->exists($path)) {
+                    continue;
+                }
+
+                $headers = [
+                    'Content-Type' => $mime ?: $disk->mimeType($path) ?: 'application/octet-stream',
+                    'Cache-Control' => 'no-store, private',
+                    'Pragma' => 'no-cache',
+                ];
+
+                return $disposition === 'inline'
+                    ? $disk->response($path, $safeFilename, $headers + [
+                        'Content-Disposition' => 'inline; filename="'.$safeFilename.'"',
+                    ])
+                    : $disk->download($path, $safeFilename, $headers);
+            } catch (\Throwable) {
+                // Disk may be unavailable in local development; try the next one.
+            }
+        }
+
+        abort(404);
     }
 
     private function authorizeEntitlementDigitalAccess(Request $request, Entitlement $entitlement): JsonResponse|true

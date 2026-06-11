@@ -23,6 +23,11 @@ function getFileMeta(url) {
     return { ext: cleanExt, ...(FILE_TYPE_META[cleanExt] || { icon: Package, label: 'Digital File', color: 'from-brand-600 to-brand-900', bg: 'bg-brand-50', text: 'text-brand-600' }) };
 }
 
+function getFileMetaFromExtension(extension) {
+    const cleanExt = String(extension || '').replace(/^\./, '').toLowerCase();
+    return { ext: cleanExt, ...(FILE_TYPE_META[cleanExt] || { icon: Package, label: 'Digital File', color: 'from-brand-600 to-brand-900', bg: 'bg-brand-50', text: 'text-brand-600' }) };
+}
+
 function formatBytes(bytes) {
     if (!bytes || isNaN(bytes)) return null;
     if (bytes < 1024) return `${bytes} B`;
@@ -34,6 +39,7 @@ function formatBytes(bytes) {
 export default function DigitalDownloadModal({ isOpen, onClose, orderId, entitlementId, productTitle, productId, accessProduct = null }) {
     const [fileUrl, setFileUrl] = useState(null);
     const [fileSize, setFileSize] = useState(null);
+    const [fileExtension, setFileExtension] = useState(null);
     const [hlsUrl, setHlsUrl] = useState(null);
     const [streamStatus, setStreamStatus] = useState(null);
     const [deliveryType, setDeliveryType] = useState(null);
@@ -50,6 +56,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, entitle
     const resetState = () => {
         setFileUrl(null);
         setFileSize(null);
+        setFileExtension(null);
         setHlsUrl(null);
         setStreamStatus(null);
         setDeliveryType(null);
@@ -146,6 +153,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, entitle
             const res = await axios.get(endpoint);
             setFileUrl(res.data?.url || null);
             setFileSize(res.data?.size || null);
+            setFileExtension(res.data?.file_extension || null);
             setHlsUrl(res.data?.hls_url || null);
             setStreamStatus(res.data?.stream_status || null);
             setIsCourse(res.data?.is_course || false);
@@ -201,7 +209,7 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, entitle
 
     if (!isOpen) return null;
 
-    const meta = getFileMeta(fileUrl);
+    const meta = fileExtension ? getFileMetaFromExtension(fileExtension) : getFileMeta(fileUrl);
     const isStream = deliveryType === 'stream';
     const isAudioStream = isStream && streamKind === 'audio';
     const isGallery = deliveryType === 'gallery';

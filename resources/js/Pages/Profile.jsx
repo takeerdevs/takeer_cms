@@ -694,8 +694,8 @@ export default function Profile({
                                                     <p className="text-[11px] font-semibold text-slate-500 mb-3">Best selling offers in this window.</p>
                                                     <div className="space-y-2">
                                                         {(creatorMonetization.top_items || []).length > 0 ? (
-                                                            creatorMonetization.top_items.map((item) => (
-                                                                <TopCreatorItem key={`${item.kind}-${item.title}`} item={item} formatMoney={formatMoney} iconFromKey={iconFromKey} />
+                                                            creatorMonetization.top_items.map((item, index) => (
+                                                                <TopCreatorItem key={`${item.kind}-${item.id || item.product_id || item.order_id || item.title}-${index}`} item={item} formatMoney={formatMoney} iconFromKey={iconFromKey} />
                                                             ))
                                                         ) : (
                                                             <p className="text-sm font-semibold text-slate-500 py-4 text-center">No paid creator sales yet.</p>

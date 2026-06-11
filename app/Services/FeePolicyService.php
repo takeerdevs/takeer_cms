@@ -14,6 +14,7 @@ class FeePolicyService
     {
         $merchant = $order->merchant ?: $order->product?->merchant;
         $paymentChannel = $this->paymentChannelForOrder($order);
+        $sellableType = $this->sellableTypeForOrder($order);
 
         $fee = $this->calculate(
             'sale',
@@ -21,7 +22,8 @@ class FeePolicyService
             $merchant,
             $order->country_code,
             $merchant?->currency?->code,
-            $paymentChannel
+            $paymentChannel,
+            $sellableType
         );
 
         return $this->applyProviderCostFloorForOrder($order, $grossAmount, $fee);
@@ -45,17 +47,20 @@ class FeePolicyService
         ?Merchant $merchant = null,
         ?string $countryCode = null,
         ?string $currencyCode = null,
-        ?string $paymentChannel = null
+        ?string $paymentChannel = null,
+        ?string $sellableType = null
     ): array {
         $paymentChannel = $paymentChannel ? strtolower($paymentChannel) : null;
+        $sellableType = $this->normalizeSellableType($sellableType);
         $currencyCode = $currencyCode ? strtoupper($currencyCode) : 'TZS';
-        $policy = $this->resolve($category, $merchant, $countryCode, $currencyCode, $paymentChannel);
+        $policy = $this->resolve($category, $merchant, $countryCode, $currencyCode, $paymentChannel, $sellableType);
 
         return $this->calculateFromPolicy(
             $policy,
             $amount,
             $currencyCode,
             $paymentChannel,
+            $sellableType,
             $category === 'sale' ? 5 : 0,
             $category === 'sale' ? 'percentage' : 'fixed',
             $category === 'sale' ? 'Default 5% Takeer sale fee' : 'Default no withdrawal fee'
@@ -73,6 +78,7 @@ class FeePolicyService
             $amount,
             $currencyCode ? strtoupper($currencyCode) : 'TZS',
             $paymentChannel ? strtolower($paymentChannel) : null,
+            null,
             0,
             'fixed',
             $policy->name
@@ -84,6 +90,7 @@ class FeePolicyService
         float $amount,
         string $currencyCode,
         ?string $paymentChannel,
+        ?string $sellableType,
         float $defaultPercentageRate,
         string $defaultFeeType,
         string $defaultPolicyName
@@ -125,6 +132,7 @@ class FeePolicyService
                 'fee_fixed_currency_code' => $fixedCurrencyCode,
                 'fee_fixed_amount_converted' => $convertedFixedAmount,
                 'fee_payment_channel' => $paymentChannel,
+                'fee_sellable_type' => $sellableType,
             ],
         ];
     }
@@ -134,12 +142,14 @@ class FeePolicyService
         ?Merchant $merchant = null,
         ?string $countryCode = null,
         ?string $currencyCode = null,
-        ?string $paymentChannel = null
+        ?string $paymentChannel = null,
+        ?string $sellableType = null
     ): ?FeePolicy {
         $now = now();
         $countryCode = $countryCode ? strtoupper($countryCode) : null;
         $currencyCode = $currencyCode ? strtoupper($currencyCode) : null;
         $paymentChannel = $paymentChannel ? strtolower($paymentChannel) : null;
+        $sellableType = $this->normalizeSellableType($sellableType);
 
         $query = FeePolicy::query()
             ->where('category', $category)
@@ -150,7 +160,7 @@ class FeePolicyService
             ->where(function ($q) use ($now) {
                 $q->whereNull('effective_until')->orWhere('effective_until', '>', $now);
             })
-            ->where(function ($q) use ($merchant, $countryCode, $currencyCode, $paymentChannel) {
+            ->where(function ($q) use ($merchant, $countryCode, $currencyCode, $paymentChannel, $sellableType) {
                 $q->where('scope', 'global');
 
                 if ($currencyCode) {
@@ -168,13 +178,31 @@ class FeePolicyService
                 if ($paymentChannel) {
                     $q->orWhere(fn ($sub) => $sub->where('scope', 'payment_channel')->where('payment_channel', $paymentChannel));
                 }
+
+                if ($sellableType) {
+                    $q->orWhere(fn ($sub) => $sub->where('scope', 'sellable_type')->where('sellable_type', $sellableType));
+                }
             });
 
         return $query
-            ->orderByRaw("CASE scope WHEN 'merchant' THEN 1 WHEN 'payment_channel' THEN 2 WHEN 'country' THEN 3 WHEN 'currency' THEN 4 ELSE 5 END")
+            ->orderByRaw("CASE scope WHEN 'merchant' THEN 1 WHEN 'sellable_type' THEN 2 WHEN 'payment_channel' THEN 3 WHEN 'country' THEN 4 WHEN 'currency' THEN 5 ELSE 6 END")
             ->orderByDesc('effective_from')
             ->latest('id')
             ->first();
+    }
+
+    private function sellableTypeForOrder(Order $order): ?string
+    {
+        return $this->normalizeSellableType($order->product?->type ?: $order->order_kind);
+    }
+
+    private function normalizeSellableType(?string $sellableType): ?string
+    {
+        $sellableType = strtolower(trim((string) $sellableType));
+
+        return in_array($sellableType, ['physical', 'digital', 'service'], true)
+            ? $sellableType
+            : null;
     }
 
     private function paymentChannelForOrder(Order $order): ?string

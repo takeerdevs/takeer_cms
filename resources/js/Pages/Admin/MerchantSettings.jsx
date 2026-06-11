@@ -19,12 +19,12 @@ const PAYOUT_BUCKETS = {
     services: 'Services',
     physical: 'Physical',
 };
-const PAYOUT_MODES = {
+const RELEASE_MODES = {
     platform_default: 'Platform default',
-    automatic: 'Automatic',
-    manual_withdrawal: 'Manual withdrawal',
+    automatic_release: 'Release to wallet automatically',
+    manual_review: 'Manual release review',
     escrow_hold: 'Escrow held',
-    payout_paused: 'Payout paused',
+    release_paused: 'Release paused',
 };
 
 export default function MerchantSettings({ merchantId }) {
@@ -33,7 +33,7 @@ export default function MerchantSettings({ merchantId }) {
     const [disabled, setDisabled] = useState(false);
     const [payoutOverrides, setPayoutOverrides] = useState({});
     const [platformDefaults, setPlatformDefaults] = useState({});
-    const [payoutMeta, setPayoutMeta] = useState({ buckets: PAYOUT_BUCKETS, modes: PAYOUT_MODES });
+    const [payoutMeta, setPayoutMeta] = useState({ buckets: PAYOUT_BUCKETS, modes: RELEASE_MODES });
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -49,11 +49,11 @@ export default function MerchantSettings({ merchantId }) {
             setMerchant(data.merchant);
             setSummary(data.summary || {});
             setDisabled(toBool(data.summary?.retail_settings?.disable_pos_payment_links));
-            setPayoutOverrides(data.summary?.retail_settings?.payout_controls?.overrides || {});
-            setPlatformDefaults(data.summary?.payout_policy?.platform_defaults || {});
+            setPayoutOverrides(data.summary?.retail_settings?.payment_release_controls?.overrides || {});
+            setPlatformDefaults(data.summary?.release_policy?.platform_defaults || {});
             setPayoutMeta({
-                buckets: data.summary?.payout_policy?.buckets || PAYOUT_BUCKETS,
-                modes: data.summary?.payout_policy?.modes || PAYOUT_MODES,
+                buckets: data.summary?.release_policy?.buckets || PAYOUT_BUCKETS,
+                modes: data.summary?.release_policy?.modes || RELEASE_MODES,
             });
         } catch (err) {
             toast.error(err.message);
@@ -100,7 +100,7 @@ export default function MerchantSettings({ merchantId }) {
 
     const savePayoutControls = async () => {
         await saveSettings({
-            payout_controls: { overrides: payoutOverrides },
+            payment_release_controls: { overrides: payoutOverrides },
             reason_notes: notes,
         });
     };
@@ -199,10 +199,10 @@ export default function MerchantSettings({ merchantId }) {
                             <div>
                                 <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                                     <ShieldAlert className="h-5 w-5 text-amber-700" />
-                                    Payout Controls
+                                    Payment Release Controls
                                 </h2>
                                 <p className="text-sm text-slate-600 mt-1">
-                                    Override payout behavior for this merchant when abuse, copyright, or refund risk needs immediate control.
+                                    Override payment release behavior for this merchant when abuse, copyright, or refund risk needs immediate control.
                                 </p>
                             </div>
                         </div>
@@ -210,13 +210,13 @@ export default function MerchantSettings({ merchantId }) {
                         <div className="grid gap-3">
                             {Object.entries(payoutMeta.buckets || PAYOUT_BUCKETS).map(([bucket, label]) => {
                                 const active = payoutOverrides[bucket] || 'platform_default';
-                                const platformMode = platformDefaults[bucket] || 'automatic';
+                                const platformMode = platformDefaults[bucket] || 'automatic_release';
                                 return (
                                     <div key={bucket} className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_240px] md:items-center">
                                         <div>
                                             <p className="text-sm font-black text-slate-900">{label}</p>
                                             <p className="text-xs text-slate-500">
-                                                Platform default: {(payoutMeta.modes || PAYOUT_MODES)[platformMode] || platformMode}
+                                                Platform default: {(payoutMeta.modes || RELEASE_MODES)[platformMode] || platformMode}
                                             </p>
                                         </div>
                                         <select
@@ -224,7 +224,7 @@ export default function MerchantSettings({ merchantId }) {
                                             value={active}
                                             onChange={(e) => setPayoutOverride(bucket, e.target.value)}
                                         >
-                                            {Object.entries(payoutMeta.modes || PAYOUT_MODES).map(([mode, modeLabel]) => (
+                                            {Object.entries(payoutMeta.modes || RELEASE_MODES).map(([mode, modeLabel]) => (
                                                 <option key={mode} value={mode}>{modeLabel}</option>
                                             ))}
                                         </select>
@@ -239,7 +239,7 @@ export default function MerchantSettings({ merchantId }) {
                                 rows={4}
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
-                                placeholder="Example: Copyright report under review. Digital download payouts are held while Trust & Safety investigates."
+                                placeholder="Example: Copyright report under review. Digital download payments are held while Trust & Safety investigates."
                                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                             />
                         </div>
@@ -249,7 +249,7 @@ export default function MerchantSettings({ merchantId }) {
                             disabled={loading || saving}
                             onClick={savePayoutControls}
                         >
-                            Save Payout Controls
+                            Save Release Controls
                         </Button>
                     </CardContent>
                 </Card>

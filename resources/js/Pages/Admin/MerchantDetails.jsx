@@ -159,9 +159,9 @@ export default function MerchantDetails({ merchantId }) {
                                     POS links disabled
                                 </span>
                             )}
-                            {hasPayoutOverrides(summary) && (
+                            {hasReleaseOverrides(summary) && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-100">
-                                    Payout override active
+                                    Release override active
                                 </span>
                             )}
                         </div>
@@ -458,8 +458,8 @@ function countForType(types, key) {
     return 0;
 }
 
-function hasPayoutOverrides(summary) {
-    const overrides = summary?.retail_settings?.payout_controls?.overrides || {};
+function hasReleaseOverrides(summary) {
+    const overrides = summary?.retail_settings?.payment_release_controls?.overrides || {};
     return Object.values(overrides).some((mode) => mode && mode !== 'platform_default');
 }
 

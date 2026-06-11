@@ -525,6 +525,12 @@ class ChatController extends Controller
                         $wallet->increment('frozen_balance', $processedOrder->total_paid);
                     } else {
                         $wallet->increment('balance', $fee['net_amount']);
+                        $withdrawalPolicy = app(\App\Services\WithdrawalPolicyService::class)->resolveForOrder($processedOrder);
+                        app(\App\Services\AutomaticWithdrawalService::class)->createForOrder(
+                            $processedOrder->fresh(['merchant.country', 'merchant.currency']),
+                            (float) $fee['net_amount'],
+                            $withdrawalPolicy
+                        );
                     }
                 }
             }

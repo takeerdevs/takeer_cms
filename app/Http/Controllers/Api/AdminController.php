@@ -777,22 +777,22 @@ class AdminController extends Controller
     {
         $validated = $request->validate([
             'disable_pos_payment_links' => 'sometimes|boolean',
-            'payout_controls.overrides' => 'sometimes|array',
-            'payout_controls.overrides.*' => 'string|in:platform_default,automatic,manual_withdrawal,escrow_hold,payout_paused',
+            'payment_release_controls.overrides' => 'sometimes|array',
+            'payment_release_controls.overrides.*' => 'string|in:platform_default,automatic_release,manual_review,escrow_hold,release_paused',
             'reason_notes' => 'nullable|string|max:2000',
         ]);
 
         $settings = $merchant->retail_settings;
         $oldDisablePosPaymentLinks = (bool) ($settings['disable_pos_payment_links'] ?? false);
-        $oldPayoutControls = $settings['payout_controls'] ?? ['overrides' => []];
+        $oldReleaseControls = $settings['payment_release_controls'] ?? ['overrides' => []];
 
         if (array_key_exists('disable_pos_payment_links', $validated)) {
             $settings['disable_pos_payment_links'] = (bool) $validated['disable_pos_payment_links'];
         }
 
-        if (array_key_exists('payout_controls', $validated)) {
-            $incoming = $validated['payout_controls']['overrides'] ?? [];
-            $settings['payout_controls'] = [
+        if (array_key_exists('payment_release_controls', $validated)) {
+            $incoming = $validated['payment_release_controls']['overrides'] ?? [];
+            $settings['payment_release_controls'] = [
                 'overrides' => collect(PayoutPolicyService::BUCKETS)
                     ->mapWithKeys(function (string $label, string $bucket) use ($incoming) {
                         $mode = $incoming[$bucket] ?? PayoutPolicyService::MODE_PLATFORM_DEFAULT;
@@ -818,19 +818,19 @@ class AdminController extends Controller
             'description' => 'Admin updated merchant settings.',
             'metadata' => [
                 'disable_pos_payment_links' => $settings['disable_pos_payment_links'] ?? false,
-                'old_payout_controls' => $oldPayoutControls,
-                'new_payout_controls' => $settings['payout_controls'] ?? null,
+                'old_payment_release_controls' => $oldReleaseControls,
+                'new_payment_release_controls' => $settings['payment_release_controls'] ?? null,
                 'reason_notes' => $validated['reason_notes'] ?? null,
             ],
         ]);
 
-        if (array_key_exists('payout_controls', $validated) && $merchant->user) {
+        if (array_key_exists('payment_release_controls', $validated) && $merchant->user) {
             app(PlatformNotificationService::class)->dispatchToUser($merchant->user, [
-                'subject' => 'Your Takeer payout settings changed',
-                'message' => $this->payoutPolicyChangeMessage($merchant, $settings['payout_controls'], $validated['reason_notes'] ?? null),
-                'dedupe_key' => 'merchant-payout-policy-updated:' . $merchant->id . ':' . md5(json_encode($settings['payout_controls'])),
+                'subject' => 'Your Takeer payment release settings changed',
+                'message' => $this->releasePolicyChangeMessage($merchant, $settings['payment_release_controls'], $validated['reason_notes'] ?? null),
+                'dedupe_key' => 'merchant-payment-release-policy-updated:' . $merchant->id . ':' . md5(json_encode($settings['payment_release_controls'])),
                 'metadata' => [
-                    'event_type' => 'merchant_payout_policy_updated',
+                    'event_type' => 'merchant_payment_release_policy_updated',
                     'merchant_id' => $merchant->id,
                     'reason_notes' => $validated['reason_notes'] ?? null,
                 ],
@@ -1016,13 +1016,13 @@ class AdminController extends Controller
             'merchant_strikes' => $merchant->strikes_count,
             'retail_settings' => [
                 'disable_pos_payment_links' => filter_var($merchant->retail_settings['disable_pos_payment_links'] ?? false, FILTER_VALIDATE_BOOLEAN),
-                'payout_controls' => $merchant->retail_settings['payout_controls'] ?? [
+                'payment_release_controls' => $merchant->retail_settings['payment_release_controls'] ?? [
                     'overrides' => collect(PayoutPolicyService::BUCKETS)
                         ->mapWithKeys(fn ($label, $bucket) => [$bucket => PayoutPolicyService::MODE_PLATFORM_DEFAULT])
                         ->all(),
                 ],
             ],
-            'payout_policy' => [
+            'release_policy' => [
                 'buckets' => PayoutPolicyService::BUCKETS,
                 'modes' => app(PayoutPolicyService::class)->labels(),
                 'platform_defaults' => collect(PayoutPolicyService::BUCKETS)
@@ -1169,7 +1169,7 @@ class AdminController extends Controller
         return $merchant->display_name ?: $merchant->username ?: "Business #{$merchant->id}";
     }
 
-    private function payoutPolicyChangeMessage(\App\Models\Merchant $merchant, array $controls, ?string $reason): string
+    private function releasePolicyChangeMessage(\App\Models\Merchant $merchant, array $controls, ?string $reason): string
     {
         $labels = app(PayoutPolicyService::class)->labels();
         $changed = collect($controls['overrides'] ?? [])
@@ -1178,10 +1178,10 @@ class AdminController extends Controller
             ->values();
 
         $summary = $changed->isEmpty()
-            ? 'Your payout controls now follow Takeer platform defaults.'
-            : 'Current payout controls: ' . $changed->implode('; ') . '.';
+            ? 'Your payment release controls now follow Takeer platform defaults.'
+            : 'Current payment release controls: ' . $changed->implode('; ') . '.';
 
-        $message = "Takeer has updated payout controls for {$merchant->display_name}. {$summary}";
+        $message = "Takeer has updated payment release controls for {$merchant->display_name}. {$summary}";
 
         if ($reason) {
             $message .= " Reason: {$reason}";

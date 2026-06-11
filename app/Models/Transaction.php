@@ -20,6 +20,7 @@ class Transaction extends Model
         'fee_fixed_currency_code',
         'fee_fixed_amount_converted',
         'fee_payment_channel',
+        'fee_sellable_type',
         'currency_code',
         'base_currency_code',
         'fx_rate_to_base',

@@ -13,6 +13,7 @@ use App\Models\WithdrawalRequest;
 use App\Models\Dispute;
 use App\Services\PayoutPolicyService;
 use App\Services\PaymentProviderCatalogService;
+use App\Services\WithdrawalPolicyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,7 @@ class AdminSettingsController extends Controller
     public function index(): JsonResponse
     {
         $payoutPolicy = app(PayoutPolicyService::class);
+        $withdrawalPolicy = app(WithdrawalPolicyService::class);
         $settings = array_merge([
             'ai_provider' => 'openrouter',
             'openrouter_api_key' => '',
@@ -56,7 +58,7 @@ class AdminSettingsController extends Controller
             'withdrawal_fee_fixed_bank_usd' => '0',
             'withdrawal_fee_fixed_bank_tzs' => '0',
             'withdrawal_fee_fixed_mobile_money_tzs' => '0',
-        ], $payoutPolicy->defaultSettings(), AdminSetting::allAsMap());
+        ], $payoutPolicy->defaultSettings(), $withdrawalPolicy->defaultSettings(), AdminSetting::allAsMap());
 
         if (Schema::hasTable('payment_provider_channels')) {
             app(PaymentProviderCatalogService::class)->ensureDefaults();
@@ -95,10 +97,16 @@ class AdminSettingsController extends Controller
         return response()->json([
             'settings' => $settings,
             'stats' => $stats,
-            'payout_policy' => [
+            'release_policy' => [
                 'buckets' => PayoutPolicyService::BUCKETS,
                 'modes' => collect(PayoutPolicyService::ACTIVE_MODES)
                     ->mapWithKeys(fn (string $mode) => [$mode => $payoutPolicy->labels()[$mode]])
+                    ->all(),
+            ],
+            'withdrawal_policy' => [
+                'buckets' => PayoutPolicyService::BUCKETS,
+                'modes' => collect(WithdrawalPolicyService::ACTIVE_MODES)
+                    ->mapWithKeys(fn (string $mode) => [$mode => $withdrawalPolicy->labels()[$mode]])
                     ->all(),
             ],
         ]);
@@ -110,6 +118,7 @@ class AdminSettingsController extends Controller
     public function update(Request $request): JsonResponse
     {
         $payoutPolicy = app(PayoutPolicyService::class);
+        $withdrawalPolicy = app(WithdrawalPolicyService::class);
         $allowed = [
             'ai_provider',
             'openrouter_api_key',
@@ -141,6 +150,7 @@ class AdminSettingsController extends Controller
             'withdrawal_fee_fixed_bank_tzs',
             'withdrawal_fee_fixed_mobile_money_tzs',
             ...array_keys($payoutPolicy->defaultSettings()),
+            ...array_keys($withdrawalPolicy->defaultSettings()),
         ];
 
         foreach ($allowed as $key) {
@@ -181,10 +191,15 @@ class AdminSettingsController extends Controller
                 if (str_starts_with($key, 'withdrawal_fee_fixed_')) {
                     $value = (string) max(0, round((float) $value, 2));
                 }
-                if (str_starts_with($key, 'payout_policy_')) {
+                if (str_starts_with($key, 'payment_release_policy_')) {
                     $value = in_array($value, PayoutPolicyService::ACTIVE_MODES, true)
                         ? $value
-                        : ($payoutPolicy->defaultSettings()[$key] ?? PayoutPolicyService::MODE_AUTOMATIC);
+                        : ($payoutPolicy->defaultSettings()[$key] ?? PayoutPolicyService::MODE_AUTOMATIC_RELEASE);
+                }
+                if (str_starts_with($key, 'payment_withdrawal_policy_')) {
+                    $value = in_array($value, WithdrawalPolicyService::ACTIVE_MODES, true)
+                        ? $value
+                        : ($withdrawalPolicy->defaultSettings()[$key] ?? WithdrawalPolicyService::MODE_MANUAL_WITHDRAWAL);
                 }
                 if (in_array($key, ['upload_allowed_extensions', 'upload_allowed_mime_types'], true)) {
                     $value = collect(preg_split('/[\s,]+/', strtolower((string) $value)))

@@ -4,15 +4,20 @@ namespace Tests\Feature;
 
 use App\Models\Country;
 use App\Models\Currency;
+use App\Models\AdminSetting;
 use App\Models\FeePolicy;
 use App\Models\Merchant;
+use App\Models\MerchantPayoutCredential;
 use App\Models\Order;
 use App\Models\PaymentProvider;
 use App\Models\PaymentProviderChannel;
+use App\Models\Product;
 use App\Models\ProviderTreasuryAccount;
+use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WithdrawalRequest;
+use App\Payments\PaymentCallbackProcessor;
 use App\Services\FeePolicyService;
 use App\Services\ProviderTreasuryService;
 use App\Services\WithdrawalAccountingService;
@@ -198,6 +203,333 @@ class MoneyFlowFeeQuoteTest extends TestCase
         $this->assertSame(100.0, $fee['snapshot']['provider_cost_amount']);
         $this->assertSame(400.0, $fee['snapshot']['takeer_margin_amount']);
         $this->assertFalse($fee['snapshot']['provider_cost_floor_applied']);
+    }
+
+    public function test_sale_fee_can_be_scoped_by_sellable_type(): void
+    {
+        $merchant = $this->merchant('TZS');
+
+        FeePolicy::create([
+            'name' => 'Digital download sale fee',
+            'category' => 'sale',
+            'scope' => 'sellable_type',
+            'sellable_type' => 'digital',
+            'fee_type' => 'percentage',
+            'percentage_rate' => 30,
+            'fixed_amount' => 0,
+            'is_active' => true,
+        ]);
+
+        FeePolicy::create([
+            'name' => 'Physical product sale fee',
+            'category' => 'sale',
+            'scope' => 'sellable_type',
+            'sellable_type' => 'physical',
+            'fee_type' => 'percentage',
+            'percentage_rate' => 4,
+            'fixed_amount' => 0,
+            'is_active' => true,
+        ]);
+
+        $digitalOrder = $this->order($merchant, [
+            'product_id' => $this->product($merchant, 'digital')->id,
+            'total_paid' => 10000,
+            'customer_total_amount' => 10000,
+        ]);
+        $physicalOrder = $this->order($merchant, [
+            'product_id' => $this->product($merchant, 'physical')->id,
+            'total_paid' => 10000,
+            'customer_total_amount' => 10000,
+        ]);
+
+        $digitalFee = app(FeePolicyService::class)->calculateForOrder($digitalOrder, 10000);
+        $physicalFee = app(FeePolicyService::class)->calculateForOrder($physicalOrder, 10000);
+
+        $this->assertSame(3000.0, $digitalFee['fee_amount']);
+        $this->assertSame(7000.0, $digitalFee['net_amount']);
+        $this->assertSame('digital', $digitalFee['snapshot']['fee_sellable_type']);
+        $this->assertSame('Digital download sale fee', $digitalFee['snapshot']['fee_policy_name']);
+
+        $this->assertSame(400.0, $physicalFee['fee_amount']);
+        $this->assertSame(9600.0, $physicalFee['net_amount']);
+        $this->assertSame('physical', $physicalFee['snapshot']['fee_sellable_type']);
+        $this->assertSame('Physical product sale fee', $physicalFee['snapshot']['fee_policy_name']);
+    }
+
+    public function test_sellable_type_sale_policy_wins_over_generic_payment_channel_policy(): void
+    {
+        $merchant = $this->merchant('TZS');
+
+        FeePolicy::create([
+            'name' => 'Generic channel sale fee',
+            'category' => 'sale',
+            'scope' => 'payment_channel',
+            'payment_channel' => 'tz_selcom_payin_mobile_money_tzs',
+            'fee_type' => 'percentage',
+            'percentage_rate' => 8,
+            'fixed_amount' => 0,
+            'is_active' => true,
+        ]);
+
+        FeePolicy::create([
+            'name' => 'Digital download sale fee',
+            'category' => 'sale',
+            'scope' => 'sellable_type',
+            'sellable_type' => 'digital',
+            'fee_type' => 'percentage',
+            'percentage_rate' => 30,
+            'fixed_amount' => 0,
+            'is_active' => true,
+        ]);
+
+        $order = $this->order($merchant, [
+            'product_id' => $this->product($merchant, 'digital')->id,
+            'total_paid' => 10000,
+            'customer_total_amount' => 10000,
+            'payment_channel_snapshot' => [
+                'payment_provider_channel_key' => 'tz_selcom_payin_mobile_money_tzs',
+                'fee_type' => 'fixed',
+                'fee_fixed' => 100,
+                'fee_percent_bps' => 0,
+                'fee_min' => 0,
+                'fee_max' => null,
+            ],
+        ]);
+
+        $fee = app(FeePolicyService::class)->calculateForOrder($order, 10000);
+
+        $this->assertSame(3000.0, $fee['fee_amount']);
+        $this->assertSame('Digital download sale fee', $fee['snapshot']['fee_policy_name']);
+        $this->assertSame('tz_selcom_payin_mobile_money_tzs', $fee['snapshot']['fee_payment_channel']);
+        $this->assertSame('digital', $fee['snapshot']['fee_sellable_type']);
+    }
+
+    public function test_automatic_withdrawal_policy_records_sale_fee_and_withdrawal_request(): void
+    {
+        $merchant = $this->merchant('TZS');
+        AdminSetting::updateOrCreate(
+            ['key' => 'payment_release_policy_digital_downloads'],
+            ['value' => 'automatic_release']
+        );
+        AdminSetting::updateOrCreate(
+            ['key' => 'payment_withdrawal_policy_digital_downloads'],
+            ['value' => 'automatic_withdrawal']
+        );
+        $product = $this->product($merchant, 'digital');
+        $provider = PaymentProvider::create([
+            'key' => 'manual_gateway',
+            'name' => 'Manual Gateway',
+            'driver' => 'manual',
+            'status' => 'enabled',
+        ]);
+        $channel = $this->providerPayoutChannel([
+            'payment_provider_id' => $provider->id,
+            'key' => 'tz_manual_payout_mobile_money_tzs',
+        ]);
+
+        ProviderTreasuryAccount::create([
+            'payment_provider_id' => $channel->payment_provider_id,
+            'payment_provider_channel_id' => $channel->id,
+            'provider_key' => 'manual_gateway',
+            'provider_channel_key' => $channel->key,
+            'country_code' => 'TZ',
+            'method' => 'mobile_money',
+            'currency_code' => 'TZS',
+            'balance_amount' => 100000,
+            'reserved_amount' => 0,
+            'minimum_available_amount' => 0,
+            'status' => 'active',
+        ]);
+
+        MerchantPayoutCredential::create([
+            'merchant_id' => $merchant->id,
+            'payment_provider_channel_id' => $channel->id,
+            'label' => 'Default mobile money',
+            'method' => 'mobile_money',
+            'network' => 'yas',
+            'currency_code' => 'TZS',
+            'details_encrypted' => ['phone_number' => '255700000001'],
+            'details_masked' => ['network' => 'yas', 'phone_number' => '****0001', 'name' => 'TZS Merchant'],
+            'verification_status' => 'verified',
+            'verified_at' => now(),
+            'is_default' => true,
+            'status' => 'active',
+        ]);
+
+        Wallet::create([
+            'user_id' => $merchant->user_id,
+            'merchant_id' => $merchant->id,
+            'balance' => 10000,
+            'frozen_balance' => 0,
+        ]);
+
+        $order = $this->order($merchant, [
+            'product_id' => $product->id,
+            'total_paid' => 10000,
+            'customer_total_amount' => 10000,
+            'payment_status' => 'pending',
+        ]);
+
+        app(PaymentCallbackProcessor::class)->handleSuccess($order, 'PAYIN-REF-1', 'test_gateway');
+
+        $order->refresh();
+        $this->assertSame('resolved_merchant_paid', $order->payment_status);
+
+        $saleTransaction = Transaction::query()
+            ->where('order_id', $order->id)
+            ->where('type', 'order_revenue')
+            ->firstOrFail();
+
+        $this->assertSame(10000.0, (float) $saleTransaction->gross_amount);
+        $this->assertGreaterThan(0, (float) $saleTransaction->fee_amount);
+        $this->assertSame(
+            round((float) $saleTransaction->gross_amount - (float) $saleTransaction->fee_amount, 2),
+            (float) $saleTransaction->net_amount
+        );
+
+        $withdrawal = WithdrawalRequest::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('idempotency_key', 'AUTO-WITHDRAWAL-ORDER-' . $order->id)
+            ->firstOrFail();
+
+        $this->assertSame('pending', $withdrawal->status);
+        $this->assertGreaterThanOrEqual((float) $saleTransaction->net_amount, (float) $withdrawal->amount);
+        $this->assertTrue((bool) $withdrawal->payout_snapshot['automatic_withdrawal']);
+        $this->assertSame($order->id, $withdrawal->payout_snapshot['order_id']);
+        $this->assertSame(round(10000 + (float) $saleTransaction->net_amount, 2), (float) $withdrawal->payout_snapshot['wallet_balance_before_auto_withdrawal']);
+        $this->assertSame((float) $withdrawal->amount, (float) $withdrawal->payout_snapshot['wallet_debit_amount']);
+        $this->assertSame((float) $withdrawal->merchant_amount, (float) $withdrawal->payout_snapshot['merchant_principal_amount']);
+        $this->assertSame('automatic_withdrawal', $withdrawal->payout_snapshot['withdrawal_policy']['mode']);
+        $this->assertSame(
+            round(10000 + (float) $saleTransaction->net_amount - (float) $withdrawal->amount, 2),
+            (float) $merchant->wallet()->first()->fresh()->balance
+        );
+    }
+
+    public function test_automatic_release_with_manual_withdrawal_keeps_funds_in_wallet_without_withdrawal_request(): void
+    {
+        $merchant = $this->merchant('TZS');
+        AdminSetting::updateOrCreate(
+            ['key' => 'payment_release_policy_digital_downloads'],
+            ['value' => 'automatic_release']
+        );
+        AdminSetting::updateOrCreate(
+            ['key' => 'payment_withdrawal_policy_digital_downloads'],
+            ['value' => 'manual_withdrawal']
+        );
+
+        $order = $this->order($merchant, [
+            'product_id' => $this->product($merchant, 'digital')->id,
+            'total_paid' => 10000,
+            'customer_total_amount' => 10000,
+            'payment_status' => 'pending',
+        ]);
+
+        app(PaymentCallbackProcessor::class)->handleSuccess($order, 'PAYIN-REF-MANUAL-WITHDRAWAL', 'test_gateway');
+
+        $order->refresh();
+        $this->assertSame('resolved_merchant_paid', $order->payment_status);
+
+        $saleTransaction = Transaction::query()
+            ->where('order_id', $order->id)
+            ->where('type', 'order_revenue')
+            ->firstOrFail();
+
+        $this->assertSame((float) $saleTransaction->net_amount, (float) $merchant->wallet()->first()->fresh()->balance);
+        $this->assertFalse(WithdrawalRequest::query()->where('merchant_id', $merchant->id)->where('payout_snapshot->order_id', $order->id)->exists());
+    }
+
+    public function test_automatic_withdrawal_waits_in_wallet_until_minimum_withdrawal_limit_is_met(): void
+    {
+        $merchant = $this->merchant('TZS');
+        AdminSetting::updateOrCreate(
+            ['key' => 'payment_release_policy_digital_downloads'],
+            ['value' => 'automatic_release']
+        );
+        AdminSetting::updateOrCreate(
+            ['key' => 'payment_withdrawal_policy_digital_downloads'],
+            ['value' => 'automatic_withdrawal']
+        );
+
+        $this->automaticWithdrawalRoute($merchant, [
+            'limits' => ['min_withdrawal_amount' => 10000, 'max_withdrawal_amount' => null],
+        ]);
+
+        $product = $this->product($merchant, 'digital');
+        $firstOrder = $this->order($merchant, [
+            'product_id' => $product->id,
+            'total_paid' => 8000,
+            'customer_total_amount' => 8000,
+            'payment_status' => 'pending',
+        ]);
+
+        app(PaymentCallbackProcessor::class)->handleSuccess($firstOrder, 'PAYIN-BELOW-MIN', 'test_gateway');
+
+        $firstSale = Transaction::query()
+            ->where('order_id', $firstOrder->id)
+            ->where('type', 'order_revenue')
+            ->firstOrFail();
+
+        $this->assertSame((float) $firstSale->net_amount, (float) $merchant->wallet()->first()->fresh()->balance);
+        $this->assertSame(0, WithdrawalRequest::query()->where('merchant_id', $merchant->id)->count());
+
+        $secondOrder = $this->order($merchant, [
+            'product_id' => $product->id,
+            'total_paid' => 8000,
+            'customer_total_amount' => 8000,
+            'payment_status' => 'pending',
+        ]);
+
+        app(PaymentCallbackProcessor::class)->handleSuccess($secondOrder, 'PAYIN-CROSSES-MIN', 'test_gateway');
+
+        $secondSale = Transaction::query()
+            ->where('order_id', $secondOrder->id)
+            ->where('type', 'order_revenue')
+            ->firstOrFail();
+        $expectedWalletBalanceBeforeWithdrawal = round((float) $firstSale->net_amount + (float) $secondSale->net_amount, 2);
+
+        $withdrawal = WithdrawalRequest::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('idempotency_key', 'AUTO-WITHDRAWAL-ORDER-' . $secondOrder->id)
+            ->firstOrFail();
+
+        $this->assertSame($expectedWalletBalanceBeforeWithdrawal, (float) $withdrawal->payout_snapshot['wallet_balance_before_auto_withdrawal']);
+        $this->assertSame($expectedWalletBalanceBeforeWithdrawal, (float) $withdrawal->amount);
+        $this->assertSame((float) $withdrawal->merchant_amount, (float) $withdrawal->payout_snapshot['merchant_principal_amount']);
+        $this->assertLessThanOrEqual(0.01, (float) $merchant->wallet()->first()->fresh()->balance);
+        $this->assertSame(1, WithdrawalRequest::query()->where('merchant_id', $merchant->id)->count());
+    }
+
+    public function test_automatic_withdrawal_requires_default_withdrawal_option_and_keeps_funds_in_wallet(): void
+    {
+        $merchant = $this->merchant('TZS');
+        AdminSetting::updateOrCreate(
+            ['key' => 'payment_release_policy_digital_downloads'],
+            ['value' => 'automatic_release']
+        );
+        AdminSetting::updateOrCreate(
+            ['key' => 'payment_withdrawal_policy_digital_downloads'],
+            ['value' => 'automatic_withdrawal']
+        );
+
+        $this->automaticWithdrawalRoute($merchant, [], false);
+
+        $order = $this->order($merchant, [
+            'product_id' => $this->product($merchant, 'digital')->id,
+            'total_paid' => 10000,
+            'customer_total_amount' => 10000,
+            'payment_status' => 'pending',
+        ]);
+
+        app(PaymentCallbackProcessor::class)->handleSuccess($order, 'PAYIN-NO-DEFAULT-WITHDRAWAL', 'test_gateway');
+
+        $saleTransaction = Transaction::query()
+            ->where('order_id', $order->id)
+            ->where('type', 'order_revenue')
+            ->firstOrFail();
+
+        $this->assertSame((float) $saleTransaction->net_amount, (float) $merchant->wallet()->first()->fresh()->balance);
+        $this->assertSame(0, WithdrawalRequest::query()->where('merchant_id', $merchant->id)->count());
     }
 
     public function test_withdrawal_accounting_records_provider_cost_and_takeer_margin_separately(): void
@@ -467,12 +799,14 @@ class MoneyFlowFeeQuoteTest extends TestCase
     private function merchant(string $currencyCode): Merchant
     {
         $currency = $this->currency($currencyCode);
-        $country = Country::create([
-            'name' => 'Tanzania',
-            'iso_alpha2' => 'TZ',
-            'default_currency_id' => $this->currency('TZS')->id,
-            'is_active' => true,
-        ]);
+        $country = Country::firstOrCreate(
+            ['iso_alpha2' => 'TZ'],
+            [
+                'name' => 'Tanzania',
+                'default_currency_id' => $this->currency('TZS')->id,
+                'is_active' => true,
+            ]
+        );
         $user = User::factory()->create(['role' => 'merchant']);
 
         return Merchant::create([
@@ -512,6 +846,18 @@ class MoneyFlowFeeQuoteTest extends TestCase
         ], $attributes));
     }
 
+    private function product(Merchant $merchant, string $type): Product
+    {
+        return Product::create([
+            'merchant_id' => $merchant->id,
+            'type' => $type,
+            'title' => ucfirst($type).' test product',
+            'price' => 10000,
+            'inventory_count' => $type === 'physical' ? 10 : 0,
+            'url' => $type === 'digital' ? 'private://digital-products/test.pdf' : null,
+        ]);
+    }
+
     private function payoutChannel(array $overrides = []): array
     {
         return array_merge([
@@ -533,12 +879,14 @@ class MoneyFlowFeeQuoteTest extends TestCase
 
     private function providerPayoutChannel(array $overrides = []): PaymentProviderChannel
     {
-        $provider = PaymentProvider::create([
-            'key' => 'selcom',
-            'name' => 'Selcom',
-            'driver' => 'selcom',
-            'status' => 'enabled',
-        ]);
+        $provider = PaymentProvider::firstOrCreate(
+            ['key' => 'selcom'],
+            [
+                'name' => 'Selcom',
+                'driver' => 'selcom',
+                'status' => 'enabled',
+            ]
+        );
 
         return PaymentProviderChannel::create(array_merge([
             'payment_provider_id' => $provider->id,
@@ -557,6 +905,42 @@ class MoneyFlowFeeQuoteTest extends TestCase
             'fee_max' => null,
             'fx_margin_bps' => 0,
         ], $overrides));
+    }
+
+    private function automaticWithdrawalRoute(Merchant $merchant, array $channelOverrides = [], bool $isDefaultCredential = true): MerchantPayoutCredential
+    {
+        $channel = $this->providerPayoutChannel(array_merge([
+            'key' => 'tz_test_auto_payout_mobile_money_tzs_' . uniqid(),
+        ], $channelOverrides));
+
+        ProviderTreasuryAccount::create([
+            'payment_provider_id' => $channel->payment_provider_id,
+            'payment_provider_channel_id' => $channel->id,
+            'provider_key' => $channel->provider?->key ?: 'selcom',
+            'provider_channel_key' => $channel->key,
+            'country_code' => 'TZ',
+            'method' => 'mobile_money',
+            'currency_code' => 'TZS',
+            'balance_amount' => 100000,
+            'reserved_amount' => 0,
+            'minimum_available_amount' => 0,
+            'status' => 'active',
+        ]);
+
+        return MerchantPayoutCredential::create([
+            'merchant_id' => $merchant->id,
+            'payment_provider_channel_id' => $channel->id,
+            'label' => 'Auto mobile money',
+            'method' => 'mobile_money',
+            'network' => 'yas',
+            'currency_code' => 'TZS',
+            'details_encrypted' => ['phone_number' => '255700000001'],
+            'details_masked' => ['network' => 'yas', 'phone_number' => '****0001', 'name' => 'TZS Merchant'],
+            'verification_status' => 'verified',
+            'verified_at' => now(),
+            'is_default' => $isDefaultCredential,
+            'status' => 'active',
+        ]);
     }
 
     private function currency(string $code): Currency

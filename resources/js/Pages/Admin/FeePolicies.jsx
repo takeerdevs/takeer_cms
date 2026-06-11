@@ -14,6 +14,12 @@ const categories = [
     { value: 'storage', label: 'Storage' },
 ];
 
+const sellableTypes = [
+    { value: 'physical', label: 'Physical products' },
+    { value: 'digital', label: 'Digital downloads' },
+    { value: 'service', label: 'Services' },
+];
+
 const blankForm = {
     name: '',
     category: 'sale',
@@ -22,6 +28,7 @@ const blankForm = {
     currency_code: '',
     merchant_id: '',
     payment_channel: '',
+    sellable_type: '',
     fee_type: 'percentage',
     percentage_rate: '5',
     fixed_amount: '0',
@@ -117,6 +124,7 @@ export default function FeePolicies() {
             currency_code: policy.currency_code || '',
             merchant_id: policy.merchant_id ? String(policy.merchant_id) : '',
             payment_channel: policy.payment_channel || '',
+            sellable_type: policy.sellable_type || '',
             fee_type: policy.fee_type || 'percentage',
             percentage_rate: String(policy.percentage_rate ?? 0),
             fixed_amount: String(policy.fixed_amount ?? 0),
@@ -142,6 +150,7 @@ export default function FeePolicies() {
             currency_code: form.currency_code || null,
             merchant_id: form.merchant_id || null,
             payment_channel: form.scope === 'payment_channel' ? form.payment_channel || null : null,
+            sellable_type: form.scope === 'sellable_type' ? form.sellable_type || null : null,
             fixed_fee_currency_code: form.fixed_fee_currency_code || 'USD',
             min_fee: form.min_fee === '' ? null : form.min_fee,
             max_fee: form.max_fee === '' ? null : form.max_fee,
@@ -256,7 +265,7 @@ export default function FeePolicies() {
                                                         {policy.is_active ? 'Active' : 'Inactive'}
                                                     </span>
                                                     <span className="text-[10px] uppercase tracking-widest font-black px-2 py-1 rounded-full bg-slate-100 text-slate-600">
-                                                        {policy.scope}
+                                                        {policyScopeBadge(policy)}
                                                     </span>
                                                 </div>
                                                 <p className="text-sm text-slate-600 mt-1">
@@ -306,13 +315,23 @@ export default function FeePolicies() {
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <Field label="Category">
-                                            <Select value={form.category} onChange={(e) => setForm((current) => ({ ...current, category: e.target.value, payment_channel: '' }))}>
+                                            <Select value={form.category} onChange={(e) => {
+                                                const category = e.target.value;
+                                                setForm((current) => ({
+                                                    ...current,
+                                                    category,
+                                                    scope: category !== 'sale' && current.scope === 'sellable_type' ? 'global' : current.scope,
+                                                    payment_channel: '',
+                                                    sellable_type: category === 'sale' ? current.sellable_type : '',
+                                                }));
+                                            }}>
                                                 {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
                                             </Select>
                                         </Field>
                                         <Field label="Scope">
-                                            <Select value={form.scope} onChange={(e) => set('scope', e.target.value)}>
+                                            <Select value={form.scope} onChange={(e) => setForm((current) => ({ ...current, scope: e.target.value, payment_channel: '', sellable_type: '' }))}>
                                                 <option value="global">Global</option>
+                                                {form.category === 'sale' && <option value="sellable_type">Sellable Type</option>}
                                                 <option value="country">Country</option>
                                                 <option value="currency">Currency</option>
                                                 <option value="merchant">Merchant</option>
@@ -322,6 +341,19 @@ export default function FeePolicies() {
                                     </div>
 
                                     {form.scope === 'country' && <Field label="Country Code"><Input className="h-11 rounded-xl uppercase" maxLength={2} value={form.country_code} onChange={(e) => set('country_code', e.target.value.toUpperCase())} placeholder="TZ" /></Field>}
+                                    {form.scope === 'sellable_type' && (
+                                        <Field label="Sellable Type">
+                                            <Select value={form.sellable_type} onChange={(e) => set('sellable_type', e.target.value)}>
+                                                <option value="">Choose sellable type</option>
+                                                {sellableTypes.map((type) => (
+                                                    <option key={type.value} value={type.value}>{type.label}</option>
+                                                ))}
+                                            </Select>
+                                            <p className="mt-2 text-xs font-semibold text-slate-500">
+                                                Use this to set different sale fees for digital downloads, physical products, and services.
+                                            </p>
+                                        </Field>
+                                    )}
                                     {form.scope === 'currency' && (
                                         <Field label="Currency">
                                             <Select value={form.currency_code} onChange={(e) => set('currency_code', e.target.value)}>
@@ -608,12 +640,24 @@ function paymentChannelLabel(channel) {
 }
 
 function policyScopeLabel(policy, paymentChannelByKey) {
+    if (policy.sellable_type) {
+        return sellableTypes.find((type) => type.value === policy.sellable_type)?.label || policy.sellable_type;
+    }
+
     if (policy.payment_channel) {
         const channel = paymentChannelByKey[policy.payment_channel];
         return channel ? paymentChannelLabel(channel) : policy.payment_channel;
     }
 
     return policy.country_code || policy.currency_code || policy.merchant?.display_name || 'Global';
+}
+
+function policyScopeBadge(policy) {
+    if (policy.sellable_type) {
+        return sellableTypes.find((type) => type.value === policy.sellable_type)?.label || policy.sellable_type;
+    }
+
+    return String(policy.scope || 'global').replace(/_/g, ' ');
 }
 
 function calculatePreview(form, rawAmount) {

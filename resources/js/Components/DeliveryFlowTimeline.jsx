@@ -74,17 +74,20 @@ export function deliveryStatusTextSw(status) {
 }
 
 export function deliveryCurrentIndex(delivery = {}) {
-    const steps = deliveryStepsFor(delivery.delivery_type || delivery.type);
+    const safeDelivery = delivery || {};
+    const steps = deliveryStepsFor(safeDelivery.delivery_type || safeDelivery.type);
 
-    return deliveryCurrentIndexForSteps(delivery, steps);
+    return deliveryCurrentIndexForSteps(safeDelivery, steps);
 }
 
-export function deliveryCurrentIndexForSteps(delivery = {}, steps = deliveryStepsFor(delivery.delivery_type || delivery.type)) {
+export function deliveryCurrentIndexForSteps(delivery = {}, steps = null) {
+    const safeDelivery = delivery || {};
+    const safeSteps = steps || deliveryStepsFor(safeDelivery.delivery_type || safeDelivery.type);
     const normalizeStatus = (value) => value === 'dispatched' ? 'with_boda' : value;
-    const eventStatuses = Array.isArray(delivery.events) ? delivery.events.map((event) => normalizeStatus(event.status)) : [];
-    const status = normalizeStatus(delivery.status || delivery.delivery_status);
+    const eventStatuses = Array.isArray(safeDelivery.events) ? safeDelivery.events.map((event) => normalizeStatus(event.status)) : [];
+    const status = normalizeStatus(safeDelivery.status || safeDelivery.delivery_status);
     const indexes = [...eventStatuses, status]
-        .map((value) => steps.findIndex((step) => step.value === value))
+        .map((value) => safeSteps.findIndex((step) => step.value === value))
         .filter((index) => index >= 0);
 
     return indexes.length ? Math.max(...indexes) : -1;
@@ -119,17 +122,18 @@ export function DeliveryFlowTimeline({
     swahili = false,
     className = '',
 }) {
-    const steps = deliveryStepsFor(delivery.delivery_type || delivery.type)
+    const safeDelivery = delivery || {};
+    const steps = deliveryStepsFor(safeDelivery.delivery_type || safeDelivery.type)
         .filter((step) => !hiddenStatuses.includes(step.value));
-    const events = Array.isArray(delivery.events)
-        ? [...delivery.events].sort((a, b) => {
+    const events = Array.isArray(safeDelivery.events)
+        ? [...safeDelivery.events].sort((a, b) => {
             const timeA = new Date(a.created_at || 0).getTime();
             const timeB = new Date(b.created_at || 0).getTime();
             if (timeA !== timeB) return timeA - timeB;
             return String(a.id || '').localeCompare(String(b.id || ''));
         })
         : [];
-    const currentIndex = deliveryCurrentIndexForSteps(delivery, steps);
+    const currentIndex = deliveryCurrentIndexForSteps(safeDelivery, steps);
     const latestSelectableIndex = Math.min(currentIndex + 1, steps.length - 1);
     const normalizeStatus = (value) => value === 'dispatched' ? 'with_boda' : value;
     const grouped = steps.reduce((acc, step) => {
@@ -142,17 +146,17 @@ export function DeliveryFlowTimeline({
         <div className={cn('rounded-3xl border border-slate-200 bg-white p-4', className)}>
             <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{swahili ? 'Hatua za mzigo' : 'Delivery Flow'}</p>
-                {(delivery.delivery_person_name || delivery.boda_phone) && (
+                {(safeDelivery.delivery_person_name || safeDelivery.boda_phone) && (
                     <div className="flex flex-wrap items-center justify-end gap-1.5">
-                        {delivery.delivery_person_name && (
+                        {safeDelivery.delivery_person_name && (
                             <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-600">
-                                {delivery.delivery_person_name}
+                                {safeDelivery.delivery_person_name}
                             </span>
                         )}
-                        {delivery.boda_phone && (
-                            <a href={`tel:${delivery.boda_phone}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-sky-700">
+                        {safeDelivery.boda_phone && (
+                            <a href={`tel:${safeDelivery.boda_phone}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-sky-700">
                                 <Phone className="h-3 w-3" />
-                                {delivery.boda_phone}
+                                {safeDelivery.boda_phone}
                             </a>
                         )}
                     </div>

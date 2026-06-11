@@ -7,11 +7,13 @@ use App\Models\ExtraCharge;
 use App\Models\RetailAuditLog;
 use App\Models\Transaction;
 use App\Models\UserSubscription;
+use App\Services\AutomaticWithdrawalService;
 use App\Services\EntitlementService;
 use App\Services\PayoutPolicyService;
 use App\Services\PickupAgreementService;
 use App\Services\SmsService;
 use App\Services\SubscriptionRenewalService;
+use App\Services\WithdrawalPolicyService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -128,6 +130,8 @@ class PaymentCallbackProcessor
                 // Credit merchant according to the resolved payout policy.
                 $wallet->increment('balance', $fee['net_amount']);
                 $this->entitlementService->grantForOrder($order->fresh(['product']));
+                $withdrawalPolicy = app(WithdrawalPolicyService::class)->resolveForOrder($order->fresh(['merchant.country', 'merchant.currency']));
+                app(AutomaticWithdrawalService::class)->createForOrder($order->fresh(['merchant.country', 'merchant.currency']), (float) $fee['net_amount'], $withdrawalPolicy);
 
                 // Handle subscription activation
                 if ($order->purchasable_type === 'subscription_plan') {
