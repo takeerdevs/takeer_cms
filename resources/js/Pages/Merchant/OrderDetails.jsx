@@ -14,6 +14,7 @@ import {
     CircleAlert,
     Copy,
     Download,
+    DownloadCloud,
     FileUp,
     Loader2,
     MapPin,
@@ -34,6 +35,7 @@ import {
     Truck,
     UserRound,
     Video,
+    Wrench,
     Crown,
     X,
 } from 'lucide-react';
@@ -93,6 +95,30 @@ function typeMeta(kind) {
     };
 
     return map[kind] || map.post_content;
+}
+
+function fallbackMediaMeta(order) {
+    const productType = order?.product?.type;
+    const displayKind = order?.display_kind;
+
+    if (productType === 'digital' || ['digital_file', 'custom_work', 'post_content', 'course_bundle'].includes(displayKind)) {
+        return {
+            Icon: DownloadCloud,
+            className: 'border-indigo-100 bg-indigo-50 text-indigo-500',
+        };
+    }
+
+    if (productType === 'service' || displayKind === 'service_booking') {
+        return {
+            Icon: Wrench,
+            className: 'border-emerald-100 bg-emerald-50 text-emerald-600',
+        };
+    }
+
+    return {
+        Icon: ShoppingBag,
+        className: 'border-amber-100 bg-amber-50 text-amber-600',
+    };
 }
 
 function OfferingGroupLines({ lines = [], currency = 'TZS' }) {
@@ -1030,6 +1056,8 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const displayId = isPos ? `#POS-${order.public_id}` : `#${order?.transaction_ref || orderId}`;
     const orderImage = order?.variant?.swatch_image_url || order?.product?.image_url || order?.display_image;
     const productDetailUrl = order?.product?.id ? `/merchant/${merchantUsername}/products/${order.product.id}` : null;
+    const mediaFallback = fallbackMediaMeta(order);
+    const MediaFallbackIcon = mediaFallback.Icon;
 
     return (
         <AppLayout>
@@ -1078,7 +1106,10 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                         <Card className="rounded-2xl overflow-hidden">
                             <CardContent className="p-5 md:p-6 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="flex min-w-0 items-start gap-4">
-                                    <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-accent text-muted-foreground md:h-28 md:w-28">
+                                    <div className={cn(
+                                        "relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border md:h-28 md:w-28",
+                                        orderImage ? "bg-accent text-muted-foreground" : mediaFallback.className
+                                    )}>
                                         {orderImage ? (
                                             productDetailUrl ? (
                                                 <button
@@ -1096,7 +1127,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                 <img src={orderImage} alt={order.display_title || 'Order item'} className="h-full w-full object-cover" />
                                             )
                                         ) : (
-                                            <KindIcon className="h-9 w-9 opacity-70" />
+                                            <MediaFallbackIcon className="h-10 w-10 opacity-90" />
                                         )}
                                     </div>
                                     <div className="min-w-0">

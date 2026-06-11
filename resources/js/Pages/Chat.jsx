@@ -464,8 +464,8 @@ const deliveryCopy = (order) => {
 const isDigitalOrder = (order) => {
     const productType = order?.product?.type;
     if (productType === 'physical') return false;
+    if (productType === 'service') return false;
     if (order?.delivery?.delivery_type || order?.delivery?.type) return false;
-    if (order?.order_flow === 'escrow') return false;
 
     return productType === 'digital'
         || ['content_item', 'subscription_plan'].includes(order?.purchasable_type)
@@ -475,9 +475,53 @@ const isDigitalOrder = (order) => {
 const isPhysicalOrder = (order) => {
     if (!order) return false;
     if (isDigitalOrder(order)) return false;
+    if (order?.product?.type === 'service') return false;
     return order?.product?.type === 'physical'
         || Boolean(order?.delivery?.delivery_type || order?.delivery?.type)
-        || order?.order_flow === 'escrow';
+        || Boolean(order?.requires_physical_fulfillment);
+};
+
+const isServiceOrder = (order) => order?.product?.type === 'service';
+
+const orderIntentMeta = (order) => {
+    if (isServiceOrder(order)) {
+        return {
+            label: 'Huduma',
+            itemLabel: 'Huduma',
+            totalLabel: 'Huduma',
+            Icon: Wrench,
+        };
+    }
+
+    if (isDigitalOrder(order)) {
+        return {
+            label: digitalAccessCopy(order),
+            itemLabel: 'Digital',
+            totalLabel: 'Digital',
+            Icon: DownloadCloud,
+        };
+    }
+
+    return {
+        label: deliveryCopy(order),
+        itemLabel: 'Bidhaa',
+        totalLabel: 'Bidhaa',
+        Icon: ShoppingBag,
+    };
+};
+
+const ProductFallbackIcon = ({ type, className }) => {
+    const Icon = type === 'digital'
+        ? DownloadCloud
+        : type === 'service'
+            ? Wrench
+            : ShoppingBag;
+
+    return (
+        <div className={cn("flex h-full w-full items-center justify-center", className)}>
+            <Icon className="h-8 w-8" />
+        </div>
+    );
 };
 
 const digitalAccessCopy = (order) => {
@@ -760,6 +804,11 @@ export default function Chat({
 
         setQuoteSubmitting(true);
         try {
+            const quoteLabel = order?.product?.type === 'service'
+                ? 'Offer ya huduma'
+                : order?.product?.type === 'digital'
+                    ? 'Offer ya digital work'
+                    : (isForwarderOrder ? 'Gharama ya kupeleka kwa forwarder' : 'Gharama ya usafiri');
             const token = document.head.querySelector('meta[name="csrf-token"]')?.content;
             const res = await fetch(`/api/merchant/orders/${orderId}/quote`, {
                 method: 'POST',
@@ -774,7 +823,7 @@ export default function Chat({
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Imeshindwa kutuma gharama.');
 
-            toast.success(order?.product?.type === 'service' ? 'Offer ya huduma imetumwa kwa mteja.' : 'Gharama ya usafiri imetumwa kwa mteja.');
+            toast.success(`${quoteLabel} imetumwa kwa mteja.`);
             setShippingFeeInput('');
             if (data.order) setOrder(data.order);
 
@@ -783,7 +832,7 @@ export default function Chat({
                 id: Date.now(),
                 sender_id: auth.user.id,
                 type: 'text',
-                body: `${order?.product?.type === 'service' ? 'Offer ya huduma' : (isForwarderOrder ? 'Gharama ya kupeleka kwa forwarder' : 'Gharama ya usafiri')} imewekwa: TZS ${Number(shippingFeeInput).toLocaleString()}`,
+                body: `${quoteLabel} imewekwa: TZS ${Number(shippingFeeInput).toLocaleString()}`,
                 payload: { acting_as: actingAs },
                 sender: { role: auth.user.role, name: auth.user.name },
                 created_at: new Date().toISOString()
@@ -1649,20 +1698,29 @@ export default function Chat({
     }, {});
 
     const currentStatus = statusCopy(order);
-    const isServiceOrder = order?.product?.type === 'service';
+    const productType = order?.product?.type;
+    const serviceOrder = isServiceOrder(order);
+    const digitalOrder = isDigitalOrder(order);
+    const physicalOrder = isPhysicalOrder(order);
+    const customDigitalOrder = productType === 'digital' && order?.product?.digital_delivery_type === 'custom_delivery';
+    const intentMeta = orderIntentMeta(order);
+    const IntentIcon = intentMeta.Icon;
     const merchantConfirmed = Boolean(order?.is_merchant_confirmed || order?.merchant_confirmed_at);
     const canBuyerPay = actingAs === 'buyer'
         && order?.payment_status === 'pending'
         && (!order?.is_inquiry || merchantConfirmed)
         && (order?.is_inquiry
             ? order?.inquiry_status === 'quoted' && (
-                isServiceOrder
+                serviceOrder
+                || digitalOrder
                 || order?.delivery?.delivery_type === 'self_pickup'
                 || order?.shipping_fee !== null
                 || order?.delivery?.shipping_zone_id
             )
             : (
-                order?.delivery?.delivery_type === 'self_pickup'
+                serviceOrder
+                || digitalOrder
+                || order?.delivery?.delivery_type === 'self_pickup'
                 || order?.shipping_fee !== null
                 || order?.delivery?.shipping_zone_id
             ));
@@ -1671,9 +1729,13 @@ export default function Chat({
         && order?.is_inquiry
         && order?.payment_status === 'pending'
         && order?.inquiry_status === 'pending'
-        && order?.delivery?.delivery_type !== 'self_pickup';
+        && (
+            serviceOrder
+            || digitalOrder
+            || order?.delivery?.delivery_type !== 'self_pickup'
+        );
     const isWaitingForShippingFee = canMerchantQuote
-        && !isServiceOrder
+        && physicalOrder
         && order?.shipping_fee === null;
     const canMerchantConfirmUnpaid = actingAs === 'merchant'
         && order?.is_inquiry
@@ -1698,16 +1760,16 @@ export default function Chat({
             key: `main-${order?.product?.id || order?.product_id || 'item'}`,
             id: order?.product_id,
             variant_id: order?.variant_id,
-            title: order?.product?.title || order?.display_title || 'Physical order',
+            title: order?.product?.title || order?.display_title || 'Order item',
             image: orderImageUrl,
             quantityLabel: orderQuantityLabel(order),
             price: Number(order?.unit_price || 0) * orderPackageCount(order),
             quantity: order?.quantity,
             requested_quantity: order?.requested_quantity,
             unit_snapshot: order?.unit_snapshot,
-            type: order?.product?.type || (order?.requires_physical_fulfillment ? 'physical' : undefined),
+            type: productType || (order?.requires_physical_fulfillment ? 'physical' : undefined),
             digital_delivery_type: order?.product?.digital_delivery_type,
-            product_type: order?.product?.type,
+            product_type: productType,
             isMain: true,
             isExtra: false,
         },
@@ -1841,6 +1903,39 @@ export default function Chat({
             || ['escrow_locked', 'shipped'].includes(order?.payment_status)
         )
     );
+    const agreementActionDesc = serviceOrder
+        ? 'Scope, muda au gharama ya huduma'
+        : customDigitalOrder
+            ? 'Scope, files au revisions'
+            : 'Makubaliano ya oda';
+    const merchantQuickActions = physicalOrder ? [
+        { id: 'shipping_cost', label: isForwarderOrder ? 'Forwarder Drop-off' : 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: isForwarderOrder ? 'Gharama hadi forwarder' : 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PICKUP ONLY' },
+        { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'extra_charge', label: 'Extra Charge', icon: CreditCard, color: 'bg-orange-50 text-orange-600', border: 'border-orange-100', desc: activeExtraCharge?.status === 'proposed' ? 'Update/remove charge' : 'Storage au gharama nyingine', disabled: !canProposeExtraCharge && !canRemoveExtraCharge, disabledReason: 'PICKUP ONLY' },
+        { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
+        { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
+        { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari', disabled: order?.delivery?.delivery_type === 'self_pickup', disabledReason: 'PICKUP ONLY' },
+    ] : [
+        { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza offer/bei ya oda' },
+        { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza muda wa kulipa', disabled: order?.payment_status !== 'pending', disabledReason: 'PENDING ONLY' },
+        { id: 'release_stock', label: 'Sitisha Oda', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Funga enquiry hii', disabled: order?.payment_status !== 'pending', disabledReason: 'PENDING ONLY' },
+        { id: 'upsell', label: serviceOrder ? 'Pendekeza Huduma' : 'Pendekeza Digital', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: agreementActionDesc },
+    ];
+    const buyerQuickActions = physicalOrder ? [
+        { id: 'shop_locations', label: 'Shop Locations', icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ona duka lilipo', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'order_delivery', label: 'Usafirishaji', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Badili delivery vs pickup', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'order_items', label: 'Oda', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona na badili vitu', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'upsell', label: 'Bidhaa Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Vitu vingine vya duka hili', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
+        { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
+        { id: 'unboxing_video', label: 'Unboxing Video', icon: Video, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa kupokea' },
+        { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
+    ] : [
+        { id: 'order_items', label: serviceOrder ? 'Huduma' : 'Digital Order', icon: IntentIcon, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona makubaliano na jumla' },
+        { id: 'upsell', label: serviceOrder ? 'Huduma Zaidi' : 'Digital Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: agreementActionDesc },
+        { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
+        { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
+    ];
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -1864,13 +1959,13 @@ export default function Chat({
                     <div className="max-w-3xl mx-auto flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <div className="h-10 w-10 rounded-2xl bg-brand-600 flex items-center justify-center text-white shadow-lg shadow-brand-600/20">
-                                <ShoppingBag className="h-5 w-5" />
+                                <IntentIcon className="h-5 w-5" />
                             </div>
                             <div className="flex flex-col">
                                 <h3 className="text-sm font-black text-brand-900 dark:text-brand-100 uppercase tracking-tight">Oda #{publicId?.substring(0, 8)}</h3>
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-black py-0.5 px-2 bg-brand-50 text-brand-600 rounded-full border border-brand-100 uppercase tracking-tighter">
-                                        {order?.delivery?.delivery_type === 'local_boda' ? 'Local' : (order?.delivery?.delivery_type?.replace('_', ' ') || 'Kukabidhiwa')}
+                                        {intentMeta.label}
                                     </span>
                                     <span className={cn(
                                         "text-[10px] font-black py-0.5 px-2 rounded-full uppercase tracking-tighter border",
@@ -1888,7 +1983,7 @@ export default function Chat({
                             <p className="text-[9px] font-black text-brand-600/60 uppercase tracking-widest leading-none mb-1">Jumla ya Oda</p>
                             <p className="text-lg font-black text-brand-800 dark:text-brand-200 tracking-tighter leading-none">TZS {dealTotal.toLocaleString()}</p>
                             <div className="flex gap-2 text-[9px] font-bold text-slate-400 mt-1">
-                                <span>Bidhaa: {itemsSubtotal.toLocaleString()}</span>
+                                <span>{intentMeta.totalLabel}: {itemsSubtotal.toLocaleString()}</span>
                                 {shippingTotal > 0 && (
                                     <span className="text-emerald-500 font-black">+ Usafiri: {shippingTotal.toLocaleString()}</span>
                                 )}
@@ -1925,7 +2020,7 @@ export default function Chat({
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
                                 <span className="inline-flex rounded-xl bg-brand-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-brand-700">
-                                    {isDealExpanded ? 'Ficha' : 'Ona Bidhaa'}
+                                    {isDealExpanded ? 'Ficha' : `Ona ${intentMeta.itemLabel}`}
                                 </span>
                                 <ChevronDown className={cn("h-5 w-5 text-slate-400 transition-transform duration-300", isDealExpanded && "rotate-180")} />
                             </div>
@@ -3162,18 +3257,20 @@ export default function Chat({
                                     </Button>
                                 </div>
                             )}
-                            {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.payment_status === 'pending' && order?.delivery?.delivery_type !== 'self_pickup' && (isServiceOrder || order?.shipping_fee === null) && (
+                            {order?.is_inquiry && order?.inquiry_status === 'pending' && order?.payment_status === 'pending' && (
+                                serviceOrder || digitalOrder || (order?.delivery?.delivery_type !== 'self_pickup' && order?.shipping_fee === null)
+                            ) && (
                                 <div className={cn(
                                     "p-4 rounded-[2rem] bg-brand-50/80 border shadow-sm transition-colors",
                                     isWaitingForShippingFee ? "border-red-300 ring-2 ring-red-100" : "border-brand-200"
                                 )}>
                                     <div className="flex items-center gap-2 mb-3">
-                                        <Truck className="h-5 w-5 text-brand-600" />
+                                        {physicalOrder ? <Truck className="h-5 w-5 text-brand-600" /> : <IntentIcon className="h-5 w-5 text-brand-600" />}
                                         <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">
-                                            {isServiceOrder ? 'Service Offer Enquiry' : (isForwarderOrder ? 'Forwarder Drop-off Quote' : 'Shipping Quote Inquiry')}
+                                            {serviceOrder ? 'Service Offer Enquiry' : (digitalOrder ? 'Digital Work Enquiry' : (isForwarderOrder ? 'Forwarder Drop-off Quote' : 'Shipping Quote Inquiry'))}
                                         </h4>
                                     </div>
-                                    {!isServiceOrder && (
+                                    {physicalOrder && (
                                         <div className="bg-white/80 p-3 rounded-2xl border border-brand-100 mb-3">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
                                                 {isForwarderOrder ? 'Forwarder warehouse:' : 'Customer Address:'}
@@ -3212,10 +3309,20 @@ export default function Chat({
                                             )}
                                         </div>
                                     )}
+                                    {!physicalOrder && (
+                                        <div className="mb-3 rounded-2xl border border-brand-100 bg-white/80 p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-brand-700/80 mb-1">
+                                                {serviceOrder ? 'Makubaliano ya huduma' : 'Makubaliano ya digital order'}
+                                            </p>
+                                            <p className="text-sm font-bold leading-5 text-brand-900">
+                                                Tumia chat kukubaliana scope, deliverables, deadline, revisions, na bei kabla ya mteja kulipa.
+                                            </p>
+                                        </div>
+                                    )}
                                     <form onSubmit={submitQuote} className="flex gap-2">
                                         <Input
                                             type="number"
-                                            placeholder={isServiceOrder ? 'Weka Offer ya Huduma (TZS)' : (isForwarderOrder ? 'Gharama ya kupeleka kwa forwarder (TZS)' : 'Weka Gharama (TZS)')}
+                                            placeholder={serviceOrder ? 'Weka Offer ya Huduma (TZS)' : (digitalOrder ? 'Weka Offer ya Digital Work (TZS)' : (isForwarderOrder ? 'Gharama ya kupeleka kwa forwarder (TZS)' : 'Weka Gharama (TZS)'))}
                                             value={shippingFeeInput}
                                             onChange={e => setShippingFeeInput(e.target.value)}
                                             className={cn(
@@ -3444,23 +3551,7 @@ export default function Chat({
                                                     </div>
                                                 </DrawerHeader>
                                                 <div className="p-4 grid grid-cols-2 gap-3 pb-12 overflow-y-auto">
-                                                    {(actingAs === 'merchant' ? [
-                                                        { id: 'shipping_cost', label: isForwarderOrder ? 'Forwarder Drop-off' : 'Shipping Cost', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: isForwarderOrder ? 'Gharama hadi forwarder' : 'Weka gharama hapa', disabled: order?.delivery?.delivery_type === 'self_pickup' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PICKUP ONLY' },
-                                                        { id: 'discount', label: 'Discount', icon: Tag, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Punguza bei ya oda', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-                                                        { id: 'extra_charge', label: 'Extra Charge', icon: CreditCard, color: 'bg-orange-50 text-orange-600', border: 'border-orange-100', desc: activeExtraCharge?.status === 'proposed' ? 'Update/remove charge' : 'Storage au gharama nyingine', disabled: !canProposeExtraCharge && !canRemoveExtraCharge, disabledReason: 'PICKUP ONLY' },
-                                                        { id: 'extend_lock', label: 'Ongeza Muda', icon: Clock, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ongeza lock ya stock kwa dk 30', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
-                                                        { id: 'release_stock', label: 'Achia Stock', icon: X, color: 'bg-slate-50 text-slate-600', border: 'border-slate-100', desc: 'Sitisha na rudisha stock', disabled: order?.payment_status !== 'pending' || isDeliveryStageOrder, disabledReason: isDeliveryStageOrder ? 'DELIVERY ACTIVE' : 'PENDING ONLY' },
-                                                        { id: 'upsell', label: 'Pendekeza Bidhaa', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Uza zaidi hapa', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-                                                        { id: 'shipping_proof', label: 'Waybill & Video', icon: ShieldCheck, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa safari', disabled: order?.delivery?.delivery_type === 'self_pickup', disabledReason: 'PICKUP ONLY' },
-                                                    ] : [
-                                                        { id: 'shop_locations', label: 'Shop Locations', icon: MapPin, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ona duka lilipo', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-                                                        { id: 'order_delivery', label: 'Usafirishaji', icon: Truck, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100', desc: 'Badili delivery vs pickup', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-                                                        { id: 'order_items', label: 'Oda', icon: ShoppingBag, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', desc: 'Ona na badili vitu', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-                                                        { id: 'upsell', label: 'Bidhaa Zaidi', icon: Plus, color: 'bg-purple-50 text-purple-600', border: 'border-purple-100', desc: 'Vitu vingine vya duka hili', disabled: isDeliveryStageOrder, disabledReason: 'DELIVERY ACTIVE' },
-                                                        { id: 'complaint', label: 'Complaint Centre', icon: AlertCircle, color: 'bg-red-50 text-red-600', border: 'border-red-100', desc: 'Toa malalamiko' },
-                                                        { id: 'unboxing_video', label: 'Unboxing Video', icon: Video, color: 'bg-indigo-50 text-indigo-600', border: 'border-indigo-100', desc: 'Ushahidi wa kupokea' },
-                                                        { id: 'review', label: 'Review', icon: Star, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100', desc: 'Toa maoni yako' },
-                                                    ]).map((action) => {
+                                                    {(actingAs === 'merchant' ? merchantQuickActions : buyerQuickActions).map((action) => {
                                                         const Icon = action.icon;
                                                         const isDisabled = action.disabled;
                                                         return (
@@ -3915,7 +4006,11 @@ export default function Chat({
                                                                         className="flex flex-col w-44 shrink-0 p-3 rounded-[2.5rem] bg-white border border-slate-100 hover:border-brand-200 transition-all shadow-sm hover:shadow-md group text-left"
                                                                     >
                                                                         <div className="h-36 w-full rounded-[2rem] bg-slate-50 flex-shrink-0 overflow-hidden mb-3">
-                                                                            <img src={p.image_url || p.url} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
+                                                                            {p.image_url || p.url ? (
+                                                                                <img src={p.image_url || p.url} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
+                                                                            ) : (
+                                                                                <ProductFallbackIcon type={p.type} className="text-slate-300" />
+                                                                            )}
                                                                         </div>
                                                                         <div className="px-1 min-w-0">
                                                                             <h4 className="font-black text-brand-900 text-xs truncate mb-1">{p.title}</h4>
@@ -4124,9 +4219,7 @@ export default function Chat({
                                         {selectedProduct?.image_url || selectedProduct?.url ? (
                                             <img src={selectedProduct.image_url || selectedProduct.url} className="h-full w-full object-cover" alt={selectedProduct?.title || 'Bidhaa'} />
                                         ) : (
-                                            <div className="flex h-full w-full items-center justify-center text-slate-300">
-                                                <ShoppingBag className="h-8 w-8" />
-                                            </div>
+                                            <ProductFallbackIcon type={selectedProduct?.type} className="text-slate-300" />
                                         )}
                                     </div>
                                     <div className="min-w-0 flex-1">
