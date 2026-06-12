@@ -27,6 +27,43 @@ import {
     DialogFooter as CreateDialogFooter
 } from '@/Components/ui/Dialog';
 
+function orderIconFromKey(key) {
+    const map = {
+        shopping_bag: ShoppingBag,
+        book_open: BookOpenText,
+        download: DownloadCloud,
+        calendar_clock: CalendarClock,
+        boxes: Boxes,
+        crown: Crown,
+        layers: Layers,
+    };
+    return map[key] || Package;
+}
+
+function RecentOrderThumb({ order }) {
+    const [imageFailed, setImageFailed] = useState(false);
+    const imageUrl = order.image_url && !imageFailed ? order.image_url : null;
+    const Icon = orderIconFromKey(order.display_icon);
+
+    return (
+        <div className={cn(
+            "h-12 w-12 rounded-xl border flex items-center justify-center shrink-0 overflow-hidden transition-colors group-hover:border-brand-100",
+            imageUrl ? "bg-slate-50 border-slate-100 group-hover:bg-brand-50" : "bg-brand-50 border-brand-100 text-brand-600"
+        )}>
+            {imageUrl ? (
+                <img
+                    src={imageUrl}
+                    alt={order.display_title || 'Order item'}
+                    onError={() => setImageFailed(true)}
+                    className="h-full w-full object-cover"
+                />
+            ) : (
+                <Icon className="h-6 w-6" />
+            )}
+        </div>
+    );
+}
+
 export default function Profile({
     activeMerchant = null,
     weeklyStats = { payments: 0, transactions: 0, percentChange: 0 },
@@ -177,19 +214,6 @@ export default function Profile({
             physical_bundle: { label: 'Physical Bundle', icon: Boxes, cls: 'bg-amber-500/10 text-amber-700' },
         };
         return map[kind] || { label: 'Post Content', icon: BookOpenText, cls: 'bg-muted text-muted-foreground' };
-    };
-
-    const iconFromKey = (key) => {
-        const map = {
-            shopping_bag: ShoppingBag,
-            book_open: BookOpenText,
-            download: DownloadCloud,
-            calendar_clock: CalendarClock,
-            boxes: Boxes,
-            crown: Crown,
-            layers: Layers,
-        };
-        return map[key] || Package;
     };
 
     const handleLogout = () => {
@@ -695,7 +719,7 @@ export default function Profile({
                                                     <div className="space-y-2">
                                                         {(creatorMonetization.top_items || []).length > 0 ? (
                                                             creatorMonetization.top_items.map((item, index) => (
-                                                                <TopCreatorItem key={`${item.kind}-${item.id || item.product_id || item.order_id || item.title}-${index}`} item={item} formatMoney={formatMoney} iconFromKey={iconFromKey} />
+                                                                <TopCreatorItem key={`${item.kind}-${item.id || item.product_id || item.order_id || item.title}-${index}`} item={item} formatMoney={formatMoney} iconFromKey={orderIconFromKey} />
                                                             ))
                                                         ) : (
                                                             <p className="text-sm font-semibold text-slate-500 py-4 text-center">No paid creator sales yet.</p>
@@ -877,13 +901,7 @@ export default function Profile({
                                                             <CardContent className="p-4">
                                                                 <Link href={can('orders.view') ? `/merchant/${merchantSlug}/orders/${order.id}` : '#'} className="flex items-center justify-between gap-4">
                                                                     <div className="flex items-center gap-3 min-w-0">
-                                                                        <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden transition-colors group-hover:bg-brand-50 group-hover:border-brand-100">
-                                                                            {order.image_url ? (
-                                                                                <img src={order.image_url} alt={order.display_title || 'Order item'} className="h-full w-full object-cover" />
-                                                                            ) : (
-                                                                                React.createElement(iconFromKey(order.display_icon), { className: 'h-6 w-6 text-slate-500 group-hover:text-brand-600' })
-                                                                            )}
-                                                                        </div>
+                                                                        <RecentOrderThumb order={order} />
                                                                         <div className="min-w-0">
                                                                             <div className="flex items-center gap-2 mb-0.5">
                                                                                 <span className="text-[10px] font-bold text-slate-400">#{order.id}</span>

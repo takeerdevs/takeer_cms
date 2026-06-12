@@ -189,6 +189,51 @@ const PickupPinCard = ({ pickupPin, amount, timestamp, onShopLocations, showShop
     );
 };
 
+const ReleasePinCard = ({ releasePin, timestamp, onReportIssue, className }) => {
+    const pinDigits = String(releasePin || '').padStart(4, '0').split('');
+
+    return (
+        <div className={cn("w-full max-w-md overflow-hidden rounded-[2rem] border border-sky-100 bg-white shadow-xl shadow-sky-100/60 dark:border-sky-900/50 dark:bg-slate-900", className)}>
+            <div className="bg-sky-50/80 px-5 py-5 text-center dark:bg-sky-950/30">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
+                    <Truck className="h-6 w-6" />
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-brand-500">Delivery PIN</p>
+                <div className="mt-3 flex justify-center gap-2">
+                    {pinDigits.map((digit, index) => (
+                        <span key={`${digit}-${index}`} className="flex h-14 w-12 items-center justify-center rounded-2xl border border-sky-100 bg-white text-3xl font-black text-brand-900 shadow-sm dark:border-sky-800 dark:bg-slate-950 dark:text-brand-100">
+                            {digit}
+                        </span>
+                    ))}
+                </div>
+                <p className="mx-auto mt-3 max-w-xs text-[11px] font-bold leading-relaxed text-slate-500">
+                    Kagua mzigo kwanza. Mpe dereva PIN hii baada ya kuhakikisha ni order yako na iko salama.
+                </p>
+            </div>
+            <div className="space-y-2 p-4">
+                {onReportIssue && (
+                    <button
+                        type="button"
+                        onClick={onReportIssue}
+                        className="flex w-full items-center justify-between rounded-2xl border border-red-100 bg-white px-4 py-3 text-left text-red-700 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:bg-slate-950 dark:hover:bg-red-950/20"
+                    >
+                        <span className="flex min-w-0 items-center gap-3">
+                            <AlertTriangle className="h-5 w-5 shrink-0" />
+                            <span className="text-xs font-black uppercase tracking-widest">Ripoti tatizo</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0" />
+                    </button>
+                )}
+            </div>
+            {timestamp && (
+                <div className="border-t border-slate-100 px-4 py-2 text-right text-[9px] font-bold text-slate-300 dark:border-slate-800">
+                    {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const orderItemMeta = (item = {}, order = null) => {
     const type = item.type || item.product_type || item.purchasable_type || (!item.isExtra ? order?.product?.type : null);
     const deliveryType = item.digital_delivery_type || (!item.isExtra ? order?.product?.digital_delivery_type : null);
@@ -1304,6 +1349,15 @@ export default function Chat({
         return order.dispute;
     };
 
+    const openComplaintCenter = () => {
+        setActiveAction('complaint');
+        setActionPayload({
+            title: 'Complaint Centre',
+            reason: '',
+        });
+        setIsActionDrawerOpen(true);
+    };
+
     const handleSearchProducts = async (q) => {
         setSearchQuery(q);
         // If query is empty, still fetch latest products
@@ -1858,22 +1912,25 @@ export default function Chat({
     const isIntercityOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'intercity_bus';
     const isLocalDeliveryOrder = (order?.delivery?.delivery_type || order?.delivery?.type) === 'local_boda';
     const deliveryStatus = order?.delivery?.delivery_status || order?.delivery?.status;
-    const isDeliveryCompleted = order?.payment_status === 'resolved_merchant_paid'
-        || ['delivered', 'customer_confirmed'].includes(deliveryStatus);
+    const isPaymentResolved = order?.payment_status === 'resolved_merchant_paid';
+    const isDeliveryHandoffReady = ['delivered', 'customer_confirmed'].includes(deliveryStatus);
+    const isDeliveryCompleted = isPaymentResolved || isDeliveryHandoffReady;
     const deliveryStageStatuses = ['dispatched', 'with_boda', 'in_transit', 'arrived', 'ready_at_terminal', 'delivered'];
+    const canBuyerActOnDelivery = isForwarderOrder
+        ? deliveryStatus === 'ready_at_terminal'
+        : isIntercityOrder
+            ? ['ready_at_terminal', 'delivered'].includes(deliveryStatus)
+            : isLocalDeliveryOrder && deliveryStatus === 'delivered';
     const canBuyerConfirmReceipt = Boolean(
         actingAs === 'buyer'
         && order?.delivery
-        && !isDeliveryCompleted
+        && !isPaymentResolved
+        && deliveryStatus !== 'customer_confirmed'
         && (isForwarderOrder
             ? ['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status)
             : ['escrow_locked', 'shipped'].includes(order?.payment_status))
         && (isLocalDeliveryOrder || isIntercityOrder || isForwarderOrder)
-        && (
-            order?.payment_status === 'shipped'
-            || deliveryStageStatuses.includes(deliveryStatus)
-        )
-        && (!isForwarderOrder || deliveryStatus === 'ready_at_terminal')
+        && canBuyerActOnDelivery
     );
     const buyerReceiptCopy = isForwarderOrder
         ? {
@@ -2228,13 +2285,17 @@ export default function Chat({
                                     const isSystem = msg.type === 'system';
                                     const isAction = msg.type === 'action';
 
-                                    // Deterministic role binding based on acting_as
-                                    const msgActingAs = msg.payload?.acting_as || (msg.sender_id === order.merchant?.user_id ? 'merchant' : 'buyer');
+                                    // Deterministic role binding based on acting_as or real sender.
+                                    const msgActingAs = msg.payload?.acting_as
+                                        || (msg.sender_id
+                                            ? (msg.sender_id === order.merchant?.user_id ? 'merchant' : 'buyer')
+                                            : 'system');
                                     const isMe = msgActingAs === actingAs;
 
                                     const getSenderName = () => {
                                         if (isMe) return 'Wewe';
                                         if (msgActingAs === 'merchant') return 'Muuzaji';
+                                        if (msgActingAs === 'system') return 'Takeer';
                                         if (order?.account_phone) {
                                             const p = order.account_phone;
                                             return p.substring(0, 4) + '***' + p.slice(-3);
@@ -2245,6 +2306,33 @@ export default function Chat({
                                     const displayedBody = sanitizeChatBody(isSystem ? roleAwareSystemBody(msg, actingAs, order) : msg.body);
 
                                     if (isSystem) {
+                                        if (msgActingAs !== 'system') {
+                                            return (
+                                                <div key={msg.id} className={cn("flex w-full mb-3 items-end gap-2", isMe ? "justify-end" : "justify-start")}>
+                                                    {!isMe && (
+                                                        <ChatRoleAvatar role={msgActingAs} className="mb-1 h-8 w-8" />
+                                                    )}
+                                                    <div className={cn("max-w-[520px] flex flex-col gap-1 min-w-0", isMe ? "items-end" : "items-start")}>
+                                                        <span className="text-[9px] font-semibold text-slate-400 px-1">{renderedName}</span>
+                                                        <div className={cn(
+                                                            "px-4 py-3 rounded-2xl shadow-sm border text-sm font-bold leading-relaxed whitespace-pre-wrap break-words",
+                                                            isMe
+                                                                ? "bg-brand-600 text-white rounded-br-sm border-brand-600"
+                                                                : "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-bl-sm border-slate-100 dark:border-slate-800"
+                                                        )}>
+                                                            <div>{displayedBody}</div>
+                                                            <div className={cn("mt-1 flex items-center justify-end gap-1 text-[9px] font-black uppercase tracking-widest", isMe ? "text-white/50" : "text-slate-400")}>
+                                                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {isMe && (
+                                                        <ChatRoleAvatar role={msgActingAs} className="mb-1 h-8 w-8" />
+                                                    )}
+                                                </div>
+                                            );
+                                        }
+
                                         return (
                                             <div key={msg.id} className="flex justify-center my-2">
                                                 <div className="text-[11px] font-bold text-center text-brand-700/80 dark:text-brand-300/80 bg-brand-50/80 dark:bg-brand-900/40 px-4 py-2 rounded-2xl max-w-[85%] leading-relaxed border border-brand-100/50 shadow-sm">
@@ -3098,7 +3186,7 @@ export default function Chat({
                                         <Button onClick={confirmReceipt} disabled={isConfirmingReceipt} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
                                             {isConfirmingReceipt ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : buyerReceiptCopy.confirm}
                                         </Button>
-                                        <Button variant="outline" onClick={() => setIsDisputeDrawerOpen(true)} className="flex-1 h-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
+                                        <Button variant="outline" onClick={openComplaintCenter} className="flex-1 h-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
                                             {buyerReceiptCopy.report}
                                         </Button>
                                     </div>
@@ -3106,18 +3194,12 @@ export default function Chat({
                             )}
 
                             {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(order?.payment_status) && order?.delivery?.delivery_type === 'local_boda' && order?.delivery?.buyer_release_pin && (
-                                <div className="p-4 rounded-[2rem] bg-brand-50/80 border border-brand-200 shadow-sm">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <ShieldCheck className="h-5 w-5 text-brand-600" />
-                                        <h4 className="font-black text-brand-900 uppercase tracking-tight text-sm">Delivery PIN yako</h4>
-                                    </div>
-                                    <p className="text-xs text-brand-800/80 mb-3 font-medium">Mpe dereva PIN hii <strong>baada ya kupokea na kukagua</strong> mzigo wako:</p>
-                                    <div className="bg-white rounded-xl h-12 flex items-center justify-center border border-brand-200">
-                                        <span className="font-black text-xl tracking-[0.5em] text-brand-900">{order?.delivery?.buyer_release_pin}</span>
-                                    </div>
-                                    <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
-                                        RIPOTI TATIZO
-                                    </Button>
+                                <div className="mx-auto flex w-full max-w-lg flex-col">
+                                    <ReleasePinCard
+                                        releasePin={order?.delivery?.buyer_release_pin}
+                                        onReportIssue={openComplaintCenter}
+                                        className="max-w-none"
+                                    />
                                 </div>
                             )}
 
@@ -3129,7 +3211,7 @@ export default function Chat({
                                         onShopLocations={() => setIsShopModalOpen(true)}
                                         className="max-w-none"
                                     />
-                                    <Button variant="ghost" onClick={() => setIsDisputeDrawerOpen(true)} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
+                                    <Button variant="ghost" onClick={openComplaintCenter} className="w-full mt-2 h-10 rounded-xl text-red-600 hover:bg-red-50 font-bold uppercase text-[10px] tracking-widest">
                                         RIPOTI TATIZO
                                     </Button>
                                 </div>
@@ -3386,16 +3468,30 @@ export default function Chat({
                             )}
 
                             {order?.payment_status === 'escrow_locked' && order?.delivery?.delivery_type === 'local_boda' && (
-                                <div className="p-4 rounded-[2rem] bg-indigo-50/80 border border-indigo-200 shadow-sm">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <ShieldCheck className="h-5 w-5 text-indigo-600" />
-                                        <h4 className="font-black text-indigo-900 uppercase tracking-tight text-sm">Verify Delivery</h4>
+                                <div className="rounded-[2rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-100/50">
+                                    <div className="mb-4 flex items-start gap-3">
+                                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
+                                            <Truck className="h-5 w-5" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">Delivery Verification</p>
+                                            <h4 className="mt-1 text-lg font-black leading-tight text-slate-950">Confirm & release</h4>
+                                            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">Ask the rider for the 4-digit Release PIN after the customer has inspected and accepted the package.</p>
+                                        </div>
                                     </div>
-                                    <p className="text-xs text-indigo-800/80 mb-3 font-medium">Ingiza <strong>Release PIN</strong> kutoka kwa dereva aliyemkabidhi mteja mzigo ili kuidhinisha malipo:</p>
-                                    <form onSubmit={verifyDeliveryPin} className="flex gap-2">
-                                        <Input type="text" maxLength={4} placeholder="PIN..." value={releasePinInput} onChange={e => setReleasePinInput(e.target.value)} className="w-24 text-center font-black tracking-widest h-12 rounded-xl border-indigo-200" />
-                                        <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4} className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-bold uppercase text-[10px] tracking-widest">
-                                            {pinVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'ITHIBITISHE'}
+                                    <form onSubmit={verifyDeliveryPin} className="space-y-3">
+                                        <Input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={4}
+                                            placeholder="0000"
+                                            value={releasePinInput}
+                                            onChange={e => setReleasePinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                            className="mx-auto h-16 w-full max-w-44 rounded-2xl border-2 border-brand-100 bg-brand-50/40 text-center text-2xl font-black tracking-[0.35em] text-brand-900 shadow-inner focus:border-brand-400"
+                                        />
+                                        <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4} className="h-14 w-full rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
+                                            {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                                            Thibitisha Delivery
                                         </Button>
                                     </form>
                                 </div>

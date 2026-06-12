@@ -2398,23 +2398,49 @@ class CheckoutController extends Controller
         $merchantUser = $order->merchant->user;
         $buyerUser = $order->buyer;
 
-        $title = $order->product->title ?? $order->resolved_purchasable?->title ?? 'Bidhaa yako';
+        $order->loadMissing(['product', 'delivery']);
+
+        $product = $order->product;
+        $title = $product?->title ?? $order->resolved_purchasable?->title ?? 'order yako';
         $merchantBody = "Habari, order mpya imewekwa kwa ajili ya: {$title}.\n";
         $buyerBody = "Habari, order yako imeanzishwa kwa ajili ya: {$title}.\n";
 
-        // Check delivery type for personalized messages
-        $delivery = $order->delivery ?? $order->load('delivery')->delivery;
+        $delivery = $order->delivery;
         $deliveryType = $delivery?->delivery_type ?? null;
+        $isPhysical = $product?->isPhysical() || $order->requiresPhysicalFulfillment();
+        $isDigital = $product?->isDigital();
+        $isService = $product?->isService();
+        $digitalDeliveryType = $product?->digital_delivery_type;
+        $isCustomDigital = $isDigital && $digitalDeliveryType === 'custom_delivery';
 
-        if ($deliveryType === 'self_pickup') {
+        if ($isPhysical && $deliveryType === 'self_pickup') {
             $merchantBody .= "Mteja amechagua KUCHUKUA DUKANI. Thibitisha stock/uwezo wa kutimiza order ili mteja aweze kulipa. Baada ya malipo, Takeer itamtumia mteja Pickup PIN.";
             $buyerBody .= "Umechagua KUCHUKUA DUKANI. Subiri muuzaji athibitishe kuwa order ipo; baada ya hapo utaweza kulipia. Ukishalipa, Takeer itakutumia Pickup PIN.";
-        } elseif ($order->product?->isService() && $order->is_inquiry) {
+        } elseif ($isService && $order->is_inquiry) {
             $merchantBody .= "Hii ni enquiry ya huduma. Tafadhali ongea na mteja hapa, mkubaliane mahitaji na bei ya huduma, kisha tuma offer ya mwisho.";
             $buyerBody .= "Ombi lako la huduma limefika kwa muuzaji. Mtakubaliana mahitaji na bei hapa kwenye chat kabla ya malipo.";
-        } elseif ($order->is_inquiry) {
+        } elseif ($isDigital && $order->is_inquiry) {
+            $merchantBody .= $isCustomDigital
+                ? "Hii ni enquiry ya digital custom work. Tafadhali ongea na mteja hapa, mkubaliane scope, files za kukabidhi, deadline, revisions, na bei ya mwisho kabla ya kutuma offer."
+                : "Hii ni enquiry ya digital order. Tafadhali tumia chat kukubaliana access, format, deadline au mahitaji yoyote kabla ya kutuma offer ya mwisho.";
+            $buyerBody .= $isCustomDigital
+                ? "Ombi lako la digital custom work limefika kwa muuzaji. Mtakubaliana scope, files za mwisho, deadline, revisions, na bei hapa kwenye chat kabla ya malipo."
+                : "Ombi lako la digital order limefika kwa muuzaji. Mtakubaliana access, format, deadline au mahitaji yoyote hapa kwenye chat kabla ya malipo.";
+        } elseif ($isPhysical && $order->is_inquiry) {
             $merchantBody .= "Haya ni mapendekezo ya usafirishaji. Tafadhali hakiki/rekebisha gharama ya usafiri na uthibitishe stock/uwezo wa kutimiza order.";
             $buyerBody .= "Tumeangalia eneo lako na kupata makadirio ya usafiri. Subiri muuzaji ahakiki gharama na kuthibitisha kuwa order ipo kabla ya kulipa.";
+        } elseif ($order->is_inquiry) {
+            $merchantBody .= "Hii ni enquiry ya order. Tafadhali ongea na mteja hapa, mkubaliane mahitaji, muda, na bei ya mwisho kabla ya kutuma offer.";
+            $buyerBody .= "Ombi lako limefika kwa muuzaji. Mtakubaliana mahitaji, muda, na bei hapa kwenye chat kabla ya malipo.";
+        } elseif ($isService) {
+            $merchantBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Tafadhali tumia chat kuthibitisha muda, mahitaji, na hatua za kutimiza huduma. Ukikamilisha huduma, malipo yataendelea kulingana na mchakato wa order.";
+            $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji atathibitisha muda, mahitaji, na hatua za kukamilisha huduma hapa kwenye chat.";
+        } elseif ($isCustomDigital) {
+            $merchantBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Tafadhali tumia chat kuthibitisha scope ya mwisho, deadline, na kukabidhi digital file/custom work kwa mteja.";
+            $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji atakabidhi digital file/custom work hapa kwenye Takeer kulingana na makubaliano yenu kwenye chat.";
+        } elseif ($isDigital) {
+            $merchantBody .= "Malipo yamefanikiwa. Hii ni digital order; mteja atapata access/download kwenye Takeer kulingana na aina ya content uliyouza. Hakuna usafirishaji wa physical product unaohitajika.";
+            $buyerBody .= "Malipo yamefanikiwa. Unaweza kufungua au kudownload digital content yako kwenye Takeer kulingana na aina ya content uliyonunua.";
         } else {
             $merchantBody .= "Malipo yamefanikiwa na yamehifadhiwa (Escrow). Tafadhali anza mchakato wa kusafirisha. Mteja akapopokea bidhaa pesa itatumwa moja kwa moja kwako kama umechagua automatic payout au utahitajika kuomba kuitoa wakati wowote.";
             $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji ataanza mchakato wa kukutumia order.";

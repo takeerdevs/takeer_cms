@@ -151,7 +151,7 @@ class User extends Authenticatable
                     'service_booking' => 'calendar_clock',
                     default => 'download',
                 },
-                'image' => $product->image_url,
+                'image' => $this->safeOrderProductImageUrl($product),
             ];
         }
 
@@ -212,8 +212,30 @@ class User extends Authenticatable
             'title' => $order->product?->title ?: 'Order item',
             'kind' => 'post_content',
             'icon' => 'book_open',
-            'image' => $order->product?->image_url,
+            'image' => $this->safeOrderProductImageUrl($order->product),
         ];
+    }
+
+    private function safeOrderProductImageUrl(?Product $product): ?string
+    {
+        if (! $product) {
+            return null;
+        }
+
+        $product->loadMissing('images');
+        $image = $product->images
+            ->first(fn ($item) => ($item->media_type ?: 'image') === 'image');
+
+        if ($image) {
+            return $image->thumbnail_url ?: $image->image_url;
+        }
+
+        $url = trim((string) ($product->getRawOriginal('url') ?: ''));
+        if ($url === '' || $product->isDigital()) {
+            return null;
+        }
+
+        return preg_match('/\.(jpe?g|png|gif|webp|avif|svg)(\?|$)/i', $url) ? $url : null;
     }
 
     // ─── Relationships ──────────────────────────────────────────────────────────

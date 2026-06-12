@@ -10,7 +10,7 @@ import {
     CheckCircle,
     Clock,
     Crown,
-    Download,
+    DownloadCloud,
     Filter,
     Loader2,
     Layers,
@@ -233,6 +233,7 @@ function EmptyState({ activeTab }) {
 }
 
 function OrderCard({ order, merchantUsername }) {
+    const [imageFailed, setImageFailed] = useState(false);
     const buyer = order.buyer || {};
     const product = order.product || {};
     const maskedBuyerPhone = maskPhone(buyer.phone_number || '');
@@ -267,7 +268,7 @@ function OrderCard({ order, merchantUsername }) {
     const displayIcon = (() => {
         switch (order.display_icon) {
             case 'book_open': return BookOpenText;
-            case 'download': return Download;
+            case 'download': return DownloadCloud;
             case 'calendar_clock': return CalendarClock;
             case 'shopping_bag': return ShoppingBag;
             case 'boxes': return Boxes;
@@ -276,17 +277,20 @@ function OrderCard({ order, merchantUsername }) {
             default: return isPos ? Store : Box;
         }
     })();
+    const imageUrl = (product.image_url || order.display_image) && !imageFailed
+        ? (product.image_url || order.display_image)
+        : null;
 
     return (
         <Card className="rounded-[24px] overflow-hidden hover:border-brand-300 transition-colors group cursor-pointer" onClick={() => router.visit(`/merchant/${merchantUsername}/orders/${order.id}`)}>
             <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
                 {/* ── Product Image ── */}
                 <div className="h-20 w-20 shrink-0 rounded-2xl bg-muted overflow-hidden border">
-                    {(product.image_url || order.display_image) ? (
-                        <img src={product.image_url || order.display_image} alt={displayTitle} className="h-full w-full object-cover group-hover:scale-110 transition-transform" />
+                    {imageUrl ? (
+                        <img src={imageUrl} alt={displayTitle} onError={() => setImageFailed(true)} className="h-full w-full object-cover group-hover:scale-110 transition-transform" />
                     ) : (
-                        <div className="h-full w-full flex items-center justify-center text-muted-foreground bg-accent">
-                            {React.createElement(displayIcon, { className: 'h-8 w-8 opacity-70' })}
+                        <div className="h-full w-full flex items-center justify-center bg-brand-50 text-brand-600">
+                            {React.createElement(displayIcon, { className: 'h-8 w-8' })}
                         </div>
                     )}
                 </div>

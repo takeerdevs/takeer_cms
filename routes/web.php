@@ -1313,7 +1313,7 @@ Route::middleware('auth')->group(function () {
                         'display_title' => $display['title'],
                         'display_kind' => $display['kind'],
                         'display_icon' => $display['icon'],
-                        'image_url' => $order->product?->image_url,
+                        'image_url' => $display['image'],
                     ];
                 }) : [],
             'salesBreakdown' => $breakdown,

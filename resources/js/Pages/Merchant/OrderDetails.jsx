@@ -578,10 +578,15 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const [returnResolution, setReturnResolution] = useState('replacement');
     const [returnSubmitting, setReturnSubmitting] = useState(false);
     const [pickupNoShowSubmitting, setPickupNoShowSubmitting] = useState(false);
+    const [orderImageFailed, setOrderImageFailed] = useState(false);
 
     useEffect(() => {
         loadOrder();
     }, [merchantUsername, orderId]);
+
+    useEffect(() => {
+        setOrderImageFailed(false);
+    }, [order?.variant?.swatch_image_url, order?.product?.image_url, order?.display_image]);
 
     useEffect(() => {
         if (order?.shipping_fee !== null && order?.shipping_fee !== undefined) {
@@ -1055,6 +1060,7 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
     const isPos = order?.source === 'pos';
     const displayId = isPos ? `#POS-${order.public_id}` : `#${order?.transaction_ref || orderId}`;
     const orderImage = order?.variant?.swatch_image_url || order?.product?.image_url || order?.display_image;
+    const displayOrderImage = orderImage && !orderImageFailed;
     const productDetailUrl = order?.product?.id ? `/merchant/${merchantUsername}/products/${order.product.id}` : null;
     const mediaFallback = fallbackMediaMeta(order);
     const MediaFallbackIcon = mediaFallback.Icon;
@@ -1108,9 +1114,9 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                 <div className="flex min-w-0 items-start gap-4">
                                     <div className={cn(
                                         "relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border md:h-28 md:w-28",
-                                        orderImage ? "bg-accent text-muted-foreground" : mediaFallback.className
+                                        displayOrderImage ? "bg-accent text-muted-foreground" : mediaFallback.className
                                     )}>
-                                        {orderImage ? (
+                                        {displayOrderImage ? (
                                             productDetailUrl ? (
                                                 <button
                                                     type="button"
@@ -1118,16 +1124,28 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                                     onClick={() => router.visit(productDetailUrl)}
                                                     aria-label={`Open product details for ${order.display_title || 'order item'}`}
                                                 >
-                                                    <img src={orderImage} alt={order.display_title || 'Order item'} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                                                    <img src={orderImage} alt={order.display_title || 'Order item'} onError={() => setOrderImageFailed(true)} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                                                     <span className="absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-brand-700 shadow-sm ring-1 ring-slate-200 transition-colors group-hover:bg-brand-600 group-hover:text-white">
                                                         <LinkIcon className="h-3.5 w-3.5" />
                                                     </span>
                                                 </button>
                                             ) : (
-                                                <img src={orderImage} alt={order.display_title || 'Order item'} className="h-full w-full object-cover" />
+                                                <img src={orderImage} alt={order.display_title || 'Order item'} onError={() => setOrderImageFailed(true)} className="h-full w-full object-cover" />
                                             )
                                         ) : (
-                                            <MediaFallbackIcon className="h-10 w-10 opacity-90" />
+                                            <>
+                                                <MediaFallbackIcon className="h-10 w-10 opacity-90" />
+                                                {productDetailUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => router.visit(productDetailUrl)}
+                                                        aria-label={`Open product details for ${order.display_title || 'order item'}`}
+                                                        className="absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-brand-700 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-brand-600 hover:text-white"
+                                                    >
+                                                        <LinkIcon className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                     <div className="min-w-0">
@@ -1986,19 +2004,29 @@ export default function MerchantOrderDetails({ merchantUsername, merchantName, o
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         {order.delivery?.delivery_type === 'local_boda' && (
-                                            <div className="bg-brand-50/50 p-4 rounded-xl border border-brand-100 flex flex-col gap-3">
-                                                <p className="text-sm font-semibold text-brand-900">Delivery verification needed:</p>
-                                                <p className="text-sm">Dereva wako akishamkabidhi mteja mzigo, mteja atampa huyo dereva <strong>Release PIN</strong>. Ingiza hapa chini ili kupata pesa zako:</p>
-                                                <form onSubmit={verifyDeliveryPin} className="flex gap-2 max-w-sm">
+                                            <div className="mx-auto flex max-w-xl flex-col items-center gap-5 rounded-[2rem] border border-brand-100 bg-white p-6 text-center shadow-xl shadow-brand-100/40">
+                                                <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-brand-600 text-white shadow-xl shadow-brand-600/25">
+                                                    <Truck className="h-8 w-8" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-500">Delivery Verification</p>
+                                                    <h3 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Confirm customer handoff</h3>
+                                                    <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
+                                                        Baada ya dereva kumkabidhi mteja mzigo, mteja akague kwanza kisha ampe dereva <strong>Release PIN</strong>. Ingiza PIN hapa ili kuidhinisha malipo.
+                                                    </p>
+                                                </div>
+                                                <form onSubmit={verifyDeliveryPin} className="w-full space-y-3">
                                                     <Input
-                                                        placeholder="Enter 4-Digit Release PIN..."
+                                                        inputMode="numeric"
+                                                        placeholder="0000"
                                                         value={releasePinInput}
-                                                        onChange={e => setReleasePinInput(e.target.value)}
+                                                        onChange={e => setReleasePinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
                                                         maxLength={4}
-                                                        className="font-bold text-center tracking-[0.5em]"
+                                                        className="mx-auto h-20 max-w-60 rounded-3xl border-2 border-brand-100 bg-brand-50/50 text-center text-3xl font-black tracking-[0.35em] text-brand-900 shadow-inner focus:border-brand-400"
                                                     />
-                                                    <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4}>
-                                                        {pinVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ITHIBITISHE'}
+                                                    <Button type="submit" disabled={pinVerifying || releasePinInput.length !== 4} className="mx-auto h-14 w-full max-w-80 rounded-2xl bg-brand-600 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-brand-600/25 hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400">
+                                                        {pinVerifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                                                        Thibitisha Delivery
                                                     </Button>
                                                 </form>
                                             </div>

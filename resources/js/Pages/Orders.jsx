@@ -10,6 +10,7 @@ import {
     Download,
     ExternalLink,
     Library,
+    Lock,
     Loader2,
     PackageCheck,
     ShoppingBag,
@@ -1675,16 +1676,18 @@ function OwnedCard({ entry }) {
                     <p className="mt-2 text-xs font-semibold text-muted-foreground">
                         Added {formatDate(entry.granted_at || entry.starts_at)}
                     </p>
-                    <div className={`mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${isTemporaryAccess ? 'border-emerald-100 bg-emerald-50 text-emerald-800' : 'border-sky-100 bg-sky-50 text-sky-800'}`}>
-                        <p className="shrink-0 font-black uppercase tracking-widest">
-                            {isTemporaryAccess ? 'Membership item' : 'Owned item'}
-                        </p>
-                        <p className="min-w-0 truncate font-semibold">
-                            {isTemporaryAccess
-                                ? `Active${accessTimeLeft ? ` · ${accessTimeLeft}` : ''}${accessExpiresLabel ? ` · ends ${accessExpiresLabel}` : ''}`
-                                : 'Saved in your library.'}
-                        </p>
-                    </div>
+                    {!isPhysicalProduct && (
+                        <div className={`mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${isTemporaryAccess ? 'border-emerald-100 bg-emerald-50 text-emerald-800' : 'border-sky-100 bg-sky-50 text-sky-800'}`}>
+                            <p className="shrink-0 font-black uppercase tracking-widest">
+                                {isTemporaryAccess ? 'Membership item' : 'Owned item'}
+                            </p>
+                            <p className="min-w-0 truncate font-semibold">
+                                {isTemporaryAccess
+                                    ? `Active${accessTimeLeft ? ` · ${accessTimeLeft}` : ''}${accessExpiresLabel ? ` · ends ${accessExpiresLabel}` : ''}`
+                                    : 'Saved in your library.'}
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="mt-5">
@@ -2113,36 +2116,58 @@ function OwnedCard({ entry }) {
                             )}
 
                             {['awaiting_merchant_confirmation', 'escrow_locked'].includes(orderDetails.payment_status) && isSelfPickupOrder && (orderDetails.is_merchant_confirmed || orderDetails.merchant_confirmed_at) && orderDetails.pickup_status === 'ready_for_pickup' && orderDetails.delivery?.pickup_pin && (
-                                <div className="p-3 rounded-2xl bg-brand-50 border border-brand-100 text-center">
-                                    <p className="text-[10px] font-black uppercase text-brand-700 mb-1">Your Pickup PIN</p>
-                                    <p className="text-xl font-mono font-black tracking-widest text-brand-600">
-                                        {showPin ? orderDetails.delivery.pickup_pin : '****'}
-                                    </p>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPin(!showPin)}
-                                        className="mt-1 text-[10px] font-bold text-brand-500 underline uppercase tracking-widest"
-                                    >
-                                        {showPin ? 'Hide PIN' : 'Reveal PIN'}
-                                    </button>
-                                    <p className="mt-2 text-[10px] text-brand-800 leading-tight">Onyesha PIN hii dukani au mpe mtu uliyemtuma kuchukua mzigo.</p>
+                                <div className="overflow-hidden rounded-[2rem] border border-brand-100 bg-white text-center shadow-xl shadow-brand-100/50">
+                                    <div className="bg-brand-50/80 px-4 py-4">
+                                        <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
+                                            <Lock className="h-5 w-5" />
+                                        </div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-brand-500">Pickup PIN</p>
+                                        <div className="mt-3 flex justify-center gap-1.5">
+                                            {String(showPin ? orderDetails.delivery.pickup_pin : '****').padStart(4, '*').split('').map((digit, index) => (
+                                                <span key={`${digit}-${index}`} className="flex h-11 w-9 items-center justify-center rounded-xl border border-brand-100 bg-white text-xl font-black text-brand-900 shadow-sm">
+                                                    {digit}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="p-3">
+                                        <p className="text-[10px] font-bold leading-tight text-brand-800">Onyesha PIN hii dukani au mpe mtu uliyemtuma kuchukua mzigo.</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPin(!showPin)}
+                                            className="mt-2 text-[10px] font-black uppercase tracking-widest text-brand-600 underline"
+                                        >
+                                            {showPin ? 'Hide PIN' : 'Reveal PIN'}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
                             {['awaiting_merchant_confirmation', 'escrow_locked', 'shipped'].includes(orderDetails.payment_status) && isLocalDeliveryOrder && orderDetails.delivery?.buyer_release_pin && (
-                                <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-100 text-center">
-                                    <p className="text-[10px] font-black uppercase text-indigo-700 mb-1">Your Release PIN</p>
-                                    <p className="text-xl font-mono font-black tracking-widest text-indigo-600">
-                                        {showPin ? orderDetails.delivery.buyer_release_pin : '****'}
-                                    </p>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPin(!showPin)}
-                                        className="mt-1 text-[10px] font-bold text-indigo-500 underline uppercase tracking-widest"
-                                    >
-                                        {showPin ? 'Hide PIN' : 'Reveal PIN'}
-                                    </button>
-                                    <p className="mt-2 text-[10px] text-indigo-800 leading-tight">Mpe msafirishaji/muuzaji PIN hii baada ya kupokea na kukagua mzigo wako.</p>
+                                <div className="overflow-hidden rounded-[2rem] border border-sky-100 bg-white text-center shadow-xl shadow-sky-100/60">
+                                    <div className="bg-sky-50/80 px-4 py-4">
+                                        <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
+                                            <Truck className="h-5 w-5" />
+                                        </div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-brand-500">Delivery PIN</p>
+                                        <div className="mt-3 flex justify-center gap-1.5">
+                                            {String(showPin ? orderDetails.delivery.buyer_release_pin : '****').padStart(4, '*').split('').map((digit, index) => (
+                                                <span key={`${digit}-${index}`} className="flex h-11 w-9 items-center justify-center rounded-xl border border-sky-100 bg-white text-xl font-black text-brand-900 shadow-sm">
+                                                    {digit}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="p-3">
+                                        <p className="text-[10px] font-bold leading-tight text-slate-600">Kagua mzigo kwanza. Mpe dereva PIN hii baada ya kuhakikisha ni order yako na iko salama.</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPin(!showPin)}
+                                            className="mt-2 text-[10px] font-black uppercase tracking-widest text-brand-600 underline"
+                                        >
+                                            {showPin ? 'Hide PIN' : 'Reveal PIN'}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
@@ -2264,8 +2289,8 @@ function OwnedCard({ entry }) {
                                         {isPhysicalProduct
                                             ? 'Eleza tatizo na ombi lako. Muuzaji ataishughulikia kulingana na return policy ya bidhaa.'
                                             : disputeAllowsOptionalEvidence
-                                            ? 'Eleza kilichotokea. Unaweza kuongeza picha, video au PDF kama ushahidi.'
-                                            : 'Tafadhali pakia video ya unboxing na maelezo ya kwanini unataka kurudisha mzigo au kurudishiwa pesa.'}
+                                                ? 'Eleza kilichotokea. Unaweza kuongeza picha, video au PDF kama ushahidi.'
+                                                : 'Tafadhali pakia video ya unboxing na maelezo ya kwanini unataka kurudisha mzigo au kurudishiwa pesa.'}
                                     </p>
                                 </div>
 

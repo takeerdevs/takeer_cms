@@ -59,7 +59,7 @@ class MerchantOrderController extends Controller
         $merchant->loadMissing('currency');
         $merchantCurrencyCode = $merchant->currency?->code ?: 'TZS';
 
-        $query = Order::with(['buyer', 'product.unitType', 'variant', 'returnRequest'])
+        $query = Order::with(['buyer', 'product.unitType', 'product.images', 'variant', 'returnRequest'])
             ->where('merchant_id', $merchant->id)
             ->latest();
         $this->scopePrimaryOrders($query);
@@ -112,7 +112,7 @@ class MerchantOrderController extends Controller
                     'id' => $order->product->id,
                     'title' => $order->product->title,
                     'type' => $order->product->type,
-                    'image_url' => $order->product->image_url,
+                    'image_url' => $this->safeProductImageUrl($order->product),
                 ] : null,
                 'variant' => $order->variant_snapshot ?: ($order->variant ? [
                     'id' => $order->variant->id,
@@ -260,7 +260,7 @@ class MerchantOrderController extends Controller
                     'active_tiers' => (clone $plansBase)->where('status', 'active')->count(),
                     'active_members' => UserSubscription::where('merchant_id', $merchant->id)
                         ->where('status', 'active')
-                        ->where(fn ($query) => $query
+                        ->where(fn($query) => $query
                             ->whereNull('current_period_end')
                             ->orWhere('current_period_end', '>', now()))
                         ->count(),
@@ -314,7 +314,7 @@ class MerchantOrderController extends Controller
                 'id' => $order->merchant->id,
                 'name' => $order->merchant->display_name,
                 'username' => $order->merchant->username,
-                'locations' => $order->merchant->locations->map(fn ($location) => [
+                'locations' => $order->merchant->locations->map(fn($location) => [
                     'id' => $location->id,
                     'name' => $location->name,
                     'address' => $location->address,
@@ -375,7 +375,7 @@ class MerchantOrderController extends Controller
                 'title' => $order->product->title,
                 'type' => $order->product->type,
                 'selling_style' => $order->product->selling_style ?: 'retail',
-                'image_url' => $order->product->image_url,
+                'image_url' => $this->safeProductImageUrl($order->product),
                 'digital_delivery_type' => $order->product->digital_delivery_type,
                 'digital_content_type' => $order->product->digital_content_type,
             ] : null,
@@ -419,9 +419,9 @@ class MerchantOrderController extends Controller
                 'buyer_unboxing_video_url' => $order->delivery->buyer_unboxing_video_url,
                 'rider_access_expires_at' => $order->delivery->rider_access_expires_at?->toISOString(),
                 'rider_access_active' => $order->delivery->rider_access_token_hash
-                    && ! $order->delivery->rider_access_revoked_at
-                    && (! $order->delivery->rider_access_expires_at || $order->delivery->rider_access_expires_at->isFuture()),
-                'events' => $order->delivery->events->sortBy('created_at')->map(fn ($event) => [
+                    && !$order->delivery->rider_access_revoked_at
+                    && (!$order->delivery->rider_access_expires_at || $order->delivery->rider_access_expires_at->isFuture()),
+                'events' => $order->delivery->events->sortBy('created_at')->map(fn($event) => [
                     'id' => $event->id,
                     'status' => $event->status,
                     'actor_type' => $event->actor_type,
@@ -570,7 +570,7 @@ class MerchantOrderController extends Controller
         $order->loadMissing('product');
         abort_unless(
             $order->product?->type === 'digital'
-                && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery',
+            && ($order->product?->digital_delivery_type ?? null) === 'custom_delivery',
             422,
             'This order is not a custom digital delivery.'
         );
@@ -584,13 +584,13 @@ class MerchantOrderController extends Controller
         $originalName = $file->getClientOriginalName() ?: 'custom-delivery';
         $extension = $file->getClientOriginalExtension();
         $path = $file->storeAs(
-            'custom-deliveries/'.$order->id,
-            Str::uuid()->toString().($extension ? '.'.$extension : ''),
+            'custom-deliveries/' . $order->id,
+            Str::uuid()->toString() . ($extension ? '.' . $extension : ''),
             'local'
         );
 
         $order->update([
-            'custom_delivery_file_url' => 'private://'.$path,
+            'custom_delivery_file_url' => 'private://' . $path,
             'custom_delivery_file_name' => $originalName,
             'custom_delivery_file_mime' => $file->getClientMimeType(),
             'custom_delivery_file_size' => $file->getSize(),
@@ -607,7 +607,7 @@ class MerchantOrderController extends Controller
             'actor_id' => $request->user()->id,
             'event_type' => 'delivery_uploaded',
             'revision_number' => (int) $order->custom_delivery_revision_count,
-            'file_url' => 'private://'.$path,
+            'file_url' => 'private://' . $path,
             'file_name' => $originalName,
             'file_mime' => $file->getClientMimeType(),
             'file_size' => $file->getSize(),
@@ -641,7 +641,7 @@ class MerchantOrderController extends Controller
                     'custom_work' => 'file_up',
                     default => 'download',
                 },
-                'image' => $order->product->image_url,
+                'image' => $this->safeProductImageUrl($order->product),
                 'is_escrow_order' => $order->requiresPhysicalFulfillment()
                     || (($order->product->digital_delivery_type ?? null) === 'custom_delivery'),
             ];
@@ -711,9 +711,31 @@ class MerchantOrderController extends Controller
             'title' => $order->product?->title ?: 'Order item',
             'kind' => 'post_content',
             'icon' => 'book_open',
-            'image' => $order->product?->image_url,
+            'image' => $this->safeProductImageUrl($order->product),
             'is_escrow_order' => false,
         ];
+    }
+
+    private function safeProductImageUrl(?Product $product): ?string
+    {
+        if (!$product) {
+            return null;
+        }
+
+        $product->loadMissing('images');
+        $image = $product->images
+            ->first(fn($item) => ($item->media_type ?: 'image') === 'image');
+
+        if ($image) {
+            return $image->thumbnail_url ?: $image->image_url;
+        }
+
+        $url = trim((string) ($product->getRawOriginal('url') ?: ''));
+        if ($url === '' || $product->isDigital()) {
+            return null;
+        }
+
+        return preg_match('/\.(jpe?g|png|gif|webp|avif|svg)(\?|$)/i', $url) ? $url : null;
     }
 
     private function scopePhysicalFulfillmentOrders($query)
@@ -738,7 +760,7 @@ class MerchantOrderController extends Controller
         abort_unless(in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true), 422, 'Order must be paid before dispatch.');
         abort_unless(in_array($mode, ['local', 'intercity'], true), 422, 'Delivery mode is invalid.');
         abort_if($order->delivery?->delivery_type === 'self_pickup', 422, 'Self-pickup orders are completed with the pickup PIN, not dispatch.');
-        
+
         $validated = $request->validate([
             'boda_phone' => 'nullable|string',
             'delivery_person_name' => 'nullable|string|max:120',
@@ -871,7 +893,7 @@ class MerchantOrderController extends Controller
         ]);
 
         abort_if(
-            $order->delivery?->delivery_type === 'self_pickup' && ! in_array($validated['status'], ['ready_for_pickup', 'issue_reported'], true),
+            $order->delivery?->delivery_type === 'self_pickup' && !in_array($validated['status'], ['ready_for_pickup', 'issue_reported'], true),
             422,
             'Self-pickup orders can only be marked ready for pickup or issue reported here.'
         );
@@ -930,7 +952,7 @@ class MerchantOrderController extends Controller
                 'role' => 'courier_receipt',
             ];
 
-            if (! $proofUrl) {
+            if (!$proofUrl) {
                 $proofUrl = $courierReceiptUrl;
                 $proofMime = $courierReceiptMime;
                 $proofType = str_starts_with((string) $courierReceiptMime, 'image/') ? 'photo' : 'document';
@@ -1010,7 +1032,7 @@ class MerchantOrderController extends Controller
                 'type' => $delivery->delivery_type,
                 'boda_phone' => $delivery->boda_phone,
                 'delivery_person_name' => $delivery->delivery_person_name,
-                'events' => $delivery->events->sortBy('created_at')->map(fn ($event) => [
+                'events' => $delivery->events->sortBy('created_at')->map(fn($event) => [
                     'id' => $event->id,
                     'status' => $event->status,
                     'actor_type' => $event->actor_type,
@@ -1049,7 +1071,7 @@ class MerchantOrderController extends Controller
     private function appendDeliveryChatUpdate(Order $order, string $status, ?string $note = null, ?string $proofUrl = null, array $proofMedia = [], array $metadata = []): void
     {
         $senderId = $order->merchant?->user_id;
-        if (! $senderId || ! $order->buyer_id) {
+        if (!$senderId || !$order->buyer_id) {
             return;
         }
 
@@ -1338,7 +1360,7 @@ class MerchantOrderController extends Controller
             ->latest()
             ->first();
 
-        if (! $order) {
+        if (!$order) {
             return response()->json(['message' => 'Oda haijapatikana kwa code hiyo.'], 404);
         }
 
@@ -1351,7 +1373,7 @@ class MerchantOrderController extends Controller
     {
         $userId = $request->user()?->id ?: 'guest';
 
-        return 'pickup-pin:merchant:'.$merchant->id.':order:'.$order->id.':user:'.$userId.':ip:'.$request->ip();
+        return 'pickup-pin:merchant:' . $merchant->id . ':order:' . $order->id . ':user:' . $userId . ':ip:' . $request->ip();
     }
 
     private function checkupPayload(Order $order): array
@@ -1381,7 +1403,7 @@ class MerchantOrderController extends Controller
             'public_id' => $order->public_id,
             'title' => $display['title'] ?: ($order->product?->title ?? 'Order'),
             'kind' => $display['kind'],
-            'image_url' => $display['image'] ?? ($order->variant?->swatch_image_url ?: $order->product?->image_url),
+            'image_url' => $display['image'] ?? ($order->variant?->swatch_image_url ?: $this->safeProductImageUrl($order->product)),
             'payment_status' => $order->payment_status,
             'delivery_type' => $isPickup ? 'self_pickup' : $deliveryType,
             'delivery_status' => $isPickup && in_array($order->delivery?->delivery_status, ['awaiting_boda', 'inquiry', null], true)
@@ -1413,8 +1435,8 @@ class MerchantOrderController extends Controller
     {
         if ($order->purchasable_type === 'offering_group' && !empty($order->offering_group_selection['lines'])) {
             return collect($this->flattenOfferingGroupLines($order->offering_group_selection['lines']))
-                ->map(fn (array $line, int $index) => [
-                    'key' => 'offering-'.$index,
+                ->map(fn(array $line, int $index) => [
+                    'key' => 'offering-' . $index,
                     'title' => $line['title'] ?? 'Offering item',
                     'image_url' => $line['image_url'] ?? null,
                     'quantity' => (float) ($line['quantity'] ?? 1),
@@ -1427,16 +1449,18 @@ class MerchantOrderController extends Controller
                 ->all();
         }
 
-        $items = [[
-            'key' => 'main',
-            'title' => $this->resolveDisplay($order)['title'] ?: ($order->product?->title ?? 'Order item'),
-            'image_url' => $order->variant?->swatch_image_url ?: $order->product?->image_url,
-            'quantity' => (float) ($order->quantity ?: 1),
-            'unit_price' => (float) ($order->unit_price ?: $order->total_paid),
-            'line_total' => (float) ($order->unit_price ?: $order->total_paid) * (float) ($order->quantity ?: 1),
-            'type' => $order->product?->type,
-            'is_main' => true,
-        ]];
+        $items = [
+            [
+                'key' => 'main',
+                'title' => $this->resolveDisplay($order)['title'] ?: ($order->product?->title ?? 'Order item'),
+                'image_url' => $order->variant?->swatch_image_url ?: $this->safeProductImageUrl($order->product),
+                'quantity' => (float) ($order->quantity ?: 1),
+                'unit_price' => (float) ($order->unit_price ?: $order->total_paid),
+                'line_total' => (float) ($order->unit_price ?: $order->total_paid) * (float) ($order->quantity ?: 1),
+                'type' => $order->product?->type,
+                'is_main' => true,
+            ]
+        ];
 
         foreach (($order->extra_items ?? []) as $index => $item) {
             $type = $item['type'] ?? $item['product_type'] ?? null;
@@ -1444,7 +1468,7 @@ class MerchantOrderController extends Controller
             $unitPrice = (float) ($item['price'] ?? 0);
 
             $items[] = [
-                'key' => 'extra-'.$index,
+                'key' => 'extra-' . $index,
                 'title' => $item['title'] ?? 'Added item',
                 'image_url' => $item['image'] ?? null,
                 'quantity' => $quantity,
@@ -1474,19 +1498,19 @@ class MerchantOrderController extends Controller
 
     private function checkupReleaseBlockedReason(Order $order, bool $isPickup): string
     {
-        if (! $isPickup) {
+        if (!$isPickup) {
             return 'This order is not a pickup order.';
         }
 
-        if (! in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true)) {
+        if (!in_array($order->payment_status, ['awaiting_merchant_confirmation', 'escrow_locked'], true)) {
             return 'Payment is not complete yet. Complete payment before releasing this order.';
         }
 
-        if (! $order->delivery?->pickup_pin) {
+        if (!$order->delivery?->pickup_pin) {
             return 'Pickup PIN is not available for this order.';
         }
 
-        if (! $order->merchant_confirmed_at || ! $this->isPickupReadyForRelease($order)) {
+        if (!$order->merchant_confirmed_at || !$this->isPickupReadyForRelease($order)) {
             return 'Confirm stock and pickup availability before releasing this order.';
         }
 
@@ -1535,7 +1559,7 @@ class MerchantOrderController extends Controller
 
     private function extraChargesPayload(Order $order): array
     {
-        if (! $order->id) {
+        if (!$order->id) {
             return [];
         }
 
@@ -1543,7 +1567,7 @@ class MerchantOrderController extends Controller
             ->where('order_id', $order->id)
             ->latest()
             ->get()
-            ->map(fn ($charge) => [
+            ->map(fn($charge) => [
                 'id' => $charge->id,
                 'public_id' => $charge->public_id,
                 'payment_order_id' => $charge->payment_order_id,
@@ -1582,7 +1606,7 @@ class MerchantOrderController extends Controller
             ->where('is_active', true)
             ->first();
     }
-    
+
     /**
      * Verify local delivery using Customer's PIN.
      */
@@ -1666,7 +1690,7 @@ class MerchantOrderController extends Controller
             ? (float) $validated['deposit_amount']
             : ($depositPercent !== null ? round($totalPaid * ($depositPercent / 100), 2) : null);
         $balanceAmount = $depositAmount !== null ? max(0, round($totalPaid - $depositAmount, 2)) : null;
-        
+
         $order->update([
             'unit_price' => $unitPrice,
             'shipping_fee' => $shippingFee,
@@ -1697,19 +1721,19 @@ class MerchantOrderController extends Controller
                 'notes' => $validated['message'] ?? null,
                 'offered_by' => 'merchant',
                 'offered_at' => now()->toISOString(),
-            ], fn ($value) => $value !== null && $value !== ''),
+            ], fn($value) => $value !== null && $value !== ''),
             'agreed_at' => null,
         ]);
 
         $customMessage = trim((string) ($validated['message'] ?? ''));
         $shippingChanged = !$isServiceOrder && $previousShippingFee !== null && abs($previousShippingFee - $shippingFee) >= 0.01;
         $currencyCode = $order->merchant_currency_code ?: $order->merchant?->currency?->code ?: 'TZS';
-        $formatQuoteMoney = fn (float $amount): string => $currencyCode . ' ' . number_format($amount, in_array($currencyCode, ['TZS', 'JPY', 'KRW'], true) ? 0 : 2);
+        $formatQuoteMoney = fn(float $amount): string => $currencyCode . ' ' . number_format($amount, in_array($currencyCode, ['TZS', 'JPY', 'KRW'], true) ? 0 : 2);
         $body = $customMessage !== '' ? $customMessage : ($isServiceOrder
             ? "Nimetuma offer ya huduma: " . $formatQuoteMoney($totalPaid) . ". Tafadhali fanya malipo kukamilisha booking."
             : ($shippingChanged
-                ? "Nimesasisha gharama ya usafiri kutoka " . $formatQuoteMoney($previousShippingFee) . " kwenda " . $formatQuoteMoney($shippingFee) . ". Jumla mpya ni " . $formatQuoteMoney($totalPaid) . "."
-                : "Nimesasisha bei. Bei ya bidhaa: " . $formatQuoteMoney($unitPrice) . ", Gharama ya usafiri: " . $formatQuoteMoney($shippingFee) . ". Tafadhali fanya malipo kukamilisha agizo."));
+                ? "Nimerekebisha gharama ya usafiri kutoka " . $formatQuoteMoney($previousShippingFee) . " kwenda " . $formatQuoteMoney($shippingFee) . ". Jumla mpya ni " . $formatQuoteMoney($totalPaid) . "."
+                : "Marekebisho yamefanyika. Bei ya bidhaa: " . $formatQuoteMoney($unitPrice) . ", Gharama ya usafiri: " . $formatQuoteMoney($shippingFee) . ". Tafadhali fanya malipo kukamilisha agizo."));
 
         $message = $order->messages()->create([
             'sender_id' => $user->id,
@@ -1757,7 +1781,7 @@ class MerchantOrderController extends Controller
 
         $isPaidPhysicalConfirmation = $order->requiresPhysicalFulfillment()
             && $order->payment_status === 'awaiting_merchant_confirmation'
-            && ! $order->merchant_confirmed_at;
+            && !$order->merchant_confirmed_at;
 
         if ($isPaidPhysicalConfirmation) {
             $updated = DB::transaction(function () use ($order, $user) {
@@ -1777,7 +1801,7 @@ class MerchantOrderController extends Controller
                         ...(is_array($order->agreement_snapshot) ? $order->agreement_snapshot : []),
                         'merchant_confirmed_at' => now()->toISOString(),
                         'confirmed_after_payment' => true,
-                    ], fn ($value) => $value !== null),
+                    ], fn($value) => $value !== null),
                 ])->save();
 
                 if ($order->delivery?->delivery_type === 'self_pickup') {
@@ -1849,7 +1873,7 @@ class MerchantOrderController extends Controller
                 'offered_by' => 'merchant',
                 'offered_at' => now()->toISOString(),
                 'merchant_confirmed_at' => now()->toISOString(),
-            ], fn ($value) => $value !== null),
+            ], fn($value) => $value !== null),
             'agreed_at' => null,
         ]);
 
@@ -1884,7 +1908,7 @@ class MerchantOrderController extends Controller
     {
         abort_unless($merchant->user_id === $request->user()->id, 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
-        
+
         if ($order->payment_status !== 'pending') {
             return response()->json(['message' => 'Huwezi kuongeza muda kwa agizo hili.'], 400);
         }
@@ -1932,7 +1956,7 @@ class MerchantOrderController extends Controller
     {
         abort_unless($merchant->user_id === $request->user()->id, 403);
         abort_unless($order->merchant_id === $merchant->id, 404);
-        
+
         if ($order->payment_status !== 'pending') {
             return response()->json(['message' => 'Huwezi kuachia stock ya agizo hili.'], 400);
         }
