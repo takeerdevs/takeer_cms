@@ -256,9 +256,6 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, entitle
                         <X className="h-5 w-5 text-white group-active:scale-90 transition-transform" />
                     </button>
                     <div className="relative z-10 flex flex-col items-center text-center gap-3">
-                        <div className="h-20 w-20 rounded-3xl bg-white/20 backdrop-blur-xl flex items-center justify-center border border-white/30 shadow-lg">
-                            <FileIcon className="h-10 w-10" />
-                        </div>
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/70">Malipo Yamekamilika</p>
                             <h2 className="text-2xl font-black tracking-tight mt-1 leading-tight text-white">{productTitle || 'Bidhaa Yako'}</h2>
@@ -388,10 +385,10 @@ export default function DigitalDownloadModal({ isOpen, onClose, orderId, entitle
                                         entity_type: 'product',
                                         entity_id: productId || null,
                                         source: 'digital_download_modal',
-                        metadata: {
-                            order_id: orderId,
-                            entitlement_id: entitlementId || null,
-                            license_key_id: softwareLicenseKey.id || null,
+                                        metadata: {
+                                            order_id: orderId,
+                                            entitlement_id: entitlementId || null,
+                                            license_key_id: softwareLicenseKey.id || null,
                                         },
                                     })}
                                     className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-800 border border-emerald-100"

@@ -594,7 +594,7 @@ class CheckoutController extends Controller
                     $coupon->increment('times_used');
                 }
 
-                if (!$isInquiry && ! $liveGatewayCheckout) {
+                if (!$isInquiry && !$liveGatewayCheckout) {
                     $isCustomDelivery = $product?->isDigital()
                         && ($product->digital_delivery_type ?? null) === 'custom_delivery';
                     $newOrder->update([
@@ -633,7 +633,7 @@ class CheckoutController extends Controller
 
         $this->recordCheckoutAttribution($request, $order, $validated, $referralLink);
 
-        if (! $order->is_inquiry && $liveGatewayCheckout) {
+        if (!$order->is_inquiry && $liveGatewayCheckout) {
             $gatewayResult = $gateway->initiate($order->fresh(['buyer']), [
                 'payment_number' => $paymentPhone,
                 'buyer_name' => $order->buyer?->name,
@@ -641,7 +641,7 @@ class CheckoutController extends Controller
                 'order_id' => $order->transaction_ref,
             ]);
 
-            if (! $gatewayResult->success) {
+            if (!$gatewayResult->success) {
                 $order->releaseInventory();
                 $order->update(['payment_status' => 'failed']);
 
@@ -674,7 +674,7 @@ class CheckoutController extends Controller
                     ? 'Selcom simulation completed successfully.'
                     : $gatewayResult->message,
                 'order' => OrderResource::make($order->fresh(['product'])),
-                'payment_pending' => ! ($gatewayResult->raw['simulated'] ?? false),
+                'payment_pending' => !($gatewayResult->raw['simulated'] ?? false),
             ];
 
             if (!$request->user()) {
@@ -830,7 +830,7 @@ class CheckoutController extends Controller
 
         $coverageText = !empty($coverageAnchors)
             ? ' Tunafikisha ndani ya ' . collect($coverageAnchors)
-                ->map(fn (array $anchor) => 'kilomita ' . rtrim(rtrim(number_format($anchor['radius'], 1), '0'), '.') . ' kutoka ' . $anchor['label'])
+                ->map(fn(array $anchor) => 'kilomita ' . rtrim(rtrim(number_format($anchor['radius'], 1), '0'), '.') . ' kutoka ' . $anchor['label'])
                 ->implode(', ') . '.'
             : '';
 
@@ -840,7 +840,7 @@ class CheckoutController extends Controller
             ->where('is_active', true)
             ->where('delivery_type', 'intercity_bus')
             ->get(['zone_name', 'destination_city', 'destination_region', 'destination_country', 'destination_country_id', 'coverage_scope'])
-            ->map(fn (ShippingZone $zone) => match ($zone->coverage_scope) {
+            ->map(fn(ShippingZone $zone) => match ($zone->coverage_scope) {
                 'countrywide' => 'nchi nzima' . ($zone->destination_country ? ' (' . $zone->destination_country . ')' : ''),
                 'international' => 'kimataifa kwenda ' . ($zone->destination_country ?: $zone->zone_name),
                 default => $zone->destination_city ?: $zone->zone_name ?: $zone->destination_region,
@@ -1027,8 +1027,8 @@ class CheckoutController extends Controller
             ->where('delivery_type', 'local_boda')
             ->whereNotNull('max_distance_km')
             ->with('location')
-            ->when($shippingProfileId, fn ($query) => $query->where('shipping_profile_id', $shippingProfileId))
-            ->when($eligibleLocationIds !== null, fn ($query) => $query->whereIn('merchant_location_id', $eligibleLocationIds))
+            ->when($shippingProfileId, fn($query) => $query->where('shipping_profile_id', $shippingProfileId))
+            ->when($eligibleLocationIds !== null, fn($query) => $query->whereIn('merchant_location_id', $eligibleLocationIds))
             ->get()
             ->map(function (ShippingZone $zone) use ($buyerLat, $buyerLng, $buyerCityId) {
                 $shopLat = $zone->location?->latitude;
@@ -1080,7 +1080,7 @@ class CheckoutController extends Controller
         }
 
         return collect($locationIds)
-            ->map(fn ($id) => (int) $id)
+            ->map(fn($id) => (int) $id)
             ->filter()
             ->unique()
             ->values()
@@ -1095,7 +1095,7 @@ class CheckoutController extends Controller
             ->where('is_active', true)
             ->where('delivery_type', 'intercity_bus')
             ->with(['hotspots', 'location', 'destinationCountryRecord', 'destinationStateRecord', 'destinationCityRecord'])
-            ->when($shippingProfileId, fn ($query) => $query->where('shipping_profile_id', $shippingProfileId))
+            ->when($shippingProfileId, fn($query) => $query->where('shipping_profile_id', $shippingProfileId))
             ->get();
 
         if ($zones->isEmpty()) {
@@ -1103,7 +1103,7 @@ class CheckoutController extends Controller
         }
 
         return $zones
-            ->filter(fn (ShippingZone $zone) => $this->profileAllowsShippingZoneObject($profile, $zone))
+            ->filter(fn(ShippingZone $zone) => $this->profileAllowsShippingZoneObject($profile, $zone))
             ->flatMap(function (ShippingZone $zone) use ($buyerLat, $buyerLng, $buyerCity, $buyerRegion, $buyerCountry, $buyerCountryId, $buyerStateId, $buyerCityId, $allowNearestOutsideArea) {
                 if (!$allowNearestOutsideArea && !$this->intercityZoneCoversCustomer($zone, $buyerLat, $buyerLng, $buyerCity, $buyerRegion, $buyerCountry, $buyerCountryId, $buyerStateId, $buyerCityId)) {
                     return collect();
@@ -1117,28 +1117,32 @@ class CheckoutController extends Controller
                         default => 3,
                     };
 
-                    return collect([[
-                        'zone' => $zone,
-                        'hotspot_id' => null,
-                        'distance' => $coverageRank,
-                        'fee' => (float) $zone->flat_rate_fee,
-                    ]]);
+                    return collect([
+                        [
+                            'zone' => $zone,
+                            'hotspot_id' => null,
+                            'distance' => $coverageRank,
+                            'fee' => (float) $zone->flat_rate_fee,
+                        ]
+                    ]);
                 }
 
-                $candidates = collect([[
-                    'zone' => $zone,
-                    'hotspot_id' => null,
-                    'lat' => $zone->reference_lat ?? $zone->location?->latitude,
-                    'lng' => $zone->reference_lng ?? $zone->location?->longitude,
-                    'fee' => (float) $zone->flat_rate_fee,
-                ]]);
+                $candidates = collect([
+                    [
+                        'zone' => $zone,
+                        'hotspot_id' => null,
+                        'lat' => $zone->reference_lat ?? $zone->location?->latitude,
+                        'lng' => $zone->reference_lng ?? $zone->location?->longitude,
+                        'fee' => (float) $zone->flat_rate_fee,
+                    ]
+                ]);
 
                 return $candidates->map(function (array $candidate) use ($buyerLat, $buyerLng) {
                     $candidate['distance'] = $this->distanceOrFallback($buyerLat, $buyerLng, $candidate['lat'], $candidate['lng']);
                     return $candidate;
                 });
             })
-            ->filter(fn (array $candidate) => $candidate['distance'] !== null)
+            ->filter(fn(array $candidate) => $candidate['distance'] !== null)
             ->sortBy([
                 ['distance', 'asc'],
                 ['fee', 'asc'],
@@ -1170,7 +1174,7 @@ class CheckoutController extends Controller
         return (bool) ShippingProfile::query()
             ->where('merchant_id', $merchantId)
             ->find($shippingProfileId)
-            ?->blocksOutsideAreas();
+                ?->blocksOutsideAreas();
     }
 
     private function shippingProfileFor(?int $shippingProfileId, int $merchantId): ?ShippingProfile
@@ -1255,7 +1259,7 @@ class CheckoutController extends Controller
                 ->where('availability_type', 'serves')
                 ->where('is_enabled', true)
                 ->pluck('merchant_location_id')
-                ->map(fn ($id) => (int) $id)
+                ->map(fn($id) => (int) $id)
                 ->values();
 
             if ($explicitIds->isNotEmpty()) {
@@ -1269,9 +1273,9 @@ class CheckoutController extends Controller
 
                 $stockLocationIds = $inventoryQuery
                     ->get()
-                    ->filter(fn ($row) => (float) ($row->quantity_decimal ?? $row->quantity ?? 0) >= $quantity)
+                    ->filter(fn($row) => (float) ($row->quantity_decimal ?? $row->quantity ?? 0) >= $quantity)
                     ->pluck('merchant_location_id')
-                    ->map(fn ($id) => (int) $id)
+                    ->map(fn($id) => (int) $id)
                     ->unique()
                     ->values();
 
@@ -1289,7 +1293,7 @@ class CheckoutController extends Controller
         }
 
         $group = OfferingGroup::query()->find($groupId);
-        if (! $group) {
+        if (!$group) {
             return null;
         }
 
@@ -1297,7 +1301,7 @@ class CheckoutController extends Controller
             ->where('availability_type', 'serves')
             ->where('is_enabled', true)
             ->pluck('merchant_location_id')
-            ->map(fn ($id) => (int) $id)
+            ->map(fn($id) => (int) $id)
             ->values();
 
         return $explicitIds->isNotEmpty() ? $explicitIds->all() : null;
@@ -1573,7 +1577,7 @@ class CheckoutController extends Controller
 
         return array_filter(
             $inputs,
-            fn ($value) => $value !== null && $value !== ''
+            fn($value) => $value !== null && $value !== ''
         );
     }
 
@@ -2028,8 +2032,8 @@ class CheckoutController extends Controller
         $unitPrice = $offeringGroup
             ? (float) ($selectedOfferingGroup['subtotal'] ?? 0)
             : ($bundle
-            ? ($isMenuBundle ? (float) collect($selectedBundleItems)->sum('line_total') : (float) ($bundle->price ?? 0))
-            : $this->resolveBasePrice($product, $selectedVariant, $servicePricingInputs));
+                ? ($isMenuBundle ? (float) collect($selectedBundleItems)->sum('line_total') : (float) ($bundle->price ?? 0))
+                : $this->resolveBasePrice($product, $selectedVariant, $servicePricingInputs));
         $groupSaleCampaign = null;
         if ($product && !empty($validated['group_sale_campaign_id'])) {
             $groupSaleCampaign = $this->resolveGroupSaleCampaign((int) $validated['group_sale_campaign_id'], $product);
@@ -2126,7 +2130,7 @@ class CheckoutController extends Controller
                     'quantity' => $requestedQuantity,
                     'unit_price' => $unitPrice,
                     'total_paid' => $quotedTotalPrice,
-                    'pricing_tiers' => $product->pricingTiers->map(fn ($tier) => [
+                    'pricing_tiers' => $product->pricingTiers->map(fn($tier) => [
                         'min_quantity' => (float) $tier->min_quantity,
                         'max_quantity' => $tier->max_quantity !== null ? (float) $tier->max_quantity : null,
                         'unit_price' => (float) $tier->unit_price,
@@ -2144,7 +2148,7 @@ class CheckoutController extends Controller
                         'card' => (bool) ($product->safepay_card_enabled ?? false),
                     ])->filter()->keys()->values()->all(),
                     'requested_at' => now()->toISOString(),
-                ], fn ($value) => $value !== null && $value !== '') : null,
+                ], fn($value) => $value !== null && $value !== '') : null,
                 'shipping_fee' => ($isSelfPickup || $isServiceInquiry || $inquiryStatus === 'quoted') ? $resolvedShippingFee : null,
                 'payment_status' => 'pending',
                 'is_inquiry' => true,
@@ -2440,7 +2444,7 @@ class CheckoutController extends Controller
             $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji atakabidhi digital file/custom work hapa kwenye Takeer kulingana na makubaliano yenu kwenye chat.";
         } elseif ($isDigital) {
             $merchantBody .= "Malipo yamefanikiwa. Hii ni digital order; mteja atapata access/download kwenye Takeer kulingana na aina ya content uliyouza. Hakuna usafirishaji wa physical product unaohitajika.";
-            $buyerBody .= "Malipo yamefanikiwa. Unaweza kufungua au kudownload digital content yako kwenye Takeer kulingana na aina ya content uliyonunua.";
+            $buyerBody .= "Malipo yamefanikiwa. Unaweza kufungua au kudownload digital content yako kwenye Takeer kulingana na aina ya content uliyonunua na ruhusa toka kwa muuzaji.";
         } else {
             $merchantBody .= "Malipo yamefanikiwa na yamehifadhiwa (Escrow). Tafadhali anza mchakato wa kusafirisha. Mteja akapopokea bidhaa pesa itatumwa moja kwa moja kwako kama umechagua automatic payout au utahitajika kuomba kuitoa wakati wowote.";
             $buyerBody .= "Malipo yamefanikiwa na yamehifadhiwa SafePay. Muuzaji ataanza mchakato wa kukutumia order.";
@@ -2658,12 +2662,13 @@ class CheckoutController extends Controller
         $remaining = max(1, $minutes);
         $cursor = $from->copy();
         $normalizedWindows = collect($windows)
-            ->filter(fn ($window) => (bool) ($window['enabled'] ?? true))
-            ->groupBy(fn ($window) => (int) ($window['day'] ?? 0))
-            ->map(fn ($dayWindows) => $dayWindows
-                ->sortBy(fn ($window) => (string) ($window['start'] ?? '08:30'))
-                ->values()
-                ->all()
+            ->filter(fn($window) => (bool) ($window['enabled'] ?? true))
+            ->groupBy(fn($window) => (int) ($window['day'] ?? 0))
+            ->map(
+                fn($dayWindows) => $dayWindows
+                    ->sortBy(fn($window) => (string) ($window['start'] ?? '08:30'))
+                    ->values()
+                    ->all()
             );
 
         for ($guard = 0; $guard < 21; $guard++) {
